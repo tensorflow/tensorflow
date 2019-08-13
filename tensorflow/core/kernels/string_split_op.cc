@@ -178,7 +178,7 @@ class StringSplitOp : public OpKernel {
                 errors::InvalidArgument("input must be a vector, got shape: ",
                                         input_tensor->shape().DebugString()));
 
-    const auto input_vec = input_tensor->vec<string>();
+    const auto input_vec = input_tensor->vec<tstring>();
     const int64 batch_size = input_vec.dimension(0);
 
     const Tensor* delimiter_tensor;
@@ -220,7 +220,7 @@ class StringSplitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
     auto sp_indices = sp_indices_t->matrix<int64>();
-    auto sp_tokens = sp_tokens_t->vec<string>();
+    auto sp_tokens = sp_tokens_t->vec<tstring>();
     auto sp_shape = sp_shape_t->vec<int64>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;
@@ -253,7 +253,7 @@ class StringSplitV2Op : public OpKernel {
                 errors::InvalidArgument("input must be a vector, got shape: ",
                                         input_tensor->shape().DebugString()));
 
-    const auto input_vec = input_tensor->vec<string>();
+    const auto input_vec = input_tensor->vec<tstring>();
     const int64 batch_size = input_vec.dimension(0);
 
     const Tensor* sep_tensor;
@@ -261,7 +261,7 @@ class StringSplitV2Op : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sep_tensor->shape()),
                 errors::InvalidArgument("sep must be a scalar, got shape: ",
                                         sep_tensor->shape().DebugString()));
-    const auto sep_vec = sep_tensor->flat<string>();
+    const auto sep_vec = sep_tensor->flat<tstring>();
     StringPiece sep(sep_vec(0));
     std::vector<StringPiece> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
@@ -290,7 +290,7 @@ class StringSplitV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
     auto sp_indices = sp_indices_t->matrix<int64>();
-    auto sp_tokens = sp_tokens_t->vec<string>();
+    auto sp_tokens = sp_tokens_t->vec<tstring>();
     auto sp_shape = sp_shape_t->vec<int64>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;

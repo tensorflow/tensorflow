@@ -389,8 +389,8 @@ ValueHandle mlir::edsc::op::operator||(ValueHandle lhs, ValueHandle rhs) {
   return !(!lhs && !rhs);
 }
 
-static ValueHandle createComparisonExpr(CmpIPredicate predicate,
-                                        ValueHandle lhs, ValueHandle rhs) {
+static ValueHandle createIComparisonExpr(CmpIPredicate predicate,
+                                         ValueHandle lhs, ValueHandle rhs) {
   auto lhsType = lhs.getType();
   auto rhsType = rhs.getType();
   (void)lhsType;
@@ -404,22 +404,56 @@ static ValueHandle createComparisonExpr(CmpIPredicate predicate,
   return ValueHandle(op.getResult());
 }
 
+static ValueHandle createFComparisonExpr(CmpFPredicate predicate,
+                                         ValueHandle lhs, ValueHandle rhs) {
+  auto lhsType = lhs.getType();
+  auto rhsType = rhs.getType();
+  (void)lhsType;
+  (void)rhsType;
+  assert(lhsType == rhsType && "cannot mix types in operators");
+  assert(lhsType.isa<FloatType>() && "only float comparisons are supported");
+
+  auto op = ScopedContext::getBuilder().create<CmpFOp>(
+      ScopedContext::getLocation(), predicate, lhs.getValue(), rhs.getValue());
+  return ValueHandle(op.getResult());
+}
+
+// All floating point comparison are ordered through EDSL
 ValueHandle mlir::edsc::op::operator==(ValueHandle lhs, ValueHandle rhs) {
-  return createComparisonExpr(CmpIPredicate::EQ, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::OEQ, lhs, rhs)
+             : createIComparisonExpr(CmpIPredicate::EQ, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator!=(ValueHandle lhs, ValueHandle rhs) {
-  return createComparisonExpr(CmpIPredicate::NE, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::ONE, lhs, rhs)
+             : createIComparisonExpr(CmpIPredicate::NE, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
-  // TODO(ntv,zinenko): signed by default, how about unsigned?
-  return createComparisonExpr(CmpIPredicate::SLT, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::OLT, lhs, rhs)
+             :
+             // TODO(ntv,zinenko): signed by default, how about unsigned?
+             createIComparisonExpr(CmpIPredicate::SLT, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<=(ValueHandle lhs, ValueHandle rhs) {
-  return createComparisonExpr(CmpIPredicate::SLE, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::OLE, lhs, rhs)
+             : createIComparisonExpr(CmpIPredicate::SLE, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>(ValueHandle lhs, ValueHandle rhs) {
-  return createComparisonExpr(CmpIPredicate::SGT, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::OGT, lhs, rhs)
+             : createIComparisonExpr(CmpIPredicate::SGT, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>=(ValueHandle lhs, ValueHandle rhs) {
-  return createComparisonExpr(CmpIPredicate::SGE, lhs, rhs);
+  auto type = lhs.getType();
+  return type.isa<FloatType>()
+             ? createFComparisonExpr(CmpFPredicate::OGE, lhs, rhs)
+             : createIComparisonExpr(CmpIPredicate::SGE, lhs, rhs);
 }

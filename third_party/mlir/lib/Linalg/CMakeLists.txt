@@ -14,4 +14,11 @@ add_llvm_library(MLIRLinalg
   DEPENDS
   intrinsics_gen
   )
-add_dependencies(MLIRLinalg MLIRLinalgOpsIncGen MLIRLinalgLibraryOpsIncGen MLIRStandardToLLVM)
+
+add_dependencies(MLIRLinalg
+
+  MLIRAffineOps
+  MLIRLinalgOpsIncGen
+  MLIRLinalgLibraryOpsIncGen
+  MLIRStandardToLLVM
+  )

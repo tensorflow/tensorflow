@@ -22,9 +22,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit UnbatchDatasetOp(OpKernelConstruction* ctx)
@@ -72,7 +69,9 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

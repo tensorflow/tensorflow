@@ -79,8 +79,8 @@ struct TestCase {
 // Test case 1: one input for the map function with no captured inputs.
 TestCase TestCase1() {
   return {
-      /*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
       /*captured_inputs*/ {},
       /*t_arguments*/ {DT_INT64},
       /*t_captured*/ {},
@@ -90,36 +90,34 @@ TestCase TestCase1() {
       /*output_dtypes*/ {DT_INT64},
       /*output_shapes*/ {PartialTensorShape({2})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                               {0, 2, 4, 6, 8, 10})}};
+      {CreateTensor<int64>(TensorShape({3, 2}), {0, 2, 4, 6, 8, 10})}};
 }
 
 // Test case 2: two inputs for the map function with no captured inputs.
 TestCase TestCase2() {
-  return {/*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-                             TensorShape({3, 2}), {0, 1, 2, 3, 4, 5}),
-                         DatasetOpsTestBase::CreateTensor<int64>(
-                             TensorShape({3, 2}), {0, 10, 20, 30, 40, 50})},
-          /*captured_inputs*/ {},
-          /*t_arguments*/ {DT_INT64, DT_INT64},
-          /*t_captured*/ {},
-          /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
-          /*func_lib*/ {test::function::XAddY()},
-          /*max_intra_op_parallelism*/ 2,
-          /*output_dtypes*/ {DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({2})},
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                                   {0, 11, 22, 33, 44, 55})}};
+  return {
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5}),
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 10, 20, 30, 40, 50})},
+      /*captured_inputs*/ {},
+      /*t_arguments*/ {DT_INT64, DT_INT64},
+      /*t_captured*/ {},
+      /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
+      /*func_lib*/ {test::function::XAddY()},
+      /*max_intra_op_parallelism*/ 2,
+      /*output_dtypes*/ {DT_INT64},
+      /*output_shapes*/ {PartialTensorShape({2})},
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape({3, 2}), {0, 11, 22, 33, 44, 55})}};
 }
 
 // Test case 3: two inputs for the map function with one captured input.
 TestCase TestCase3() {
   return {
-      /*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
       /*captured_inputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {10, 100})},
+      {CreateTensor<int64>(TensorShape({2}), {10, 100})},
       /*t_arguments*/ {DT_INT64},
       /*t_captured*/ {DT_INT64},
       /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
@@ -128,16 +126,15 @@ TestCase TestCase3() {
       /*output_dtypes*/ {DT_INT64},
       /*output_shapes*/ {PartialTensorShape({2})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                               {10, 101, 12, 103, 14, 105})}};
+      {CreateTensor<int64>(TensorShape({3, 2}), {10, 101, 12, 103, 14, 105})}};
 }
 
 TestCase InvalidOutputTypes() {
   return {
-      /*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
       /*captured_inputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {10, 100})},
+      {CreateTensor<int64>(TensorShape({2}), {10, 100})},
       /*t_arguments*/ {DT_INT64},
       /*t_captured*/ {DT_INT64},
       /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
@@ -146,16 +143,15 @@ TestCase InvalidOutputTypes() {
       /*output_dtypes*/ {DT_FLOAT},
       /*output_shapes*/ {PartialTensorShape({2})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                               {10, 101, 12, 103, 14, 105})}};
+      {CreateTensor<int64>(TensorShape({3, 2}), {10, 101, 12, 103, 14, 105})}};
 }
 
 TestCase InvalidOutputShapes() {
   return {
-      /*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5})},
       /*captured_inputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {10, 100})},
+      {CreateTensor<int64>(TensorShape({2}), {10, 100})},
       /*t_arguments*/ {DT_INT64},
       /*t_captured*/ {DT_INT64},
       /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
@@ -164,18 +160,16 @@ TestCase InvalidOutputShapes() {
       /*output_dtypes*/ {DT_INT64},
       /*output_shapes*/ {PartialTensorShape({2, 2})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                               {10, 101, 12, 103, 14, 105})}};
+      {CreateTensor<int64>(TensorShape({3, 2}), {10, 101, 12, 103, 14, 105})}};
 }
 
 TestCase InvalidInputs() {
   return {
-      /*arguments*/ {DatasetOpsTestBase::CreateTensor<int64>(
-                         TensorShape({3, 2}), {0, 1, 2, 3, 4, 5}),
-                     DatasetOpsTestBase::CreateTensor<int64>(
-                         TensorShape({2, 2}), {0, 1, 2, 3})},
+      /*arguments*/ {
+          CreateTensor<int64>(TensorShape({3, 2}), {0, 1, 2, 3, 4, 5}),
+          CreateTensor<int64>(TensorShape({2, 2}), {0, 1, 2, 3})},
       /*captured_inputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {10, 100})},
+      {CreateTensor<int64>(TensorShape({2}), {10, 100})},
       /*t_arguments*/ {DT_INT64, DT_INT64},
       /*t_captured*/ {DT_INT64},
       /*func*/ {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
@@ -184,8 +178,7 @@ TestCase InvalidInputs() {
       /*output_dtypes*/ {DT_INT64},
       /*output_shapes*/ {PartialTensorShape({2})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3, 2}),
-                                               {10, 101, 12, 103, 14, 105})}};
+      {CreateTensor<int64>(TensorShape({3, 2}), {10, 101, 12, 103, 14, 105})}};
 }
 
 class ParameterizedMapDefunOpTest

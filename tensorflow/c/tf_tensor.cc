@@ -354,7 +354,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
 
   // Compute bytes needed for encoding.
   size_t size = 0;
-  const auto& srcarray = src.flat<string>();
+  const auto& srcarray = src.flat<tstring>();
   for (int i = 0; i < srcarray.size(); ++i) {
     const string& s = srcarray(i);
     // uint64 starting_offset, TF_StringEncode-d string.
@@ -440,7 +440,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
   const char* limit = input + src_size;
 
   *dst = Tensor(static_cast<tensorflow::DataType>(src->dtype), src->shape);
-  auto dstarray = dst->flat<string>();
+  auto dstarray = dst->flat<tstring>();
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =
         reinterpret_cast<const tensorflow::uint64*>(input)[i];

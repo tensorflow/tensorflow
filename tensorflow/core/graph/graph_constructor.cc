@@ -730,7 +730,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   // For nodes with the _output_shapes attribute, override the shape.
   std::vector<const TensorShapeProto*> shape_attrs;
   const char* kAttrName = "_output_shapes";
-  if (!GetNodeAttrSimple(node->attrs(), kAttrName, &shape_attrs)) {
+  if (!TryGetNodeAttr(node->attrs(), kAttrName, &shape_attrs)) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
     return Status::OK();
   }
@@ -990,7 +990,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     Node* node = pair.second.node;
     if (node == nullptr) continue;
     std::vector<string> coloc_values;
-    if (!GetNodeAttrSimple(node->attrs(), kColocationAttrName, &coloc_values))
+    if (!TryGetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values))
       continue;
     bool updated = false;
     for (size_t i = 0; i < coloc_values.size(); ++i) {
@@ -1180,10 +1180,19 @@ Status GraphConstructor::Convert() {
       }
 
       if (src_node != nullptr && src_index >= src_node->num_outputs()) {
-        return errors::InvalidArgument(
-            "Node '", node_def.name(), "': Connecting to invalid output ",
-            tensor_id.index(), " of source node ", tensor_id.node(),
-            " which has ", src_node->num_outputs(), " outputs");
+        std::ostringstream out;
+        out << "Node '" << node_def.name() << "': Connecting to invalid output "
+            << tensor_id.index() << " of source node " << tensor_id.node()
+            << " which has " << src_node->num_outputs() << " outputs.";
+
+        if (src_node->type_string() == "If" ||
+            src_node->type_string() == "StatelessIf" ||
+            src_node->type_string() == "While" ||
+            src_node->type_string() == "StatelessWhile") {
+          out << " Try using "
+              << "tf.compat.v1.experimental.output_all_intermediates(True).";
+        }
+        return errors::InvalidArgument(out.str());
       }
 
       inputs.emplace_back(string(tensor_id.node()), src_node, src_index);

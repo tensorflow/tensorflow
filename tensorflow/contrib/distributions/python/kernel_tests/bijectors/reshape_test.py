@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import Reshape
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
@@ -151,27 +150,6 @@ class _ReshapeBijectorTest(object):
       with self.assertRaisesError(expected_error_message):
         sess.run(bijector.forward_event_shape_tensor(shape_in),
                  feed_dict=feed_dict)
-
-  def _testInvalidDimensionsStatic(self, expected_error_message):
-    """Version of _testInvalidDimensionsOpError for errors detected statically.
-
-    Statically means at graph construction time.
-
-    Args:
-        expected_error_message: String that should be present in the error
-          message that `Reshape` raises for invalid shapes.
-    """
-    shape_in, shape_out, _ = self.build_shapes([2, 3], [
-        1,
-        2,
-        -2,
-    ])
-    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                             expected_error_message):
-      _ = Reshape(
-          event_shape_out=shape_out,
-          event_shape_in=shape_in,
-          validate_args=True)
   # pylint: enable=invalid-name
 
   def testValidButNonMatchingInputOpError(self):
@@ -322,9 +300,9 @@ class ReshapeBijectorTestStatic(test.TestCase, _ReshapeBijectorTest):
       assert_bijective_and_finite(
           bijector, x, y, event_ndims=2, rtol=1e-6, atol=0)
 
-  def testInvalidDimensionsStatic(self):
-    self._testInvalidDimensionsStatic(
-        "elements must be either positive integers or `-1`")
+  def testInvalidDimensionsOpError(self):
+    self._testInvalidDimensionsOpError(
+        "Invalid value in tensor used for shape: -2")
 
   def testInputOutputMismatchOpError(self):
     self._testInputOutputMismatchOpError("Cannot reshape a tensor with")

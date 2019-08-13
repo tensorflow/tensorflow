@@ -72,23 +72,6 @@ class LocalExecutable {
       const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
 
-  // Records the computation in a SessionModule proto with the arguments used to
-  // invoke it, and the result. Enabled by flag: --xla_dump_hlo_snapshots.
-  //
-  // The given ServiceExecutableRunOptions override any values from the
-  // XLA_FLAGS environment variable.
-  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
-      const ServiceExecutableRunOptions* run_options,
-      const absl::Span<const ShapedBuffer* const> arguments);
-
-  // Records the arguments used to invoke the computation in a SessionModule
-  // proto.
-  Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
-                         HloSnapshot* hlo_snapshot);
-
-  // Records the result of the computation in a SessionModule proto.
-  Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
-
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 

@@ -34,9 +34,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/collective_nccl_broadcaster.h"
+#include "tensorflow/core/kernels/collective_nccl_gatherer.h"
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -175,34 +177,43 @@ class NcclTestBase : public ::testing::Test {
     while (done < instances_.size()) done_cv.wait(l);
   }
 
-  void RunTest(int num_ranks, int tensor_length, int instance_key) {
+  void RunTest(int num_ranks, int input_length, int instance_key) {
     Init(num_ranks, instance_key);
-    std::vector<float> expected(tensor_length, 0.0);
-    InitExpected(&expected, tensor_length, num_ranks);
+    std::vector<float> expected;
+    InitExpected(&expected, input_length, num_ranks);
+    if (VLOG_IS_ON(3)) {
+      string str_buf;
+      for (const auto& x : expected) {
+        strings::StrAppend(&str_buf, " ", x);
+      }
+      VLOG(3) << "Expected output " << str_buf;
+    }
     for (int rank = 0; rank < num_ranks; ++rank) {
       DeviceInstance* instance = instances_[rank].get();
-      instance->InitTensor(DT_FLOAT, TensorShape({tensor_length}),
+      instance->InitTensor(DT_FLOAT, TensorShape({input_length}),
                            [this, rank](Tensor* t) { InitInput(t, rank); });
     }
     RunCollective();
     // Confirm that every rank computed the same correct value.
     for (int rank = 0; rank < instances_.size(); ++rank) {
       TF_ASSERT_OK(instances_[rank]->status_);
-      Tensor* dev_tensor = &instances_[rank]->tensor_;
-      VLOG(2) << "rank " << rank << " output " << dev_tensor << " buf "
-              << DMAHelper::base(dev_tensor);
-      Tensor actual(DT_FLOAT, TensorShape({tensor_length}));
+      Tensor* output = &instances_[rank]->output_;
+      const int output_length = output->NumElements();
+      VLOG(2) << "rank " << rank << " output " << output << " buf "
+              << DMAHelper::base(output);
+      Tensor actual(DT_FLOAT, TensorShape({output_length}));
       Notification note;
       Device* dev = instances_[rank]->device_;
       auto* dev_info = dev->tensorflow_gpu_device_info();
       dev_info->default_context->CopyDeviceTensorToCPU(
-          dev_tensor, /*tensor_name=*/"", dev, &actual,
-          [&note](const Status& s) {
+          output, /*tensor_name=*/"", dev, &actual, [&note](const Status& s) {
             TF_CHECK_OK(s);
             note.Notify();
           });
       note.WaitForNotification();
-      for (int i = 0; i < tensor_length; ++i) {
+      VLOG(3) << "rank " << rank << " got output tensor "
+              << actual.DebugString(output_length);
+      for (int i = 0; i < output_length; ++i) {
         EXPECT_FLOAT_EQ(expected[i], actual.template flat<float>()(i))
             << "Mismatch at rank " << rank << " index " << i;
       }
@@ -245,15 +256,20 @@ class NcclTestBase : public ::testing::Test {
 
     void InitTensor(DataType dtype, const TensorShape& shape,
                     const std::function<void(Tensor*)>& init_f) {
-      tensor_ =
+      input_ =
           Tensor(device_->GetAllocator(AllocatorAttributes()), dtype, shape);
       Tensor cpu_tensor(dtype, shape);
       init_f(&cpu_tensor);
-      VLOG(2) << "cpu_tensor " << cpu_tensor.DebugString();
+      if (VLOG_IS_ON(3)) {
+        VLOG(3) << "input tensor "
+                << cpu_tensor.DebugString(shape.num_elements());
+      } else {
+        VLOG(2) << "input tensor " << cpu_tensor.DebugString();
+      }
       auto* dev_info = device_->tensorflow_gpu_device_info();
       Notification note;
       dev_info->default_context->CopyCPUTensorToDevice(
-          &cpu_tensor, device_, &tensor_, [&note](const Status& s) {
+          &cpu_tensor, device_, &input_, [&note](const Status& s) {
             TF_CHECK_OK(s);
             note.Notify();
           });
@@ -281,7 +297,7 @@ class NcclTestBase : public ::testing::Test {
 
       // Prepare inputs and outputs to OpKernel.
       gtl::InlinedVector<TensorValue, 4> inputs;
-      inputs.push_back(TensorValue(&tensor_));
+      inputs.push_back(TensorValue(&input_));
       op_params.inputs = &inputs;
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
@@ -294,13 +310,13 @@ class NcclTestBase : public ::testing::Test {
       AllocatorAttributes generic_alloc_attr;
       op_params.output_attr_array = &generic_alloc_attr;
       std::unique_ptr<OpKernel> op =
-          parent_->GetCollectiveReduceOpKernel(col_params_, &tensor_, device_);
+          parent_->GetCollectiveReduceOpKernel(col_params_, &input_, device_);
       op_params.op_kernel = op.get();
       OpKernelContext ctx(&op_params, 1);
       // We never actually execute the kernel, so we need to do the output
       // allocation it would do, ourselves.
       Tensor* output_tensor_ptr = nullptr;
-      TF_CHECK_OK(ctx.forward_input_or_allocate_output({0}, 0, tensor_.shape(),
+      TF_CHECK_OK(ctx.forward_input_or_allocate_output({0}, 0, input_.shape(),
                                                        &output_tensor_ptr));
       CHECK_EQ(output_tensor_ptr, ctx.mutable_output(0));
 
@@ -311,7 +327,7 @@ class NcclTestBase : public ::testing::Test {
       CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
                                 /*OpKernelContext=*/&ctx, &op_params,
                                 col_params_, exec_key, kStepId,
-                                /*input=*/&tensor_, /*output=*/&tensor_);
+                                /*input=*/&input_, /*output=*/&input_);
       TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
       Notification note;
       reducer.Run([this, &note](Status s) {
@@ -320,7 +336,7 @@ class NcclTestBase : public ::testing::Test {
       });
       note.WaitForNotification();
       if (status_.ok()) {
-        CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
+        CHECK(output_.CopyFrom(*ctx.mutable_output(0), input_.shape()));
       }
 
       op_params.op_device_context->Unref();
@@ -341,11 +357,50 @@ class NcclTestBase : public ::testing::Test {
       CollectiveContext col_ctx(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
-          /*input=*/col_params_.is_source ? &tensor_ : nullptr,
-          /*output=*/&tensor_);
+          /*input=*/col_params_.is_source ? &input_ : nullptr,
+          /*output=*/&input_);
       TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
       Notification note;
       broadcaster.Run([this, &note](Status s) {
+        status_ = s;
+        note.Notify();
+      });
+      note.WaitForNotification();
+      if (status_.ok()) {
+        CHECK(output_.CopyFrom(input_, input_.shape()));
+      }
+
+      op_params.op_device_context->Unref();
+    }
+
+    void RunGather() {
+      VLOG(2) << "RunGather name " << parent_->collective_name_ << " rank "
+              << col_params_.default_rank;
+      // Prepare an OpKernelContext.
+      OpKernelContext::Params op_params;
+      PrepareDeviceContext(&op_params);
+      OpKernelContext ctx(&op_params, 1);
+
+      // Allocate output.  We can't reuse the input because output has a
+      // different shape.
+      auto output_shape = input_.shape();
+      output_shape.set_dim(
+          0, output_shape.dim_size(0) * col_params_.group.group_size);
+      output_ = Tensor(device_->GetAllocator(AllocatorAttributes()), DT_FLOAT,
+                       output_shape);
+
+      // Run gather.
+      string exec_key =
+          strings::StrCat(col_params_.instance.instance_key, ":0:0");
+      NcclGatherer gatherer;
+      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
+                                /*OpKernelContext=*/&ctx, &op_params,
+                                col_params_, exec_key, kStepId,
+                                /*input=*/&input_,
+                                /*output=*/&output_);
+      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+      Notification note;
+      gatherer.Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
@@ -357,7 +412,8 @@ class NcclTestBase : public ::testing::Test {
     NcclTestBase* parent_;
     string device_name_;
     int rank_;
-    Tensor tensor_;
+    Tensor input_;
+    Tensor output_;
     Device* device_;
     CollectiveParams col_params_;
     Status status_;
@@ -426,6 +482,7 @@ class NcclBroadcasterTest : public NcclTestBase {
 
   void InitExpected(std::vector<float>* expected, const int tensor_length,
                     const int num_ranks) override {
+    expected->resize(tensor_length);
     for (int i = 0; i < tensor_length; ++i) {
       (*expected)[i] = i;
     }
@@ -439,6 +496,37 @@ class NcclBroadcasterTest : public NcclTestBase {
   void RunCollectiveOnDevice(DeviceInstance* di) override {
     di->RunBroadcast();
   }
+
+  int source_rank_ = 0;
+};
+
+class NcclGathererTest : public NcclTestBase {
+ protected:
+  NcclGathererTest()
+      : NcclTestBase(/*collective_type=*/GATHER_COLLECTIVE,
+                     /*collective_name=*/"NcclGather") {}
+  ~NcclGathererTest() override = default;
+
+  void InitInput(Tensor* input, const int rank) override {
+    for (size_t i = 0; i < input->NumElements(); ++i) {
+      float value = pow(10, rank) * i;
+      input->flat<float>()(i) = value;
+    }
+  }
+
+  void InitExpected(std::vector<float>* expected, const int tensor_length,
+                    const int num_ranks) override {
+    expected->resize(tensor_length * num_ranks, -1);
+    for (int rank = 0, i = 0; rank < num_ranks; ++rank) {
+      for (int j = 0; j < tensor_length; ++j, ++i) {
+        (*expected)[i] = pow(10, rank) * j;
+      }
+    }
+  }
+
+  void InitDevice(DeviceInstance* di) override {}
+
+  void RunCollectiveOnDevice(DeviceInstance* di) override { di->RunGather(); }
 
   int source_rank_ = 0;
 };
@@ -474,6 +562,22 @@ TEST_F(NcclBroadcasterTest, Test8Dev128LenSrc0) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/128, /*instance_key=*/24);
 }
 TEST_F(NcclBroadcasterTest, Test8Dev1045991LenSrc0) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576, /*instance_key=*/23);
+}
+
+TEST_F(NcclGathererTest, Test2Dev16Len) {
+  RunTest(/*num_ranks=*/2, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclGathererTest, Test4Dev16Len) {
+  RunTest(/*num_ranks=*/4, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclGathererTest, Test8Dev16Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/16, /*instance_key=*/23);
+}
+TEST_F(NcclGathererTest, Test8Dev128Len) {
+  RunTest(/*num_ranks=*/8, /*tensor_length=*/128, /*instance_key=*/24);
+}
+TEST_F(NcclGathererTest, Test8Dev1045991Len) {
   RunTest(/*num_ranks=*/8, /*tensor_length=*/1048576, /*instance_key=*/23);
 }
 

@@ -118,8 +118,8 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
   });
 }
 
-FunctionPassBase *mlir::quantizer::createAddDefaultStatsPass() {
-  return new AddDefaultStatsPass();
+std::unique_ptr<FunctionPassBase> mlir::quantizer::createAddDefaultStatsPass() {
+  return llvm::make_unique<AddDefaultStatsPass>();
 }
 
 static PassRegistration<AddDefaultStatsPass> pass(

@@ -51,7 +51,7 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     std::unique_ptr<BoostedTreesEnsembleResource> result(
         new BoostedTreesEnsembleResource());
     if (!result->InitFromSerialized(
-            tree_ensemble_serialized_t->scalar<string>()(), stamp_token)) {
+            tree_ensemble_serialized_t->scalar<tstring>()(), stamp_token)) {
       result->Unref();
       OP_REQUIRES(
           context, false,
@@ -152,7 +152,7 @@ class BoostedTreesSerializeEnsembleOp : public OpKernel {
     Tensor* output_proto_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, TensorShape(), &output_proto_t));
-    output_proto_t->scalar<string>()() =
+    output_proto_t->scalar<tstring>()() =
         tree_ensemble_resource->SerializeAsString();
   }
 };
@@ -187,7 +187,7 @@ class BoostedTreesDeserializeEnsembleOp : public OpKernel {
     OP_REQUIRES(
         context,
         tree_ensemble_resource->InitFromSerialized(
-            tree_ensemble_serialized_t->scalar<string>()(), stamp_token),
+            tree_ensemble_serialized_t->scalar<tstring>()(), stamp_token),
         errors::InvalidArgument("Unable to parse tree ensemble proto."));
   }
 };

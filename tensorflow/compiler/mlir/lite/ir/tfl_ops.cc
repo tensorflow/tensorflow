@@ -126,7 +126,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
                                       const CalculationT &calculate) {
   auto lhs = operand1.cast<DenseElementsAttr>();
 
-  // TODO: Support broadcast behavior
+  // TODO(b/139192933): Support broadcast behavior
   if (lhs.getType() != result_type || operand2.getType() != result_type)
     return {};
 
@@ -134,7 +134,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
   auto type = result_type.cast<ShapedType>();
 
   SmallVector<ElementValueT, 16> new_values;
-  new_values.reserve(lhs.rawSize());
+  new_values.reserve(lhs.getNumElements());
 
   // Add the splat value to each of the values in the dense elements
   // attribute.
@@ -506,7 +506,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.push_back(llvm::make_unique<RemoveAdjacentReshape>(context));
+  results.insert<RemoveAdjacentReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -591,7 +591,7 @@ struct DropFakeQuant : public RewritePattern {
 
 void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.push_back(llvm::make_unique<DropFakeQuant>(context));
+  results.insert<DropFakeQuant>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -770,9 +770,22 @@ OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1);
+  auto result_type = getType().cast<ShapedType>();
   if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
     auto rank = static_cast<int32_t>(elements_attr.getType().getRank());
-    return DenseElementsAttr::get(getType().cast<ShapedType>(), {rank});
+    return DenseElementsAttr::get(result_type, {rank});
+  }
+
+  // Also fold if `input` has a known rank.
+  auto input_type = input()->getType().cast<ShapedType>();
+  // Do not fold if rank is zero because the TFLite converter doesn't
+  // distinguish between unranked input and scalar input due to b/138865275.
+  // TODO(b/138865275): Remove `input_type.getRank() != 0` in the following
+  // predicate and fold the op when rank is zero.
+  if (input_type.hasRank() && input_type.getRank() != 0) {
+    auto rank = static_cast<int32_t>(input_type.getRank());
+    return DenseElementsAttr::get(result_type, {rank});
   }
 
   return nullptr;

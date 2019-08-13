@@ -163,9 +163,9 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   return success();
 }
 
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 mlir::createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator) {
-  return new GpuKernelToCubinPass(cubinGenerator);
+  return llvm::make_unique<GpuKernelToCubinPass>(cubinGenerator);
 }
 
 static PassRegistration<GpuKernelToCubinPass>

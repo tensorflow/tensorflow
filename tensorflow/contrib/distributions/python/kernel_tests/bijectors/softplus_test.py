@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import Softplus
-from tensorflow.python.framework import errors
 from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.ops.distributions.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.platform import test
@@ -44,10 +43,9 @@ class SoftplusBijectorTest(test.TestCase):
 
   def testHingeSoftnessZeroRaises(self):
     with self.cached_session():
-      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                               "must be non-zero"):
-        _ = Softplus(hinge_softness=0., validate_args=True)
-        # Error detected statically; don't need to run op.
+      bijector = Softplus(hinge_softness=0., validate_args=True)
+      with self.assertRaisesOpError("must be non-zero"):
+        bijector.forward([1., 1.]).eval()
 
   def testBijectorForwardInverseEventDimsZero(self):
     with self.cached_session():

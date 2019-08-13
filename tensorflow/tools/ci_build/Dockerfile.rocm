@@ -1,5 +1,5 @@
-# This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.  
+# This Dockerfile provides a starting point for a ROCm installation of
+# MIOpen and tensorflow.
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
@@ -9,7 +9,7 @@ ARG ROCM_PATH=/opt/rocm
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common 
+RUN apt update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all

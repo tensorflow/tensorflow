@@ -1044,7 +1044,8 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/operand_buffer,
         /*destination_buffer=*/destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(operand->shape()), scatter));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(operand->shape()),
+        /*hlo_instruction=*/nullptr));
   }
 
   thunks.push_back(
@@ -1795,7 +1796,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
           GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
           GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
           GetAllocationSlice(*inst),  // The output buffer.
-          /*implements_whole_instruction=*/false, inst));
+          /*implements_whole_instruction=*/false, inst,
+          std::move(gemm_config)));
       return absl::make_unique<SequentialThunk>(std::move(thunks), inst);
     }
   }
@@ -1804,7 +1806,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
       GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
       GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
       GetAllocationSlice(*inst),  // The output buffer.
-      /*implements_whole_instruction=*/true, inst);
+      /*implements_whole_instruction=*/true, inst, std::move(gemm_config));
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(

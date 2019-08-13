@@ -45,6 +45,7 @@ RUN /install/install_bootstrap_deb_packages.sh
 RUN /install/install_deb_packages.sh
 RUN /install/install_clang.sh
 RUN /install/install_bazel.sh
+RUN /install/install_auditwheel.sh
 
 # Install golang.
 RUN /install/install_golang.sh

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import csv
+import json
 import os
 import re
 import shutil
@@ -31,6 +32,7 @@ import unittest
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
@@ -40,6 +42,8 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
@@ -523,7 +527,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         mode=mode,
         save_freq=3)
 
-  def _run_load_weights_on_restart_test_common_iterations(self):
+  def _get_dummy_resource_for_model_checkpoint_testing(self):
 
     def get_input_datasets():
       # Simple training input.
@@ -549,12 +553,19 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     temp_dir = self.get_temp_dir()
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
-    initial_epochs = 3
 
     # The filepath shouldn't exist at the beginning.
     self.assertFalse(os.path.exists(filepath))
     callback = keras.callbacks.ModelCheckpoint(
         filepath=filepath, save_weights_only=True)
+
+    return model, train_ds, callback, filepath
+
+  def _run_load_weights_on_restart_test_common_iterations(self):
+
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+    initial_epochs = 3
     model.fit(train_ds, epochs=initial_epochs, callbacks=[callback])
 
     # The files should exist after fitting with callback.
@@ -674,6 +685,23 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     self.assertNotAllClose(weights_before_additional_fit,
                            weights_after_additional_fit)
+
+  def test_fit_with_ModelCheckpoint_with_tf_config(self):
+    (model, train_ds, callback,
+     _) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    os.environ['TF_CONFIG'] = json.dumps({
+        'cluster': {
+            'worker': ['localhost:23333']
+        },
+        'task': {
+            'type': 'worker',
+            'index': 0
+        }
+    })
+
+    # `model.fit()` should work regardless of the presence of `TF_CONFIG`.
+    model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -1266,6 +1294,12 @@ def list_summaries(logdir):
             raise ValueError(
                 'Unexpected summary kind %r in event file %s:\n%r'
                 % (kind, path, event))
+          elif kind == 'tensor' and tag != 'keras':
+            # Check for V2 scalar summaries, which have a different PB
+            # structure.
+            if event.summary.value[
+                0].metadata.plugin_data.plugin_name == 'scalars':
+              container = result.scalars
           container.add(_ObservedSummary(logdir=dirpath, tag=tag))
   return result
 
@@ -1474,6 +1508,57 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
+        },
+    )
+
+  def test_custom_summary(self):
+    if not testing_utils.should_run_tf_function():
+      self.skipTest('Custom summaries only supported in V2 code path.')
+
+    def scalar_v2_mock(name, data, step=None):
+      """A reimplementation of the scalar plugin to avoid circular deps."""
+      metadata = summary_pb2.SummaryMetadata()
+      # Should match value in tensorboard/plugins/scalar/metadata.py.
+      metadata.plugin_data.plugin_name = 'scalars'
+      with summary_ops_v2.summary_scope(
+          name, 'scalar_summary', values=[data, step]) as (tag, _):
+        return summary_ops_v2.write(
+            tag=tag,
+            tensor=math_ops.cast(data, 'float32'),
+            step=step,
+            metadata=metadata)
+
+    class LayerWithSummary(keras.layers.Layer):
+
+      def call(self, x):
+        scalar_v2_mock('custom_summary', math_ops.reduce_sum(x))
+        return x
+
+    model = testing_utils.get_model_from_layers([LayerWithSummary()],
+                                                input_shape=(5,),
+                                                name='model')
+
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
+    x, y = np.ones((10, 5)), np.ones((10, 5))
+    model.fit(x, y, batch_size=2, validation_data=(x, y), callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
+            _ObservedSummary(
+                logdir=self.train_dir,
+                tag='model/layer_with_summary/custom_summary'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='model/layer_with_summary/custom_summary')
         },
     )
 

@@ -683,12 +683,8 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
 // spv.module
 //===----------------------------------------------------------------------===//
 
-static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
-  impl::ensureRegionTerminator<spirv::ModuleEndOp>(*region, builder, loc);
-}
-
 void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
-  ensureModuleEnd(state->addRegion(), *builder, state->location);
+  ensureTerminator(*state->addRegion(), *builder, state->location);
 }
 
 void spirv::ModuleOp::build(Builder *builder, OperationState *state,
@@ -704,7 +700,7 @@ void spirv::ModuleOp::build(Builder *builder, OperationState *state,
     state->addAttribute("extensions", extensions);
   if (extended_instruction_sets)
     state->addAttribute("extended_instruction_sets", extended_instruction_sets);
-  ensureModuleEnd(state->addRegion(), *builder, state->location);
+  ensureTerminator(*state->addRegion(), *builder, state->location);
 }
 
 static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
@@ -726,8 +722,8 @@ static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
       return failure();
   }
 
-  ensureModuleEnd(body, parser->getBuilder(), state->location);
-
+  spirv::ModuleOp::ensureTerminator(*body, parser->getBuilder(),
+                                    state->location);
   return success();
 }
 
@@ -770,22 +766,20 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
-  llvm::StringMap<FuncOp> funcNames;
   llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
       entryPoints;
+  SymbolTable table(moduleOp);
 
   for (auto &op : body) {
     if (op.getDialect() == dialect) {
-      // For EntryPoint op, check that the function name is one of the specified
-      // func ops already specified, and that the function and execution model
-      // is not duplicated in EntryPointOps
+      // For EntryPoint op, check that the function and execution model is not
+      // duplicated in EntryPointOps
       if (auto entryPointOp = llvm::dyn_cast<spirv::EntryPointOp>(op)) {
-        auto it = funcNames.find(entryPointOp.fn());
-        if (it == funcNames.end()) {
+        auto funcOp = table.lookup<FuncOp>(entryPointOp.fn());
+        if (!funcOp) {
           return entryPointOp.emitError("function '")
                  << entryPointOp.fn() << "' not found in 'spv.module'";
         }
-        auto funcOp = it->second;
         auto key = std::pair<FuncOp, spirv::ExecutionModel>(
             funcOp, entryPointOp.execution_model());
         auto entryPtIt = entryPoints.find(key);
@@ -800,8 +794,6 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
     auto funcOp = llvm::dyn_cast<FuncOp>(op);
     if (!funcOp)
       return op.emitError("'spv.module' can only contain func and spv.* ops");
-
-    funcNames[funcOp.getName()] = funcOp;
 
     if (funcOp.isExternal())
       return op.emitError("'spv.module' cannot contain external functions");

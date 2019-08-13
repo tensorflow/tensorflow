@@ -21,9 +21,6 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
-// See documentation in ../../ops/experimental_dataset_ops.cc for a high-level
-// description of the following op.
-
 class AutoShardDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "AutoShard";

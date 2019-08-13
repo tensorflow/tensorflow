@@ -377,7 +377,11 @@ class TrtGraphConverter(object):
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
+      RuntimeError: if this class is used in TF 2.0.
     """
+    if context.executing_eagerly():
+      raise RuntimeError("Please use TrtGraphConverterV2 in TF 2.0.")
+
     if input_graph_def and input_saved_model_dir:
       raise ValueError(
           "Can only specify one of input_graph_def and input_saved_model_dir")
@@ -573,13 +577,17 @@ class TrtGraphConverter(object):
     assert self._need_calibration
     assert not self._calibration_data_collected
 
-    if context.executing_eagerly():
-      raise RuntimeError("Calibration for TF 2.0 is not supported yet.")
-
     if (feed_dict_fn and input_map_fn) or (not feed_dict_fn and
                                            not input_map_fn):
       raise ValueError(
           "Should specify one and only one of feed_dict_fn and input_map_fn.")
+
+    if input_map_fn:
+      for k, v in input_map_fn().items():
+        if not isinstance(k, str):
+          raise ValueError("Keys of input_map_fn must be of type str")
+        if not isinstance(v, tf.Tensor):
+          raise ValueError("Values of input_map_fn must be of type tf.Tensor")
 
     self._calibration_graph = ops.Graph()
     with self._calibration_graph.as_default():

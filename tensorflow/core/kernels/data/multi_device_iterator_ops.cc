@@ -392,7 +392,6 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
-  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
@@ -645,7 +644,7 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &string_handle_t));
-    string_handle_t->scalar<string>()() =
+    string_handle_t->scalar<tstring>()() =
         resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
   }
 };
@@ -676,7 +675,7 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
     ResourceHandle resource_handle;
     OP_REQUIRES(
         ctx,
-        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
         errors::InvalidArgument(
             "Could not parse string_handle as a valid ResourceHandle"));
 

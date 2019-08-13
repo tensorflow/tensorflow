@@ -44,7 +44,7 @@ bool LowerWhileOp(mlir::XLA::WhileOp while_op) {
   // to below:
   //
   //   <prior operations>
-  //   %0 = "xla.while"(%arg0) {body: @loop, cond: @cond}
+  //   %0 = "xla_hlo.while"(%arg0) {body: @loop, cond: @cond}
   //   <post operations>
   auto* opInst = while_op.getOperation();
   mlir::OpBuilder builder(while_op);
@@ -149,6 +149,11 @@ void LegalizeControlFlow::runOnFunction() {
 }  // namespace
 }  // namespace XLA
 }  // namespace mlir
+
+std::unique_ptr<mlir::FunctionPassBase>
+mlir::XLA::createLegalizeControlFlowPass() {
+  return llvm::make_unique<LegalizeControlFlow>();
+}
 
 static PassRegistration<mlir::XLA::LegalizeControlFlow> legalize_cf_pass(
     "xla-legalize-control-flow",

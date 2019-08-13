@@ -96,12 +96,11 @@ TestCase TestCase1() {
   return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
           /*take_dataset_params*/ {/*count*/ 3},
           /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({1}), {TakeDatasetOp::kDatasetType}),
+          CreateTensor<string>(TensorShape({1}), {TakeDatasetOp::kDatasetType}),
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 3,
@@ -110,49 +109,48 @@ TestCase TestCase1() {
 
 // Test case 2 : assert two transformations.
 TestCase TestCase2() {
-  return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
-          /*take_dataset_params*/ {/*count*/ 3},
-          /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({2}),
-              {TakeDatasetOp::kDatasetType, RangeDatasetOp::kDatasetType}),
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 3,
-          /*breakpoints*/ {0, 2, 5}};
-}
-
-TestCase AssertNextInvalid() {
   return {
       /*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
       /*take_dataset_params*/ {/*count*/ 3},
       /*transformations*/
-      DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"Whoops"}),
+      CreateTensor<string>(TensorShape({2}), {TakeDatasetOp::kDatasetType,
+                                              RangeDatasetOp::kDatasetType}),
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {1}),
+       CreateTensor<int64>(TensorShape({}), {2})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 3,
       /*breakpoints*/ {0, 2, 5}};
 }
 
+TestCase AssertNextInvalid() {
+  return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
+          /*take_dataset_params*/ {/*count*/ 3},
+          /*transformations*/
+          CreateTensor<string>(TensorShape({1}), {"Whoops"}),
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 2, 5}};
+}
+
 TestCase AssertNextShort() {
   return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
           /*take_dataset_params*/ {/*count*/ 3},
           /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({3}), {TakeDatasetOp::kDatasetType,
-                                 RangeDatasetOp::kDatasetType, "Whoops"}),
+          CreateTensor<string>(TensorShape({3}),
+                               {TakeDatasetOp::kDatasetType,
+                                RangeDatasetOp::kDatasetType, "Whoops"}),
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 3,
@@ -376,43 +374,6 @@ TEST_P(ParameterizedAssertNextDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(assert_next_dataset);
 
   EXPECT_EQ(assert_next_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedAssertNextDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  Tensor range_and_take_dataset_tensor;
-  TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
-                                             test_case.take_dataset_params,
-                                             &range_and_take_dataset_tensor));
-
-  std::unique_ptr<OpKernel> assert_next_dataset_kernel;
-  TF_ASSERT_OK(CreateAssertNextDatasetOpKernel(test_case.expected_output_dtypes,
-                                               test_case.expected_output_shapes,
-                                               &assert_next_dataset_kernel));
-  Tensor transformations = test_case.transformations;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&range_and_take_dataset_tensor),
-       TensorValue(&transformations)});
-  std::unique_ptr<OpKernelContext> assert_next_dataset_context;
-  TF_ASSERT_OK(CreateAssertNextDatasetContext(
-      assert_next_dataset_kernel.get(), &inputs, &assert_next_dataset_context));
-
-  DatasetBase* assert_next_dataset;
-  TF_ASSERT_OK(CreateDataset(assert_next_dataset_kernel.get(),
-                             assert_next_dataset_context.get(),
-                             &assert_next_dataset));
-  core::ScopedUnref scoped_unref(assert_next_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(assert_next_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedAssertNextDatasetOpTest, IteratorOutputDtypes) {

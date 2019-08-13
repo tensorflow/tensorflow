@@ -395,7 +395,17 @@ XLA_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-XLA_TEST_FLOAT_32_BITS_OR_LESS(Tanh, { Run(Tanh, std::tanh); })
+XLA_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
+                 ? ErrorSpec{0, 0}
+                 : GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(Tanh, std::tanh, error_spec_gen);
+})
 
 template <PrimitiveType T>
 void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCosTan() {
@@ -538,16 +548,6 @@ XLA_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
 XLA_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
 
 #if defined(UNARY_TEST_TARGET_F32_OR_SMALLER)
-std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
-  // We break up the 2^32-element space into small'ish chunks to keep peak
-  // memory usage low.
-  std::vector<std::pair<int64, int64>> result;
-  const int64 step = 1 << 25;
-  for (int64 i = 0; i < (1l << 32); i += step) {
-    result.push_back({i, i + step});
-  }
-  return result;
-}
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
                          ::testing::ValuesIn(CreateExhaustiveF32Ranges()));
@@ -629,7 +629,17 @@ XLA_TEST_P(ExhaustiveF64UnaryTest, Cosh) { Run(Cosh, std::cosh); }
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Sinh) { Run(Sinh, std::sinh); }
 
-XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) { Run(Tanh, std::tanh); }
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
+                 ? ErrorSpec{0, 0}
+                 : GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(Tanh, std::tanh, error_spec_gen);
+}
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Cos) { Run(Cos, std::cos); }
 
@@ -670,6 +680,23 @@ class ExhaustiveComplexUnaryTestBase
  protected:
   using typename ExhaustiveUnaryTest<T>::NativeT;
 
+  void SetParamsForTanh() {
+    // TODO(b/138126045): Current libc++ implementation of the complex tanh
+    //                    function returns (NaN, NaN) when the imaginary
+    //                    component is more than half of the max value.
+    // TODO(b/138750327): Current libc++ implementation of the complex tanh
+    //                    function returns (1, 0) when the real component is
+    //                    negative infinity, when it should return (-1, 0).
+    // We only need to set the former as incorrect values for C128 because when
+    // testing with C64, we first cast our input to a C128 value.
+    this->known_incorrect_fn_ = [&](int64 v) {
+      double f = this->ConvertValue(v);
+      return (T == C128 &&
+              std::abs(f) > std::numeric_limits<float>::max() / 2) ||
+             f == -std::numeric_limits<double>::infinity();
+    };
+  }
+
  private:
   // Generates the input complex literal given the FpValues representation for
   // the real and imaginary components.
@@ -705,6 +732,34 @@ class ExhaustiveComplexUnaryTestBase
 
 typedef ExhaustiveComplexUnaryTestBase<C64> ExhaustiveC64UnaryTest;
 typedef ExhaustiveComplexUnaryTestBase<C128> ExhaustiveC128UnaryTest;
+
+// TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
+XLA_TEST_P(ExhaustiveC64UnaryTest, DISABLED_ON_CPU(Log)) {
+  Run(Log, [](complex64 x) { return std::log<float>(x); });
+}
+
+// The current libc++ implementation of the complex tanh function provides
+// less accurate results when the denomenator of a complex tanh is small, due
+// to floating point precision loss. To avoid this issue for complex64 numbers,
+// we cast it to and from a complex128 when computing tanh.
+XLA_TEST_P(ExhaustiveC64UnaryTest, Tanh) {
+  SetParamsForTanh();
+  ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    // This implementation of Tanh becomes less accurate when the denominator
+    // is small.
+    if (std::cosh(2 * x.real()) + std::cos(2 * x.imag()) < 1e-4) {
+      return ErrorSpec{5e-2, 5e-2};
+    }
+
+    return GetDefaultSpecGenerator()(x);
+  };
+  Run(
+      Tanh,
+      +[](complex64 x) {
+        return static_cast<complex64>(std::tanh(static_cast<complex128>(x)));
+      },
+      error_spec_gen);
+}
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)
 INSTANTIATE_TEST_SUITE_P(
@@ -743,15 +798,19 @@ INSTANTIATE_TEST_SUITE_P(
 
 
 XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
-  // TODO(bixia): only test values that are not too big and not too small
-  //             for now and will work on fixing the implementation of XLA
-  //             operations to enable test for other values.
+  // TODO(b/138578313): Enable the test for all values after fixing the bug.
   known_incorrect_fn_ = [&](int64 v) {
-    double f = ConvertValue(v);
-    return std::fpclassify(f) == FP_NAN || std::abs(f) > 5 || std::abs(f) < 1;
+    double f = this->ConvertValue(v);
+    return std::fpclassify(f) == FP_NAN || std::abs(f) > 1.0e+300 ||
+           std::abs(f) < 1.0e-300;
   };
+  Run(Log, [](complex128 x) { return std::log<double>(x); });
+}
+
+XLA_TEST_P(ExhaustiveC128UnaryTest, Tanh) {
+  SetParamsForTanh();
   Run(
-      Log, +[](complex128 x) { return std::log(x); });
+      Tanh, +[](complex128 x) { return std::tanh(x); });
 }
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)

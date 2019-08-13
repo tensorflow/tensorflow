@@ -29,8 +29,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
@@ -110,10 +108,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
-    bool IsStateful() const override {
-      return captured_key_func_->IsStateful() ||
-             captured_reduce_func_->IsStateful() ||
-             captured_window_size_func_->IsStateful() || input_->IsStateful();
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_key_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_reduce_func_->CheckExternalState());
+      TF_RETURN_IF_ERROR(captured_window_size_func_->CheckExternalState());
+      return input_->CheckExternalState();
     }
 
    protected:

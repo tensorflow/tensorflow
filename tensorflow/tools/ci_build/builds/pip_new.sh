@@ -452,6 +452,12 @@ install_tensorflow_pip() {
   #   ImportError: cannot import name py31compat
   ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
     die "Error: setuptools install, upgrade FAILED"
+
+  # Install the future package in the virtualenv. Installing it in user system
+  # packages does not appear to port it over when creating a virtualenv.
+  #   ImportError: No module named builtins
+  ${PIP_BIN_PATH} install --upgrade "future>=0.17.1" || \
+    die "Error: future install, upgrade FAILED"
 }
 
 run_test_with_bazel() {
@@ -640,7 +646,7 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
 
       # Repair the wheels for cpu manylinux2010
       echo "auditwheel repairing ${WHL_PATH}"
-      auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
+      auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
       if [[ -f ${AUDITED_WHL_NAME} ]]; then
         WHL_PATH=${AUDITED_WHL_NAME}

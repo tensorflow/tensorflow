@@ -45,7 +45,7 @@ void Encode(OpKernelContext* context, const Tensor& contents,
   // Copy the encoded audio file to the output tensor.
   Tensor* output = nullptr;
   OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(), &output));
-  output->scalar<string>()() = encoded_audio;
+  output->scalar<tstring>()() = encoded_audio;
 }
 
 }  // namespace
@@ -95,7 +95,7 @@ class EncodeAudioOpV2 : public OpKernel {
                     bits_per_second_tensor.shape().DebugString()));
 
     const string file_format =
-        absl::AsciiStrToLower(file_format_tensor.scalar<string>()());
+        absl::AsciiStrToLower(file_format_tensor.scalar<tstring>()());
     const int32 samples_per_second =
         samples_per_second_tensor.scalar<int32>()();
     const int32 bits_per_second = bits_per_second_tensor.scalar<int32>()();

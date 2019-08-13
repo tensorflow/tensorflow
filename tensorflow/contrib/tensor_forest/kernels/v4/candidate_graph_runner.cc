@@ -103,7 +103,7 @@ float CandidateGraphRunner::SplitScore() {
 void CandidateGraphRunner::GetSplit(decision_trees::BinaryNode* node) {
   std::vector<Tensor> outputs;
   RunOp(kNoOp, TensorNameValueList(), {kGetSplitName}, &outputs);
-  ParseProtoUnlimited(node, outputs[0].unaligned_flat<string>()(0));
+  ParseProtoUnlimited(node, outputs[0].unaligned_flat<tstring>()(0));
   const auto& oblique = split_.inequality_left_child_test().oblique();
   auto* new_split =
       node->mutable_inequality_left_child_test()->mutable_oblique();

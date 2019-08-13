@@ -238,7 +238,7 @@ class TextFileLineIterator
         tensor->flat<double>()(0) = value;
       } break;
       case DT_STRING:
-        tensor->flat<string>()(0) = token;
+        tensor->flat<tstring>()(0) = token;
         break;
       default:
         valid_ = false;
@@ -264,7 +264,7 @@ Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
           "Lookup table handle must be scalar, but had shape: ",
           tensor.shape().DebugString());
     }
-    auto h = tensor.flat<string>();
+    auto h = tensor.flat<tstring>();
     *container = h(0);
     *table_handle = h(1);
   }

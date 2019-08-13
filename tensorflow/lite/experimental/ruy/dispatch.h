@@ -33,16 +33,28 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 
-#include <limits>
+#include <algorithm>
+#include <cstdint>
+#include <limits>  // IWYU pragma: keep
+#include <type_traits>
 
 #include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/kernel_common.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/pack.h"
+#include "tensorflow/lite/experimental/ruy/pack_common.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
+#include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/trmul.h"
+#include "tensorflow/lite/experimental/ruy/trmul_params.h"
 
 namespace ruy {
 

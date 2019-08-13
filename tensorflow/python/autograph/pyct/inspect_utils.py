@@ -81,7 +81,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in six.moves.builtins.__dict__.values():
+  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True

@@ -29,9 +29,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ScanDatasetOp(OpKernelConstruction* ctx)
@@ -105,8 +102,9 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
-    bool IsStateful() const override {
-      return captured_func_->IsStateful() || input_->IsStateful();
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+      return input_->CheckExternalState();
     }
 
    protected:

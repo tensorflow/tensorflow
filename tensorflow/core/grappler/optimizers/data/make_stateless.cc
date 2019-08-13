@@ -27,6 +27,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+constexpr char kCacheDataset[] = "CacheDataset";
+constexpr char kCacheDatasetV2[] = "CacheDatasetV2";
 constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 constexpr char kShuffleDataset[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
@@ -53,6 +55,10 @@ Status MakeStateless::OptimizeAndCollectStats(Cluster* cluster,
       node.add_input(zero_node->name());
       // set `reshuffle_each_iteration` attr
       (*node.mutable_attr())[kReshuffleEachIteration].set_b(true);
+    } else if (node.op() == kCacheDatasetV2) {
+      *node.mutable_op() = kCacheDataset;
+      // remove `cache` input
+      node.mutable_input()->RemoveLast();
     }
   }
 

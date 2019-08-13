@@ -131,7 +131,7 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   fc->weights_format = FullyConnectedWeightsFormat::kShuffled4x16Int8;
   model.operators.push_back(std::move(fc));
 
-  EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "1.10.0");
+  EXPECT_EQ(GetMinimumRuntimeVersionForModel(model), "");
 }
 
 }  // namespace

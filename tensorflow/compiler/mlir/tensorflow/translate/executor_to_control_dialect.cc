@@ -199,8 +199,8 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-FunctionPassBase *CreateTFExecutorToControlDialectConversion() {
-  return new ExecutorToControlDialectConversion();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion() {
+  return llvm::make_unique<ExecutorToControlDialectConversion>();
 }
 
 }  // namespace mlir

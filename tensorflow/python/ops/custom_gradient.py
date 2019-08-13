@@ -238,10 +238,15 @@ def _graph_mode_decorator(f, *args, **kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables_in_tape = frozenset(tape.watched_variables()) - frozenset(args)
-  variables_in_subgraph = frozenset(get_dependent_variables(
-      input_ops=args, output_ops=result))
-  variables = list(variables_in_subgraph.union(variables_in_tape))
+  variables_in_tape = frozenset([
+      v.experimental_ref() for v in tape.watched_variables()
+  ]) - frozenset(v.experimental_ref() for v in args)
+  variables_in_subgraph = frozenset([
+      v.experimental_ref()
+      for v in get_dependent_variables(input_ops=args, output_ops=result)
+  ])
+  variables = list(
+      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or

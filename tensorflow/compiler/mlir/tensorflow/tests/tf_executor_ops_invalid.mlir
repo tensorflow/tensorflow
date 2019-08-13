@@ -510,6 +510,18 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<8xf32>
 
 // -----
 
+// Check that merge data inputs of variant type are broadcastable to the output
+func @invalid_merge(%arg0: tensor<*x!tf.variant>, %arg1: tensor<4x!tf.variant>) -> tensor<8x!tf.variant> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.variant>, tensor<4x!tf.variant>) -> (tensor<8x!tf.variant>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable but got 'tensor<8x!tf.variant>' vs 'tensor<4x!tf.variant>'}}
+    tf_executor.fetch %value : tensor<8x!tf.variant>
+  }
+  return %result : tensor<8x!tf.variant>
+}
+
+// -----
+
 // Check that merge data inputs can't appear after control input.
 func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {

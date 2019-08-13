@@ -25,19 +25,136 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
+
 using namespace mlir;
+using namespace mlir::vector;
 
 //===----------------------------------------------------------------------===//
 // VectorOpsDialect
 //===----------------------------------------------------------------------===//
 
-VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
-    : Dialect("vector", context) {
+mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
+    : Dialect(getDialectNamespace(), context) {
   addOperations<VectorTransferReadOp, VectorTransferWriteOp,
                 VectorTypeCastOp>();
+  addOperations<
+#define GET_OP_LIST
+#include "mlir/VectorOps/VectorOps.cpp.inc"
+      >();
 }
 
+//===----------------------------------------------------------------------===//
+// ExtractElementOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, ExtractElementOp op) {
+  *p << op.getOperationName() << " " << *op.vector() << op.position();
+  p->printOptionalAttrDict(op.getAttrs(), {"position"});
+  *p << " : " << op.vector()->getType();
+}
+
+static ParseResult parseExtractElementOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  llvm::SMLoc attributeLoc, typeLoc;
+  SmallVector<NamedAttribute, 4> attrs;
+  OpAsmParser::OperandType vector;
+  Type type;
+  Attribute attr;
+  if (parser->parseOperand(vector) ||
+      parser->getCurrentLocation(&attributeLoc) ||
+      parser->parseAttribute(attr, "position", attrs) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->getCurrentLocation(&typeLoc) || parser->parseColonType(type))
+    return failure();
+
+  auto vectorType = type.dyn_cast<VectorType>();
+  if (!vectorType)
+    return parser->emitError(typeLoc, "expected vector type");
+
+  auto positionAttr = attr.dyn_cast<ArrayAttr>();
+  if (!positionAttr ||
+      static_cast<int64_t>(positionAttr.size()) > vectorType.getRank())
+    return parser->emitError(
+        attributeLoc,
+        "expected position attribute of rank smaller than vector");
+
+  Type resType =
+      (static_cast<int64_t>(positionAttr.size()) == vectorType.getRank())
+          ? vectorType.getElementType()
+          : VectorType::get(
+                vectorType.getShape().drop_front(positionAttr.size()),
+                vectorType.getElementType());
+
+  result->attributes = attrs;
+  return failure(parser->resolveOperand(vector, type, result->operands) ||
+                 parser->addTypeToList(resType, result->types));
+}
+
+static LogicalResult verify(ExtractElementOp op) {
+  auto positionAttr = op.position().getValue();
+  if (positionAttr.empty())
+    return op.emitOpError("expected non-empty position attribute");
+  if (positionAttr.size() > static_cast<unsigned>(op.getVectorType().getRank()))
+    return op.emitOpError(
+        "expected position attribute of rank smaller than vector");
+  for (auto en : llvm::enumerate(positionAttr)) {
+    auto attr = en.value().dyn_cast<IntegerAttr>();
+    if (!attr || attr.getInt() < 0 ||
+        attr.getInt() > op.getVectorType().getDimSize(en.index()))
+      return op.emitOpError("expected position attribute #")
+             << (en.index() + 1)
+             << " to be a positive integer smaller than the corresponding "
+                "vector dimension";
+  }
+  return success();
+}
+//===----------------------------------------------------------------------===//
+// OuterProductOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, OuterProductOp op) {
+  *p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+  *p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
+}
+
+static ParseResult parseOuterProductOp(OpAsmParser *parser,
+                                       OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> operandsInfo;
+  Type t0, t1;
+  if (parser->parseOperandList(operandsInfo) || parser->parseColonType(t0) ||
+      parser->parseComma() || parser->parseType(t1))
+    return failure();
+  VectorType v0 = t0.dyn_cast<VectorType>();
+  VectorType v1 = t1.dyn_cast<VectorType>();
+  if (!v0 || !v1)
+    return parser->emitError(parser->getNameLoc(), "expected 2 vector types");
+  VectorType resType = VectorType::get({v0.getDimSize(0), v1.getDimSize(0)},
+                                       v0.getElementType());
+  return failure(parser->resolveOperands(operandsInfo, {t0, t1},
+                                         parser->getCurrentLocation(),
+                                         result->operands) ||
+                 parser->addTypeToList(resType, result->types));
+}
+
+static LogicalResult verify(OuterProductOp op) {
+  VectorType v1 = op.getOperandVectorTypeLHS(),
+             v2 = op.getOperandVectorTypeRHS(), res = op.getVectorType();
+  if (v1.getRank() != 1)
+    return op.emitOpError("expected 1-d vector for operand #1");
+  if (v2.getRank() != 1)
+    return op.emitOpError("expected 1-d vector for operand #2");
+  if (res.getRank() != 2)
+    return op.emitOpError("expected 2-d vector result");
+  if (v1.getDimSize(0) != res.getDimSize(0))
+    return op.emitOpError(
+        "expected first operand dim to match first result dim");
+  if (v2.getDimSize(0) != res.getDimSize(1))
+    return op.emitOpError(
+        "expected second operand dim to match second result dim");
+  return success();
+}
 //===----------------------------------------------------------------------===//
 // VectorTransferReadOp
 //===----------------------------------------------------------------------===//
@@ -147,7 +264,8 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser *parser,
     return parser->emitError(parser->getNameLoc(), "vector type expected");
 
   // Extract optional paddingValue.
-  // At this point, indexInfo may contain the optional paddingValue, pop it out.
+  // At this point, indexInfo may contain the optional paddingValue, pop it
+  // out.
   if (static_cast<int64_t>(indexInfo.size()) != memrefType.getRank())
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(memrefType.getRank()) +
@@ -419,3 +537,10 @@ LogicalResult VectorTypeCastOp::verify() {
 
   return success();
 }
+
+namespace mlir {
+
+#define GET_OP_CLASSES
+#include "mlir/VectorOps/VectorOps.cpp.inc"
+
+} // namespace mlir

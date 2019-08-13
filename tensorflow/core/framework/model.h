@@ -311,9 +311,12 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  double TotalProcessingTime() LOCKS_EXCLUDED(mu_) {
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each node of the subtree.
+  double TotalProcessingTime(std::map<string, double>* processing_times)
+      LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
-    return TotalProcessingTimeLocked();
+    return TotalProcessingTimeLocked(processing_times);
   }
 
  protected:
@@ -360,10 +363,13 @@ class Node {
   // Processing time for a given input is a weighted combination of a statistic
   // based on history of input processing time and the actual time. This is done
   // to improve accuracy of processing time estimation for newly created inputs.
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each input node.
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
-  double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeForInputs(
+      std::map<string, double>* processing_times) SHARED_LOCKS_REQUIRED(mu_) {
     // If the number of elements produced by an input is smaller than this
     // constant, then its processing time is estimated using a weighted average
     // of the empirical processing time and processing time history.
@@ -377,7 +383,8 @@ class Node {
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        double input_processing_time = input->TotalProcessingTime();
+        double input_processing_time =
+            input->TotalProcessingTime(processing_times);
         int64 num_elements = input->num_elements();
         if (num_elements < kNumElementsThreshold) {
           if (input_processing_time_count_ < kCountThreshold) {
@@ -411,7 +418,11 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  virtual double TotalProcessingTimeLocked() SHARED_LOCKS_REQUIRED(mu_) = 0;
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each node of the subtree.
+  virtual double TotalProcessingTimeLocked(
+      std::map<string, double>* processing_times)
+      SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   mutable mutex mu_;
   const int64 id_;
@@ -534,6 +545,14 @@ class Model {
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a mapping from a (unique) node name to a tunable parameter.
   std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
+      std::shared_ptr<Node> node);
+
+  // Collects "essential" parallelism parameters of transformations in the tree
+  // rooted in the given node. Which parameters are essential is determined by
+  // comparison the processing time spent in the corresponding transformation
+  // relative to other transformations. The collected parameters are returned
+  // as a mapping from a (unique) node name to a parallelism parameter.
+  std::map<string, std::shared_ptr<Parameter>> CollectEssentialParallelism(
       std::shared_ptr<Node> node);
 
   // This optimization algorithm starts by setting all tunable parallelism

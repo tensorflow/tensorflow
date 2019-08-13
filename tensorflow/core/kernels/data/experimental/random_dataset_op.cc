@@ -25,9 +25,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 class RandomDatasetOp : public DatasetOpKernel {
  public:
   explicit RandomDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
@@ -78,6 +75,8 @@ class RandomDatasetOp : public DatasetOpKernel {
     }
 
     int64 Cardinality() const override { return kInfiniteCardinality; }
+
+    Status CheckExternalState() const override { return Status::OK(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

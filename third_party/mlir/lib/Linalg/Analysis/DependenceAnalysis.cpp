@@ -53,7 +53,7 @@ Value *Aliases::find(Value *v) {
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<ViewOp>(v->getDefiningOp())) {
-      auto it = aliases.insert(std::make_pair(v, view.getSupportingBuffer()));
+      auto it = aliases.insert(std::make_pair(v, view.buffer()));
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<SubViewOp>(v->getDefiningOp())) {

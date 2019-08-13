@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -305,7 +306,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
-  # Due to b/120160788.
   @test_util.run_v2_only
   def test_lstm_v2_feature_parity_with_canonical_lstm(self):
     input_shape = 10
@@ -565,6 +565,21 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_float64_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.LSTM,
+        kwargs={
+            'units': units,
+            'return_sequences': True,
+            'dtype': 'float64'
+        },
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_regularizers_LSTM(self):
     embedding_dim = 4
     layer_class = rnn.LSTM
@@ -586,8 +601,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  # Run in V2 only due to b/120160788.
-  @test_util.run_v2_only
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -747,6 +760,23 @@ class LSTMV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
+  @test_util.run_deprecated_v1
+  def test_v1_session_behavior(self):
+    # See b/139132348 for more details.
+    x = np.random.uniform(size=(100, 4, 8))
+    y = np.random.uniform(size=(100, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).shuffle(100).batch(32)
+
+    inp = keras.layers.Input(shape=(4, 8))
+    layer = rnn.LSTM(1)(inp)
+    layer = keras.layers.Dense(1)(layer)
+
+    model = keras.models.Model(inp, layer)
+
+    model.compile(loss='mse', optimizer='sgd')
+    model.fit(dataset)
+
 
 @keras_parameterized.run_all_keras_modes(config=_config)
 class LSTMGraphRewriteTest(keras_parameterized.TestCase):
@@ -787,6 +817,7 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
+  @test_util.run_v2_only
   def test_LSTM_runtime(self):
     layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
 
@@ -802,6 +833,7 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+  @test_util.run_v2_only
   def test_LSTM_runtime_with_mask(self):
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.
@@ -857,7 +889,6 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
     _, runtime_value = model.predict(x_train)
     self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  # Due to b/120160788.
   @test_util.run_v2_only
   def test_LSTM_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under

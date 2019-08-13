@@ -30,6 +30,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -1491,16 +1492,20 @@ _BLACKLISTED_INFERENCE_OPS = set([
 
 
 def under_tpu_inference_context():
-  """Check if it is currently under `tpu.rewrite_for_inference()`."""
+  """Check if it is currently under `_TPUInferenceContext`."""
   graph = ops.get_default_graph()
-
-  context = graph._get_control_flow_context()  # pylint: disable=protected-access
-  while context:
-    if isinstance(context, _TPUInferenceContext):
-      return True
-    context = context.outer_context
-
-  return False
+  while graph:
+    context = graph._get_control_flow_context()  # pylint: disable=protected-access
+    while context:
+      if isinstance(context, _TPUInferenceContext):
+        return True
+      context = context.outer_context
+    if isinstance(graph, function._FuncGraph):  # pylint: disable=protected-access
+      graph = graph._outer_graph  # pylint: disable=protected-access
+    elif isinstance(graph, func_graph.FuncGraph):
+      graph = graph.outer_graph
+    else:
+      return False
 
 
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):

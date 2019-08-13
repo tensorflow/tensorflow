@@ -146,29 +146,8 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
     }
     ViewType getViewType() { return getOperand()->getType().cast<ViewType>(); }
   }];
-}
 
-def RangeIntersectOp : Linalg_Op<"range_intersect", [NoSideEffect]>,
-    Arguments<(ins Range, Range)>,
-    Results<(outs Range)> {
-  let summary = "range intersection operation";
-  let description = [{
-    The "linalg.range_intersect" operation takes two linalg.range and returns a
-    linalg.range that represents their intersection. This assumes both steps
-    are one for now. For example:
-
-      %2 = linalg.range_intersect %0, %1 : !linalg.range
-  }];
-
-  // Fully verified by traits.
-  let verifier = ?;
-
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *range1, Value *range2",
-    [{
-      result->addOperands({range1, range2});
-      result->types.push_back(builder->getType<RangeType>());
-    }]>];
+  let hasCanonicalizer = 1;
 }
 
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
@@ -233,6 +212,62 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         result->addOperands({r.min, r.max, r.step});
       result->types.push_back(view->getType());
     }
+  }];
+}
+
+def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
+    Arguments<(ins Buffer:$buffer, Variadic<Range>:$ranges)>,
+    Results<(outs View)> {
+  let summary = "view operation";
+  let description = [{
+    The "linalg.view" op produces a linalg.view which is a multi-dimensional
+    range abstraction on top of an underlying linalg.buffer. This gives an
+    indexing structure to an otherwise non-indexable linalg.buffer.
+
+    A "linalg.view" takes a buffer and a variadic number of ranges and produces
+    a `view` of rank the number of ranges. The elemental type may not match the
+    buffer element type:
+
+    Examples:
+    ```
+       %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+       %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
+       %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xvector<4xf32>>
+    ```
+  }];
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *buffer, "
+    "ArrayRef<Value *> ranges, Type resultType = Type(), "
+    "ArrayRef<NamedAttribute> attrs = {}">];
+
+  let verifier = [{
+    if (getViewType().getRank() != llvm::size(ranges()))
+      return emitOpError("the view rank must be the number of its ranges");
+    return success();
+  }];
+
+  let extraClassDeclaration = [{
+    enum { FirstIndexingOperand = 1 };
+    unsigned getRank() { return getViewType().getRank(); }
+    Type getElementType() { return getViewType().getElementType(); }
+    ViewType getViewType() { return getType().cast<ViewType>(); }
+    /// Get the underlying indexing at a given rank.
+    Value *getRange(unsigned rank) {
+      assert(rank < getRank() && "rank overflow");
+      return *(ranges().begin() + rank);
+    }
+  }];
+}
+
+def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Linalg yield operation";
+  let description = [{
+    "linalg.yield" is a special terminator operation for blocks inside regions
+    in linalg ops. It returns values to the immediately enclosing linalg op.
+
+       linalg.yield %f0, %f1 : f32, f32
   }];
 }
 

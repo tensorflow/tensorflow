@@ -28,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -225,7 +225,8 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             # configured improperly.
             constants[i] = op_input
           else:
-            constants[i] = backend.function([], op_input)([])
+            with ops.init_scope():
+              constants[i] = backend.function([], op_input)([])
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
       name = op.name
@@ -239,7 +240,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   return processed_ops, created_layers
 
 
-def needs_keras_history(tensors):
+def needs_keras_history(tensors, ignore_call_context=False):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
   This will never return True inside a sublayer, because sublayers
@@ -249,12 +250,18 @@ def needs_keras_history(tensors):
 
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
+    ignore_call_context: Whether to ignore the check of if currently
+      outside of a `call` context. This is `True` when creating
+      KerasHistory inside `Node`, where we always know that Tensors
+      are being used with the Functional API.
 
   Returns:
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if call_context().in_call or all(
+  if call_context().in_call and not ignore_call_context:
+    return False
+  if all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -471,12 +478,13 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if (force_raise or (ops.executing_eagerly_outside_functions() and
-                      hasattr(tensor, 'graph') and
-                      isinstance(tensor.graph,
-                                 (control_flow_util_v2.CondBranchFuncGraph,
-                                  control_flow_util_v2.WhileCondFuncGraph,
-                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+  if (force_raise or
+      (ops.executing_eagerly_outside_functions() and
+       hasattr(tensor, 'graph') and
+       isinstance(tensor.graph,
+                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
+                   control_flow_v2_func_graphs.WhileCondFuncGraph,
+                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):

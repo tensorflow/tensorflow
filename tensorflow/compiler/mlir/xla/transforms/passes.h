@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
 namespace mlir {
 class FunctionPassBase;
 
 namespace XLA {
 
 /// Lowers from TF dialect to XLA dialect.
-FunctionPassBase *createLegalizeTFPass();
+std::unique_ptr<FunctionPassBase> createLegalizeTFPass();
 
-// Lowers from XLA dialect to Standard dialect.
-FunctionPassBase *createLegalizeToStdPass();
+/// Lowers XLA control flow ops to the Standard dialect.
+std::unique_ptr<FunctionPassBase> createLegalizeControlFlowPass();
+
+/// Lowers from XLA dialect to Standard dialect.
+std::unique_ptr<FunctionPassBase> createLegalizeToStdPass();
 
 }  // end namespace XLA
 }  // end namespace mlir

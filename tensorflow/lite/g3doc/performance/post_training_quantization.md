@@ -8,6 +8,20 @@ conversion.
 
 ### Optimization options
 
+There are several post training quantization options to choose from. Here is a
+summary table of the choices and the benefits they provide:
+
+| Technique              | Benefits                  | Hardware            |
+| ---------------------- | ------------------------- | ------------------- |
+| Post training "hybrid" | 4x smaller, 2-3x speedup, | CPU                 |
+:                        : accuracy                  :                     :
+| Post training integer  | 4x smaller, More speedup  | CPU, Edge TPU, etc. |
+| Post training fp16     | 2x smaller, Potential GPU | CPU/GPU             |
+:                        : acceleration              :                     :
+
+This decision tree can help determine which post-training quantization method is
+best for your use case:
+
 ![post-training optimization options](images/optimization.jpg)
 
 ### Quantizing weights
@@ -77,6 +91,35 @@ Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
 This makes the converter throw an error if it encounters an operation it cannot
 currently quantize.
+
+### Float16 quantization of weights
+
+We can reduce the size of a floating point model by quantizing the weights to
+float16, the IEEE standard for 16 bit floating point numbers. The advantages of
+this quantization are as follows:
+
+-   reduce model size by up to half (since all weights are now half the original
+    size)
+-   minimal loss in accuracy
+-   some delegates (e.g. the GPU delegate) can operate directly on float16 data,
+    which results in faster execution than float32 computations.
+
+This quantization may not be a good choice if you need maximum performance (a
+quantization to fixed point math would be better in that case). To enable
+float16 quantization of weights, specify "DEFAULT" optimization as above and
+then specify that float16 is in supported types for the target_spec:
+
+```
+import tensorflow as tf
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_types = [tf.lite.constants.FLOAT16]
+tflite_quant_model = converter.convert()
+```
+
+By default, a float16 quantized model will "dequantize" the weights values to
+float32 when run on the CPU. The GPU delegate will not perform this
+dequantization, since it can operate on float16 data.
 
 ### Model accuracy
 

@@ -539,6 +539,20 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           },
           expected=ragged_factory_ops.constant_value([8, 9, 7])),
       dict(
+          op=array_ops.one_hot,
+          kwargs={
+              'indices':
+                  ragged_factory_ops.constant_value([[1, 2, 3], [0]],
+                                                    dtype=np.int32),
+              'depth':
+                  4,
+              'axis':
+                  1
+          },
+          expected=ragged_factory_ops.constant_value(
+              [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],
+              ragged_rank=1)),
+      dict(
           op=array_ops.stack,
           args=([
               ragged_factory_ops.constant_value([[1, 2, 3], [4]],
@@ -678,10 +692,10 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           op=string_ops.reduce_join,
           kwargs={
               'inputs':
-                  ragged_factory_ops.constant_value(
-                      [[b'this', b'is', b'a', b'test', b'for', b'ragged',
-                        b'tensors'],
-                       [b'please', b'do', b'not', b'panic', b'!']]),
+                  ragged_factory_ops.constant_value([[
+                      b'this', b'is', b'a', b'test', b'for', b'ragged',
+                      b'tensors'
+                  ], [b'please', b'do', b'not', b'panic', b'!']]),
               'axis':
                   0,
               'keepdims':
@@ -734,10 +748,13 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           kwargs={
               'data': ragged_factory_ops.constant_value([[1], [2, 3, 4], [5]]),
               'partitions': [2, 1, 1],
-              'num_partitions': 3},
-          expected=[ragged_factory_ops.constant_value([], ragged_rank=1),
-                    ragged_factory_ops.constant_value([[2, 3, 4], [5]]),
-                    ragged_factory_ops.constant_value([[1]])],
+              'num_partitions': 3
+          },
+          expected=[
+              ragged_factory_ops.constant_value([], ragged_rank=1),
+              ragged_factory_ops.constant_value([[2, 3, 4], [5]]),
+              ragged_factory_ops.constant_value([[1]])
+          ],
           result_is_list=True),
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
@@ -778,7 +795,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'math.tan', 'math.truediv', 'math.unsorted_segment_max',
         'math.unsorted_segment_mean', 'math.unsorted_segment_min',
         'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
-        'math.unsorted_segment_sum', 'ones_like', 'rank', 'realdiv',
+        'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
         'reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
         'strings.join', 'strings.length', 'strings.reduce_join',
         'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',

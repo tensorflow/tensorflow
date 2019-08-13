@@ -236,6 +236,12 @@ ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
   return getArrayAttr(attrs);
 }
 
+ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
+  auto attrs = functional::map(
+      [this](AffineMap v) -> Attribute { return getAffineMapAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
   case StandardTypes::F16:
@@ -290,6 +296,8 @@ IntegerSet Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                   ArrayRef<bool> isEq) {
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq);
 }
+
+AffineMap Builder::getEmptyAffineMap() { return AffineMap::get(context); }
 
 AffineMap Builder::getConstantAffineMap(int64_t val) {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/0,

@@ -202,9 +202,11 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
   }
 
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
-
-  tensorflow::uint64 context_id = tensorflow::random::New64();
+  tensorflow::uint64 context_id = tensorflow::EagerContext::NewContextId();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+      context_id, ctx->context));
 
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
@@ -240,6 +242,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           &remote_eager_workers));
 
   // Initialize remote eager workers.
+  // TODO(b/138847548) Create remote eager contexts in async mode by default.
   LOG_AND_RETURN_IF_ERROR(
       CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
                            server_def, remote_eager_workers.get(),
@@ -262,15 +265,21 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true);
+  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+      /*is_master=*/true, ctx->context);
 
-  return ctx->context->InitializeRemoteMaster(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
       std::move(remote_eager_workers), std::move(remote_device_mgr),
       remote_workers, context_id, r, device_mgr, keep_alive_secs,
-      worker_session->cluster_flr.get(), std::move(remote_mgr));
+      worker_session->cluster_flr.get(), std::move(remote_mgr)));
+
+  // NOTE: We start the server after all other initialization, because the
+  // GrpcServer cannot be destroyed after it is started.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 #undef LOG_AND_RETURN_IF_ERROR
+
+  return tensorflow::Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -448,18 +457,6 @@ extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
   return static_cast<TFE_ContextDevicePlacementPolicy>(
       ctx->context->GetDevicePlacementPolicy());
-}
-
-void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
-}
-
-void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->Executor()->status();
-}
-
-void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->context->Executor()->ClearError();
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -667,7 +664,7 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
                               unsigned char* is_list, TF_Status* status) {
-  TF_AttrType ret;
+  TF_AttrType ret = TF_ATTR_INT;
   status->status = tensorflow::AttrTypeByName(*op->operation.AttrTypes(),
                                               attr_name, &ret, is_list);
   return ret;
@@ -972,7 +969,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  TFE_ContextAsyncWait(ctx, status);
+  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
   status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);

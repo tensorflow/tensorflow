@@ -216,6 +216,13 @@ class MemorySpaceAssignment {
   // FixSchedule inserts asynchronous copies in the schedule.
   Status FixSchedule();
 
+  // Insert an instruction to the schedule, and make sure its dependencies
+  // (operands) are already in the schedule. If not, insert these operands
+  // before the instruction.
+  void EnsureInstructionAndOperandsInserted(
+      HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+      absl::flat_hash_set<HloInstruction*>* inserted_instructions) const;
+
   // Schedules a pair of asynchronous copy instructions (copy_start and
   // copy_done) where copy_start will be scheduled after the instruction in
   // copy_start_schedule_after and copy_done will be scheduled before the

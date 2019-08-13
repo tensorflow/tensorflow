@@ -44,6 +44,7 @@ cc_library(
 
 cc_library(
     name = "remote_execute_node",
+    srcs = ["remote_execute_node.cc"],
     hdrs = ["remote_execute_node.h"],
     deps = [
         ":eager_client",
@@ -126,6 +127,20 @@ cc_library(
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+    ],
+)
+
+tf_cc_test(
+    name = "remote_mgr_test",
+    size = "small",
+    srcs = ["remote_mgr_test.cc"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )

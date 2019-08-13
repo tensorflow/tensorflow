@@ -31,7 +31,6 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -102,30 +101,27 @@ class EagerFunc(object):
   def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
-    func_executor = executor.Executor(context.is_async())
-    with context.executor_scope(func_executor):
-      with context.eager_mode(), backprop.GradientTape() as tape:
-        # Only watch tensors with a floating dtype.
-        for tensor in args:
-          for t in nest.flatten(tensor):
-            if t.dtype.is_floating:
-              tape.watch(t)
-        ret = self._func(*args)
-        # Use tf.identity to copy the returned tensors to device if necessary.
-        with ops.device(device):
-          if isinstance(ret, (tuple, list)):
-            outputs = [
-                array_ops.identity(self._convert(x, dtype=dtype))
-                for (x, dtype) in zip(ret, self._out_dtypes)
-            ]
-          elif ret is None:
-            outputs = None
-          else:
-            outputs = array_ops.identity(
-                self._convert(ret, dtype=self._out_dtypes[0]))
-      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
-      return outputs
-    func_executor.wait()
+    with context.eager_mode(), backprop.GradientTape() as tape:
+      # Only watch tensors with a floating dtype.
+      for tensor in args:
+        for t in nest.flatten(tensor):
+          if t.dtype.is_floating:
+            tape.watch(t)
+      ret = self._func(*args)
+      # Use tf.identity to copy the returned tensors to device if necessary.
+      with ops.device(device):
+        if isinstance(ret, (tuple, list)):
+          outputs = [
+              array_ops.identity(self._convert(x, dtype=dtype))
+              for (x, dtype) in zip(ret, self._out_dtypes)
+          ]
+        elif ret is None:
+          outputs = None
+        else:
+          outputs = array_ops.identity(
+              self._convert(ret, dtype=self._out_dtypes[0]))
+    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    return outputs
 
 
 class FuncRegistry(object):
@@ -290,7 +286,11 @@ def _internal_py_func(func,
 
   if eager:
     result = gen_script_ops.eager_py_func(
-        input=inp, token=token, Tout=Tout, name=name)
+        input=inp,
+        token=token,
+        is_async=context.is_async(),
+        Tout=Tout,
+        name=name)
   else:
     if stateful:
       result = gen_script_ops.py_func(

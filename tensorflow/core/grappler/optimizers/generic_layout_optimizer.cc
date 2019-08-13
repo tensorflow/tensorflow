@@ -99,6 +99,8 @@ inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
     }
   }
 
+  if (num_conv2d_gpu == 0) return false;
+
   return (static_cast<float>(num_conv2d_gpu_fp16) /
           static_cast<float>(num_conv2d_gpu)) >= kConv2DGPUFP16Threshold;
 }

@@ -71,16 +71,16 @@ public:
 
   /// Add an opaque pass pointer to the current manager. This takes ownership
   /// over the provided pass pointer.
-  void addPass(Pass *pass);
+  void addPass(std::unique_ptr<Pass> pass);
 
   /// Add a module pass to the current manager. This takes ownership over the
   /// provided pass pointer.
-  void addPass(ModulePassBase *pass);
+  void addPass(std::unique_ptr<ModulePassBase> pass);
 
   /// Add a function pass to the current manager. This takes ownership over the
   /// provided pass pointer. This will automatically create a function pass
   /// executor if necessary.
-  void addPass(FunctionPassBase *pass);
+  void addPass(std::unique_ptr<FunctionPassBase> pass);
 
   //===--------------------------------------------------------------------===//
   // Instrumentations
