@@ -105,7 +105,6 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
              /*delta=*/(ConstantOp TFi32<-1>)), (ConstantOp TFi32<1>))), $b,
            ConstBoolAttrFalse, $bt)>;
 
-def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 
 //===----------------------------------------------------------------------===//
