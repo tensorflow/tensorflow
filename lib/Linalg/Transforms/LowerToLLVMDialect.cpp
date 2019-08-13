@@ -741,8 +741,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
   }
 }
 
-ModulePassBase *mlir::linalg::createLowerLinalgToLLVMPass() {
-  return new LowerLinalgToLLVMPass();
+std::unique_ptr<ModulePassBase> mlir::linalg::createLowerLinalgToLLVMPass() {
+  return llvm::make_unique<LowerLinalgToLLVMPass>();
 }
 
 static PassRegistration<LowerLinalgToLLVMPass>

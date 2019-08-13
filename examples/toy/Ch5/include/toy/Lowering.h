@@ -35,10 +35,10 @@ class DialectConversion;
 namespace toy {
 /// Create a pass for lowering operations in the `Linalg` dialects, for a subset
 /// of the Toy IR (matmul).
-mlir::Pass *createEarlyLoweringPass();
+std::unique_ptr<mlir::Pass> createEarlyLoweringPass();
 
 /// Create a pass for the late lowering toward LLVM dialect.
-mlir::Pass *createLateLoweringPass();
+std::unique_ptr<mlir::Pass> createLateLoweringPass();
 
 } // namespace toy
 

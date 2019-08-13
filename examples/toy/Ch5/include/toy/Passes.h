@@ -22,12 +22,14 @@
 #ifndef MLIR_TUTORIAL_TOY_PASSES_H
 #define MLIR_TUTORIAL_TOY_PASSES_H
 
+#include <memory>
+
 namespace mlir {
 class Pass;
 } // namespace mlir
 
 namespace toy {
-mlir::Pass *createShapeInferencePass();
+std::unique_ptr<mlir::Pass> createShapeInferencePass();
 } // namespace toy
 
 #endif // MLIR_TUTORIAL_TOY_PASSES_H

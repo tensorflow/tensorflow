@@ -73,7 +73,7 @@ void lowerToLoops(mlir::FuncOp f);
 
 /// Creates a pass that rewrites linalg.load and linalg.store to affine.load and
 /// affine.store operations.
-mlir::FunctionPassBase *createLowerLinalgLoadStorePass();
+std::unique_ptr<mlir::FunctionPassBase> createLowerLinalgLoadStorePass();
 
 } // namespace linalg
 

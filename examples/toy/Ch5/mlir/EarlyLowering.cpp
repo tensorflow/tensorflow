@@ -142,5 +142,7 @@ struct EarlyLoweringPass : public FunctionPass<EarlyLoweringPass> {
 } // end anonymous namespace
 
 namespace toy {
-Pass *createEarlyLoweringPass() { return new EarlyLoweringPass(); }
+std::unique_ptr<mlir::Pass> createEarlyLoweringPass() {
+  return llvm::make_unique<EarlyLoweringPass>();
+}
 } // namespace toy

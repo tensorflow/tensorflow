@@ -30,14 +30,16 @@ class FunctionPassBase;
 class ModulePassBase;
 
 namespace linalg {
-FunctionPassBase *createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
+std::unique_ptr<FunctionPassBase>
+createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
 
-FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
-                                         bool promoteViews = false);
+std::unique_ptr<FunctionPassBase>
+createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
+                       bool promoteViews = false);
 
-FunctionPassBase *createLowerLinalgToLoopsPass();
+std::unique_ptr<FunctionPassBase> createLowerLinalgToLoopsPass();
 
-ModulePassBase *createLowerLinalgToLLVMPass();
+std::unique_ptr<ModulePassBase> createLowerLinalgToLLVMPass();
 } // namespace linalg
 } // namespace mlir
 
