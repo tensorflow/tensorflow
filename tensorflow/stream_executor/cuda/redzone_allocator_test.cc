@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/redzone_allocator.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
