@@ -315,6 +315,12 @@ def : Pat<(OpAllAttrConstraint1
             AllAttrConstraintsOf<[Constraint0, Constraint1]>:$attr),
           (OpAllAttrConstraint2 $attr)>;
 
+// Op for testing RewritePattern removing op with inner ops.
+def TestOpWithRegion : TEST_Op<"op_with_region"> {
+  let regions = (region SizedRegion<1>:$region);
+  let hasCanonicalizer = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns (Symbol Binding)
 

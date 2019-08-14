@@ -156,9 +156,9 @@ TEST_F(CpuCompilerTest, HooksTest) {
 
 TEST_F(GpuCompilerTest, HooksTest) {
 #if TENSORFLOW_USE_ROCM
-  gpu::AMDGPUCompiler compiler(stream_executor::rocm::kROCmPlatformId);
+  gpu::AMDGPUCompiler compiler;
 #elif GOOGLE_CUDA
-  gpu::NVPTXCompiler compiler(stream_executor::cuda::kCudaPlatformId);
+  gpu::NVPTXCompiler compiler;
 #endif
   TestCompilerHooks(&compiler);
 }
@@ -170,9 +170,9 @@ TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
 
 TEST_F(GpuCompilerTest, GpuMultModuleCompilation) {
 #if TENSORFLOW_USE_ROCM
-  gpu::AMDGPUCompiler compiler(stream_executor::rocm::kROCmPlatformId);
+  gpu::AMDGPUCompiler compiler;
 #elif GOOGLE_CUDA
-  gpu::NVPTXCompiler compiler(stream_executor::cuda::kCudaPlatformId);
+  gpu::NVPTXCompiler compiler;
 #endif
   TestMultiModuleCompilation(&compiler);
 }

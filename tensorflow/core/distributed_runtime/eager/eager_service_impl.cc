@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -122,6 +123,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         return r;
       };
 
+  LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
+            << " eager service context with rendezvous_id on host "
+            << port::Hostname();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
@@ -250,6 +254,7 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
       num_retvals);
+  VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
   TF_RETURN_IF_ERROR(EagerExecute(op.get(), &retvals, &num_retvals));
   retvals.resize(num_retvals);
 
@@ -273,14 +278,21 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
+  auto executor = context->Context()->Executor();
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
       TF_RETURN_IF_ERROR(
           ExecuteOp(item.operation(), context->Context(), queue_response));
     } else {
-      TF_RETURN_IF_ERROR(context->Context()->RemoteMgr()->DeleteTensorHandle(
-          RemoteTensorHandleInternal(item.handle_to_decref())));
+      auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
+          item.handle_to_decref());
+      auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
+          context, std::move(handle_to_decref));
+      TF_RETURN_IF_ERROR(
+          executor->Async()
+              ? context->Context()->Executor()->Add(std::move(node))
+              : node->Run());
     }
   }
 

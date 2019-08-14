@@ -268,29 +268,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
   return std::move(result_buffer);
 }
 
-StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  TF_ASSIGN_OR_RETURN(
-      auto result,
-      ExecuteAsyncOnStreamImpl(run_options, arguments, hlo_execution_profile));
-  TF_RETURN_IF_ERROR(run_options->stream()->BlockHostUntilDone());
-  return std::move(result);
-}
-
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
-  if (hlo_profiling_enabled()) {
-    return Unimplemented(
-        "Asynchronous execution on stream with hlo profiling is not yet "
-        "supported on CPU.");
-  }
-  return ExecuteAsyncOnStreamImpl(run_options, arguments, nullptr);
-}
-
-StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {

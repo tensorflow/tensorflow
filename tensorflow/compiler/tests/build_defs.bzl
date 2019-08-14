@@ -4,7 +4,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_exec_compatible_with",
 )

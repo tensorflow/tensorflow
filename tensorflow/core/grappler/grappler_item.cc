@@ -132,7 +132,7 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     // Do not remove ops with attribute _grappler_do_not_remove. This is useful
     // for debugging.
     bool do_not_remove;
-    if (GetNodeAttrSimple(attrs, "_grappler_do_not_remove", &do_not_remove) &&
+    if (TryGetNodeAttr(attrs, "_grappler_do_not_remove", &do_not_remove) &&
         do_not_remove) {
       result.insert(node.name());
     }

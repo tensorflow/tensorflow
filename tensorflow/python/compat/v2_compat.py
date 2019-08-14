@@ -39,6 +39,9 @@ def enable_v2_behavior():
   This function is called in the main TensorFlow `__init__.py` file, user should
   not need to call it, except during complex migrations.
   """
+  # TF2 behavior is enabled if either 1) enable_v2_behavior() is called or
+  # 2) the TF2_BEHAVIOR=1 environment variable is set.  In the latter case,
+  # the modules below independently check if tf2.enabled().
   tf2.enable()
   ops.enable_eager_execution()
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2

@@ -31,7 +31,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -1743,12 +1742,8 @@ class DatasetV1(DatasetV2):
     dataset = self._apply_options()
     if shared_name is None:
       shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      iterator_resource = gen_dataset_ops.iterator_v2(
-          container="", shared_name=shared_name, **self._flat_structure)
-    else:
-      iterator_resource = gen_dataset_ops.iterator(
-          container="", shared_name=shared_name, **self._flat_structure)
+    iterator_resource = gen_dataset_ops.iterator_v2(
+        container="", shared_name=shared_name, **self._flat_structure)
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(
           dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3755,20 +3750,12 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
     self._stats_aggregator = aggregator
     self._prefix = prefix
     self._counter_prefix = counter_prefix
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.set_stats_aggregator_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._stats_aggregator._resource,  # pylint: disable=protected-access
-          self._prefix,
-          self._counter_prefix,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_set_stats_aggregator_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._stats_aggregator._resource,  # pylint: disable=protected-access
-          self._prefix,
-          self._counter_prefix,
-          **self._flat_structure)
+    variant_tensor = ged_ops.set_stats_aggregator_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._stats_aggregator._resource,  # pylint: disable=protected-access
+        self._prefix,
+        self._counter_prefix,
+        **self._flat_structure)
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -3782,16 +3769,10 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
         max_intra_op_parallelism,
         dtype=dtypes.int64,
         name="max_intra_op_parallelism")
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._max_intra_op_parallelism,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_max_intra_op_parallelism_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._max_intra_op_parallelism,
-          **self._flat_structure)
+    variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._max_intra_op_parallelism,
+        **self._flat_structure)
     super(_MaxIntraOpParallelismDataset, self).__init__(input_dataset,
                                                         variant_tensor)
 
@@ -3803,16 +3784,10 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._num_threads = ops.convert_to_tensor(
         num_threads, dtype=dtypes.int64, name="num_threads")
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.private_thread_pool_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._num_threads,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_private_thread_pool_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._num_threads,
-          **self._flat_structure)
+    variant_tensor = ged_ops.private_thread_pool_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._num_threads,
+        **self._flat_structure)
     super(_PrivateThreadPoolDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -3851,14 +3826,9 @@ class _UnbatchDataset(UnaryDataset):
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
         get_structure(input_dataset))
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.unbatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_unbatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
+    variant_tensor = ged_ops.unbatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        **self._flat_structure)
     super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -253,10 +253,10 @@ class LSTMOpModel : public SingleOpModel {
   int cell_to_forget_weights_;
   int cell_to_output_weights_;
 
-  int input_layer_norm_coefficients_;
-  int forget_layer_norm_coefficients_;
-  int cell_layer_norm_coefficients_;
-  int output_layer_norm_coefficients_;
+  int input_layer_norm_coefficients_ = kOptionalTensor;
+  int forget_layer_norm_coefficients_ = kOptionalTensor;
+  int cell_layer_norm_coefficients_ = kOptionalTensor;
+  int output_layer_norm_coefficients_ = kOptionalTensor;
 
   int input_gate_bias_;
   int forget_gate_bias_;
@@ -1758,7 +1758,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
                              0.00734616, 0.161793, 0.0560238,    // seq 2
                          }};
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
+  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
+                /*tolerance=*/0.0010907);
 }
 
 TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
@@ -2006,7 +2007,8 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           -0.0103605557, 0.172605693, 0.0728750974,   // seq 2
       }};
 
-  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm);
+  VerifyGoldens(lstm_input_, lstm_golden_output_, &layer_norm_lstm,
+                /*tolerance=*/0.000902065);
 }
 
 TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,

@@ -27,16 +27,12 @@ namespace stream_executor {
 
 class Stream;
 
-// Interface that allows stream operations (e.g.
-// Stream::ThenConvolveWithScratch) to optionally request scratch space be
-// allocated in order to speed up the operation being enqueued.
+// Interface for "scratch" allocator for device memory, which deallocates all
+// buffers it has allocated at destruction. Returned memory pointers are not
+// owning.
 //
-// Note that the caller is responsible for deallocating the scratch space at a
-// known-safe point, when all scratch-memory-consuming kernels are known for
-// sure to have finished; e.g. at stream synchronization time. This is different
-// from a traditional C++ object allocator, where the client is responsible for
-// releasing. (Conceptually, scratch memory is a form of "temporary" device
-// memory allocation.)
+// Used by stream operations (e.g. Stream::ThenConvolveWithScratch) to optonally
+// request scratch space to speed up the operation.
 class ScratchAllocator {
  public:
   virtual ~ScratchAllocator();

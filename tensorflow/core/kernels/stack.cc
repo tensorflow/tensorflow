@@ -134,8 +134,8 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
           "Stack handle must have two elements, but had shape: ",
           Tstack_handle.shape().DebugString());
     }
-    const string& container = Tstack_handle.flat<string>()(0);
-    const string& stack_name = Tstack_handle.flat<string>()(1);
+    const string& container = Tstack_handle.flat<tstring>()(0);
+    const string& stack_name = Tstack_handle.flat<tstring>()(1);
     string key = strings::StrCat(container, stack_name);
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) {
@@ -196,7 +196,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(tensorflow::DT_STRING,
                                            tensorflow::TensorShape({2}),
                                            &stack->handle_, alloc_attr));
-    auto handle = stack->handle_.flat<string>();
+    auto handle = stack->handle_.flat<tstring>();
     handle(0) = kContainer;
     handle(1) = std::move(stack_name);
     ctx->set_output_ref(0, stack->mu(), &stack->handle_);

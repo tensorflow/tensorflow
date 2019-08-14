@@ -44,7 +44,7 @@ class SummaryAudioOp : public OpKernel {
     OP_REQUIRES(c, tensor.dims() >= 2 && tensor.dims() <= 3,
                 errors::InvalidArgument("Tensor must be 3-D or 2-D, got: ",
                                         tensor.shape().DebugString()));
-    const string& base_tag = tag.scalar<string>()();
+    const string& base_tag = tag.scalar<tstring>()();
 
     float sample_rate = sample_rate_attr_;
     if (!has_sample_rate_attr_) {

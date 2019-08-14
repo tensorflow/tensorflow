@@ -1,4 +1,4 @@
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 
 package(
     licenses = ["notice"],  # Apache 2.0

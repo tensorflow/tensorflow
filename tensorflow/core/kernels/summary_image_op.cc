@@ -61,7 +61,7 @@ class SummaryImageOp : public OpKernel {
                 errors::InvalidArgument(
                     "Tensor must be 4-D with last dim 1, 3, or 4, not ",
                     tensor.shape().DebugString()));
-    const string& base_tag = tags.scalar<string>()();
+    const string& base_tag = tags.scalar<tstring>()();
 
     OP_REQUIRES(c,
                 tensor.dim_size(0) < (1LL << 31) &&

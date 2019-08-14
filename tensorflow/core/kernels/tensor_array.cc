@@ -91,8 +91,8 @@ Status TensorArray::CopyShapesFrom(TensorArray* rhs,
   if (tensors_.size() != rhs->tensors_.size()) {
     return errors::InvalidArgument(
         "TensorArray sizes do not match during CopyShapesFrom: ",
-        handle_.vec<string>()(1), " has size ", tensors_.size(), " but rhs ",
-        rhs->handle_.vec<string>()(1), " has size ", rhs->tensors_.size());
+        handle_.vec<tstring>()(1), " has size ", tensors_.size(), " but rhs ",
+        rhs->handle_.vec<tstring>()(1), " has size ", rhs->tensors_.size());
   }
   for (std::size_t i = 0; i < tensors_.size(); ++i) {
     // Skip "soft copy" of indices which have not been written.

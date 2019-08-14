@@ -238,7 +238,6 @@ cuda_py_test(
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -862,8 +861,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
-    # TODO(b/128347673): Re-enable.
-    tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3465,6 +3462,9 @@ cuda_py_test(
     ],
     shard_count = 20,
     xla_enable_strict_auto_jit = True,
+    tags = [
+        "no_cuda",
+    ],
 )
 
 cuda_py_test(

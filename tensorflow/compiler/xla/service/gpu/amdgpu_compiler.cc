@@ -118,7 +118,7 @@ string GetROCDLDir(const HloModuleConfig& config) {
   if (!datadir.empty()) {
     potential_rocdl_dirs.push_back(datadir);
   }
-  potential_rocdl_dirs.push_back(tensorflow::ROCDLRoot());
+  potential_rocdl_dirs.push_back(tensorflow::RocdlRoot());
 
   // Tries all potential ROCDL directories in the order they are inserted.
   // Returns the first directory that exists in the file system.
@@ -178,8 +178,9 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return Status::OK();
 }
 
-AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
-    : GpuCompiler(platform_id, amdgpu::kTargetTriple, amdgpu::kDataLayout) {}
+AMDGPUCompiler::AMDGPUCompiler()
+    : GpuCompiler(stream_executor::rocm::kROCmPlatformId, amdgpu::kTargetTriple,
+                  amdgpu::kDataLayout) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   int isa_version = 0;

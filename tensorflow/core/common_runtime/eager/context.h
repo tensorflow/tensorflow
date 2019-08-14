@@ -107,6 +107,16 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
+  static const uint64 kInvalidContextId = 0;
+
+  static uint64 NewContextId() {
+    uint64 context_id = random::New64();
+    while (context_id == kInvalidContextId) {
+      context_id = random::New64();
+    }
+    return context_id;
+  }
+
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,
@@ -128,9 +138,6 @@ class EagerContext : public core::RefCounted {
 
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
-
-  // Clear the executor for this thread.
-  void ClearExecutorForThread();
 
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
@@ -405,10 +412,6 @@ class EagerContext : public core::RefCounted {
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
   std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
-
-  // True if the default value for execution mode is async. Note that this value
-  // can be overridden per thread based on `thread_local_async` overrides.
-  const bool async_default_;
 
   EagerExecutor default_executor_;
   mutable mutex executor_map_mu_;

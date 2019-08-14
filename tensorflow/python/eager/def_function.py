@@ -182,7 +182,16 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
               self._initializer_op = resource_variable_ops.assign_variable_op(
                   self._handle, lifted_initializer, name=n)
+      elif context.executing_eagerly():
+        # In this case, both current scope and init scope are eager.
+        # Assign_variable_op will be executed immediately. So we don't need to
+        # add it to "add_initializers_to" to lift it out.
+        with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+          resource_variable_ops.assign_variable_op(
+              self._handle, initial_value, name=n)
       else:
+        # Init scope is eager but current scope is graph. We will lift out this
+        # variable by addint it into "add_initializers_to".
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
         def assign_fn():
@@ -196,7 +205,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         def not_assign_fn():
           return ops.convert_to_tensor(0)
         # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies.
+        # defun which will insert automatic control dependencies. It will only
+        # execute assign_fn if lifting failed.
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)

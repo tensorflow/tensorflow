@@ -34,14 +34,16 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -51,7 +53,13 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
-    self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+    self.assertTrue(any([node.op == "RangeDataset" for node in graph.node]))
+
+  def testAsSerializedGraphStateful(self):
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda _: random_ops.random_uniform(()))
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(dataset._as_serialized_graph())
 
   def testAsFunctionWithMap(self):
     if not context.executing_eagerly():
@@ -320,7 +328,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSkipEagerSameGraphErrorOneShotSimple(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with test.mock.patch.object(logging, "warning") as mock_log:
+      with test.mock.patch.object(tf_logging, "warning") as mock_log:
         _ = dataset_ops.make_one_shot_iterator(dataset)
         self.assertRegexpMatches(
             str(mock_log.call_args), "Please ensure that all datasets in the "

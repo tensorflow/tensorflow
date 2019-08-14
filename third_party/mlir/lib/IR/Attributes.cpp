@@ -357,6 +357,11 @@ ShapedType ElementsAttr::getType() const {
   return Attribute::getType().cast<ShapedType>();
 }
 
+/// Returns the number of elements held by this attribute.
+int64_t ElementsAttr::getNumElements() const {
+  return getType().getNumElements();
+}
+
 /// Return the value at the given index. If index does not refer to a valid
 /// element, then a null attribute is returned.
 Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
@@ -494,13 +499,14 @@ Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
 /// Constructs a new iterator.
 DenseElementsAttr::IntElementIterator::IntElementIterator(
     DenseElementsAttr attr, size_t index)
-    : indexed_accessor_iterator<IntElementIterator, const char *, APInt, APInt,
-                                APInt>(attr.getRawData().data(), index),
+    : DenseElementIndexedIteratorImpl<IntElementIterator, APInt, APInt, APInt>(
+          attr.getRawData().data(), attr.isSplat(), index),
       bitWidth(getDenseElementBitwidth(attr.getType().getElementType())) {}
 
 /// Accesses the raw APInt value at this iterator position.
 APInt DenseElementsAttr::IntElementIterator::operator*() const {
-  return readBits(object, index * getDenseElementStorageWidth(bitWidth),
+  return readBits(getData(),
+                  getDataIndex() * getDenseElementStorageWidth(bitWidth),
                   bitWidth);
 }
 
@@ -655,11 +661,6 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
   return static_cast<ImplType *>(impl)->data;
 }
 
-/// Returns the number of raw elements held by this attribute.
-size_t DenseElementsAttr::rawSize() const {
-  return isSplat() ? 1 : getType().getNumElements();
-}
-
 /// Returns if this attribute corresponds to a splat, i.e. if all element
 /// values are the same.
 bool DenseElementsAttr::isSplat() const { return getImpl()->isSplat; }
@@ -723,7 +724,7 @@ auto DenseElementsAttr::attr_value_begin() const -> AttributeElementIterator {
   return AttributeElementIterator(*this, 0);
 }
 auto DenseElementsAttr::attr_value_end() const -> AttributeElementIterator {
-  return AttributeElementIterator(*this, rawSize());
+  return AttributeElementIterator(*this, getNumElements());
 }
 
 /// Return the held element values as a range of APInts. The element type of
@@ -811,16 +812,26 @@ static ShapedType mappingHelper(Fn mapping, Attr &attr, ShapedType inType,
   else
     assert(newArrayType && "Unhandled tensor type");
 
-  data.resize(llvm::divideCeil(storageBitWidth, CHAR_BIT) * attr.rawSize());
+  size_t numRawElements = attr.isSplat() ? 1 : newArrayType.getNumElements();
+  data.resize(llvm::divideCeil(storageBitWidth, CHAR_BIT) * numRawElements);
 
-  uint64_t elementIdx = 0;
-  for (auto value : attr) {
+  // Functor used to process a single element value of the attribute.
+  auto processElt = [&](decltype(*attr.begin()) value, size_t index) {
     auto newInt = mapping(value);
     assert(newInt.getBitWidth() == bitWidth);
-    writeBits(data.data(), elementIdx * storageBitWidth, newInt);
-    ++elementIdx;
+    writeBits(data.data(), index * storageBitWidth, newInt);
+  };
+
+  // Check for the splat case.
+  if (attr.isSplat()) {
+    processElt(*attr.begin(), /*index=*/0);
+    return newArrayType;
   }
 
+  // Otherwise, process all of the element values.
+  uint64_t elementIdx = 0;
+  for (auto value : attr)
+    processElt(value, elementIdx++);
   return newArrayType;
 }
 
@@ -935,13 +946,13 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   // The sparse indices are 64-bit integers, so we can reinterpret the raw data
   // as a 1-D index array.
   auto sparseIndices = getIndices();
-  ArrayRef<uint64_t> sparseIndexValues = sparseIndices.getValues<uint64_t>();
+  auto sparseIndexValues = sparseIndices.getValues<uint64_t>();
 
   // Check to see if the indices are a splat.
   if (sparseIndices.isSplat()) {
     // If the index is also not a splat of the index value, we know that the
     // value is zero.
-    auto splatIndex = sparseIndexValues.front();
+    auto splatIndex = *sparseIndexValues.begin();
     if (llvm::any_of(index, [=](uint64_t i) { return i != splatIndex; }))
       return getZeroAttr();
 
@@ -954,7 +965,8 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   llvm::SmallDenseMap<llvm::ArrayRef<uint64_t>, size_t> mappedIndices;
   auto numSparseIndices = sparseIndices.getType().getDimSize(0);
   for (size_t i = 0, e = numSparseIndices; i != e; ++i)
-    mappedIndices.try_emplace({&sparseIndexValues[i * rank], rank}, i);
+    mappedIndices.try_emplace(
+        {&*std::next(sparseIndexValues.begin(), i * rank), rank}, i);
 
   // Look for the provided index key within the mapped indices. If the provided
   // index is not found, then return a zero attribute.

@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
+#define TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -22,11 +22,11 @@ namespace tensorflow {
 
 // Returns the root directory of the ROCM SDK, which contains sub-folders such
 // as bin, lib, and rocdl.
-string ROCmRoot();
+string RocmRoot();
 
 // Returns the directory that contains ROCm-Device-Libs files in the ROCm SDK.
-string ROCDLRoot();
+string RocdlRoot();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_ROCM_ROCDL_PATH_H_

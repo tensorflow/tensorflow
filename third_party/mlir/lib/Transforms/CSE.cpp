@@ -150,8 +150,7 @@ LogicalResult CSE::simplifyOperation(ScopedMapTy &knownValues, Operation *op) {
   if (auto *existing = knownValues.lookup(op)) {
     // If we find one then replace all uses of the current operation with the
     // existing one and mark it for deletion.
-    for (unsigned i = 0, e = existing->getNumResults(); i != e; ++i)
-      op->getResult(i)->replaceAllUsesWith(existing->getResult(i));
+    op->replaceAllUsesWith(existing);
     opsToErase.push_back(op);
 
     // If the existing operation has an unknown location and the current

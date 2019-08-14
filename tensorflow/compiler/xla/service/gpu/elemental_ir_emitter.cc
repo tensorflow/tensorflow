@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 
 #include <stddef.h>
+
 #include <unordered_map>
 #include <vector>
 
@@ -269,8 +270,19 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Upcast F16 to F32 if necessary.
   llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
   llvm::Value* input = FPCast(value, type);
+
+  // If |value| >= kMaxValue, tanh() is set to -1.0 or 1.0.
+  constexpr double kMaxValue = 20.0;
+  auto max_value = llvm::ConstantFP::get(type, kMaxValue);
+  llvm::Value* abs_value =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b_);
+
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
-  return FPCast(fast_tanh, value->getType());
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
+                                                    {one, input}, {type}, b_);
+  return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
+                value->getType());
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(

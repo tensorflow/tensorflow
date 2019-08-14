@@ -33,7 +33,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
-    mlir::MLIRContext* context);
+    bool convert_legacy_fed_inputs, mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
@@ -43,7 +43,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
-    mlir::MLIRContext* context);
+    bool convert_legacy_fed_inputs, mlir::MLIRContext* context);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_

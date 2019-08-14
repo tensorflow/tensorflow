@@ -22,6 +22,7 @@ import os
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
@@ -92,6 +93,46 @@ class CollectiveOpGPUTest(test.TestCase):
       results = sess.run(collectives)
     for result in results:
       self.assertAllClose(result, tensor_value, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testNcclBroadcastDoubleRecv(self):
+    tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
+    group_size = 2
+    group_key = 1
+    instance_key = 1
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for device in devices:
+        with ops.device(device):
+          t = constant_op.constant(tensor_value)
+          collectives.append(collective_ops.broadcast_recv(
+              t.shape, t.dtype, group_size, group_key, instance_key))
+      with self.assertRaisesRegexp(errors.InternalError, 'found no source'):
+        sess.run(collectives)
+
+  @test_util.run_deprecated_v1
+  def testNcclBroadcastDoubleSend(self):
+    tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
+    group_size = 2
+    group_key = 1
+    instance_key = 1
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for device in devices:
+        with ops.device(device):
+          t = constant_op.constant(tensor_value)
+          collectives.append(collective_ops.broadcast_send(
+              t, t.shape, t.dtype, group_size, group_key, instance_key))
+      with self.assertRaisesRegexp(errors.InternalError, 'already has source'):
+        sess.run(collectives)
 
   @test_util.run_deprecated_v1
   def testBasicNcclAllGather(self):

@@ -507,10 +507,11 @@ public:
 
 void mlir::populateAffineToStdConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  RewriteListBuilder<AffineApplyLowering, AffineDmaStartLowering,
-                     AffineDmaWaitLowering, AffineLoadLowering,
-                     AffineStoreLowering, AffineForLowering, AffineIfLowering,
-                     AffineTerminatorLowering>::build(patterns, ctx);
+  patterns
+      .insert<AffineApplyLowering, AffineDmaStartLowering,
+              AffineDmaWaitLowering, AffineLoadLowering, AffineStoreLowering,
+              AffineForLowering, AffineIfLowering, AffineTerminatorLowering>(
+          ctx);
 }
 
 namespace {
@@ -520,8 +521,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
     populateAffineToStdConversionPatterns(patterns, &getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<loop::LoopOpsDialect, StandardOpsDialect>();
-    if (failed(
-            applyPartialConversion(getFunction(), target, std::move(patterns))))
+    if (failed(applyPartialConversion(getFunction(), target, patterns)))
       signalPassFailure();
   }
 };

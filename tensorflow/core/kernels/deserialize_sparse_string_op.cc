@@ -75,7 +75,7 @@ class DeserializeSparseOp : public OpKernel {
     if (num_sparse_tensors == 1 && ndims == 1) {
       // Special case with a single sparse tensor. We can avoid data
       // motion in the Concat and Reshape.
-      const auto& serialized_sparse_t = serialized_sparse.vec<string>();
+      const auto& serialized_sparse_t = serialized_sparse.vec<tstring>();
 
       Tensor output_indices;
       Tensor output_values;
@@ -98,7 +98,7 @@ class DeserializeSparseOp : public OpKernel {
     values.reserve(num_sparse_tensors);
 
     const auto& serialized_sparse_t =
-        serialized_sparse.flat_inner_dims<string, 2>();
+        serialized_sparse.flat_inner_dims<tstring, 2>();
     for (int i = 0; i < num_sparse_tensors; ++i) {
       Tensor output_indices;
       Tensor output_values;

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/ir/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

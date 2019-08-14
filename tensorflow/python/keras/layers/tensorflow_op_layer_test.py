@@ -135,6 +135,19 @@ def _float64_op():
   return keras.Model(inputs, outputs)
 
 
+class MyAdd(keras.layers.Layer):
+
+  def call(self, x, y):
+    return x + y
+
+
+def _layer_with_tensor_arg():
+  inputs = keras.Input(shape=(10,))
+  x = inputs * 2
+  outputs = MyAdd()(inputs, x)
+  return keras.Model(inputs, outputs)
+
+
 class LayerWithLayer(keras.layers.Layer):
 
   def build(self, input_shape):
@@ -191,6 +204,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('_float64_op', _float64_op),
       ('_inner_layer', _inner_layer),
       ('_reuse_ancillary_layer', _reuse_ancillary_layer),
+      ('_layer_with_tensor_arg', _layer_with_tensor_arg),
   )
   def test_autolambda(self, model_fn):
     model = model_fn()
@@ -208,7 +222,11 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model(np_inputs)  # Test calling the model directly on inputs.
 
     new_model = keras.Model.from_config(
-        model.get_config(), custom_objects={'LayerWithLayer': LayerWithLayer})
+        model.get_config(),
+        custom_objects={
+            'LayerWithLayer': LayerWithLayer,
+            'MyAdd': MyAdd
+        })
     new_model.compile(
         adam.Adam(0.001),
         'mse',

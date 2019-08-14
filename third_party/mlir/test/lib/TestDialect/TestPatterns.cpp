@@ -41,9 +41,9 @@ struct TestPatternDriver : public FunctionPass<TestPatternDriver> {
     populateWithGenerated(&getContext(), &patterns);
 
     // Verify named pattern is generated with expected name.
-    RewriteListBuilder<TestNamedPatternRule>::build(patterns, &getContext());
+    patterns.insert<TestNamedPatternRule>(&getContext());
 
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 } // end anonymous namespace
@@ -66,7 +66,7 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
     // Inline this region into the parent region.
-    auto &parentRegion = *op->getContainingRegion();
+    auto &parentRegion = *op->getParentRegion();
     rewriter.inlineRegionBefore(op->getRegion(0), parentRegion,
                                 parentRegion.end());
 
@@ -193,9 +193,9 @@ struct TestLegalizePatternDriver
     TestTypeConverter converter;
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    RewriteListBuilder<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
-                       TestDropOp, TestPassthroughInvalidOp,
-                       TestSplitReturnType>::build(patterns, &getContext());
+    patterns.insert<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
+                    TestDropOp, TestPassthroughInvalidOp, TestSplitReturnType>(
+        &getContext());
     mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(),
                                               converter);
 
@@ -213,8 +213,7 @@ struct TestLegalizePatternDriver
 
     // Handle a partial conversion.
     if (mode == ConversionMode::Partial) {
-      (void)applyPartialConversion(getModule(), target, std::move(patterns),
-                                   &converter);
+      (void)applyPartialConversion(getModule(), target, patterns, &converter);
       return;
     }
 
@@ -223,7 +222,7 @@ struct TestLegalizePatternDriver
 
     // Analyze the convertible operations.
     DenseSet<Operation *> legalizedOps;
-    if (failed(applyAnalysisConversion(getModule(), target, std::move(patterns),
+    if (failed(applyAnalysisConversion(getModule(), target, patterns,
                                        legalizedOps, &converter)))
       return signalPassFailure();
 

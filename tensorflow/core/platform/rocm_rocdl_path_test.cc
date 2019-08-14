@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,13 +22,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
-TEST(ROCmROCDLPathTest, ROCDLPath) {
-  VLOG(2) << "ROCm-Deivce-Libs root = " << ROCDLRoot();
+#if TENSORFLOW_USE_ROCM
+TEST(RocmRocdlPathTest, ROCDLPath) {
+  VLOG(2) << "ROCm-Deivce-Libs root = " << RocdlRoot();
   std::vector<string> rocdl_files;
   TF_EXPECT_OK(Env::Default()->GetMatchingPaths(
-      io::JoinPath(ROCDLRoot(), "*.amdgcn.bc"),
-      &rocdl_files));
+      io::JoinPath(RocdlRoot(), "*.amdgcn.bc"), &rocdl_files));
   EXPECT_LT(0, rocdl_files.size());
 }
 #endif

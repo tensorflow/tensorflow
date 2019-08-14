@@ -87,12 +87,13 @@ if [[ $1 == "PI_ONE" ]]; then
   echo "Building for the Pi One/Zero, with no NEON support"
   WHEEL_ARCH=linux_armv6l
 else
-  PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
+  PI_COPTS="--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
   --copt=-O3 --copt=-fno-tree-pre
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
-  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
+  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+  --define=raspberry_pi_with_neon=true"
   WHEEL_ARCH=linux_armv7l
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi

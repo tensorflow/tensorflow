@@ -387,48 +387,6 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Cardinality) {
   EXPECT_EQ(tensor_slice_dataset->Cardinality(), inputs[0].tensor->dim_size(0));
 }
 
-TEST_F(TensorSliceDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = PlainTensorTestCase();
-  const std::vector<Tensor> &expected_outputs = test_case.expected_outputs;
-  std::vector<Tensor> components = test_case.components;
-  DataTypeVector dtypes;
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
-    inputs.emplace_back(&component);
-    dtypes.emplace_back(component.dtype());
-  }
-  size_t num_tensors_per_slice = components.size();
-  std::vector<PartialTensorShape> shapes;
-  shapes.reserve(num_tensors_per_slice);
-  for (int i = 0; i < num_tensors_per_slice; ++i) {
-    shapes.emplace_back(expected_outputs[i].shape());
-  }
-  std::unique_ptr<OpKernel> tensor_slice_dataset_kernel;
-  TF_ASSERT_OK(CreateTensorSliceDatasetKernel(dtypes, shapes,
-                                              &tensor_slice_dataset_kernel));
-  std::unique_ptr<OpKernelContext> tensor_slice_dataset_context;
-  TF_ASSERT_OK(
-      CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
-                                      &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
-  TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
-                             tensor_slice_dataset_context.get(),
-                             &tensor_slice_dataset));
-  core::ScopedUnref scoped_unref(tensor_slice_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      tensor_slice_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedTensorSliceDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

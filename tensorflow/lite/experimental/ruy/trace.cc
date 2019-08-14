@@ -16,13 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/trace.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <cstdint>
+#include <cerrno>  // IWYU pragma: keep
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/experimental/ruy/block_map.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/time.h"
@@ -93,6 +92,9 @@ void Sort(Trace* trace) {
 
 // Dump a trace. Assumes that AggregateThreadSpecificEntries and Sort have
 // already been called on it.
+//
+// On some architectures long long ints are not same as std::int64_t, and
+// time is printed as %lld, so static_casts are necessary.
 void Dump(const Trace& trace) {
   const char* trace_filename = getenv("RUY_TRACE_FILE");
   FILE* trace_file = trace_filename ? fopen(trace_filename, "w") : stderr;
@@ -104,20 +106,22 @@ void Dump(const Trace& trace) {
   fprintf(trace_file, "thread_count:%d\n", trace.thread_count);
   fprintf(trace_file, "rows:%d\n", trace.block_map.dims[Side::kLhs]);
   fprintf(trace_file, "cols:%d\n", trace.block_map.dims[Side::kRhs]);
-  fprintf(trace_file, "Execute: %ll\n",
-          ToSeconds(trace.time_execute - trace.time_start));
+  fprintf(trace_file, "Execute: %lld\n",
+          static_cast<long long int>(
+              ToInt64Nanoseconds(trace.time_execute - trace.time_start)));
   for (const TraceEntry& entry : trace.entries) {
-    std::int64_t time = ToInt64Nanoseconds(entry.time_point - trace.time_start);
+    long long int time = static_cast<long long int>(
+        ToInt64Nanoseconds(entry.time_point - trace.time_start));
     switch (entry.event) {
       case TraceEvent::kThreadStart:
-        fprintf(trace_file, "ThreadStart: %ll, %d\n", time, entry.thread_id);
+        fprintf(trace_file, "ThreadStart: %lld, %d\n", time, entry.thread_id);
         break;
       case TraceEvent::kThreadLoopStart:
-        fprintf(trace_file, "ThreadLoopStart: %ll, %d\n", time,
+        fprintf(trace_file, "ThreadLoopStart: %lld, %d\n", time,
                 entry.thread_id);
         break;
       case TraceEvent::kThreadEnd:
-        fprintf(trace_file, "ThreadEnd: %ll, %d\n", time, entry.thread_id);
+        fprintf(trace_file, "ThreadEnd: %lld, %d\n", time, entry.thread_id);
         break;
       case TraceEvent::kBlockReserved: {
         std::uint32_t block_id = entry.params[0];
@@ -126,7 +130,7 @@ void Dump(const Trace& trace) {
         SidePair<int> start, end;
         GetBlockMatrixCoords(trace.block_map, block, &start, &end);
         fprintf(trace_file,
-                "BlockReserved: %ll, %d, %d, %d, %d, %d, %d, %d, %d\n", time,
+                "BlockReserved: %lld, %d, %d, %d, %d, %d, %d, %d, %d\n", time,
                 entry.thread_id, block_id, block[Side::kLhs], block[Side::kRhs],
                 start[Side::kLhs], start[Side::kRhs], end[Side::kLhs],
                 end[Side::kRhs]);
@@ -136,7 +140,7 @@ void Dump(const Trace& trace) {
         std::uint32_t block = entry.params[0];
         int start, end;
         GetBlockMatrixCoords(Side::kLhs, trace.block_map, block, &start, &end);
-        fprintf(trace_file, "BlockPackedLhs: %ll, %d, %d, %d, %d\n", time,
+        fprintf(trace_file, "BlockPackedLhs: %lld, %d, %d, %d, %d\n", time,
                 entry.thread_id, block, start, end);
         break;
       }
@@ -144,7 +148,7 @@ void Dump(const Trace& trace) {
         std::uint32_t block = entry.params[0];
         int start, end;
         GetBlockMatrixCoords(Side::kRhs, trace.block_map, block, &start, &end);
-        fprintf(trace_file, "BlockPackedRhs: %ll, %d, %d, %d, %d\n", time,
+        fprintf(trace_file, "BlockPackedRhs: %lld, %d, %d, %d, %d\n", time,
                 entry.thread_id, block, start, end);
         break;
       }
@@ -152,7 +156,7 @@ void Dump(const Trace& trace) {
         std::uint32_t block_id = entry.params[0];
         SidePair<int> block;
         GetBlockByIndex(trace.block_map, block_id, &block);
-        fprintf(trace_file, "BlockFinished: %ll, %d, %d, %d, %d\n", time,
+        fprintf(trace_file, "BlockFinished: %lld, %d, %d, %d, %d\n", time,
                 entry.thread_id, block_id, block[Side::kLhs],
                 block[Side::kRhs]);
         break;
@@ -161,8 +165,9 @@ void Dump(const Trace& trace) {
         RUY_CHECK(false);
     }
   }
-  fprintf(trace_file, "End: %ll\n",
-          ruy::ToInt64Nanoseconds(trace.time_end - trace.time_start));
+  fprintf(trace_file, "End: %lld\n",
+          static_cast<long long int>(
+              ToInt64Nanoseconds(trace.time_end - trace.time_start)));
   if (trace_filename) {
     fclose(trace_file);
   }

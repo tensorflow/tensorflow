@@ -53,6 +53,27 @@ ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Test removing op with inner ops.
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
+  using OpRewritePattern<TestOpWithRegion>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TestOpWithRegion op,
+                                     PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace
+
+void TestOpWithRegion::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<TestRemoveOpWithInnerOps>(context);
+}
+
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
 

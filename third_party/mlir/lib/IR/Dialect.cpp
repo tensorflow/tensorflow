@@ -62,7 +62,7 @@ void mlir::registerAllDialects(MLIRContext *context) {
 }
 
 Dialect::Dialect(StringRef name, MLIRContext *context)
-    : name(name), context(context), allowUnknownOps(false) {
+    : name(name), context(context) {
   assert(isValidNamespace(name) && "invalid dialect namespace");
   registerDialect(context);
 }
@@ -88,6 +88,12 @@ Attribute Dialect::parseAttribute(StringRef attrData, Type type,
 
 /// Parse a type registered to this dialect.
 Type Dialect::parseType(StringRef tyData, Location loc) const {
+  // If this dialect allows unknown types, then represent this with OpaqueType.
+  if (allowsUnknownTypes()) {
+    auto ns = Identifier::get(getNamespace(), getContext());
+    return OpaqueType::get(ns, tyData, getContext());
+  }
+
   emitError(loc) << "dialect '" << getNamespace()
                  << "' provides no type parsing hook";
   return Type();

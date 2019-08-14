@@ -25,10 +25,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import random_ops
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -46,6 +46,27 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
+
+
+def random_gamma(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(shape, 1.0)
+
+
+def random_gamma_with_alpha_beta(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(
+      shape, alpha=[[1.], [3.], [5.], [6.]], beta=[[3., 4.]])
+
+
+def random_poisson_v2(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, 1.0)
+
+
+def random_poisson_v2_with_lam(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, [12.2, 3.3])
+
+
+def fill(shape):  # pylint: disable=invalid-name
+  return array_ops.fill(shape, 1.0)
 
 
 class WhileV2Test(test.TestCase, parameterized.TestCase):
@@ -836,22 +857,33 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertLen(while_op.outputs, 3)
 
       gradients_impl.gradients(output, x)
-      # while_op should have been rewritten to output 2.0 intermediate.
-      # outputs = [loop_counter, max_iters, x, 2.0_accumulator, x_accumulator]
-      self.assertLen(while_op.outputs, 5)
+      # while_op should have been rewritten to output intermediates.
+      # outputs = [loop_counter, max_iters, x, x_accumulator]
+      self.assertLen(while_op.outputs, 4)
 
       gradients_impl.gradients(output, x)
       # Computing the gradient again shouldn't rewrite while_op again.
-      self.assertLen(while_op.outputs, 5)
+      self.assertLen(while_op.outputs, 4)
 
+  @parameterized.named_parameters(
+      ("RandomUniform", random_ops.random_uniform, [5, 3]),
+      ("RandomNormal", random_ops.random_normal, [5, 3]),
+      ("ParameterizedTruncatedNormal",
+       random_ops.parameterized_truncated_normal, [5, 3]),
+      ("TruncatedNormal", random_ops.truncated_normal, [5, 3]),
+      ("RandomGamma", random_gamma, [5, 3]),
+      ("RandomPoissonV2", random_poisson_v2, [5, 3]),
+      ("RandomGammaWithAlphaBeta", random_gamma_with_alpha_beta, [5, 3, 4, 2]),
+      ("RandomPoissonV2WithLam", random_poisson_v2_with_lam, [5, 3, 2]),
+  )
   @test_util.run_deprecated_v1
-  def testRandomUniformShape(self):
+  def testRandomOpsShape(self, random_fn, expected_shape):
     shape = constant_op.constant([3])
 
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
-      u = random_ops.random_uniform(shape_extended)
-      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      u = random_fn(shape_extended)
+      assert u.shape.as_list() == expected_shape, str(u.shape.as_list())
       return i + 1, u
 
     _, _ = while_loop_v2(
@@ -859,7 +891,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         body=Body,
         loop_vars=[
             0,
-            array_ops.zeros([5, 3], dtype=dtypes.float32),
+            array_ops.zeros(expected_shape, dtype=dtypes.float32),
         ])
 
   @test_util.run_deprecated_v1
@@ -869,7 +901,31 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
       u = array_ops.reshape(u, [-1])
+      assert u.shape.as_list() == [60], str(u.shape.as_list())
       u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
+
+  @parameterized.named_parameters(
+      ("Zeros", array_ops.zeros),
+      ("Ones", array_ops.ones),
+      ("Fill", fill),
+  )
+  @test_util.run_deprecated_v1
+  def testFillOpsShape(self, fill_fn):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = fill_fn(shape_extended)
       assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
       return i + 1, u
 
@@ -894,6 +950,28 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret, [v0])[0]
     self.assertAllEqual(ret, 16.)
     self.assertAllEqual(grad, 32.)
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateConstNodes(self):
+
+    def Body(v):
+      return v * 2.0
+
+    v0 = constant_op.constant(2.)
+    ret = while_loop_v2(lambda v: v < 8., Body, [v0])[0]
+    # Gradients computation has the side-effect of updating the forward op
+    # which is what we want to test.
+    unused_grad = gradients_impl.gradients(ret, [v0])[0]
+    # ret is separated from the `While` op by an `Identity` so we skip over
+    # that.
+    forward_while_op = ret.op.inputs[0].op
+    body_graph = while_v2._get_graph(forward_while_op, "body")
+    push_back_nodes = [
+        o for o in body_graph.get_operations() if o.type == "TensorListPushBack"
+    ]
+    # Gradient of `Mul` requires accumulating both its inputs. But since one
+    # of those is a Const (2.0), we should have just one accumulator.
+    self.assertLen(push_back_nodes, 1)
 
 
 def ScalarShape():

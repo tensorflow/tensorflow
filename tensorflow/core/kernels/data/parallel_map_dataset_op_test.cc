@@ -527,49 +527,6 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Cardinality) {
             test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> parallel_map_dataset_kernel;
-  TF_ASSERT_OK(CreateParallelMapDatasetOpKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, test_case.use_inter_op_parallelism,
-      test_case.sloppy, test_case.preserve_cardinality,
-      &parallel_map_dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_data_param.start, test_case.range_data_param.end,
-      test_case.range_data_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  Tensor num_parallel_calls = test_case.num_parallel_calls;
-  gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
-
-  std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
-  TF_ASSERT_OK(CreateParallelMapDatasetContext(
-      parallel_map_dataset_kernel.get(), &parallel_map_dataset_inputs,
-      &parallel_map_dataset_context));
-  DatasetBase* parallel_map_dataset;
-  TF_ASSERT_OK(CreateDataset(parallel_map_dataset_kernel.get(),
-                             parallel_map_dataset_context.get(),
-                             &parallel_map_dataset));
-  core::ScopedUnref scoped_unref_map_dataset(parallel_map_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      parallel_map_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedParallelMapDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

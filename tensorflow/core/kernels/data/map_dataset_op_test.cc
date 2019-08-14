@@ -341,43 +341,6 @@ TEST_P(ParameterizedMapDatasetOpTest, Cardinality) {
   EXPECT_EQ(map_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedMapDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.start, test_case.end, test_case.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
-  // which will handle the release of memory.
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> map_dataset_inputs;
-  map_dataset_inputs.emplace_back(&range_dataset_tensor);
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &map_dataset_kernel));
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(
-      map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(map_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = TestCase1();

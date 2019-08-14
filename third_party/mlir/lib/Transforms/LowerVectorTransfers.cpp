@@ -84,6 +84,8 @@
 /// ```
 
 using namespace mlir;
+using vector::VectorTransferReadOp;
+using vector::VectorTransferWriteOp;
 
 #define DEBUG_TYPE "affine-lower-vector-transfers"
 
@@ -273,10 +275,9 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   VectorView vectorView(transfer.getVector());
-  SmallVector<IndexHandle, 8> ivs =
-      IndexHandle::makeIndexHandles(vectorView.rank());
+  SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
-      IndexHandle::makeIndexHandlePointers(ivs);
+      makeIndexHandlePointers(MutableArrayRef<IndexHandle>(ivs));
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -335,10 +336,8 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   MemRefView view(transfer.getMemRef());
   ValueHandle vectorValue(transfer.getVector());
   VectorView vectorView(transfer.getVector());
-  SmallVector<IndexHandle, 8> ivs =
-      IndexHandle::makeIndexHandles(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs =
-      IndexHandle::makeIndexHandlePointers(ivs);
+  SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
+  SmallVector<ValueHandle *, 8> pivs = makeIndexHandlePointers(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -365,13 +364,10 @@ struct LowerVectorTransfersPass
   void runOnFunction() {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    patterns.push_back(
-        llvm::make_unique<VectorTransferRewriter<VectorTransferReadOp>>(
-            context));
-    patterns.push_back(
-        llvm::make_unique<VectorTransferRewriter<VectorTransferWriteOp>>(
-            context));
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
+                    VectorTransferRewriter<vector::VectorTransferWriteOp>>(
+        context);
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 

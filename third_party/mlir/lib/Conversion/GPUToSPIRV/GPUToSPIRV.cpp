@@ -104,8 +104,7 @@ void GPUToSPIRVPass::runOnModule() {
   SPIRVTypeConverter typeConverter(context);
   SPIRVEntryFnTypeConverter entryFnConverter(context);
   OwningRewritePatternList patterns;
-  RewriteListBuilder<KernelFnConversion>::build(
-      patterns, context, typeConverter, entryFnConverter);
+  patterns.insert<KernelFnConversion>(context, typeConverter, entryFnConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);
@@ -113,7 +112,7 @@ void GPUToSPIRVPass::runOnModule() {
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp Op) { return typeConverter.isSignatureLegal(Op.getType()); });
 
-  if (failed(applyFullConversion(spirvModules, target, std::move(patterns),
+  if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
   }

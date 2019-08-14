@@ -299,28 +299,6 @@ DatasetSaveTestCase<RangeDatasetParams> DatasetSaveTestCase1() {
   return {/*dataset_params=*/PositiveStepRangeDataset()};
 }
 
-TEST_F(RangeDatasetOpTest, DatasetSave) {
-  int64 thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = DatasetSaveTestCase1();
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(CreateRangeDatasetOpKernel<int64>(
-      test_case.dataset_params.node_name, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  TF_ASSERT_OK(CheckDatasetSave(*range_dataset));
-}
-
 IsStatefulTestCase<RangeDatasetParams> IsStatefulTestCase1() {
   return {/*dataset_params=*/PositiveStepRangeDataset(),
           /*expected_stateful=*/false};

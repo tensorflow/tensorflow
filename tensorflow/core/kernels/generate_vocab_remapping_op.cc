@@ -57,7 +57,7 @@ class GenerateVocabRemappingOp : public OpKernel {
 
     // Build a new ID->token lookup table.
     const string& new_vocab_filename =
-        new_vocab_file_tensor->scalar<string>()();
+        new_vocab_file_tensor->scalar<tstring>()();
     OP_REQUIRES(context, !new_vocab_filename.empty(),
                 errors::InvalidArgument("new vocab filename cannot be empty."));
     lookup::HashTable<int64, string>* new_vocab_table =
@@ -88,7 +88,7 @@ class GenerateVocabRemappingOp : public OpKernel {
                     old_vocab_file_tensor->shape().DebugString()));
     // Build a token->old ID lookup table.
     const string& old_vocab_filename =
-        old_vocab_file_tensor->scalar<string>()();
+        old_vocab_file_tensor->scalar<tstring>()();
     OP_REQUIRES(context, !old_vocab_filename.empty(),
                 errors::InvalidArgument("new vocab filename cannot be empty."));
     lookup::HashTable<string, int64>* old_vocab_table =
@@ -118,7 +118,7 @@ class GenerateVocabRemappingOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_temp(
                      DT_STRING, TensorShape({num_new_vocab_}), &default_token));
-    auto default_token_vec = default_token.vec<string>();
+    auto default_token_vec = default_token.vec<tstring>();
     default_token_vec.setConstant("" /* NOT_FOUND_TOKEN */);
 
     Tensor default_id;

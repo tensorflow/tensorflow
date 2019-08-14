@@ -410,8 +410,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
 
 Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
                             bool* compile_with_xla) {
-  if (!op->is_function() ||
-      !DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
+  if (!op->is_function()) {
     *compile_with_xla = false;
     return Status::OK();
   }
@@ -836,12 +835,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   *num_retvals = num_outputs;
 
   tensorflow::Device* op_device = op->Device();
-
-  auto* executor = op->Executor();
-  bool is_async = executor->Async();
-  VLOG(4) << "Execute remote eager op: " << op->Name()
-          << " (is async?: " << is_async << ").";
-
   const tensorflow::uint64 id = remote_op->id();
   for (int i = 0; i < num_outputs; ++i) {
     // TODO(nareshmodi): Change the callback to instead add the decref to a
@@ -855,10 +848,23 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // remote device here. We just need to know that it is remote. If we need
     // to copy this tensor to this process, the remote end will know the
     // correct device of this handle.
-    TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
+    Status status = TensorHandle::CreateUnshapedRemoteHandle(
         id, i, eager_client, context_id, output_dtypes[i], op_device, ctx,
-        &retvals[i]));
+        &retvals[i]);
+    if (!status.ok()) {
+      for (int j = 0; j < i; ++j) {
+        retvals[j]->Poison(errors::Internal(
+            "Failed to construct unshaped remote tensor handle at index ", i,
+            " for op ", op->Name()));
+      }
+      return status;
+    }
   }
+
+  auto* executor = op->Executor();
+  bool is_async = executor->Async();
+  VLOG(4) << "Execute remote eager op: " << op->Name()
+          << " (is async?: " << is_async << ").";
 
   std::unique_ptr<EagerNode> node(
       new eager::RemoteExecuteNode(std::move(request), op_device, eager_client,
@@ -904,7 +910,7 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
   if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
     // Don't update the device of direct function calls.
     // Particularly, if the user did not explicitly request any device for this

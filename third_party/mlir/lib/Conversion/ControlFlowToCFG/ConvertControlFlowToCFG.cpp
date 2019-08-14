@@ -258,8 +258,7 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
 
 void mlir::populateLoopToStdConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  RewriteListBuilder<ForLowering, IfLowering, TerminatorLowering>::build(
-      patterns, ctx);
+  patterns.insert<ForLowering, IfLowering, TerminatorLowering>(ctx);
 }
 
 void ControlFlowToCFGPass::runOnFunction() {
@@ -267,8 +266,7 @@ void ControlFlowToCFGPass::runOnFunction() {
   populateLoopToStdConversionPatterns(patterns, &getContext());
   ConversionTarget target(getContext());
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns))))
+  if (failed(applyPartialConversion(getFunction(), target, patterns)))
     signalPassFailure();
 }
 

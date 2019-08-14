@@ -40,10 +40,8 @@ limitations under the License.
 using tensorflow::int64;
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
-  llvm::ArrayRef<int64> raw_data = attr.getValues<int64>();
-  if (attr.isSplat())
-    return std::vector<int64>(attr.getType().getNumElements(), raw_data[0]);
-  return raw_data;
+  auto values = attr.getValues<int64>();
+  return {values.begin(), values.end()};
 }
 
 // Converts the broadcast_dimensions attribute into a span of dimension numbers

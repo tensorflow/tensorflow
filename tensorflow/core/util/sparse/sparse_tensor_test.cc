@@ -181,7 +181,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   Tensor vals(DT_STRING, TensorShape({N}));
 
   auto ix_t = ix.matrix<int64>();
-  auto vals_t = vals.vec<string>();
+  auto vals_t = vals.vec<tstring>();
   vals_t = vals_c;
   ix_t = ix_c;
 
@@ -191,8 +191,12 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("indices[2] = [2,0,0] is out of order",
-            st_indices_valid.error_message());
+  EXPECT_EQ(
+      "indices[2] = [2,0,0] is out of order. "
+      "Many sparse ops require sorted indices.\n"
+      "    Use `tf.sparse.reorder` to create a correctly ordered copy."
+      "\n\n",
+      st_indices_valid.error_message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
@@ -362,7 +366,7 @@ TEST(SparseTensorTest, SparseTensorToDenseTensor) {
   Tensor vals(DT_STRING, TensorShape({N}));
 
   auto ix_t = GetSimpleIndexTensor(N, NDIM);
-  auto vals_t = vals.vec<string>();
+  auto vals_t = vals.vec<tstring>();
 
   ix.matrix<int64>() = ix_t;
 
@@ -402,7 +406,7 @@ TEST(SparseTensorTest, SparseTensorToLargerDenseTensor) {
   Tensor vals(DT_STRING, TensorShape({N}));
 
   auto ix_t = GetSimpleIndexTensor(N, NDIM);
-  auto vals_t = vals.vec<string>();
+  auto vals_t = vals.vec<tstring>();
 
   ix.matrix<int64>() = ix_t;
 
@@ -540,7 +544,7 @@ TEST(SparseTensorTest, Concat) {
   auto ix_c = GetSimpleIndexTensor(N, NDIM);
 
   auto ix_t = ix.matrix<int64>();
-  auto vals_t = vals.vec<string>();
+  auto vals_t = vals.vec<tstring>();
 
   ix_t = ix_c;
 
@@ -561,7 +565,7 @@ TEST(SparseTensorTest, Concat) {
   TF_EXPECT_OK(concatted.IndicesValid());
 
   auto conc_ix_t = concatted.indices().matrix<int64>();
-  auto conc_vals_t = concatted.values().vec<string>();
+  auto conc_vals_t = concatted.values().vec<tstring>();
 
   for (int n = 0; n < 4; ++n) {
     for (int i = 0; i < N; ++i) {
@@ -750,7 +754,7 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
   TensorShape shape;
   std::vector<int64> order;
   auto ix_t = ix.matrix<int64>();
-  auto vals_t = vals.vec<string>();
+  auto vals_t = vals.vec<tstring>();
   for (int i = 0; i < N32; ++i) {
     int len = rnd.Rand32() % 1000;
     vals_t(i).resize(len);

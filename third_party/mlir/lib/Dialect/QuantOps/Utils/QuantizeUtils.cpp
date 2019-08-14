@@ -49,9 +49,14 @@ convertDenseFPElementsAttr(DenseFPElementsAttr realFPElementsAttr,
                            const UniformQuantizedValueConverter &converter) {
   // Convert to corresponding quantized value attributes.
   SmallVector<APInt, 8> quantValues;
-  quantValues.reserve(realFPElementsAttr.rawSize());
-  for (APFloat realVal : realFPElementsAttr) {
-    quantValues.push_back(converter.quantizeFloatToInt(realVal));
+  if (realFPElementsAttr.isSplat()) {
+    quantValues.push_back(
+        converter.quantizeFloatToInt(*realFPElementsAttr.begin()));
+  } else {
+    quantValues.reserve(realFPElementsAttr.getNumElements());
+    for (APFloat realVal : realFPElementsAttr) {
+      quantValues.push_back(converter.quantizeFloatToInt(realVal));
+    }
   }
 
   // Cast from an expressed-type-based type to storage-type-based type,

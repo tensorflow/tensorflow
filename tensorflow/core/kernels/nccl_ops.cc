@@ -121,7 +121,7 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -156,7 +156,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -196,7 +196,7 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 
@@ -233,7 +233,7 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(Name("_NcclBroadcastSend").Device(DEVICE_GPU),
@@ -273,7 +273,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(

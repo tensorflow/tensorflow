@@ -617,24 +617,25 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace gpu
 }  // namespace tflite
 
-TfLiteDelegate* NewGpuDelegate(const GpuDelegateOptions* options) {
+TfLiteDelegate* TFLGpuDelegateCreate(const GpuDelegateOptions* options) {
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO, "Created TensorFlow Lite delegate for Metal.");
   auto* metal_delegate = new ::tflite::gpu::metal::Delegate(options);
   return metal_delegate ? metal_delegate->tflite_delegate() : nullptr;
 }
 
-void DeleteGpuDelegate(TfLiteDelegate* delegate) {
+void TFLGpuDelegateDelete(TfLiteDelegate* delegate) {
   delete ::tflite::gpu::metal::GetMetalDelegate(delegate);
 }
 
-bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index, id<MTLBuffer> buffer) {
+bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
+                                           id<MTLBuffer> buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
   return metal_delegate && metal_delegate->BindBufferToTensor(buffer, tensor_index).ok();
 }
 
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
-bool TFLSetCommandEncoder(
+bool TFLGpuDelegateSetCommandEncoder(
     TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
     std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);

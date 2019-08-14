@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:command_queue",
         "//tensorflow/lite/delegates/gpu/gl:compiler",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
         "//tensorflow/lite/delegates/gpu/gl/converters:bhwc_to_phwc4",
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",

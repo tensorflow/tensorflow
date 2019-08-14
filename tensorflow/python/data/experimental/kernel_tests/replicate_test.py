@@ -73,13 +73,10 @@ class LocalReplicateTest(test_base.DatasetTestBase):
       dataset0 = dataset_ops.Dataset.range(100).map(
           lambda _: counter_var.assign_add(1))
     # We don't support stateful ops in functions as of now.
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
-      dataset1 = replicated_ds[self._device1]
-      with ops.device(self._device1):
-        self.assertDatasetProduces(
-            dataset1, range(100), requires_initialization=True)
+      self.evaluate(replicated_ds[self._device1]._variant_tensor)
 
 
 JOB_NAME = "remote_device"
@@ -120,6 +117,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
     self._device2 = "/job:%s/replica:0/task:2/device:CPU:0" % JOB_NAME
 
   def setUp(self):
+    super(RemoteReplicateTest, self).setUp()
     # Start the local server.
     local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
     context.set_server_def(
@@ -169,13 +167,10 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
       dataset0 = dataset_ops.Dataset.range(100).map(
           lambda _: counter_var.assign_add(1))
     # We don't support stateful ops in functions as of now.
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
-      dataset1 = replicated_ds[self._device1]
-      with ops.device(self._device1):
-        self.assertDatasetProduces(
-            dataset1, range(100), requires_initialization=True)
+      self.evaluate(replicated_ds[self._device1]._variant_tensor)
 
 
 if __name__ == "__main__":

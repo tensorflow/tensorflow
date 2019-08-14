@@ -49,6 +49,8 @@ double ComputeWaitTime(double output_time, double input_time,
                        double buffer_size, double* output_time_derivative,
                        double* input_time_derivative,
                        double* buffer_size_derivative) {
+  // Case 0: either the producer or the consumer are infinitely fast. Wait time
+  // is the time to produce an output.
   if (output_time == 0 || input_time == 0) {
     if (output_time_derivative) {
       *output_time_derivative = 1.0L;
@@ -61,6 +63,22 @@ double ComputeWaitTime(double output_time, double input_time,
     }
     return output_time;
   }
+  // Case 1: the consumer is slower than the producer. Wait time is 0 since the
+  // buffer will be full in the long run.
+  if (input_time > output_time) {
+    if (output_time_derivative) {
+      *output_time_derivative = 0.0L;
+    }
+    if (input_time_derivative) {
+      *input_time_derivative = 0.0L;
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = 0.0L;
+    }
+    return 0;
+  }
+  // Case 2: the consumer and the producer are equally fast. Expected wait time
+  // decreases linearly with the size of the buffer.
   if (input_time == output_time) {
     const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
     if (output_time_derivative) {
@@ -75,6 +93,8 @@ double ComputeWaitTime(double output_time, double input_time,
     }
     return p_buffer_empty * output_time;
   }
+  // Case 3: the producer is slower than the consumer and neither is infinitely
+  // fast.
   const double alpha = 1.0L / input_time;
   const double beta = 1.0L / output_time;
   const double ratio_pow = std::pow((beta / alpha), (buffer_size + 1.0L));
@@ -167,14 +187,20 @@ class InterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    if (num_inputs() <= 1) {
-      return SelfProcessingTimeLocked();
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
     }
-    double processing_time = (TotalProcessingTimeForInputs() -
-                              inputs_.front()->TotalProcessingTime()) /
-                             static_cast<double>(num_inputs() - 1);
-    return SelfProcessingTimeLocked() + processing_time;
+    if (num_inputs() <= 1) {
+      return self_processing_time;
+    }
+    double processing_time =
+        (TotalProcessingTimeForInputs(processing_times) -
+         inputs_.front()->TotalProcessingTime(/*processing_times=*/nullptr)) /
+        static_cast<double>(num_inputs() - 1);
+    return self_processing_time + processing_time;
   }
 };
 
@@ -282,13 +308,19 @@ class AsyncInterleaveMany : public Node {
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
+    }
     if (num_inputs() <= 1) {
-      return SelfProcessingTimeLocked();
+      return self_processing_time;
     }
     double processing_time =
-        TotalProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
-    return SelfProcessingTimeLocked() +
+        TotalProcessingTimeForInputs(processing_times) -
+        inputs_.front()->TotalProcessingTime(/*processing_times=*/nullptr);
+    return self_processing_time +
            processing_time / static_cast<double>(num_inputs() - 1);
   }
 };
@@ -345,8 +377,14 @@ class KnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
+    }
+    return self_processing_time +
+           ratio_ * TotalProcessingTimeForInputs(processing_times);
   }
 
  private:
@@ -462,8 +500,14 @@ class AsyncKnownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
+    }
+    return self_processing_time +
+           ratio_ * TotalProcessingTimeForInputs(processing_times);
   }
 
  private:
@@ -524,16 +568,22 @@ class UnknownRatio : public Node {
 
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
+    }
     if (inputs_.empty() || num_elements_ == 0) {
-      return SelfProcessingTimeLocked();
+      return self_processing_time;
     }
     // TODO(jsimsa): The current implementation assumes that the number of input
     // elements consumed per output is the same across all inputs.
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return SelfProcessingTimeLocked() + ratio * TotalProcessingTimeForInputs();
+    return self_processing_time +
+           ratio * TotalProcessingTimeForInputs(processing_times);
   }
 };
 
@@ -557,8 +607,9 @@ class Unknown : public Node {
   }
 
   // The processing time is the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
-    return TotalProcessingTimeForInputs();
+  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
+      override SHARED_LOCKS_REQUIRED(mu_) {
+    return TotalProcessingTimeForInputs(processing_times);
   }
 };
 
@@ -719,6 +770,28 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
   return parameters;
 }
 
+std::map<string, std::shared_ptr<Parameter>> Model::CollectEssentialParallelism(
+    std::shared_ptr<Node> node) {
+  // Parallelism parameter is considered to be essential if the coressponding
+  // transformations's processing time is greater than essential rate times the
+  // average transformation self processing time.
+  constexpr double kEssentialRate = 0.3L;
+
+  std::map<string, std::shared_ptr<Parameter>> parameters;
+  node->CollectTunableParameters(&parameters);
+  std::map<string, double> processing_times;
+  double processing_time = node->TotalProcessingTime(&processing_times);
+  double uniform_share =
+      processing_time / static_cast<double>(processing_times.size());
+  std::map<string, std::shared_ptr<Parameter>> essential_parameters;
+  for (auto& pair : parameters) {
+    if (processing_times[pair.first] > kEssentialRate * uniform_share) {
+      essential_parameters.insert(pair);
+    }
+  }
+  return essential_parameters;
+}
+
 void Model::OptimizeGradientDescent(int64 cpu_budget) {
   std::shared_ptr<Node> snapshot;
   {
@@ -726,24 +799,20 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
     snapshot = output_->Snapshot(nullptr);
   }
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
-  const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  auto essential_parameters = CollectEssentialParallelism(snapshot);
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
   // Gradient descent step size.
-  constexpr double kDescentStep = 0.7L;
+  constexpr double kDescentStep = 0.1L;
 
   // Optimization is stopped once the `OutputTime` improvement is smaller than
   // this value.
   constexpr double kOptimizationPrecision = 100.0L;
 
-  // Penalizing step for the parameters after we overoptimize (output time <
-  // processing time / cpu budget) the objective.
-  constexpr double kParametersPenalty = 0.05L;
-
   // Maximum number of iterations for optimization.
-  constexpr int64 kMaxIterations = 100;
+  constexpr int64 kMaxIterations = 1000;
 
   double output_time = 0;
   double new_output_time;
@@ -751,8 +820,14 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
   for (int i = 0; i < kMaxIterations; ++i) {
     std::map<string, double> gradient;
     new_output_time = OutputTime(snapshot, &gradient);
+    int64 model_parallelism = 0;
+    for (auto& pair : essential_parameters) {
+      model_parallelism += std::round(pair.second->value);
+    }
+    // We terminate once the improvement of the output latency is too small or
+    // the essential transformations' parallelism reaches the CPU budget.
     if (std::abs(output_time - new_output_time) < kOptimizationPrecision ||
-        new_output_time < processing_time / cpu_budget) {
+        model_parallelism > cpu_budget) {
       break;
     }
     double max_abs_derivative = 1.0;
@@ -761,13 +836,6 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
         max_abs_derivative =
             std::max(max_abs_derivative, std::abs(gradient[pair.first]));
       }
-    }
-    // Maximizes parameters on early stages of the model.
-    if (max_abs_derivative < kOptimizationPrecision) {
-      for (auto& pair : parameters) {
-        pair.second->value = pair.second->max;
-      }
-      break;
     }
     for (auto& pair : parameters) {
       new_value = pair.second->value -
@@ -782,23 +850,6 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
       }
     }
     output_time = new_output_time;
-  }
-  // Penalize parameters if we overoptimized the objective.
-  for (int i = 0;
-       i < kMaxIterations && new_output_time < processing_time / cpu_budget;
-       ++i) {
-    for (auto& pair : parameters) {
-      new_value = pair.second->value - kParametersPenalty;
-      // Projection on a feasible interval.
-      if (new_value > pair.second->max) {
-        pair.second->value = pair.second->max;
-      } else if (new_value < pair.second->min) {
-        pair.second->value = pair.second->min;
-      } else {
-        pair.second->value = new_value;
-      }
-    }
-    new_output_time = OutputTime(snapshot, /*gradient=*/nullptr);
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
   for (auto& pair : parameters) {
@@ -884,7 +935,7 @@ double Model::OutputTime(std::shared_ptr<Node> node,
 }
 
 double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
-  return node->TotalProcessingTime();
+  return node->TotalProcessingTime(/*processing_times=*/nullptr);
 }
 
 }  // namespace model

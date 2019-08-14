@@ -276,6 +276,19 @@ class TPUClusterResolver(ClusterResolver):
     if self._is_google_environment():
       self._environment = 'google'
       self.rpc_layer = None
+
+      # TODO(rsopher): remove this logic when possible
+      if self._tpu and self._tpu.startswith(compat.as_bytes('/bns')):
+        bns_and_port = self._tpu.rsplit(compat.as_bytes(':'), 1)
+        if len(bns_and_port) == 2:
+          try:
+            int(bns_and_port[1])
+          except ValueError:
+            # Leave named ports.
+            pass
+          else:
+            # Strip numerical ports.
+            self._tpu = bns_and_port[0]
     else:
       self._environment = ''
       self.rpc_layer = 'grpc'

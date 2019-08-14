@@ -25,11 +25,10 @@ class WorkerCacheInterface;
 // Extend CollectiveRemoteAccessLocal with access to remote peers.
 class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
  public:
-  CollectiveRemoteAccessDistributed(const DeviceMgr* dev_mgr,
-                                    DeviceResolverInterface* dev_resolver,
-                                    UnboundedWorkQueue* work_queue,
-                                    WorkerCacheInterface* worker_cache,
-                                    int64 step_id)
+  CollectiveRemoteAccessDistributed(
+      const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
+      std::shared_ptr<UnboundedWorkQueue> work_queue,
+      WorkerCacheInterface* worker_cache, int64 step_id)
       : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         worker_cache_(worker_cache) {}
 

@@ -72,7 +72,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
-#include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -93,7 +92,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
-#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -349,8 +347,9 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
 
 }  // namespace
 
-NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
-    : GpuCompiler(platform_id, nvptx::kTargetTriple, nvptx::kDataLayout) {}
+NVPTXCompiler::NVPTXCompiler()
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
+                  nvptx::kDataLayout) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
@@ -374,7 +373,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec) {
-  std::pair<int, int> compute_capability = absl::get<std::pair<int, int>>(gpu_version);
+  std::pair<int, int> compute_capability =
+      absl::get<std::pair<int, int>>(gpu_version);
 
   std::string libdevice_dir;
   {
@@ -390,10 +390,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
-  std::string ptx;
-
+  string ptx;
   if (!MaybeLoadPtxFromFile(module, &ptx)) {
-    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
                                  libdevice_dir));
@@ -409,9 +409,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     DumpToFileInDirOrStdout(*module, "ptx", ptx);
   }
 
-  std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
-      stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config());
+  std::vector<uint8> cubin =
+      CompilePtxOrGetCachedResult(stream_exec, ptx, compute_capability.first,
+                                  compute_capability.second, module->config());
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));

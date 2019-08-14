@@ -40,7 +40,7 @@ namespace gpu {
 // AMDGPUCompiler generates efficient GPU executables for AMDGPU target.
 class AMDGPUCompiler : public GpuCompiler {
  public:
-  AMDGPUCompiler(se::Platform::Id platform_id);
+  AMDGPUCompiler();
   ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(

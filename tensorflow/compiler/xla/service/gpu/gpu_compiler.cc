@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -115,22 +116,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       pointer_size_(llvm::DataLayout(data_layout)
                         .getPointerSize(0 /* default address space */)) {}
 
-StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
-  tensorflow::profiler::TraceMe activity(
-      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
-  TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
-
-  return std::move(module);
-}
-
 // Runs optimization passes on the given HLO module.
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -146,6 +131,8 @@ Status GpuCompiler::OptimizeHloModule(
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
+
+    pipeline.AddPass<GpuScatterExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<GpuHloSupportChecker>();
@@ -331,10 +318,27 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
+StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
+  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  tensorflow::profiler::TraceMe activity(
+      [&] { return absl::StrCat("HLO Transforms:", module->name()); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
+  return std::move(module);
+}
+
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
 

@@ -70,6 +70,8 @@ class EagerNode {
 // TODO(agarwal): Implement optimizations over EagerNode traces.
 class EagerExecutor {
  public:
+  explicit EagerExecutor(bool async);
+
   ~EagerExecutor();
 
   // Puts this in a shutdown state. In this state, Add() will return an error
@@ -78,11 +80,6 @@ class EagerExecutor {
   // Returns the status of executing pending nodes.
   // If async was not enabled, aborts and destroys all pending nodes.
   Status ShutDown();
-
-  // This is called whenever async mode is enabled. Note that it may be called
-  // multiple times as different calling threads may switch async mode on or off
-  // independently.
-  void EnableAsync();
 
   bool Async() const;
 
@@ -163,9 +160,9 @@ class EagerExecutor {
   std::multimap<EagerNode*, condition_variable*> node_done_notifications_
       GUARDED_BY(node_queue_mutex_);
 
-  // Thread object that calls the `Run` method. Currently we use only one thread
-  // for executing the EagerNodes one-by-one.
-  std::unique_ptr<Thread> thread_ GUARDED_BY(node_queue_mutex_);
+  // Thread object that calls the `Run` method in async mode.This thread runs
+  // till thread_done_ is set to true. It is `nullptr` in sync mode.
+  const std::unique_ptr<Thread> thread_;
 
   // thread_exited_notification_ is notified by the `thread_` right before it
   // exits.
