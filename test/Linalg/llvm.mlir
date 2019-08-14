@@ -76,10 +76,10 @@ func @slice(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   %{{.*}} = llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   %{{.*}} = llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
-//  CHECK-NEXT:   %{{.*}} = llvm.sub %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   %{{.*}} = llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
+//  CHECK-NEXT:   %{{.*}} = llvm.sub %{{.*}}, %{{.*}} : !llvm.i64
 //  CHECK-NEXT:   %{{.*}} = llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
+//  CHECK-NEXT:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 
 func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
