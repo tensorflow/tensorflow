@@ -301,7 +301,7 @@ class RNNCell(base_layer.Layer):
 
       batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
-    if None in [batch_size, dtype]:
+    if batch_size is None or dtype is None:
       raise ValueError(
           "batch_size and dtype cannot be None while constructing initial "
           "state: batch_size={}, dtype={}".format(batch_size, dtype))
