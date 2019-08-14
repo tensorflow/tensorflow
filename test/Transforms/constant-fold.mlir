@@ -404,8 +404,8 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
 
   // Fold an extract into a sparse with a sparse index.
   // CHECK-NEXT: {{.*}} = constant -2.000000e+00 : f16
-  %1 = constant sparse<[[0, 0, 0], [1, 1, 1]],  [-5.0, -2.0]> : vector<1x1x1xf16>
-  %ext_2 = extract_element %1[%const_1, %const_1, %const_1] : vector<1x1x1xf16>
+  %1 = constant sparse<[[0, 0, 0], [1, 1, 1]],  [-5.0, -2.0]> : vector<4x4x4xf16>
+  %ext_2 = extract_element %1[%const_1, %const_1, %const_1] : vector<4x4x4xf16>
 
   // Fold an extract into a sparse with a non sparse index.
   // CHECK-NEXT: {{.*}} = constant 0.000000e+00 : f16
