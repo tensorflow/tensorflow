@@ -59,8 +59,7 @@ tf_cc_tests(
     name = "ctc_beam_search_test",
     size = "small",
     srcs = [
-        "ctc_beam_search_test_float.cc",
-        "ctc_beam_search_test_double.cc",
+        "ctc_beam_search_test.cc",
     ],
     deps = [
         ":ctc_beam_search_lib",

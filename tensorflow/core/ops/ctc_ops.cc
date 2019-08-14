@@ -34,7 +34,7 @@ REGISTER_OP("CTCLoss")
     .Attr("ignore_longer_outputs_than_inputs: bool = false")
     .Output("loss: T")
     .Output("gradient: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle labels_indices;
@@ -70,7 +70,7 @@ REGISTER_OP("CTCGreedyDecoder")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
     .Output("log_probability: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle sequence_length;
@@ -101,7 +101,7 @@ REGISTER_OP("CTCBeamSearchDecoder")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
     .Output("log_probability: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle inputs;
       ShapeHandle sequence_length;

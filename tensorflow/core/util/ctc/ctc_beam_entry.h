@@ -67,7 +67,7 @@ struct BeamEntry {
   inline bool Active() const { return newp.total != kLogZero<T>::val; }
   // Return the child at the given index, or construct a new one in-place if
   // none was found.
-  BeamEntry<T>& GetChild(int ind) {
+  BeamEntry<T, CTCBeamState>& GetChild(int ind) {
     auto entry = children.emplace(ind, nullptr);
     auto& child_entry = entry.first->second;
     // If this is a new child, populate the BeamEntry<CTCBeamState>*.
@@ -79,7 +79,7 @@ struct BeamEntry {
   std::vector<int> LabelSeq(bool merge_repeated) const {
     std::vector<int> labels;
     int prev_label = -1;
-    const BeamEntry<T>* c = this;
+    const BeamEntry<T, CTCBeamState>* c = this;
     while (c->parent != nullptr) {  // Checking c->parent to skip root leaf.
       if (!merge_repeated || c->label != prev_label) {
         labels.push_back(c->label);

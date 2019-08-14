@@ -27,8 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// typedef Eigen::ThreadPoolDevice CPUDevice;
-
 template<typename T>
 class CTCLossOp : public OpKernel {
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
