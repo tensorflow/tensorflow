@@ -46,6 +46,10 @@ using mkldnn::primitive;
 using mkldnn::reorder;
 using mkldnn::stream;
 
+using CPUDevice = Eigen::ThreadPoolDevice;
+using MemoryArgsMap = std::unordered_map<int, memory>;
+using ReorderPd = mkldnn::reorder::primitive_desc;
+
 #ifdef _WIN32
 typedef unsigned int uint;
 #endif
@@ -125,6 +129,9 @@ static const int kSmallBatchSize = 32;
 
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(md, tensor_ptr, net, net_args, \
+                                         engine_ptr)                    \
+  md, &tensor_ptr, net, net_args, &engine_ptr
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
   GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
@@ -145,10 +152,15 @@ static const int kSmallBatchSize = 32;
 #define MKL_TENSOR_FORMAT_UNDEF MKL_TENSOR_FORMAT_BLOCKED
 #define MEMORY_DATA_TYPE_UNDEF memory::data_type::undef
 #define MEMORY_PRIMITIVE_DESC memory::desc
+#define NET_ARGS_PTR &net_args
+#define OUTPUT_TF_MD output_tf_md
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #else
 #define ENGINE_CPU engine::cpu
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(pd, tensor_ptr, net_ptr, net_args, \
+                                         engine_ptr)                        \
+  pd, &tensor_ptr, &net_ptr
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
@@ -168,6 +180,8 @@ static const int kSmallBatchSize = 32;
 #define MKL_TENSOR_FORMAT_UNDEF MKL_TENSOR_FORMAT_INVALID
 #define MEMORY_DATA_TYPE_UNDEF memory::data_type::data_undef
 #define MEMORY_PRIMITIVE_DESC memory::primitive_desc
+#define NET_ARGS_PTR nullptr
+#define OUTPUT_TF_MD output_tf_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
 #endif  // ENABLE_MKLDNN_V1
@@ -210,8 +224,6 @@ memory::dims CalculateTFStrides(const memory::dims& dims_tf_order);
 memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
                                         const memory::dims& strides,
                                         memory::data_type dtype);
-
-typedef std::unordered_map<int, memory> MemoryArgsMap;
 
 #ifdef ENABLE_MKLDNN_V1
 inline std::ostream& operator<<(std::ostream& os,
@@ -678,33 +690,17 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
 #endif  // !ENABLE_MKLDNN_V1
     input.SetUsrMem(input_mkl_md, &mkl_tensor);
-
-#ifdef ENABLE_MKLDNN_V1
-    // Reorder
-    if (input.IsReorderNeeded(output_tf_md)) {
+    if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
       std::vector<primitive> net;
       std::vector<MemoryArgsMap> net_args;
-      auto status = input.CheckReorderToOpMem(output_tf_md, &output_tensor, net,
-                                              net_args, &cpu_engine);
+      auto status = input.CheckReorderToOpMem(GET_CHECK_REORDER_TO_OP_MEM_ARGS(
+          OUTPUT_TF_MD, output_tensor, net, net_args, cpu_engine));
       if (!status) {
         TF_CHECK_OK(
             Status(error::Code::INTERNAL,
                    "ConvertMklToTF(): Failed to create reorder for input"));
       }
-      ExecutePrimitive(net, &net_args, cpu_engine);
-#else
-    // Reorder
-    if (input.IsReorderNeeded(output_tf_pd)) {
-      std::vector<primitive> net;
-      auto status =
-          input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net);
-      if (!status) {
-        TF_CHECK_OK(
-            Status(error::Code::INTERNAL,
-                   "ConvertMklToTF(): Failed to create reorder for input"));
-      }
-      ExecutePrimitive(net, nullptr, cpu_engine);
-#endif  // ENABLE_MKLDNN_V1
+      ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
     } else {
       // If not, just forward input tensor to output tensor.
       auto status = output_tensor.CopyFrom(mkl_tensor, output_shape);
@@ -1236,7 +1232,7 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
   return memory::desc(md);
 }
 
-inline void CreateAndExecuteReorder(const reorder::primitive_desc& reorder_desc,
+inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
                                     const memory& src_mem,
                                     const memory& dst_mem,
                                     const engine& engine) {
@@ -1245,11 +1241,10 @@ inline void CreateAndExecuteReorder(const reorder::primitive_desc& reorder_desc,
   net.push_back(mkldnn::reorder(reorder_desc));
   std::vector<MemoryArgsMap> net_args;
   net_args.push_back({{MKLDNN_ARG_FROM, src_mem}, {MKLDNN_ARG_TO, dst_mem}});
-  ExecutePrimitive(net, &net_args, engine);
 #else
   net.push_back(mkldnn::reorder(reorder_desc, src_mem, dst_mem));
-  ExecutePrimitive(net, nullptr, engine);
 #endif  // ENABLE_MKLDNN_V1
+  ExecutePrimitive(net, NET_ARGS_PTR, engine);
 }
 
 template <typename T>
@@ -1778,11 +1773,10 @@ class MklDnnData {
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
     net_args.push_back(MemoryArgsMap{{MKLDNN_ARG_FROM, *reorder_memory_},
                                      {MKLDNN_ARG_TO, *user_memory_}});
-    ExecutePrimitive(net, &net_args, *cpu_engine_);
 #else
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
-    ExecutePrimitive(net, nullptr, *cpu_engine_);
 #endif  // ENABLE_MKLDNN_V1
+    ExecutePrimitive(net, NET_ARGS_PTR, *cpu_engine_);
   }
 };
 
@@ -2128,6 +2122,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 #undef ENGINE_CPU
+#undef GET_CHECK_REORDER_TO_OP_MEM_ARGS
 #undef GET_MEMORY_DESC_FROM_MEM_PTR
 #undef GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR
 #undef MEMORY_CONSTRUCTOR
@@ -2144,6 +2139,8 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 #undef MKL_TENSOR_FORMAT_UNDEF
 #undef MEMORY_DATA_TYPE_UNDEF
 #undef MEMORY_PRIMITIVE_DESC
+#undef NET_ARGS_PTR
+#undef OUTPUT_TF_MD
 #undef TENSOR_FORMAT
 #undef TENSOR_FORMAT_NHWC
 

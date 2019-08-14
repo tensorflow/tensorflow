@@ -34,14 +34,21 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
+
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(md, tensor, net, net_args, engine) \
+  md, tensor, net, net_args, engine
 #define GET_TF_DATA_FORMAT(shape, mem_desc) shape.GetTfDataFormat()
+#define NET_ARGS_PTR &net_args
 #else
 #define ENGINE_CPU engine::cpu
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(md, tensor, net_ptr, net_args, \
+                                         engine)                        \
+  memory::primitive_desc(md, engine), tensor, &net_ptr
 #define GET_TF_DATA_FORMAT(shape, mem_desc) mem_desc.data.format
+#define NET_ARGS_PTR nullptr
 #endif  // ENABLE_MKLDNN_V1
-typedef Eigen::ThreadPoolDevice CPUDevice;
 
 ///////////////////////////////////////////////////////////
 //               Op kernel
@@ -149,26 +156,16 @@ class MklInputConversionOp : public OpKernel {
           input.SetUsrMem(input0_md, &input_tensor_0);
           // Create reorder from input0's layout to input1's layout
           std::vector<primitive> net;
-#ifdef ENABLE_MKLDNN_V1
           std::vector<MemoryArgsMap> net_args;
           // TODO(bhavanis): Refactor CheckReorderToOpMem() to create and
           // execute reorder
-          auto status = input.CheckReorderToOpMem(input1_md, tensor_out, net,
-                                                  net_args, cpu_engine);
           OP_REQUIRES(
-              context, status,
+              context,
+              input.CheckReorderToOpMem(GET_CHECK_REORDER_TO_OP_MEM_ARGS(
+                  input1_md, tensor_out, net, net_args, cpu_engine)),
               errors::Internal(
                   "MklInputConversionOp: Failed to create reorder for input0"));
-          ExecutePrimitive(net, &net_args, cpu_engine);
-#else
-          auto status = input.CheckReorderToOpMem(
-              memory::primitive_desc(input1_md, cpu_engine), tensor_out, &net);
-          OP_REQUIRES(
-              context, status,
-              errors::Internal(
-                  "MklInputConversionOp: Failed to create reorder for input0"));
-          ExecutePrimitive(net, nullptr, cpu_engine);
-#endif  // ENABLE_MKLDNN_V1
+          ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
           // Input1 will be passed through
           ForwardMklTensorInToOut(context, kInputIndex_1, kInputIndex_1);
           return;
@@ -261,31 +258,22 @@ class MklInputConversionOp : public OpKernel {
       tf_input.SetUsrMem(input_tf_md, tf_tensor);
       // Create reorder between TF layout and MKL layout if necessary
       std::vector<primitive> net;
-#ifdef ENABLE_MKLDNN_V1
       std::vector<MemoryArgsMap> net_args;
-      bool reordered = tf_input.CheckReorderToOpMem(output_mkl_md, tensor_out,
-                                                    net, net_args, cpu_engine);
-#else
-      bool reordered = tf_input.CheckReorderToOpMem(
-          memory::primitive_desc(output_mkl_md, cpu_engine), tensor_out, &net);
-#endif  // ENABLE_MKLDNN_V1
-
+      bool reordered =
+          tf_input.CheckReorderToOpMem(GET_CHECK_REORDER_TO_OP_MEM_ARGS(
+              output_mkl_md, tensor_out, net, net_args, cpu_engine));
       if (!reordered) {
         // This is the case that the TF tensor has the same shape and format of
         // mkl tensor. However, tf_tensor can not be simply forwarded to the
         // output tensor since mkl data tensor is always one dimensional tensor.
         // Tensor::CopyFrom shares the buffer of the other tensor while set its
         // shape to the other tensor.
-        auto status = tensor_out->CopyFrom(*tf_tensor, tensor_out->shape());
-        OP_REQUIRES(context, status,
+        OP_REQUIRES(context,
+                    tensor_out->CopyFrom(*tf_tensor, tensor_out->shape()),
                     errors::Internal("MklInputConversionOp: Failed to forward "
                                      "input tensor to output"));
       } else {
-#ifdef ENABLE_MKLDNN_V1
-        ExecutePrimitive(net, &net_args, cpu_engine);
-#else
-        ExecutePrimitive(net, nullptr, cpu_engine);
-#endif  // ENABLE_MKLDNN_V1
+        ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
       }
 
       // -- The tensor in MKL format passes through --
@@ -343,7 +331,9 @@ TF_CALL_bfloat16(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #undef ENGINE_CPU
+#undef GET_CHECK_REORDER_TO_OP_MEM_ARGS
 #undef GET_TF_DATA_FORMAT
+#undef NET_ARGS_PTR
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

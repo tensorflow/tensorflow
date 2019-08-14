@@ -51,10 +51,10 @@ using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
-namespace tensorflow {
+using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
+using ReorderPd = mkldnn::reorder::primitive_desc;
 
-typedef mkldnn::convolution_forward::primitive_desc ConvFwdPd;
-typedef mkldnn::reorder::primitive_desc ReorderPd;
+namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
 #define ADD_MD add_md
@@ -515,8 +515,6 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
   }
 };
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-
 // Base class for convolution forward operations
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
           typename Toutput, typename Ttemp_output, typename Tpadding,
@@ -595,7 +593,7 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, eager_mode);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape, eager_mode);
 
-      OP_REQUIRES(context, filter_mkl_shape.IsMklTensor() == false,
+      OP_REQUIRES(context, !filter_mkl_shape.IsMklTensor(),
                   errors::InvalidArgument("Filter should not be in "
                                           "Mkl Layout"));
 
@@ -669,6 +667,9 @@ class MklConvOp : public OpKernel {
         OP_REQUIRES(
             context, !pad_enabled,
             errors::InvalidArgument("Pad + Conv fusion only works for 2D"));
+        OP_REQUIRES(
+            context, !fuse_pad_,
+            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
       }
 
       // TODO 3-D support for Depthwise is not there
@@ -678,12 +679,6 @@ class MklConvOp : public OpKernel {
                         "Only 2D convolution is supported for depthwise."));
       }
 
-      // TODO(Intel-tf) Add check to make sure pad_enabled is true only for 2D
-      if (!is_conv2d) {
-        OP_REQUIRES(
-            context, !fuse_pad_,
-            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
-      }
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
@@ -1018,9 +1013,8 @@ class MklConvOp : public OpKernel {
 
       // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape) {
-        auto status = (*output_tensor)->CopyFrom(add_tensor, output_tf_shape);
         OP_REQUIRES(
-            context, status,
+            context, (*output_tensor)->CopyFrom(add_tensor, output_tf_shape),
             errors::Internal("MklConvOp: AddN fusion: Failed to forward "
                              "input tensor to output"));
       } else {
