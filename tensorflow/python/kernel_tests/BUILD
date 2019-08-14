@@ -3462,6 +3462,9 @@ cuda_py_test(
     ],
     shard_count = 20,
     xla_enable_strict_auto_jit = True,
+    tags = [
+        "no_cuda",
+    ],
 )
 
 cuda_py_test(
