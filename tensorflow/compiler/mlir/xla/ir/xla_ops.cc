@@ -208,36 +208,32 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 1 && "convert must take one operand");
-  auto operand = operands[0];
-  if (!operand) return {};
+  if (getOperand()->getType() == getType()) {
+    return getOperand();
+  }
 
-  if (auto elements = operand.dyn_cast<DenseElementsAttr>()) {
+  if (auto prev_op =
+          dyn_cast_or_null<ReshapeOp>(getOperand()->getDefiningOp())) {
+    setOperand(prev_op.getOperand());
+    return getResult();
+  }
+
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
     return elements.reshape(getResult()->getType().cast<ShapedType>());
   }
 
   return {};
 }
 
-namespace {
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
 
-struct SimplifyRedundantReshape : public OpRewritePattern<ReshapeOp> {
-  explicit SimplifyRedundantReshape(MLIRContext* context)
-      : OpRewritePattern(context, /*benefit=*/1) {}
-
-  PatternMatchResult matchAndRewrite(ReshapeOp op,
-                                     PatternRewriter& rewriter) const override {
-    if (op.getOperand()->getType() == op.getType()) {
-      rewriter.replaceOp(op, {op.getOperand()});
-      return matchSuccess();
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  for (auto it : llvm::enumerate(permutation().cast<DenseIntElementsAttr>())) {
+    if (it.index() != it.value()) {
+      return {};
     }
-    return matchFailure();
   }
-};
-
-}  // namespace
-
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
-                                            MLIRContext* context) {
-  results.insert<SimplifyRedundantReshape>(context);
+  return getOperand();
 }

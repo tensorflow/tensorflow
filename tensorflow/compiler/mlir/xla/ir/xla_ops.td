@@ -886,7 +886,6 @@ def XLA_ReshapeOp: XLA_Op<"reshape",
   }];
 
   let hasFolder = 1;
-  let hasCanonicalizer = 1;
 
   // TODO(b/129422361) One of the required arguments comes from the new shape,
   // which isn't handled by the codegen. The optional argument (dimensions)
@@ -1061,6 +1060,8 @@ def XLA_TransposeOp: XLA_Op<"transpose",
     ElementsAttr:$permutation
   );
   let results = (outs XLA_Tensor);
+
+  let hasFolder = 1;
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
