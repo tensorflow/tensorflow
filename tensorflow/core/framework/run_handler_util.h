@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace tensorflow {
@@ -52,6 +53,11 @@ void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
 // requests.
 std::vector<int> ChooseRequestsWithExponentialDistribution(
     int num_active_requests, int num_threads);
+
+// Loop environment variable named 'var_name' and return the value if it exist
+// and can be parsed. Return 'default_value' otherwise.
+double ParamFromEnvWithDefault(const std::string& var_name,
+                               double default_value);
 
 }  // end namespace tensorflow
 #endif  // TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_
