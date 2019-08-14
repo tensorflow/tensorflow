@@ -61,8 +61,7 @@ SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
   auto subView = dyn_cast_or_null<SubViewOp>(viewProducingOp);
   auto slice = dyn_cast_or_null<SliceOp>(viewProducingOp);
   auto view = dyn_cast_or_null<ViewOp>(viewProducingOp);
-  if (!subView && !slice && !view)
-    return matchFailure();
+  assert(subView || slice || view);
 
   unsigned dim = dimOp.getIndex();
   Value *min, *max, *step;
@@ -119,179 +118,6 @@ SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
   return matchSuccess();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// LoadOp.
-////////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::LoadOp::build(Builder *b, OperationState *result,
-                                 Value *view, ArrayRef<Value *> indices) {
-  auto viewType = view->getType().cast<ViewType>();
-  result->addOperands(view);
-  result->addOperands(indices);
-  result->addTypes(viewType.getElementType());
-}
-
-// A LoadOp prints as:
-//
-// ```{.mlir}
-//    %0 = linalg.load %V[%c0] : !linalg.view<?xf32>
-// ```
-void mlir::linalg::LoadOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getView() << '[';
-  p->printOperands(getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getViewType();
-}
-
-ParseResult mlir::linalg::LoadOp::parse(OpAsmParser *parser,
-                                        OperationState *result) {
-  OpAsmParser::OperandType viewInfo;
-  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
-  ViewType type;
-
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(viewInfo, type, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type.getElementType(), result->types));
-}
-
-LogicalResult mlir::linalg::LoadOp::verify() {
-  if (getNumOperands() == 0)
-    return emitOpError("expected a view to load from");
-
-  auto viewType = getView()->getType().dyn_cast<ViewType>();
-  if (!viewType)
-    return emitOpError("first operand must be a view");
-
-  if (getType() != viewType.getElementType())
-    return emitOpError("result type must match element type of the view");
-
-  if (getRank() != getNumOperands() - 1)
-    return emitOpError("incorrect number of indices for load");
-
-  for (auto *idx : getIndices())
-    if (!idx->getType().isIndex())
-      return emitOpError("index to load must have 'index' type");
-
-  return success();
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// RangeOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::RangeOp::build(Builder *b, OperationState *result,
-                                  Value *min, Value *max, Value *step) {
-  result->addOperands({min, max, step});
-  result->addTypes({RangeType::get(b->getContext())});
-}
-
-// Verification is simply that a RangeOp takes 3 index ssa-value.
-LogicalResult mlir::linalg::RangeOp::verify() {
-  if (!min() || !min()->getType().isa<IndexType>())
-    return emitOpError("first operand should be of type index");
-  if (!max() || !max()->getType().isa<IndexType>())
-    return emitOpError("second operand should be of type index");
-  if (!step() || !step()->getType().isa<IndexType>())
-    return emitOpError("third operand should be of type index");
-  return success();
-}
-
-// A RangeOp prints as:
-//
-// ```{.mlir}
-//   linalg.range %0:%1:%2 : !linalg.range
-// ```
-void mlir::linalg::RangeOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *min() << ":" << *max() << ":" << *step()
-     << " : " << getType();
-}
-
-ParseResult mlir::linalg::RangeOp::parse(OpAsmParser *parser,
-                                         OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
-  RangeType type;
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
-      parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
-      parser->parseOperand(rangeInfo[2]) || parser->parseColonType(type) ||
-      parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type, result->types));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// StoreOp.
-////////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::StoreOp::build(Builder *b, OperationState *result,
-                                  Value *valueToStore, Value *view,
-                                  ArrayRef<Value *> indices) {
-  result->addOperands(valueToStore);
-  result->addOperands(view);
-  result->addOperands(indices);
-}
-
-// A StoreOp prints as:
-//
-// ```{.mlir}
-//    linalg.store %f, %V[%c0] : !linalg.view<?xf32>
-// ```
-void mlir::linalg::StoreOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getValueToStore();
-  *p << ", " << *getView() << '[';
-  p->printOperands(getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getViewType();
-}
-
-ParseResult mlir::linalg::StoreOp::parse(OpAsmParser *parser,
-                                         OperationState *result) {
-  OpAsmParser::OperandType storeValueInfo;
-  OpAsmParser::OperandType viewInfo;
-  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
-  ViewType viewType;
-
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(storeValueInfo) || parser->parseComma() ||
-      parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(viewType) ||
-      parser->resolveOperand(storeValueInfo, viewType.getElementType(),
-                             result->operands) ||
-      parser->resolveOperand(viewInfo, viewType, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands));
-}
-
-LogicalResult mlir::linalg::StoreOp::verify() {
-  if (getNumOperands() < 2)
-    return emitOpError("expected a value to store and a view");
-
-  // Second operand is a memref type.
-  auto viewType = getView()->getType().dyn_cast<ViewType>();
-  if (!viewType)
-    return emitOpError("second operand must be a view");
-
-  // First operand must have same type as memref element type.
-  if (getValueToStore()->getType() != viewType.getElementType())
-    return emitOpError("first operand must have same element type as the view");
-
-  if (getNumOperands() != 2 + viewType.getRank())
-    return emitOpError("store index operand count not equal to view rank");
-
-  for (auto *idx : getIndices())
-    if (!idx->getType().isIndex())
-      return emitOpError("index to store must have 'index' type");
-
-  return success();
-}
-
 ///////////////////// Operations defined with Tablegen /////////////////////////
 // For such operations that do not correspond to library calls (i.e. defined in
 // LinalgOps.td), we define an overloaded `print` function and a
@@ -314,7 +140,9 @@ static ParseResult parseBufferAllocOp(OpAsmParser *parser,
   SmallVector<OpAsmParser::OperandType, 1> sizeInfo;
   BufferType bufferType;
   auto indexTy = parser->getBuilder().getIndexType();
-  if (parser->parseOperandList(sizeInfo) || parser->parseColonType(bufferType))
+  if (parser->parseOperandList(sizeInfo) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(bufferType))
     return failure();
   if (sizeInfo.empty())
     return parser->addTypeToList(bufferType, result->types);
@@ -324,19 +152,16 @@ static ParseResult parseBufferAllocOp(OpAsmParser *parser,
 
 static LogicalResult verify(BufferAllocOp op) {
   if (!op.getBufferType().hasConstantSize()) {
-    if (llvm::size(op.size()) != 1 ||
-        !op.getOperand(0)->getType().isa<IndexType>())
-      return op.emitOpError(
-          "one operand of type index expected for dynamic buffer");
+    if (llvm::size(op.size()) != 1)
+      return op.emitOpError("expected one index operand");
   } else { // op.getBufferType().hasConstantSize()
     if (!llvm::empty(op.size()))
-      return op.emitOpError("unexpected static buffer operand");
+      return op.emitOpError("expected zero operand");
     if (op.getBufferType().getBufferSize().getValue() <= 0)
       return op.emitOpError("expected nonnegative static buffer size");
   }
-  if (!VectorType::isValidElementType(op.getElementType()) &&
-      !op.getElementType().isa<VectorType>())
-    return op.emitOpError("unsupported buffer element type");
+  if (!TensorType::isValidElementType(op.getElementType()))
+    return op.emitOpError("expected valid buffer element type");
   return success();
 }
 
@@ -354,20 +179,22 @@ static ParseResult parseBufferDeallocOp(OpAsmParser *parser,
                                         OperationState *result) {
   OpAsmParser::OperandType bufferInfo;
   BufferType bufferType;
-  if (parser->parseOperand(bufferInfo) || parser->parseColonType(bufferType))
+  if (parser->parseOperand(bufferInfo) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(bufferType))
     return failure();
   return parser->resolveOperands(bufferInfo, bufferType, result->operands);
-}
-
-static void print(OpAsmPrinter *p, BufferSizeOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getOperand()->getType();
 }
 
 //===----------------------------------------------------------------------===//
 // BufferSizeOp
 //===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, BufferSizeOp op) {
+  *p << op.getOperationName() << " " << *op.buffer();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.buffer()->getType();
+}
 
 static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                                      OperationState *result) {
@@ -552,6 +379,66 @@ static LogicalResult verify(GenericOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// LoadOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, linalg::LoadOp op) {
+  *p << op.getOperationName() << " " << *op.view() << '[';
+  p->printOperands(op.indices());
+  *p << ']';
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getViewType();
+}
+
+static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType viewInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  ViewType type;
+
+  auto affineIntTy = parser->getBuilder().getIndexType();
+  return failure(
+      parser->parseOperand(viewInfo) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperand(viewInfo, type, result->operands) ||
+      parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
+      parser->addTypeToList(type.getElementType(), result->types));
+}
+
+static LogicalResult verify(linalg::LoadOp op) {
+  if (op.getRank() != llvm::size(op.indices()))
+    return op.emitOpError("expected ")
+           << op.getRank() << " indices, got " << llvm::size(op.indices());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, RangeOp op) {
+  *p << op.getOperationName() << " " << *op.min() << ":" << *op.max() << ":"
+     << *op.step();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getResult()->getType();
+}
+
+static ParseResult parseRangeOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
+  RangeType type;
+  auto affineIntTy = parser->getBuilder().getIndexType();
+  return failure(
+      parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
+      parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
+      parser->parseOperand(rangeInfo[2]) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
+      parser->addTypeToList(type, result->types));
+}
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
@@ -569,19 +456,12 @@ void mlir::linalg::SliceOp::build(Builder *b, OperationState *result,
   result->addTypes({ViewType::get(b->getContext(), elementType, rank)});
 }
 
-// A SliceOp prints as:
-//
-// ```{.mlir}
-//   linalg.slice %0[%1, %2] :
-//     !linalg.view<?x?xf32>, [indexing-types], !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a view created from a buffer, %1 and %2 are
-// ssa-value each holding a range.
 static void print(OpAsmPrinter *p, SliceOp op) {
   *p << SliceOp::getOperationName() << " " << *op.view() << "[";
   p->printOperands(op.indexings());
-  *p << "] : " << op.getBaseViewType();
+  *p << "] ";
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getBaseViewType();
   for (auto indexing : op.indexings()) {
     *p << ", " << indexing->getType();
   }
@@ -613,8 +493,9 @@ static ParseResult parseSliceOp(OpAsmParser *parser, OperationState *result) {
 
 static LogicalResult verify(SliceOp op) {
   unsigned rank = op.getBaseViewRank();
-  if (llvm::size(op.indexings()) != rank)
-    return op.emitOpError("expected number of indexings to match view rank");
+  if (rank != llvm::size(op.indexings()))
+    return op.emitOpError("expected ")
+           << op.getRank() << " indexings, got " << llvm::size(op.indexings());
   unsigned index = 0;
   for (auto indexing : op.indexings()) {
     if (indexing->getType().isa<IndexType>())
@@ -622,10 +503,88 @@ static LogicalResult verify(SliceOp op) {
     ++index;
   }
   if (op.getRank() != rank)
-    return op.emitOpError()
-           << "expected rank of the view(" << op.getRank()
-           << ") to be the number of its range indices(" << rank << ")";
+    return op.emitOpError() << "expected rank of the view(" << op.getRank()
+                            << ") to be the number of ranges(" << rank << ")";
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StoreOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, linalg::StoreOp op) {
+  *p << op.getOperationName() << " " << *op.value();
+  *p << ", " << *op.view() << '[';
+  p->printOperands(op.indices());
+  *p << ']';
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getViewType();
+}
+
+static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType storeValueInfo;
+  OpAsmParser::OperandType viewInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  ViewType viewType;
+
+  auto affineIntTy = parser->getBuilder().getIndexType();
+  return failure(
+      parser->parseOperand(storeValueInfo) || parser->parseComma() ||
+      parser->parseOperand(viewInfo) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(viewType) ||
+      parser->resolveOperand(storeValueInfo, viewType.getElementType(),
+                             result->operands) ||
+      parser->resolveOperand(viewInfo, viewType, result->operands) ||
+      parser->resolveOperands(indexInfo, affineIntTy, result->operands));
+}
+
+static LogicalResult verify(linalg::StoreOp op) {
+  if (op.value()->getType() != op.getViewType().getElementType())
+    return op.emitOpError("expected value type to match view element type");
+  if (op.getRank() != llvm::size(op.indices()))
+    return op.emitOpError("expected ")
+           << op.getRank() << " indices, got " << llvm::size(op.indices());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SubViewOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, SubViewOp op) {
+  *p << op.getOperationName() << " " << *op.getOperand(0) << "[";
+  auto ranges = op.getRanges();
+  interleaveComma(ranges, *p, [&p](const SubViewOp::Range &i) {
+    *p << *i.min << ", " << *i.max << ", " << *i.step;
+  });
+  *p << "]";
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getViewType();
+}
+
+static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType inputView, resultView;
+  Type viewType;
+  if (parser->parseOperand(inputView))
+    return failure();
+
+  SmallVector<OpAsmParser::OperandType, 12> ops;
+  // TODO(ntv) evolve parsing from
+  //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
+  // to something resembling
+  //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
+  if (parser->parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(viewType))
+    return failure();
+
+  auto indexTy = parser->getBuilder().getIndexType();
+  return failure(
+      parser->resolveOperand(inputView, viewType, result->operands) ||
+      parser->resolveOperands(ops, indexTy, result->operands) ||
+      parser->addTypeToList(viewType, result->types));
 }
 
 //===----------------------------------------------------------------------===//
@@ -643,6 +602,14 @@ void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
   result->addAttributes(attrs);
 }
 
+static void print(OpAsmPrinter *p, ViewOp op) {
+  *p << op.getOperationName() << " " << *op.buffer() << "[";
+  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
+  *p << "] ";
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.buffer()->getType() << " -> " << op.getType();
+}
+
 static ParseResult parseViewOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType bufferInfo;
   SmallVector<OpAsmParser::OperandType, 8> rangesInfo;
@@ -655,61 +622,46 @@ static ParseResult parseViewOp(OpAsmParser *parser, OperationState *result) {
     return failure();
   }
 
-  BufferType bufferType = bType.dyn_cast<BufferType>();
-  if (!bufferType) {
-    return parser->emitError(parser->getNameLoc(), "buffer type expected");
-  }
-
   ViewType viewType = vType.dyn_cast<ViewType>();
   if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
+    return parser->emitError(parser->getNameLoc(), "expected view type");
   if (viewType.getRank() != rangesInfo.size())
-    return parser->emitError(parser->getNameLoc(), "expected")
-           << viewType.getRank() << " range ranges";
+    return parser->emitError(parser->getNameLoc(), "expected ")
+           << viewType.getRank() << " ranges";
   return failure(
-      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
+      parser->resolveOperand(bufferInfo, bType, result->operands) ||
       (!rangesInfo.empty() &&
        parser->resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
                                result->operands)) ||
       parser->addTypeToList(viewType, result->types));
 }
 
-// A ViewOp prints as:
-//
-// ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
-// holding a range.
-static void print(OpAsmPrinter *p, ViewOp op) {
-  *p << op.getOperationName() << " " << *op.buffer() << "[";
-  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
-  *p << "] : " << op.buffer()->getType() << " -> " << op.getType();
-}
-
 //===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
-
-static ParseResult parseYieldOp(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> opInfo;
-  SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(opInfo) ||
-                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(opInfo, types, loc, result->operands));
-}
 
 static void print(OpAsmPrinter *p, YieldOp op) {
   *p << op.getOperationName();
   if (op.getNumOperands() > 0) {
     *p << ' ';
     p->printOperands(op.operand_begin(), op.operand_end());
+  }
+  p->printOptionalAttrDict(op.getAttrs());
+  if (op.getNumOperands() > 0) {
     *p << " : ";
     interleaveComma(op.getOperands(), *p,
                     [&](Value *e) { p->printType(e->getType()); });
   }
+}
+
+static ParseResult parseYieldOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> opInfo;
+  SmallVector<Type, 2> types;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(parser->parseOperandList(opInfo) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
+                 parser->resolveOperands(opInfo, types, loc, result->operands));
 }
 
 static LogicalResult verify(YieldOp op) {
@@ -736,44 +688,6 @@ static LogicalResult verify(YieldOp op) {
              << ") doesn't match view element type (" << elementType << ")";
   }
   return success();
-}
-
-static void print(OpAsmPrinter *p, SubViewOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand(0) << "[";
-  auto ranges = op.getRanges();
-  interleaveComma(ranges, *p, [&p](const SubViewOp::Range &i) {
-    *p << *i.min << ", " << *i.max << ", " << *i.step;
-  });
-  *p << "]";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
-}
-
-//===----------------------------------------------------------------------===//
-// SubViewOp
-//===----------------------------------------------------------------------===//
-
-static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType inputView, resultView;
-  Type viewType;
-  if (parser->parseOperand(inputView))
-    return failure();
-
-  SmallVector<OpAsmParser::OperandType, 12> ops;
-  // TODO(ntv) evolve parsing from
-  //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
-  // to something resembling
-  //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
-  if (parser->parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(viewType))
-    return failure();
-
-  auto indexTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->resolveOperand(inputView, viewType, result->operands) ||
-      parser->resolveOperands(ops, indexTy, result->operands) ||
-      parser->addTypeToList(viewType, result->types));
 }
 
 /////// Operations corresponding to library calls defined with Tablegen ////////

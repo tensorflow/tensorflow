@@ -50,16 +50,16 @@ def BufferAllocOp :
     "buffer_alloc" takes a single argument, the size of the buffer to allocate
     (in number of elements).
 
-    ```{.mlir}
+    Example:
+
         %0 = linalg.buffer_alloc(%arg0) : !linalg.buffer<?xf32>
-    ```
 
     The size argument may be omitted if it is statically known, in which case it
     must be reflected in the type.
 
-    ```{.mlir}
+    Example:
+
         %0 = linalg.buffer_alloc() : !linalg.buffer<4xf32>
-    ```
   }];
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, BufferType bufferType", [{
@@ -80,32 +80,30 @@ def BufferDeallocOp :
   let description = [{
     The "buffer_dealloc" op frees a 1-D linalg.buffer of the specified type.
 
-    ```{.mlir}
+    Example:
+
         linalg.buffer_dealloc %0 : !linalg.buffer<f32>
-    ```
   }];
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, BufferType bufferType", [{
-       result->types.push_back(bufferType);
-     }]
-  >];
   let extraClassDeclaration = [{
     BufferType getBufferType() {
-      return getOperand()->getType().cast<BufferType>();
+      return buffer()->getType().cast<BufferType>();
     }
   }];
+
   // Fully specified by traits.
   let verifier = ?;
 }
 
 def BufferSizeOp :
     Linalg_Op<"buffer_size", [NoSideEffect]>,
-    Arguments<(ins Buffer)>,
+    Arguments<(ins Buffer:$buffer)>,
     Results<(outs Index)> {
   let summary = "buffer size operation";
   let description = [{
     The "linalg.buffer_size" operation takes a linalg.buffer and returns an
-    "index". For example:
+    "index".
+
+    Example:
 
        %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
   }];
@@ -120,9 +118,11 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
   let description = [{
     The "linalg.dim" operation takes a linalg.view and returns an
     "index". It requires a single integer attribute named "index". It
-     returns the size of the specified dimension. For example:
+     returns the size of the specified dimension.
 
-      %1 = linalg.dim %0, 2 : view<?x?x?xf32>
+     Example:
+
+       %1 = linalg.dim %0, 2 : view<?x?x?xf32>
   }];
 
   let verifier = [{
@@ -150,6 +150,62 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
+def LoadOp :
+    Linalg_Op<"load"
+      // TODO(ntv): activate once ViewType can be made a ShapeType (i.e.
+      // shape type is extensible or standard adopts a reasonable view type).
+      // , [ PredOpTrait<"operand and result have same element type",
+      //             TCresVTEtIsSameAsOpBase<0, 0>>]
+      >,
+    Arguments<(ins View:$view, Variadic<Index>:$indices)>,
+    Results<(outs AnyType:$value)> {
+  let summary = "Read an elemental value from a view at a certain index";
+  let description = [{
+    The `linalg.load` op reads an elemental value from a view at a certain
+    index. This is the counterpart of other load ops but operating on ViewType.
+
+    Example:
+
+       %0 = linalg.load %V[%c0] : !linalg.view<?xf32>
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *view, "
+    "ArrayRef<Value*> indices",
+    [{
+      auto viewType = view->getType().cast<ViewType>();
+      build(builder, result, viewType.getElementType(), view, indices);
+    }]>];
+  let extraClassDeclaration = [{
+    unsigned getRank() { return getViewType().getRank(); }
+    ViewType getViewType() { return view()->getType().cast<ViewType>(); }
+  }];
+}
+
+def RangeOp :
+    Linalg_Op<"range", [NoSideEffect]>,
+    Arguments<(ins Index:$min, Index:$max, Index:$step)>,
+    Results<(outs Range)> {
+  let summary = "Create a range type value, used to create views";
+  let description = [{
+    The `linalg.range` op creates a linalg.range from 3 values of type `index`
+    that represent the min, max and step values of the range.
+
+    Example:
+
+      %3 = linalg.range %0:%1:%2 : !linalg.range
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *min, Value *max, "
+    "Value *step",
+    [{
+      auto rangeType = RangeType::get(builder->getContext());
+      build(builder, result, rangeType, min, max, step);
+    }]>];
+
+  // Fully specified by traits.
+  let verifier = ?;
+}
+
 def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     Arguments<(ins View:$view, Variadic<AnyTypeOf<[Range, Index]>>:$indexings)>,
     Results<(outs View)> {
@@ -173,20 +229,21 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     been rank-reduced.
 
     Examples:
+
       1. rank-preserving slice:
 
-       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, !linalg.range,
-              !linalg.range, !linalg.view<?x?xf32>
+        %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, !linalg.range,
+               !linalg.range, !linalg.view<?x?xf32>
 
       2. rank-reducing slice (from 2-D to 1-D):
 
-       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index,
-              !linalg.range, !linalg.view<?xf32>
+        %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index,
+               !linalg.range, !linalg.view<?xf32>
 
       3. rank-reducing slice (from 2-D to 0-D):
 
-       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index, index,
-              !linalg.view<f32>
+        %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index, index,
+               !linalg.view<f32>
   }];
 
   let builders = [OpBuilder<
@@ -215,6 +272,30 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 }
 
+def StoreOp :
+    Linalg_Op<"store"
+      // TODO(ntv): activate once ViewType can be made a ShapeType (i.e.
+      // shape type is extensible or standard adopts a reasonable view type).
+      // , [ PredOpTrait<"value to store and view have the same element type",
+      //             TCopVTEtIsSameAs<0, 1>>]
+      >,
+    Arguments<(ins AnyType:$value, View:$view, Variadic<Index>:$indices)>,
+    Results<(outs)> {
+  let summary = "Write an elemental value in a view at a certain index";
+  let description = [{
+    The `linalg.store` op writes an elemental value in a view at a certain
+    index. This is the counterpart of other store ops but operating on ViewType.
+
+    Example:
+
+      linalg.store %f, %V[%c0] : !linalg.view<?xf32>
+  }];
+  let extraClassDeclaration = [{
+    unsigned getRank() { return getViewType().getRank(); }
+    ViewType getViewType() { return view()->getType().cast<ViewType>(); }
+  }];
+}
+
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Arguments<(ins View:$view, Variadic<Index>:$ranges)>,
     Results<(outs View)> {
@@ -227,6 +308,8 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     main difference is the operands are all of type `index` and no intermediate
     linalg.range operations are required. A "linalg.subview" is thus a
     specialized linalg.slice with a higher level of abstraction.
+
+    Example:
 
       %1 = linalg.subview %0[%1, %2, %3, %4, %5, %6] : view<?x?xf32>
 
@@ -244,22 +327,24 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     }]>];
 
   let verifier = [{
-    auto numRanges = (getNumOperands() - 1) / 3;
-    if (getNumOperands() != 3 * numRanges + 1 ||
-        numRanges != getViewType().getRank())
-      return emitOpError("expected a view followed by 3 indices specifying ") <<
-        "a range for each dimension";
+    auto rank = getViewType().getRank();
+    if (getNumOperands() != 3 * rank + 1)
+      return emitOpError("expected a view followed by ") << (3 * rank) <<
+        " indices specifying a range for each dimension";
     return success();
   }];
 
   let extraClassDeclaration = [{
     Value *getView() { return getOperand(0); }
     ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
+
     struct Range { Value *min; Value *max; Value *step; };
+
     Range getRange(unsigned i) {
       return Range{
         getOperand(1 + 3*i), getOperand(1 + 3*i + 1), getOperand(1 + 3*i + 2)};
     }
+
     SmallVector<Range, 8> getRanges() {
       SmallVector<Range, 8> res;
       unsigned rank = getViewType().getRank();
@@ -268,6 +353,7 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         res.push_back(getRange(i));
       return res;
     }
+
     // This requires `SubViewOp` to be declared, in the future it should be
     // folded into the builders.
     static void build(Builder *builder, OperationState *result, Value *view,
@@ -293,12 +379,11 @@ def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
     a `view` of rank the number of ranges. The elemental type may not match the
     buffer element type:
 
-    Examples:
-    ```
+    Example:
+
        %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
        %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
        %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xvector<4xf32>>
-    ```
   }];
 
   let builders = [OpBuilder<
@@ -331,6 +416,8 @@ def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
   let description = [{
     "linalg.yield" is a special terminator operation for blocks inside regions
     in linalg ops. It returns values to the immediately enclosing linalg op.
+
+    Example:
 
        linalg.yield %f0, %f1 : f32, f32
   }];
