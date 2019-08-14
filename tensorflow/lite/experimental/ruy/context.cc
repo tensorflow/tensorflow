@@ -37,6 +37,7 @@ Path Context::GetRuntimeEnabledPaths() {
   // Need to resolve now. Start by considering all paths enabled.
   runtime_enabled_paths_ = kAllPaths;
 
+#if RUY_PLATFORM(ARM)
   // Now selectively disable paths that aren't supported on this machine.
   if ((runtime_enabled_paths_ & Path::kNeonDotprod) != Path::kNone) {
     if (!DetectDotprod()) {
@@ -45,6 +46,7 @@ Path Context::GetRuntimeEnabledPaths() {
       RUY_DCHECK((runtime_enabled_paths_ & Path::kNeonDotprod) == Path::kNone);
     }
   }
+#endif
 
   // Sanity check. We can't possibly have disabled all paths, as some paths
   // are universally available (kReference, kStandardCpp).
