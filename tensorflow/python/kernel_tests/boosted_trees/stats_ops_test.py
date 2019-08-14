@@ -985,9 +985,10 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testAggregateStatsSimple(self):
     # Get the same result as MakeStatsSummary Op.
-    expected_stats_summary = np.asarray([1., 5., 2., 6., 3., 7., 4., 8.])
+    expected_stats_summary = np.asarray(
+        [1., 5., 2., 6., 0., 0., 3., 7., 4., 8., 0., 0.])
     # shape=[max_splits, num_buckets, feature_dim, stats_dim]
-    expected_stats_summary = np.reshape(expected_stats_summary, (2, 2, 1, 2))
+    expected_stats_summary = np.reshape(expected_stats_summary, (2, 3, 1, 2))
     # Reshape feature dim and bucket id axes
     expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
     self.assertAllClose(
@@ -1038,9 +1039,34 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     # shape=[max_splits, num_buckets, feature_dim, stats_dim]
     # Get the same result as MakeStatsSummary Op.
     expected_stats_summary = [
-        [[[0., 0.]], [[.08, .09]], [[0., 0.]], [[0., 0.]]],
-        [[[0., 0.]], [[.15, .36]], [[.06, .07]], [[.1, .2]]],
-        [[[-.33, .58]], [[0., 0.]], [[.3, .4]], [[0., 0.]]],
+        [[[0., 0.]], [[.08, .09]], [[0., 0.]], [[0., 0.]], [[0., 0.]]],
+        [[[0., 0.]], [[.15, .36]], [[.06, .07]], [[.1, .2]], [[0., 0.]]],
+        [[[-.33, .58]], [[0., 0.]], [[.3, .4]], [[0., 0.]], [[0., 0.]]],
+    ]
+    # Swap feature dim and bucket id axis
+    expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
+    self.assertAllClose(expected_stats_summary, result)
+
+  def testAggregateStatsAccumulateWithMissingValue(self):
+    """Tests that Summary actually accumulates."""
+    max_splits = 3
+    num_buckets = 4
+    node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
+    gradients = [[.1], [.2], [.3], [-.4], [-.05], [.06], [.07], [.08]]
+    hessians = [[.2], [.3], [.4], [.5], [.06], [.07], [.08], [.09]]
+
+    # Tests a single feature.
+    missing_feature = -1
+    bucketized_features = [[3], [1], [2], [0], [missing_feature], [2], [0], [1]]
+    result = boosted_trees_ops.boosted_trees_aggregate_stats(
+        node_ids, gradients, hessians, bucketized_features, max_splits,
+        num_buckets)
+    # shape=[max_splits, num_buckets, feature_dim, stats_dim]
+    # Get the same result as MakeStatsSummary Op.
+    expected_stats_summary = [
+        [[[0., 0.]], [[.08, .09]], [[0., 0.]], [[0., 0.]], [[0., 0.]]],
+        [[[0., 0.]], [[.2, .3]], [[.06, .07]], [[.1, .2]], [[-.05, .06]]],
+        [[[-.33, .58]], [[0., 0.]], [[.3, .4]], [[0., 0.]], [[0., 0.]]],
     ]
     # Swap feature dim and bucket id axis
     expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
@@ -1079,9 +1105,15 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
   def testAggregatesSummaryMultipleDimensionFeature(self):
     """Tests that MakeStatsSummary works for multiple features."""
     expected_stats_summary = np.asarray(
-        [[0, 0, 0, 0, .08, .09, 0, 0, 0, 0, .08, .09, 0, 0, 0, 0],
-         [0, 0, .3, .5, .15, .36, 0, 0, .06, .07, -.05, .06, .1, .2, .06, .07],
-         [-.33, .58, .3, .4, 0, 0, 0, 0, .3, .4, -.4, .5, 0, 0, .07, .08]])
+        [[0, 0, 0, 0, .08, .09, 0, 0, 0, 0, .08, .09, 0, 0, 0, 0, 0, 0, 0, 0],
+         [
+             0, 0, .3, .5, .15, .36, 0, 0, .06, .07, -.05, .06, .1, .2, .06,
+             .07, 0, 0, 0, 0
+         ],
+         [
+             -.33, .58, .3, .4, 0, 0, 0, 0, .3, .4, -.4, .5, 0, 0, .07, .08, 0,
+             0, 0, 0
+         ]])
     with self.cached_session():
       max_splits = 3
       num_buckets = 4
@@ -1096,7 +1128,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           node_ids, gradients, hessians, bucketized_features, max_splits,
           num_buckets)
       # Reshape to [max_splits, num_buckets, feature_dim, stats_dim]
-      expected_stats_summary = np.reshape(expected_stats_summary, (3, 4, 2, 2))
+      expected_stats_summary = np.reshape(expected_stats_summary, (3, 5, 2, 2))
       # Swap feature_dim and bucket_id axis
       expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
       self.assertAllClose(expected_stats_summary, result)
@@ -1120,12 +1152,12 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       # shape=[max_splits, num_buckets, feature_dim, stats_dim]
       expected_stats_summary = [
           [[[0., 0., 0., 0.]], [[.08, .16, .09, .27]], [[0., 0., 0., 0.]],
-           [[0., 0., 0., 0.]]],
+           [[0., 0., 0., 0.]], [[0., 0., 0., 0.]]],
           [[[0., 0., 0., 0.]], [[.15, 0.3, .36, 1.08]], [[.06, 0.12, .07,
                                                           0.21]],
-           [[.1, .2, .2, .6]]],
+           [[.1, .2, .2, .6]], [[0., 0., 0., 0.]]],
           [[[-.33, -.66, .58, 1.74]], [[0., 0., 0., 0.]], [[.3, .6, .4, 1.2]],
-           [[0., 0., 0., 0.]]],
+           [[0., 0., 0., 0.]], [[0., 0., 0., 0.]]],
       ]
       expected_stats_summary = np.swapaxes(expected_stats_summary, 1, 2)
       self.assertAllClose(expected_stats_summary, result)
