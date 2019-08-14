@@ -30,7 +30,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
-
+from tensorflow.python.ops import random_ops
 
 class SliceTest(test.TestCase):
 
@@ -149,16 +149,24 @@ class SliceTest(test.TestCase):
 
   def test3Dimension(self):
     with self.session() as sess:
-      input_shape = [1, 8, 8, 8, 3]
-      inp = np.random.rand(*input_shape).astype("f")
-      a = constant_op.constant(inp, shape=input_shape, dtype=dtypes.float32)
+      input_shape = [8, 16, 16, 16, 8]
+      inputs = random_ops.random_normal(input_shape,
+                                        dtype=dtypes.float32,
+                                        seed=0)
+      filter_shape = [1, 1, 1, 8, 8]
+      filters = random_ops.random_normal(filter_shape,
+                                         dtype=dtypes.float32,
+                                         seed=0)
 
-      filter_shape = [2, 2, 2, 3, 3]
-      filters = np.random.rand(*filter_shape).astype("f")
-      conv_t = nn_ops.conv3d(a, filter=filters, strides=[1, 1, 1, 1, 1],
-                             padding="SAME")
-      slice_t = array_ops.slice(conv_t, [0, 0, 0, 0, 0], [1, 2, 1, 2, 1])
-      result = self.evaluate(slice_t)
+      conv_t = nn_ops.conv3d(inputs,
+                             filter=filters,
+                             strides=[1, 1, 1, 1, 1],
+                             padding="VALID")
+      slice_t = array_ops.slice(conv_t, [0, 1, 1, 1, 0], [1, 1, 1, 1, 8])
+      result = slice_t.eval()
+      expected = [6.047066, 1.1073351, -1.4765838, -4.126741,
+                  7.0414743, 4.248739, 0.9407949, -3.58128]
+      self.assertAllClose(expected, result.flatten(), rtol=1e-6)
 
   @test_util.run_deprecated_v1
   def testScalarInput(self):
