@@ -613,6 +613,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     # We need to make _keras_initialized a member of DistributedVariable because
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
+    self._id = ops.uid()
     self._keras_initialized = False
     # Typically, a `DistributedVariable`'s initializer is composed of the
     # initializers of the components variables. However, in some cases, such as

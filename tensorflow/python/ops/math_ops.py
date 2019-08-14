@@ -1277,7 +1277,9 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
-  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+  g = getattr(self, "graph", None)
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g._building_function)):  # pylint: disable=protected-access
     return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality

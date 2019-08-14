@@ -76,10 +76,38 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
-CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions", "colocation_stack",
-    "in_cross_replica_context"
-])
+class CacheKey(
+    collections.namedtuple("CacheKey", [
+        "input_signature", "parent_graph", "device_functions",
+        "colocation_stack", "in_cross_replica_context"
+    ])):
+  """Named tuple used to key the function cache."""
+
+  def __hash__(self):
+    """Provide a hash even if the input signature objects aren't hashable."""
+    return hash((self._hash_fix(self.input_signature), self.parent_graph,
+                 self.device_functions, self.colocation_stack,
+                 self.in_cross_replica_context))
+
+  def _hash_fix(self, elem):
+    """Ensure elem is hashable even if a Variable is nested in it."""
+    # Descend into tuples
+    if isinstance(elem, tuple):
+      return tuple(self._hash_fix(i) for i in elem)
+
+    if isinstance(elem, set):
+      return {self._hash_fix(i) for i in elem}
+
+    # If the element is not hashable, assume it is a weakref to a variable and
+    # return the dtype & shape. Else, simply return the element
+    try:
+      hash(elem)
+    except TypeError:
+      v = elem()
+      return (v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype))
+
+    return elem
+
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
