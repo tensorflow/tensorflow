@@ -5220,8 +5220,8 @@ Status ConvertGraphDefToEngine(
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
-    string node_name = node_def.name();
-    VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
+    const string& node_name = node_def.name();
+    VLOG(2) << "Converting node " << node_name << ", op=" << node_def.op();
     if (IsEngineInput(node_name)) {
       int32 slot_number = -1;
       string type_key;
@@ -5293,8 +5293,6 @@ Status ConvertGraphDefToEngine(
       output_tensors.at(slot_number) = {node_def.input(0), node_name,
                                         trt_dtype};
     } else {
-      VLOG(2) << "Converting node: " << node_def.name() << " , "
-              << node_def.op();
       TF_RETURN_IF_ERROR(converter.ConvertNode(node_def));
     }
   }
