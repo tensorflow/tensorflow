@@ -498,4 +498,21 @@ def LLVM_ConstantOp
   let printer = [{ printConstantOp(p, *this); }];
 }
 
+// Operations that correspond to LLVM intrinsics. With MLIR operation set being
+// extendable, there is no reason to introduce a hard boundary between "core"
+// operations and intrinsics.
+
+def LLVM_fmuladd : LLVM_Op<"fmuladd", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::fmuladd,
+        {$a->getType(), $b->getType(), $c->getType()});
+    $res = builder.CreateCall(fn, {$a, $b, $c});
+  }];
+}
+
+
 #endif // LLVMIR_OPS

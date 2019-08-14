@@ -1121,7 +1121,7 @@ FpValues GetNans(int approx_num_values) {
 
 template <typename T>
 FpValues GetNormals(int approx_num_values) {
-  float component_total = std::sqrtf(approx_num_values);
+  float component_total = std::sqrt(static_cast<float>(approx_num_values));
   return GetFpValues<T>(
       BitChunks(0x1, GetAllOneMantissa<T>(),
                 (1ull << (GetMantissaTotalBits<T>() + 1)) / component_total),

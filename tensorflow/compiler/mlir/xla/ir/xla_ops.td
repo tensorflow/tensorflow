@@ -875,6 +875,7 @@ def XLA_ReshapeOp: XLA_Op<"reshape",
   }];
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   // TODO(b/129422361) One of the required arguments comes from the new shape,
   // which isn't handled by the codegen. The optional argument (dimensions)

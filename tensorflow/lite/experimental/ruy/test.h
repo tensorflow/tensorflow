@@ -1568,9 +1568,11 @@ std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
   if (benchmark) {
     return {Tuning::kAuto};
   }
+#if RUY_PLATFORM(ARM)
   if (path == Path::kNeon || path == Path::kNeonDotprod) {
     return {Tuning::kInOrder, Tuning::kOutOfOrder, Tuning::kAuto};
   }
+#endif
   return {Tuning::kAuto};
 }
 

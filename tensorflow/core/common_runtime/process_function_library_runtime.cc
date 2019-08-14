@@ -66,7 +66,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
-    const CustomKernelCreator* custom_kernel_creator)
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata)
     : env_(env),
       device_mgr_(device_mgr),
       lib_def_(lib_def),
@@ -74,17 +75,18 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       flr_map_(new std::unordered_map<Device*,
                                       std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
-      parent_(parent) {
+      parent_(parent),
+      session_metadata_(session_metadata) {
   if (device_mgr == nullptr) {
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, this);
+        optimizer_options, custom_kernel_creator, session_metadata_, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     (*flr_map_)[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, this);
+        optimizer_options, custom_kernel_creator, session_metadata_, this);
   }
 
   DeviceMgr const* all_devices = device_mgr_;
@@ -1290,7 +1292,8 @@ Status ProcessFunctionLibraryRuntime::Clone(
   }
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator);
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator,
+      session_metadata_);
   return Status::OK();
 }
 

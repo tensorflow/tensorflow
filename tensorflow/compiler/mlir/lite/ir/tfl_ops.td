@@ -1920,9 +1920,9 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TensorOf<[AnyFloat, TFL_QI8, TFL_QUI8]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TensorOf<[AnyFloat, TFL_QI8, TFL_QUI8]>:$y);
 
   let hasOptions = 0b1;
 
@@ -2097,14 +2097,14 @@ def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32]>:$input,
+    TensorOf<[F32, I8, I32, TFL_QI8, TFL_QUI8]>:$input,
 
     I32Attr:$num,
     I32Attr:$axis
   );
 
   let results = (outs
-    Variadic<TensorOf<[F32, I8, I32]>>:$outputs
+    Variadic<TensorOf<[F32, I8, I32, TFL_QI8, TFL_QUI8]>>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2756,13 +2756,13 @@ def TFL_UnidirectionalSequenceRNNOp :
     ins TensorOf<[F32, I8]>:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
+    TensorOf<[F32, I8]>:$input_to_input_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
+    TensorOf<[F32, I8]>:$recurrent_to_input_weights,
 
     // Bias
-    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+    TensorOf<[F32]>:$input_gate_bias,
 
     // Hidden state.
     TFL_StatefulTensor:$hidden_state,

@@ -147,6 +147,7 @@ class CallbackCountsTest(keras_parameterized.TestCase):
   def test_callback_hooks_are_called_in_fit(self, data):
     x, y = data
     val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
@@ -154,7 +155,8 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         x,
         y,
         validation_data=(val_x, val_y),
-        batch_size=2,
+        batch_size=2 if not is_sequence else None,
+        steps_per_epoch=5 if is_sequence else None,
         epochs=5,
         callbacks=[counter])
 
@@ -182,10 +184,16 @@ class CallbackCountsTest(keras_parameterized.TestCase):
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_evaluate(self, data):
     x, y = data
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
-    model.evaluate(x, y, batch_size=2, callbacks=[counter])
+    model.evaluate(
+        x,
+        y,
+        batch_size=2 if not is_sequence else None,
+        steps=5 if is_sequence else None,
+        callbacks=[counter])
     self._check_counts(
         counter, {
             'on_test_batch_begin': 5,
@@ -198,10 +206,15 @@ class CallbackCountsTest(keras_parameterized.TestCase):
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_predict(self, data):
     x = data[0]
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
-    model.predict(x, batch_size=2, callbacks=[counter])
+    model.predict(
+        x,
+        batch_size=2 if not is_sequence else None,
+        steps=5 if is_sequence else None,
+        callbacks=[counter])
     self._check_counts(
         counter, {
             'on_predict_batch_begin': 5,

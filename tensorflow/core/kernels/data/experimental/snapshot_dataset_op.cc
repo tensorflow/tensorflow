@@ -470,19 +470,19 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             case WRITER:
               iterator_ = absl::make_unique<SnapshotWriterIterator>(
                   SnapshotWriterIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "Impl")},
+                      dataset(), strings::StrCat(prefix(), "WriterImpl")},
                   hash_dir_);
               break;
             case READER:
               iterator_ = absl::make_unique<SnapshotReaderIterator>(
                   SnapshotReaderIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "Impl")},
+                      dataset(), strings::StrCat(prefix(), "ReaderImpl")},
                   hash_dir_, metadata);
               break;
             case PASSTHROUGH:
               iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
                   SnapshotPassthroughIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "Impl")});
+                      dataset(), strings::StrCat(prefix(), "PassthroughImpl")});
               break;
           }
           TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));

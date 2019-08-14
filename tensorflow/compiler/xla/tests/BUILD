@@ -1650,6 +1650,7 @@ xla_test(
     name = "fmax_fmin_test",
     srcs = ["fmax_fmin_test.cc"],
     deps = [
+        ":test_macros_header",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -1889,6 +1890,7 @@ xla_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service/gpu:nccl_all_reduce_thunk",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",

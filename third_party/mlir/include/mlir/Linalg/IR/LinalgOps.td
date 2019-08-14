@@ -150,6 +150,71 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
+def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
+    Arguments<(ins View:$view, Variadic<AnyTypeOf<[Range, Index]>>:$indexings)>,
+    Results<(outs View)> {
+  let summary = "Produce a linalg.view which is a subview of a base view.";
+  let description = [{
+    The "linalg.slice" op produces a linalg.view which is a subview of a given
+    base view. This allows defining a subregion within the underlying buffer to
+    operate on only a subset of the buffer.
+
+    A "linalg.slice" op takes a base view and a variadic number of indexings and
+    produces a linalg.view of the same elemental type as the buffer. An indexing
+    is either:
+      1. a linalg.range, in which case it does not reduce the rank of the parent
+         view.
+      2. an index, in which case it reduces the rank of the parent view by one.
+
+    The parent view must be a base view (i.e. either a function argument or has
+    been produced by a linalg.view op). In other words, chains of
+    linalg.slice operations cannot be constructed in the IR. This defines away
+    problems related to keeping track of which dimensions of the base view have
+    been rank-reduced.
+
+    Examples:
+      1. rank-preserving slice:
+
+       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, !linalg.range,
+              !linalg.range, !linalg.view<?x?xf32>
+
+      2. rank-reducing slice (from 2-D to 1-D):
+
+       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index,
+              !linalg.range, !linalg.view<?xf32>
+
+      3. rank-reducing slice (from 2-D to 0-D):
+
+       %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index, index,
+              !linalg.view<f32>
+  }];
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *base, "
+    "ArrayRef<Value *> indexings">];
+
+  let extraClassDeclaration = [{
+    enum { FirstIndexingOperand = 1 };
+    unsigned getRank() { return getViewType().getRank(); }
+    Type getElementType() { return getViewType().getElementType(); }
+    ViewType getViewType() { return getType().cast<ViewType>(); }
+    unsigned getBaseViewRank() { return getBaseViewType().getRank(); }
+    ViewType getBaseViewType() { return view()->getType().cast<ViewType>(); }
+
+    // Get the underlying indexing at a given rank.
+    Value *indexing(unsigned rank) { return *(indexings().begin() + rank); }
+
+    // Get the subset of indexings that are of RangeType.
+    SmallVector<Value *, 8> getRanges() {
+      llvm::SmallVector<Value *, 8> res;
+      for (auto *operand : indexings())
+        if (!operand->getType().isa<IndexType>())
+          res.push_back(operand);
+      return res;
+    }
+  }];
+}
+
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Arguments<(ins View:$view, Variadic<Index>:$ranges)>,
     Results<(outs View)> {

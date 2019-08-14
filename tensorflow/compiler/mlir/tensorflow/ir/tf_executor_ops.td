@@ -305,7 +305,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 
   let arguments = (ins
     AnyType:$data,
-    I32:$index,
+    TensorOf<[I32]>:$index,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs,
     I64Attr:$num_outs
@@ -457,6 +457,13 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
       result->attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let extraClassDeclaration = [{
+    NextIterationSinkOp GetSink() {
+      return cast<NextIterationSinkOp>(*token()->user_begin());
+    }
+  }];
+
 }
 
 

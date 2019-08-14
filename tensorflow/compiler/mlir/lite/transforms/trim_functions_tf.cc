@@ -119,9 +119,9 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
-ModulePassBase *CreateTrimFunctionsPass(
+std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
-  return new TrimFunctionsPass(trim_funcs_whitelist);
+  return llvm::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }
 
 static PassRegistration<TrimFunctionsPass> pass(

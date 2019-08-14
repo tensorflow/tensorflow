@@ -414,7 +414,9 @@ void PrepareTFPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-FunctionPassBase *CreatePrepareTFPass() { return new PrepareTFPass(); }
+std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
+  return llvm::make_unique<PrepareTFPass>();
+}
 
 static PassRegistration<PrepareTFPass> pass(
     "tfl-prepare-tf", "Prepare TF for legalization to TensorFlow Lite dialect");

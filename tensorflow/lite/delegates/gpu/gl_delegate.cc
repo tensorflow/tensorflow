@@ -258,6 +258,8 @@ class Delegate {
         options_.compile_options.preferred_gl_object_type);
     compile_options.dynamic_batch =
         static_cast<bool>(options_.compile_options.dynamic_batch_enabled);
+    compile_options.inline_parameters =
+        static_cast<bool>(options_.compile_options.inline_parameters);
     auto shaders = NewNodeShaderRegistry();
     GpuInfo gpu_info;
     RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
@@ -467,6 +469,7 @@ TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault() {
   options.precision_loss_allowed = 0;
   options.preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.dynamic_batch_enabled = 0;
+  options.inline_parameters = 0;
   return options;
 }
 

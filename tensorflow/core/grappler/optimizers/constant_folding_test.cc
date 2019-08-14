@@ -349,12 +349,6 @@ TEST_F(ConstantFoldingTest, TreeCanonicalization) {
   for (int is_add : {true, false}) {
     for (int is_parent_commutative : {true, false}) {
       for (int is_child_commutative : {true, false}) {
-        // TODO(rmlarsen): Consider enabling for subtractions if we are
-        // comfortable with the potential loss of numerical accuracy due to
-        // re-association. Notice that subtraction is not really different from
-        // addition in this regard.
-        if (is_add && (!is_parent_commutative || !is_child_commutative))
-          continue;
         for (int is_left_child_const : {true, false}) {
           for (int is_left_leaf_const : {true, false}) {
             tensorflow::Scope s = tensorflow::Scope::NewRootScope();

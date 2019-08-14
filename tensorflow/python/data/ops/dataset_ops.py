@@ -31,6 +31,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -160,14 +161,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
-  def _as_serialized_graph(self):
+  def _as_serialized_graph(self, stateful_whitelist=None):
     """Produces serialized graph representation of the dataset.
+
+    Args:
+      stateful_whitelist: Comma separated list of ops whose stateful attribute
+        should be ignored during serialization.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
+    if compat.forward_compatible(2019, 9, 10) or stateful_whitelist:
+      return gen_dataset_ops.dataset_to_graph(self._variant_tensor,
+                                              stateful_whitelist)
+    else:
+      return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.
@@ -2245,6 +2254,15 @@ class Options(options_lib.OptionsBase):
       "The threading options associated with the dataset. See "
       "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
+
+  experimental_stateful_whitelist = options_lib.create_option(
+      name="experimental_stateful_whitelist",
+      ty=list,
+      docstring="By default, tf.data will refuse to serialize a dataset or "
+      "checkpoint its iterator if the dataset contains a stateful op as the "
+      "serialization / checkpointing won't be able to capture its state. "
+      "Users can -- at their own risk -- override this restriction by "
+      "explicitly whitelisting stateful ops by specifying them in this list.")
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""

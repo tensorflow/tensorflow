@@ -162,12 +162,12 @@ struct AffineDataCopyGeneration
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-FunctionPassBase *mlir::createAffineDataCopyGenerationPass(
+std::unique_ptr<FunctionPassBase> mlir::createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
     int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
-  return new AffineDataCopyGeneration(slowMemorySpace, fastMemorySpace,
-                                      tagMemorySpace, minDmaTransferSize,
-                                      fastMemCapacityBytes);
+  return llvm::make_unique<AffineDataCopyGeneration>(
+      slowMemorySpace, fastMemorySpace, tagMemorySpace, minDmaTransferSize,
+      fastMemCapacityBytes);
 }
 
 // Info comprising stride and number of elements transferred every stride.

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
@@ -95,9 +96,9 @@ bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
 }
 
 void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value*> live_outs,
-                                Operation* launch_op) {
-  Region* launch_op_region = &launch_op->getRegion(0);
-  for (const auto& p : llvm::zip(live_outs, launch_op->getResults())) {
+                                tf_device::LaunchOp launch_op) {
+  Region* launch_op_region = &launch_op.body();
+  for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
     Value* from = std::get<0>(p);
     for (auto& use : from->getUses()) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
@@ -124,32 +125,19 @@ void GetLiveOuts(Region* region, llvm::SmallVectorImpl<Value*>* live_outs) {
   }
 }
 
-// TODO(b/138909768): Define `tf_device.return` op and use its build method
-// instead.
-void BuildReturn(llvm::ArrayRef<Value*> live_outs, OpBuilder* builder) {
-  OperationState return_op_state(builder->getUnknownLoc(), "tf_device.return");
-  return_op_state.addOperands(live_outs);
-  builder->createOperation(return_op_state);
-}
-
 // Build a `tf_device.launch` op with a region that contains all the operations
 // in given cluster. Then all ops in cluster are replaced by `tf_device.launch`.
-// TODO(b/138909768): Define `tf_device.launch` op and use its build method
-// instead.
 void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   // Set insertion point to right after all operations in cluster.
   builder->setInsertionPoint(c.ops.back()->getNextNode());
 
-  // Create an empty `tf_device.launch` op with a device attribute matching
-  // given cluster.
-  OperationState launch_op_state(builder->getUnknownLoc(), "tf_device.launch");
-  launch_op_state.addAttribute("device", builder->getStringAttr(c.device));
-  Region* region = launch_op_state.addRegion();
-  region->push_back(new Block);
+  // Create a stand-alone region to hold all instructions in the cluster.
+  Region region;
+  region.push_back(new Block);
 
   // Move all operations in cluster to newly created region, stripping their
   // "device" attribute since launch op already carries device information.
-  Block* block = &region->front();
+  Block* block = &region.front();
   for (Operation* op : c.ops) {
     op->moveBefore(block, block->end());
     op->removeAttr(builder->getIdentifier("device"));
@@ -158,17 +146,27 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   // Get all escaped live-out values of region, they are used later to determine
   // return values and types of launch op.
   llvm::SmallVector<Value*, 4> live_outs;
-  GetLiveOuts(region, &live_outs);
+  GetLiveOuts(&region, &live_outs);
 
   // Build a `tf_device.return` op at end of region, with all live-out values
   // as operand.
   OpBuilder return_builder(builder->getContext());
   return_builder.setInsertionPointToEnd(block);
-  BuildReturn(live_outs, &return_builder);
+  return_builder.create<tf_device::ReturnOp>(return_builder.getUnknownLoc(),
+                                             live_outs);
 
-  for (Value* v : live_outs) launch_op_state.types.emplace_back(v->getType());
+  llvm::SmallVector<Type, 4> live_out_types;
+  live_out_types.reserve(live_outs.size());
+  for (Value* v : live_outs) {
+    live_out_types.emplace_back(v->getType());
+  }
 
-  Operation* launch_op = builder->createOperation(launch_op_state);
+  tf_device::LaunchOp launch_op = builder->create<tf_device::LaunchOp>(
+      builder->getUnknownLoc(), builder->getStringAttr(c.device),
+      live_out_types);
+
+  // Attach the region to launch_op.
+  launch_op.body().takeBody(region);
 
   // Replace any external uses of live-out values with return values of launch
   // op. So live-out values no longer escape the region.

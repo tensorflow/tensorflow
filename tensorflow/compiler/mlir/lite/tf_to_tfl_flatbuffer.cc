@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase *CreateTFExecutorToControlDialectConversion();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
@@ -84,12 +84,13 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         input_filename, debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true, context);
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true, context);
+      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
 bool ShouldRunQuantizePasses(mlir::ModuleOp m) {

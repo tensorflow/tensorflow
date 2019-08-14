@@ -34,7 +34,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -45,6 +44,19 @@ from tensorflow.python.util.tf_export import tf_export
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
 tape_cache = {}
+
+
+def _maybe_copy_to_context_device(tensor, device_name):
+  """Copy an EagerTensor to the current device if it's not on `device_name`."""
+  in_device = tensor.backing_device
+  if device_name == in_device:
+    return tensor
+  else:
+    # Note that EagerTensor._copy bypasses the placer and copies to the context
+    # device, which means e.g. int32 Tensors which would normally be forced onto
+    # the CPU can instead be placed on the GPU. This is necessary so that the
+    # PyFunc kernel always returns Tensors on the device it's executing on.
+    return tensor._copy()  # pylint: disable=protected-access
 
 
 class EagerFunc(object):
@@ -108,18 +120,24 @@ class EagerFunc(object):
           if t.dtype.is_floating:
             tape.watch(t)
       ret = self._func(*args)
-      # Use tf.identity to copy the returned tensors to device if necessary.
+      # copy the returned tensors to the PyFunc op's device if necessary.
+      device_name = device
+      if device_name is None:
+        # "None" here means "CPU", from the nullptr convention with C++ device
+        # pointers.
+        device_name = "/job:localhost/replica:0/task:0/device:CPU:0"
       with ops.device(device):
         if isinstance(ret, (tuple, list)):
           outputs = [
-              array_ops.identity(self._convert(x, dtype=dtype))
+              _maybe_copy_to_context_device(self._convert(x, dtype=dtype),
+                                            device_name)
               for (x, dtype) in zip(ret, self._out_dtypes)
           ]
         elif ret is None:
           outputs = None
         else:
-          outputs = array_ops.identity(
-              self._convert(ret, dtype=self._out_dtypes[0]))
+          outputs = _maybe_copy_to_context_device(
+              self._convert(ret, dtype=self._out_dtypes[0]), device_name)
     tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 

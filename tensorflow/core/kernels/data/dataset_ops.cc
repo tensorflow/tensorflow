@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -27,20 +28,45 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+/* static */ constexpr const char* const DatasetToGraphOp::kStatefulWhitelist;
 /* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
 /* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
+DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  if (ctx->HasAttr(kStatefulWhitelist)) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(kStatefulWhitelist, &whitelisted_stateful_ops_));
+  }
+}
+
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+  std::vector<int> whitelist_indices_to_remove;
+  for (int i = 0; i < whitelisted_stateful_ops_.size(); ++i) {
+    const string stateful_op = whitelisted_stateful_ops_[i];
+    if (!WhitelistedStatefulOpRegistry::Global()->Contains(stateful_op)) {
+      whitelist_indices_to_remove.push_back(i);
+      // Make sure op is registered first. We maybe don't need this check?
+      const OpDef* op_def;
+      OP_REQUIRES_OK(ctx,
+                     OpRegistry::Global()->LookUpOpDef(stateful_op, &op_def));
+      OP_REQUIRES_OK(ctx,
+                     WhitelistedStatefulOpRegistry::Global()->Add(stateful_op));
+    }
+  }
   GraphDef graph_def;
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, SerializationContext({}), &graph_def));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
   result->scalar<tstring>()() = graph_def.SerializeAsString();
+  for (int index : whitelist_indices_to_remove) {
+    OP_REQUIRES_OK(ctx, WhitelistedStatefulOpRegistry::Global()->Remove(
+                            whitelisted_stateful_ops_[index]));
+  }
 }
 
 void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {

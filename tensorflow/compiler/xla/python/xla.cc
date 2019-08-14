@@ -433,6 +433,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property("xla_cpu_fast_math_honor_division",
                     &DebugOptions::xla_cpu_fast_math_honor_division,
                     &DebugOptions::set_xla_cpu_fast_math_honor_division)
+      .def_property("xla_cpu_fast_math_honor_functions",
+                    &DebugOptions::xla_cpu_fast_math_honor_functions,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_functions)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max);

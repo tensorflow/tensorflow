@@ -98,7 +98,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     inputs.push_back({nullptr, &input_0});
 
     // Input #1 is the tensor names
-    Tensor input_1 = MakeInput<string>(
+    Tensor input_1 = MakeInput<tstring>(
         TensorShape({static_cast<int>(tensor_names.size())}),
         [&tensor_names](int x) -> string { return tensor_names[x]; });
     inputs.push_back({nullptr, &input_1});
@@ -149,7 +149,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
                                        [](int x) -> int64 { return x - 9; });
     inputs.push_back({nullptr, &input_11});
     // Input #12 is a 1-d string tensor
-    Tensor input_12 = MakeInput<string>(
+    Tensor input_12 = MakeInput<tstring>(
         TensorShape({2}), [](int x) -> string { return x ? "yes" : "no"; });
     inputs.push_back({nullptr, &input_12});
     // Input #13 is a 1-d complex64 tensor
@@ -188,10 +188,10 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d bool tensor
   {
     MakeRestoreOp(DT_BOOL);
-    AddInput<string>(TensorShape({}),
-                     [&filename](int x) -> string { return filename; });
-    AddInput<string>(TensorShape({}),
-                     [&](int x) -> string { return tensor_names[0]; });
+    AddInput<tstring>(TensorShape({}),
+                      [&filename](int x) -> tstring { return filename; });
+    AddInput<tstring>(TensorShape({}),
+                      [&](int x) -> tstring { return tensor_names[0]; });
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
@@ -432,13 +432,13 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   MakeRestoreSliceOp(DT_INT32);
   string shape_and_slice = "4 16 0,2:-";
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
   // Add the tensor names
-  AddInput<string>(TensorShape({}),
-                   [&tensor_name](int x) -> string { return tensor_name; });
+  AddInput<tstring>(TensorShape({}),
+                    [&tensor_name](int x) -> tstring { return tensor_name; });
   // Add the tensor shape and slice
-  AddInput<string>(TensorShape({}), [&shape_and_slice](int x) -> string {
+  AddInput<tstring>(TensorShape({}), [&shape_and_slice](int x) -> tstring {
     return shape_and_slice;
   });
 
