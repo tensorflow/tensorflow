@@ -552,7 +552,7 @@ class DenseCollector {
       case DataType::DT_INT64:
         return FillDefault<int64>(default_value_.value.v_int64);
       case DataType::DT_STRING:
-        return FillDefault<string>(default_value_.value.v_string);
+        return FillDefault<tstring>(default_value_.value.v_string);
       case DataType::DT_UINT8:
         return FillDefault<uint8>(default_value_.value.v_uint8);
       case DataType::DT_UINT32:
@@ -738,12 +738,12 @@ class DecodeProtoOp : public OpKernel {
 
     // This is used to allocate binary bufs if used. It serves only to define
     // memory ownership.
-    std::vector<string> tmp_binary_bufs(message_count);
+    std::vector<tstring> tmp_binary_bufs(message_count);
 
     // These are the actual buffers to use, which may be in tmp_binary_bufs
     // or may be pointers into the buf_tensor. Either way they are not owned
     // here.
-    std::vector<const string*> bufs;
+    std::vector<const tstring*> bufs;
 
     if (is_binary_ && !sanitize_) {
       // Fast path.
@@ -808,7 +808,7 @@ class DecodeProtoOp : public OpKernel {
  private:
   // Copy a serialized message to binary, e.g. to handle text proto inputs.
   void ReserializeMessage(OpKernelContext* ctx, const string& buf,
-                          string* binary_buf) {
+                          tstring* binary_buf) {
     // Handle text protos by translating them to binary.
     std::unique_ptr<Message> message(message_prototype_->New());
     OP_REQUIRES(ctx, message, errors::DataLoss("Initializing message failed"));
@@ -823,7 +823,7 @@ class DecodeProtoOp : public OpKernel {
                   errors::DataLoss("Unable to parse text protobuf"));
     }
 
-    OP_REQUIRES(ctx, message->SerializeToString(binary_buf),
+    OP_REQUIRES(ctx, SerializeToTString(*message, binary_buf),
                 errors::DataLoss("Unable to reserialize text proto as binary"));
   }
 
@@ -875,7 +875,7 @@ class DecodeProtoOp : public OpKernel {
 
   // Parse fields from a serialized message into preallocated tensors.
   void AccumulateFields(OpKernelContext* ctx,
-                        const std::vector<const string*>& bufs,
+                        const std::vector<const tstring*>& bufs,
                         std::vector<Tensor*> outputs) {
     struct TensorInfo {
       explicit TensorInfo(Tensor* tensor) {
@@ -915,7 +915,7 @@ class DecodeProtoOp : public OpKernel {
     }
 
     for (int message_index = 0; message_index < bufs.size(); ++message_index) {
-      const string& buf = *bufs[message_index];
+      const tstring& buf = *bufs[message_index];
 
       std::vector<DenseCollector> collectors;
       collectors.reserve(field_count);
