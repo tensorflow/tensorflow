@@ -28,6 +28,8 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -449,6 +451,29 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     self.assertAllClose(prediction,
                         loaded.predict(np.ones([1, 3]).astype('float32')))
+
+  def testFeatureColumns(self):
+    # TODO(b/120099662): Error with table initialization with Keras models in
+    # graph mode.
+    if context.executing_eagerly():
+      numeric = fc.numeric_column('a')
+      bucketized = fc.bucketized_column(numeric, boundaries=[5, 10, 15])
+      cat_vocab = fc.categorical_column_with_vocabulary_list(
+          'b', ['1', '2', '3'])
+      one_hot = fc.indicator_column(cat_vocab)
+      embedding = fc.embedding_column(cat_vocab, dimension=8)
+      feature_layer = DenseFeatures([bucketized, one_hot, embedding])
+      model = keras.models.Sequential(feature_layer)
+
+      features = {'a': np.array([13, 15]), 'b': np.array(['1', '2'])}
+      predictions = model.predict(features)
+
+      saved_model_dir = self._save_model_dir()
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
+      loaded_predictions = loaded.predict(features)
+      self.assertAllClose(predictions, loaded_predictions)
+
 
 
 class TestLayerCallTracing(test.TestCase):
