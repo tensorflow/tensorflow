@@ -66,7 +66,7 @@ class BatchMatMulMkl : public OpKernel {
 
     if (!v2_bcast) {
       // Using V1, so check to make sure lhs and rhs dimensions are correct and
-      // no braocasting is needed.
+      // no broadcasting is needed.
       OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
                   errors::InvalidArgument("lhs and rhs has different ndims: ",
                                           lhs.shape().DebugString(), " vs. ",
