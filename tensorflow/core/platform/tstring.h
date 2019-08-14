@@ -48,6 +48,19 @@ namespace tensorflow {
 class tstring {
   std::string str_;
 
+  template <typename T, typename = void>
+  struct ResizeUninitialized {
+    static void Resize(T& s, size_t new_size) { s.resize(new_size); }
+  };
+
+  template <typename T>
+  struct ResizeUninitialized<
+      T, decltype(std::declval<T>().__resize_default_init(0))> {
+    static void Resize(T& s, size_t new_size) {
+      s.__resize_default_init(new_size);
+    }
+  };
+
  public:
   tstring() = default;
 
@@ -128,6 +141,10 @@ class tstring {
   char& operator[](size_t i) { return str_[i]; }
 
   void resize(size_t new_size) { str_.resize(new_size); }
+
+  void resize_uninitialized(size_t new_size) {
+    ResizeUninitialized<decltype(str_)>::Resize(str_, new_size);
+  }
 
   tstring& assign(const char* str, size_t len) {
     str_.assign(str, len);
