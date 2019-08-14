@@ -185,37 +185,29 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(std::vector<GetNextTestCase<SamplingDatasetParams>>(
         GetNextTestCases())));
 
-// Verify that the machinery for creating SamplingDataset kernels runs and
-// correctly creates kernels of with the node name "SamplingDataset".
 TEST_F(SamplingDatasetOpTest, DatasetNodeName) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
-  TF_ASSERT_OK(CheckDatasetNodeName(sampling_dataset_params.node_name));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
 }
 
 TEST_F(SamplingDatasetOpTest, DatasetTypeString) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(CheckDatasetTypeString(
       name_utils::OpName(SamplingDatasetOp::kDatasetType)));
 }
 
 TEST_F(SamplingDatasetOpTest, DatasetOutputDtypes) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
-DatasetOutputShapesTestCase<SamplingDatasetParams>
-DatasetOutputShapesTestCase1() {
-  return {/*dataset_params=*/TenPercentSampleParams(),
-          /*expected_output_shapes=*/{PartialTensorShape({})}};
-}
-
 TEST_F(SamplingDatasetOpTest, DatasetOutputShapes) {
-  auto test_case = DatasetOutputShapesTestCase1();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputShapes(test_case.expected_output_shapes));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
 class ParameterizedCardinalityTest
@@ -244,20 +236,20 @@ INSTANTIATE_TEST_SUITE_P(
         CardinalityTestCases())));
 
 TEST_F(SamplingDatasetOpTest, IteratorOutputDtypes) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(SamplingDatasetOpTest, IteratorOutputShapes) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(SamplingDatasetOpTest, IteratorOutputPrefix) {
-  auto sampling_dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&sampling_dataset_params));
+  auto dataset_params = TenPercentSampleParams();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       SamplingDatasetOp::kDatasetType, kIteratorPrefix)));
 }
