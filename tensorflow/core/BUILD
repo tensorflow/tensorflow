@@ -4708,6 +4708,7 @@ tf_cuda_cc_test(
         ":framework",
         ":framework_internal",
         ":lib",
+        ":protos_all_cc",
         ":test",
         ":test_main",
         ":testlib",
