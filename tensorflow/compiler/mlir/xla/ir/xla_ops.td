@@ -146,6 +146,17 @@ def XLA_ConvertOp : XLA_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
+def XLA_ExpOp: XLA_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Exponential operator";
+
+  let description = [{
+    Returns `e^(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 def XLA_NegOp: XLA_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Negation operator";
 
