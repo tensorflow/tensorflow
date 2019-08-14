@@ -148,7 +148,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
   }
 }
 
-bool PopulateInputLayerInfo(
+TfLiteStatus PopulateInputLayerInfo(
     const string& names_string, const string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   info->clear();
@@ -164,7 +164,7 @@ bool PopulateInputLayerInfo(
                       << names.size() << " items)."
                       << " For example --input_layer=input1,input2"
                       << " --input_layer_shape=1,224,224,4:1,20";
-    return false;
+    return kTfLiteError;
   }
 
   for (int i = 0; i < names.size(); ++i) {
@@ -180,12 +180,12 @@ bool PopulateInputLayerInfo(
         TFLITE_LOG(ERROR)
             << "Any unknown sizes in the shapes (-1's) must be replaced"
             << " with the size you want to benchmark with.";
-        return false;
+        return kTfLiteError;
       }
     }
   }
 
-  return true;
+  return kTfLiteOk;
 }
 
 std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
@@ -307,11 +307,11 @@ void BenchmarkTfLiteModel::LogParams() {
                    << "]";
 }
 
-bool BenchmarkTfLiteModel::ValidateParams() {
+TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
-    return false;
+    return kTfLiteError;
   }
   return PopulateInputLayerInfo(params_.Get<std::string>("input_layer"),
                                 params_.Get<std::string>("input_layer_shape"),
@@ -328,7 +328,7 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
   return total_input_bytes;
 }
 
-void BenchmarkTfLiteModel::PrepareInputData() {
+TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   auto interpreter_inputs = interpreter_->inputs();
   const size_t input_size = interpreter_inputs.size();
   CleanUp();
@@ -383,14 +383,16 @@ void BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;
+      return kTfLiteError;
     }
     inputs_data_.push_back(t_data);
   }
+  return kTfLiteOk;
 }
 
-void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
+TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
   auto interpreter_inputs = interpreter_->inputs();
   // Set the values of the input tensors from inputs_data_.
   for (int j = 0; j < interpreter_inputs.size(); ++j) {
@@ -425,17 +427,21 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
       });
       buffer.WriteToTensor(interpreter_->tensor(i), /*new_shape=*/nullptr);
     } else {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;
+      return kTfLiteError;
     }
   }
+
+  return kTfLiteOk;
 }
 
-void BenchmarkTfLiteModel::Init() {
+TfLiteStatus BenchmarkTfLiteModel::Init() {
   std::string graph = params_.Get<std::string>("graph");
   model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
   if (!model_) {
-    TFLITE_LOG(FATAL) << "Failed to mmap model " << graph;
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
   model_->error_reporter();
@@ -446,7 +452,8 @@ void BenchmarkTfLiteModel::Init() {
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
   if (!interpreter_) {
-    TFLITE_LOG(FATAL) << "Failed to construct interpreter";
+    TFLITE_LOG(ERROR) << "Failed to construct interpreter";
+    return kTfLiteError;
   }
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
@@ -455,7 +462,8 @@ void BenchmarkTfLiteModel::Init() {
   for (const auto& delegate : delegates_) {
     if (interpreter_->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      TFLITE_LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+      TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      return kTfLiteError;
     } else {
       TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
@@ -495,7 +503,8 @@ void BenchmarkTfLiteModel::Init() {
   }
 
   if (interpreter_->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
   }
 
   // Install profilers if necessary.
@@ -509,6 +518,8 @@ void BenchmarkTfLiteModel::Init() {
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());
 #endif
+
+  return kTfLiteOk;
 }
 
 #if defined(__ANDROID__)
@@ -593,11 +604,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 
-void BenchmarkTfLiteModel::RunImpl() {
-  if (interpreter_->Invoke() != kTfLiteOk) {
-    TFLITE_LOG(FATAL) << "Failed to invoke!";
-  }
-}
+TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }
 
 }  // namespace benchmark
 }  // namespace tflite
