@@ -111,7 +111,7 @@ template <>
 struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
   using Type = std::int8_t;
 };
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 template <>
 struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
   using Type = std::int8_t;
@@ -171,7 +171,7 @@ RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 #if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
 #endif
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx512)
 #endif
 

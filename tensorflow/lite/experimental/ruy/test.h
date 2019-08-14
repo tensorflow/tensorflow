@@ -79,7 +79,7 @@ const char* PathName(Path path) {
 #if RUY_PLATFORM(NEON)
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
     RUY_PATHNAME_CASE(kAvx512)
 #endif
     default:
