@@ -666,7 +666,7 @@ def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
     }
 
     for (int i = 0; i != dimensionsSize; ++i) {
-      auto dimIndex = dimensions.getValue(i).cast<IntegerAttr>().getInt();
+      auto dimIndex = dimensions.getValue<int64_t>(i);
       if (dimIndex >= resultRank) {
         return emitOpError(
             llvm::formatv("broadcast_dimensions contains invalid value {0} for "
@@ -1027,8 +1027,8 @@ def XLA_PadOp: XLA_Op<"pad",
 
     for (int i = 0, e = input_shape.size(); i < e; i++) {
       int expected_output = input_shape[i]
-          + padding_low.getValue(i).cast<IntegerAttr>().getInt()
-          + padding_high.getValue(i).cast<IntegerAttr>().getInt();
+          + padding_low.getValue<IntegerAttr>(i).getInt()
+          + padding_high.getValue<IntegerAttr>(i).getInt();
       if (expected_output != output_shape[i]) {
         return emitOpError(llvm::formatv("Expected output shape ({0}) and "
             "output shape ({1}) should match.",
@@ -1099,7 +1099,7 @@ def XLA_TransposeOp: XLA_Op<"transpose",
 
     auto expectedShape = SmallVector<int64_t, 10>(operandRank);
     for (int i = 0; i != operandRank; ++i) {
-      auto permutedDim = permutation().getValue(i).cast<IntegerAttr>().getInt();
+      auto permutedDim = permutation().getValue<IntegerAttr>(i).getInt();
       expectedShape[i] = operandType.getDimSize(permutedDim);
     }
 
