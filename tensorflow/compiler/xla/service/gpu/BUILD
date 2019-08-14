@@ -1133,7 +1133,7 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
-         "amdgpu_compiler_registration.cc",
+        "amdgpu_compiler_registration.cc",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -1147,10 +1147,9 @@ cc_library(
         "amdgpu_compiler.cc",
     ],
     hdrs = [
-        "amdgpu_compiler.h"
+        "amdgpu_compiler.h",
     ],
     deps = [
-        ":gpu_compiler_impl",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
