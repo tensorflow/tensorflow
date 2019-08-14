@@ -556,11 +556,11 @@ class Model {
       std::shared_ptr<Node> node);
 
   // This optimization algorithm starts by setting all tunable parallelism
-  // parameters to 1. It then repeatedly identifies the parameter whose increase
-  // in parallelism decreases the output time the most. This process is repeated
-  // until all parameters reach their maximum values or the projected output
-  // time is less than or equal to the processing time needed to produce an
-  // element divided by CPU budget.
+  // parameters to the minimum value. It then repeatedly identifies the
+  // parameter whose increase in parallelism decreases the output time the most.
+  // This process is repeated until all parameters reach their maximum values or
+  // the projected output time is less than or equal to the processing time
+  // needed to produce an element divided by CPU budget.
   void OptimizeHillClimb(int64 cpu_budget);
 
   // This optimization algorithm starts by setting all tunable parallelism
