@@ -10,6 +10,14 @@ func @range(%arg0: index, %arg1: index, %arg2: index) {
 // CHECK-LABEL: func @range(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
 //  CHECK-NEXT:  %{{.*}} = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
 
+func @buffer_size(%arg0: !linalg.buffer<?xf32>) -> index {
+  %0 = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
+  return %0 : index
+}
+// CHECK-LABEL: func @buffer_size
+//       CHECK:   linalg.buffer_size {{.*}} : !linalg.buffer<?xf32>
+
+
 func @buffer(%arg0: index, %arg1: index) {
   %0 = muli %arg0, %arg0 : index
   %1 = linalg.buffer_alloc %0 : !linalg.buffer<?xvector<4xi8>>

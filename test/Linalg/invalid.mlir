@@ -1,27 +1,107 @@
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
-////////////////////////////////////////////////////////////////////////////////
-///////////////////////////// Function Attribute tests /////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+// -----
+
+// CHECK-LABEL: buffer_alloc_single_index
+func @buffer_alloc_single_index() {
+  // expected-error @+1 {{expected one index operand}}
+  %0 = linalg.buffer_alloc : !linalg.buffer<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: buffer_alloc_unexpected_index
+func @buffer_alloc_unexpected_index(%s : index) {
+  // expected-error @+1 {{expected zero operand}}
+  %0 = linalg.buffer_alloc %s : !linalg.buffer<32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: buffer_alloc_nonegative_size
+func @buffer_alloc_nonegative_size() {
+  // expected-error @+1 {{expected nonnegative static buffer size}}
+  %0 = linalg.buffer_alloc : !linalg.buffer<0xf32>
+}
+
+// -----
+
+// CHECK-LABEL: buffer_valid_element_type
+func @buffer_valid_element_type() {
+  // expected-error @+1 {{expected valid buffer element type}}
+  %0 = linalg.buffer_alloc : !linalg.buffer<4xindex>
+}
+
+// -----
+
+// CHECK-LABEL: load_number_of_indices
+func @load_number_of_indices(%v : !linalg.view<f32>) {
+  // expected-error @+2 {{expected 0 indices, got 1}}
+  %c0 = constant 0 : index
+  linalg.load %v[%c0] : !linalg.view<f32>
+}
 
 // -----
 
 // CHECK-LABEL: slice_number_of_indexings
 func @slice_number_of_indexings(%arg0: !linalg.view<?x?xf32>) {
-  // expected-error @+2 {{expected number of indexings to match view rank}}
+  // expected-error @+2 {{expected 2 indexings, got 1}}
   %c0 = constant 0: index
   %0 = linalg.slice %arg0[%c0] : !linalg.view<?x?xf32>, index, !linalg.view<?x?xf32>
-  return
 }
 
 // -----
 
 // CHECK-LABEL: slice_rank_vs_range_indices
 func @slice_rank_vs_range_indices(%arg0: !linalg.view<?x?xf32>) {
-  // expected-error @+2 {{expected rank of the view(1) to be the number of its range indices(0)}}
+  // expected-error @+2 {{op expected rank of the view(1) to be the number of ranges(0)}}
   %c0 = constant 0: index
   %0 = linalg.slice %arg0[%c0, %c0] : !linalg.view<?x?xf32>, index, index, !linalg.view<?xf32>
-  return
+}
+
+// -----
+
+// CHECK-LABEL: store_number_of_indices
+func @store_number_of_indices(%v : !linalg.view<f32>) {
+  // expected-error @+3 {{expected 0 indices, got 1}}
+  %c0 = constant 0 : index
+  %f0 = constant 0.0 : f32
+  linalg.store %f0, %v[%c0] : !linalg.view<f32>
+}
+
+// -----
+
+// CHECK-LABEL: subview_number_of_indices
+func @subview_number_of_indices(%v : !linalg.view<?x?xf32>) {
+  // expected-error @+2 {{expected a view followed by 6 indices specifying a range for each dimension}}
+  %c0 = constant 0 : index
+  linalg.subview %v[%c0, %c0] : !linalg.view<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: view_type
+func @view_type(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %step: index) {
+  // expected-error @+2 {{expected view type}}
+  %r = linalg.range %min:%max:%step : !linalg.range
+  %0 = linalg.view %buf[%r]: !linalg.buffer<?xf32> -> index
+}
+
+// -----
+
+// CHECK-LABEL: view_num_ranges
+func @view_num_ranges(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %step: index) {
+  // expected-error @+2 {{expected 2 ranges}}
+  %r = linalg.range %min:%max:%step : !linalg.range
+  %0 = linalg.view %buf[%r]: !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: yield_parent
+func @yield_parent(%arg0: !linalg.view<?xf32>) {
+  // expected-error @+1 {{op expected 'linalg.generic' parent op}}
+  linalg.yield %arg0: !linalg.view<?xf32>
 }
 
 // -----
@@ -35,7 +115,6 @@ func @generic_at_least_2_operands(%arg0: !linalg.view<f32>) {
     n_views = [1, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -49,7 +128,6 @@ func @generic_exactly_2_views(%arg0: !linalg.view<f32>) {
     n_views = [1, 1],
     n_loop_types = [0, 0, 0]
   } %arg0, %arg0, %arg0: !linalg.view<f32>, !linalg.view<f32>, !linalg.view<f32>
-  return
 }
 
 // -----
@@ -63,7 +141,6 @@ func @generic_undefined_fun(%arg0: !linalg.view<f32>) {
     n_views = [1, 1],
     n_loop_types = [0, 0, 0]
   } %arg0, %arg0: !linalg.view<f32>, !linalg.view<f32>
-  return
 }
 
 // -----
@@ -79,7 +156,6 @@ func @generic_mismatched_num_arguments(%arg0: !linalg.view<f32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -95,7 +171,6 @@ func @generic_mismatched_num_returns(%arg0: !linalg.view<f32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -111,7 +186,6 @@ func @generic_symbol_in_map(%arg0: !linalg.view<f32>) {
     n_views = [0, 1],
     n_loop_types = [1, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -127,7 +201,6 @@ func @generic_wrong_dim_in_map(%arg0: !linalg.view<f32>) {
     n_views = [0, 1],
     n_loop_types = [1, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -143,7 +216,6 @@ func @generic_zero_d_view(%arg0: !linalg.view<f32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -159,7 +231,6 @@ func @generic_one_d_view(%arg0: !linalg.view<?xf32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<?xf32>
-  return
 }
 
 // -----
@@ -178,7 +249,6 @@ func @generic_fun_arg_0_element_type(%arg0: !linalg.view<?xf32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<?xf32>
-  return
 }
 
 // -----
@@ -197,7 +267,6 @@ func @generic_fun_result_0_element_type(%arg0: !linalg.view<?xf32>) {
     n_views = [0, 1],
     n_loop_types = [0, 0, 0]
   } %arg0: !linalg.view<?xf32>
-  return
 }
 
 // -----
@@ -216,7 +285,6 @@ func @generic_singular_maps(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf3
     n_views = [1, 1],
     n_loop_types = [2, 0, 0]
   } %arg0, %arg1: !linalg.view<?xf32>, !linalg.view<?xf32>
-  return
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -236,7 +304,6 @@ func @generic_empty_region(%arg0: !linalg.view<f32>) {
     ^bb1:
     ^bb2:
   }: !linalg.view<f32>, !linalg.view<f32>
-  return
 }
 
 // -----
@@ -251,7 +318,6 @@ func @generic_mismatched_num_arguments(%arg0: !linalg.view<f32>) {
   } %arg0 {
     ^bb:
   }: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -266,7 +332,6 @@ func @generic_block_arg_type(%arg0: !linalg.view<f32>) {
   } %arg0 {
     ^bb(%i: i1):
   }: !linalg.view<f32>
-  return
 }
 
 // -----
@@ -283,13 +348,4 @@ func @generic_fun_result_0_element_type(%arg0: !linalg.view<?xf32>) {
       %0 = constant 0: i1
       linalg.yield %0: i1
   }: !linalg.view<?xf32>
-  return
-}
-
-// -----
-
-// CHECK-LABEL: generic_wrong_yield_parent
-func @generic_fun_result_0_element_type(%arg0: !linalg.view<?xf32>) {
-  // expected-error @+1 {{op expected 'linalg.generic' parent op}}
-  linalg.yield %arg0: !linalg.view<?xf32>
 }
