@@ -2954,9 +2954,8 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
   const string input_op =
       left_child_is_constant ? node->input(1) : node->input(0);
 
-  LOG(INFO) << "\n++++++++ Reordering node " << node->name() << ": "
-            << node->op() << "(" << left_child->op() << ", "
-            << right_child->op() << ")\n";
+  VLOG(1) << "\n++++++++ Reordering node " << node->name() << ": " << node->op()
+          << "(" << left_child->op() << ", " << right_child->op() << ")\n";
 
   // Now we have identified the nodes to swap (non_const_leaf_input and
   // const_child).
