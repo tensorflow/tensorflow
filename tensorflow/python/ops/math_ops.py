@@ -1105,6 +1105,9 @@ def div_no_nan(x, y, name=None):
 
   Returns:
     The element-wise value of the x divided by y.
+  
+  Raises:
+    TypeError: if x and y are not of the same dtype.
   """
 
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
