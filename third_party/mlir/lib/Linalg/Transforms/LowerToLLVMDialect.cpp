@@ -421,7 +421,7 @@ public:
     for (int j = 0, e = viewType.getRank(); j < e; ++j) {
       Value *indexing = operands[1 + j];
       Value *min =
-          sliceOp.getIndexing(j)->getType().isa<RangeType>()
+          sliceOp.indexing(j)->getType().isa<RangeType>()
               ? static_cast<Value *>(extractvalue(int64Ty, indexing, pos(0)))
               : indexing;
       Value *product = mul(min, strides[j]);
@@ -432,7 +432,7 @@ public:
     // Compute and insert view sizes (max - min along the range).  Skip the
     // non-range operands as they will be projected away from the view.
     int i = 0, j = 0;
-    for (Value *index : sliceOp.getIndexings()) {
+    for (Value *index : sliceOp.indexings()) {
       if (!index->getType().isa<RangeType>()) {
         ++j;
         continue;
@@ -452,7 +452,7 @@ public:
     // to non-range operands as they are projected away from the view.
     i = 0;
     for (int j = 0, e = strides.size(); j < e; ++j) {
-      if (!sliceOp.getIndexing(j)->getType().isa<RangeType>())
+      if (!sliceOp.indexing(j)->getType().isa<RangeType>())
         continue;
       Value *step = extractvalue(int64Ty, operands[1 + j], pos(2));
       Value *stride = mul(strides[j], step);
