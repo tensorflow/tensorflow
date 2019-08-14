@@ -224,129 +224,6 @@ ParseResult mlir::linalg::RangeOp::parse(OpAsmParser *parser,
       parser->addTypeToList(type, result->types));
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// SliceOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::SliceOp::build(Builder *b, OperationState *result,
-                                  Value *base, ArrayRef<Value *> indexings) {
-  result->addOperands({base});
-  result->addOperands(indexings);
-
-  ViewType viewType = base->getType().cast<ViewType>();
-  unsigned rank = viewType.getRank();
-  for (auto *i : indexings)
-    if (!i->getType().isa<RangeType>())
-      rank--;
-  Type elementType = viewType.getElementType();
-  result->addTypes({ViewType::get(b->getContext(), elementType, rank)});
-}
-
-LogicalResult mlir::linalg::SliceOp::verify() {
-  if (llvm::empty(getOperands()))
-    return emitOpError(
-        "requires at least a view operand followed by 'rank' indices");
-  unsigned rank = getBaseViewRank();
-  if (llvm::size(getIndexings()) != rank) {
-    return emitOpError("requires at least a view operand followed by ")
-           << rank << " indexings";
-  }
-  unsigned index = 0;
-  for (auto indexing : getIndexings()) {
-    if (!indexing->getType().isa<RangeType>() &&
-        !indexing->getType().isa<IndexType>()) {
-      return emitOpError() << index
-                           << "^th index must be of range or index type";
-    }
-    if (indexing->getType().isa<IndexType>())
-      --rank;
-    ++index;
-  }
-  if (getRank() != rank) {
-    return emitOpError()
-           << "the rank of the view must be the number of its range indices ("
-           << rank << ") but got: " << getRank();
-  }
-  return success();
-}
-
-ParseResult mlir::linalg::SliceOp::parse(OpAsmParser *parser,
-                                         OperationState *result) {
-  OpAsmParser::OperandType baseInfo;
-  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
-  SmallVector<Type, 8> types;
-  if (parser->parseOperand(baseInfo) ||
-      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
-    return failure();
-
-  if (types.size() != 2 + indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(),
-                             "unexpected number of types ");
-  ViewType baseViewType = types[0].dyn_cast<ViewType>();
-  if (!baseViewType)
-    return parser->emitError(parser->getNameLoc(),
-                             "view type expected for first type");
-  if (indexingsInfo.size() != baseViewType.getRank())
-    return parser->emitError(parser->getNameLoc(), "expected ")
-           << baseViewType.getRank() << " indexings";
-  ViewType viewType = types.back().dyn_cast<ViewType>();
-  if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
-
-  ArrayRef<Type> indexingTypes =
-      ArrayRef<Type>(types).drop_front(1).drop_back(1);
-  if (indexingTypes.size() != baseViewType.getRank())
-    return parser->emitError(parser->getNameLoc(), "expected ")
-           << baseViewType.getRank() << " indexing types";
-  return failure(
-      parser->resolveOperand(baseInfo, baseViewType, result->operands) ||
-      (!indexingsInfo.empty() &&
-       parser->resolveOperands(indexingsInfo, indexingTypes,
-                               indexingsInfo.front().location,
-                               result->operands)) ||
-      parser->addTypeToList(viewType, result->types));
-}
-
-// A SliceOp prints as:
-//
-// ```{.mlir}
-//   linalg.slice %0[%1, %2] :
-//     !linalg.view<?x?xf32>, [indexing-types], !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a view created from a buffer, %1 and %2 are
-// ssa-value each holding a range.
-void mlir::linalg::SliceOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getBaseView() << "[";
-  interleave(
-      getIndexings().begin(), getIndexings().end(), [p](Value *v) { *p << *v; },
-      [p]() { *p << ", "; });
-  *p << "] : " << getBaseViewType();
-  for (auto indexing : getIndexings()) {
-    *p << ", " << indexing->getType();
-  }
-  *p << ", " << getType();
-}
-
-ViewOp mlir::linalg::SliceOp::getBaseViewOp() {
-  return cast<ViewOp>(getOperand(0)->getDefiningOp());
-}
-
-ViewType mlir::linalg::SliceOp::getBaseViewType() {
-  return getOperand(0)->getType().cast<ViewType>();
-}
-
-SmallVector<Value *, 8> mlir::linalg::SliceOp::getRanges() {
-  llvm::SmallVector<Value *, 8> res;
-  for (auto *operand : getIndexings()) {
-    if (!operand->getType().isa<IndexType>()) {
-      res.push_back(operand);
-    }
-  }
-  return res;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // StoreOp.
 ////////////////////////////////////////////////////////////////////////////////
@@ -671,6 +548,83 @@ static LogicalResult verify(GenericOp op) {
     return op.emitError("op expected the concatenation of maps in indexing_map "
                         "to be invertible");
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+void mlir::linalg::SliceOp::build(Builder *b, OperationState *result,
+                                  Value *base, ArrayRef<Value *> indexings) {
+  result->addOperands(base);
+  result->addOperands(indexings);
+
+  ViewType viewType = base->getType().cast<ViewType>();
+  unsigned rank = viewType.getRank();
+  for (auto *i : indexings)
+    if (!i->getType().isa<RangeType>())
+      rank--;
+  Type elementType = viewType.getElementType();
+  result->addTypes({ViewType::get(b->getContext(), elementType, rank)});
+}
+
+// A SliceOp prints as:
+//
+// ```{.mlir}
+//   linalg.slice %0[%1, %2] :
+//     !linalg.view<?x?xf32>, [indexing-types], !linalg.view<?x?xf32>
+// ```
+//
+// Where %0 is an ssa-value holding a view created from a buffer, %1 and %2 are
+// ssa-value each holding a range.
+static void print(OpAsmPrinter *p, SliceOp op) {
+  *p << SliceOp::getOperationName() << " " << *op.view() << "[";
+  p->printOperands(op.indexings());
+  *p << "] : " << op.getBaseViewType();
+  for (auto indexing : op.indexings()) {
+    *p << ", " << indexing->getType();
+  }
+  *p << ", " << op.getType();
+}
+
+static ParseResult parseSliceOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType baseInfo;
+  SmallVector<OpAsmParser::OperandType, 8> operands;
+  SmallVector<Type, 8> types;
+  if (parser->parseOperand(baseInfo) ||
+      parser->parseOperandList(operands, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(types))
+    return failure();
+
+  if (types.size() < 2)
+    return parser->emitError(parser->getCurrentLocation(),
+                             "expected at least input and result view types");
+
+  ArrayRef<Type> indexingTypes = ArrayRef<Type>(types).drop_front().drop_back();
+  return failure(
+      parser->resolveOperand(baseInfo, types.front(), result->operands) ||
+      (!operands.empty() &&
+       parser->resolveOperands(operands, indexingTypes,
+                               operands.front().location, result->operands)) ||
+      parser->addTypeToList(types.back(), result->types));
+}
+
+static LogicalResult verify(SliceOp op) {
+  unsigned rank = op.getBaseViewRank();
+  if (llvm::size(op.indexings()) != rank)
+    return op.emitOpError("expected number of indexings to match view rank");
+  unsigned index = 0;
+  for (auto indexing : op.indexings()) {
+    if (indexing->getType().isa<IndexType>())
+      --rank;
+    ++index;
+  }
+  if (op.getRank() != rank)
+    return op.emitOpError()
+           << "expected rank of the view(" << op.getRank()
+           << ") to be the number of its range indices(" << rank << ")";
   return success();
 }
 
