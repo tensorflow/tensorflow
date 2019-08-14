@@ -1801,9 +1801,16 @@ class Model(network.Network):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
-    if batch_size is not None and isinstance(x, dataset_ops.DatasetV2):
-      raise ValueError('The `batch_size` argument must not be specified when'
-                       ' using dataset as an input.')
+    if (isinstance(x, (dataset_ops.DatasetV1,
+                       dataset_ops.DatasetV2,
+                       data_utils.Sequence)) or
+        tf_inspect.isgenerator(x)):
+      if batch_size is not None:
+        raise ValueError(
+            'The `batch_size` argument must not be specified for the given '
+            'input type. Received input: {}, batch_size: {}'.format(
+                x, batch_size))
+      return
 
     layers = super(Model, self).layers  # Avoids the override in Sequential.
     if layers:
@@ -1857,13 +1864,7 @@ class Model(network.Network):
         if steps is None:
           batch_size = static_batch_size
 
-    if (batch_size is None
-        and steps is None
-        and not isinstance(x, (dataset_ops.DatasetV2,
-                               iterator_ops.Iterator,
-                               iterator_ops.IteratorV2,
-                               data_utils.Sequence))
-        and not tf_inspect.isgenerator(x)):
+    if batch_size is None and steps is None:
       # Backwards compatibility
       batch_size = 32
     return batch_size

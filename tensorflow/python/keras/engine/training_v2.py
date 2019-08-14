@@ -490,10 +490,12 @@ def _process_training_inputs(model, x, y, batch_size=None,
     # Retrieve the training section from x and y, and then construct dataset
     # from it.
     x, y, sample_weights = model._standardize_user_data(
-        x, y, sample_weight=sample_weights,
+        x,
+        y,
+        sample_weight=sample_weights,
         class_weight=class_weights,
         batch_size=batch_size,
-        check_steps=True,
+        check_steps=False,
         steps=steps_per_epoch)
     (x, y, sample_weights,
      val_x, val_y,
@@ -550,7 +552,7 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
         sample_weight=sample_weights,
         class_weight=class_weights,
         batch_size=batch_size,
-        check_steps=True,
+        check_steps=False,
         steps=steps)
   adapter = adapter_cls(x, y, batch_size=batch_size, steps=steps,
                         sample_weights=sample_weights, shuffle=shuffle,
