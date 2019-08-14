@@ -201,8 +201,8 @@ class BackendUtilsTest(test.TestCase):
                      initial_learning_phase_outside_graph)
 
     with keras.backend.get_graph().as_default():
-      self.assertEqual(keras.backend.learning_phase(),
-                       initial_learning_phase_in_graph)
+      self.assertIs(keras.backend.learning_phase(),
+                    initial_learning_phase_in_graph)
 
     self.assertEqual(keras.backend.learning_phase(),
                      initial_learning_phase_outside_graph)
