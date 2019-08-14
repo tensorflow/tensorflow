@@ -33,6 +33,7 @@ from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -166,7 +167,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
                      'but got a subclass model instead.')
 
   layer_map = {}  # Cache for created layers.
-  tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
+  tensor_map = object_identity.ObjectIdentityDictionary(
+  )  # Map {reference_tensor: corresponding_tensor}
   if input_tensors is None:
     # Create placeholders to build the model on top of.
     input_tensors = []
