@@ -207,7 +207,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels/data:dataset_test_base",
-        "//third_party/eigen3",
     ],
 )
 
