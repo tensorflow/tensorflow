@@ -30,16 +30,16 @@ limitations under the License.
 namespace tensorflow {
 
 #if GOOGLE_CUDA
-using se::cuda::ScopedActivateExecutorContext;
+using ScopedActivateExecutorContext = se::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-using se::rocm::ScopedActivateExecutorContext;
+using ScopedActivateExecutorContext = se::rocm::ScopedActivateExecutorContext;
 // Local hipify of cuda symbols
-#define cudaError_t hipError_t
-#define cudaStream_t hipStream_t
-#define cudaGetErrorString hipGetErrorString
-#define cudaGetDevice hipGetDevice
-#define cudaSetDevice hipSetDevice
-#define cudaSuccess hipSuccess
+using cudaError_t = hipError_t;
+using cudaStream_t = hipStream_t;
+const auto cudaGetErrorString = hipGetErrorString;
+const auto cudaGetDevice = hipGetDevice;
+const auto cudaSetDevice = hipSetDevice;
+const auto cudaSuccess = hipSuccess;
 #endif
 
 #define NCCL_RETURN_IF_ERROR(...)                               \
