@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
@@ -29,6 +29,7 @@ package_group(
     packages = [
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
+        "//tensorflow_models/...",
     ],
 )
 
@@ -207,6 +208,7 @@ cc_library(
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
@@ -737,12 +739,16 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":resource_operation_table",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -753,6 +759,7 @@ tf_cuda_cc_test(
     deps = [
         ":resource_util",
         "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

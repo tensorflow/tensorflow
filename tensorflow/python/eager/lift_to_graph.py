@@ -20,13 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import six
 
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 
 
 UnliftableError = op_selector.UnliftableError
@@ -58,7 +59,7 @@ _ControlMutation = collections.namedtuple(
     ["copied_op", "old_graph_op"])
 
 
-def _copy_non_source(op, graph, op_map):
+def _copy_non_source(op, graph, op_map, base_graph):
   """Copy an op directly to a given graph.
 
   Generally `op`'s inputs should already have been copied. If this is not the
@@ -70,6 +71,7 @@ def _copy_non_source(op, graph, op_map):
     op: The op to be copied.
     graph: The destination graph.
     op_map: A dict mapping ops and tensors in the old graph to the new one.
+    base_graph: The graph we're copying from, for any necessary functions.
   Returns:
     A tuple of (required_inputs, required_control_inputs):
       required_inputs:
@@ -113,6 +115,13 @@ def _copy_non_source(op, graph, op_map):
   # to signal that the op was built inside a tpu_replicate context; if we're
   # lifting it to another graph we're similarly lifting it into another context.
   with ops.control_dependencies(copied_control_inputs), ops.device(op.device):
+    # pylint: disable=protected-access
+    f = base_graph._functions.get(op.type, None)
+    if f is not None and compat.as_str(f.name) not in graph._functions:
+      f.add_to_graph(graph)
+    # pylint: enable=protected-access
+
+    # Create a new op in the destination graph if it doesn't exist before.
     copied_op = graph.create_op(
         op_type=op.type,
         inputs=copied_inputs,
@@ -133,7 +142,8 @@ def _copy_non_source(op, graph, op_map):
            for mutation in control_mutations])
 
 
-def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
+def _copy_source(s, graph, op_map, handle_captures, inverse_captures,
+                 base_graph):
   """Create a source in a graph based on a Tensor from a different graph.
 
   This function creates a placeholder analog of `s` in a graph with the
@@ -156,6 +166,7 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
       graph or simply create a vanilla placeholder.
     inverse_captures: A dict mapping s back to the Tensor or Variable that it
       captures.
+    base_graph: The graph being copied from.
   """
   if handle_captures and s in inverse_captures:
     copied_placeholder = graph.capture(inverse_captures[s], name=s.op.name)
@@ -163,7 +174,8 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
     # Copy the default value to the graph.
     default_value = s.op.inputs[0]
     unavailable_inputs, unavailable_control_inputs = _copy_non_source(
-        op=default_value.op, graph=graph, op_map=op_map)
+        op=default_value.op, graph=graph, op_map=op_map,
+        base_graph=base_graph)
     if unavailable_inputs or unavailable_control_inputs:
       raise AssertionError(
           "Could not copy source node {} because it has inputs."
@@ -190,13 +202,18 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures):
   op_map[s.op] = copied_placeholder.op
 
 
-def lift_to_graph(init_tensors, graph, sources=None,
-                  disallowed_placeholders=None, add_sources=False,
-                  handle_captures=False, base_graph=None):
+def lift_to_graph(tensors,
+                  graph,
+                  sources=None,
+                  disallowed_placeholders=None,
+                  add_sources=False,
+                  handle_captures=False,
+                  base_graph=None,
+                  op_map=None):
   """Copies the tensor and all its inputs recursively to the outer graph.
 
   Args:
-    init_tensors: The Tensor to lift.
+    tensors: The Tensors to lift.
     graph: The graph to lift to.
     sources: Optional sequence of nodes to start from. If omitted the whole
       subgraph which feeds into `init_tensor` is lifted.
@@ -208,6 +225,8 @@ def lift_to_graph(init_tensors, graph, sources=None,
       graph or simply create a vanilla placeholder.
     base_graph: The graph from which to lift ops. This will be inferred if not
       specified.
+    op_map: A map contains all the existing nodes that have been lifted to the
+      destination graph, so they won't be lifted and copied again.
 
   Returns:
     A mapping from ops in the current default graph to ops in `graph`.
@@ -215,13 +234,18 @@ def lift_to_graph(init_tensors, graph, sources=None,
   Raises:
     UnliftableError: If a placeholder blocks lifting.
   """
-  variable_init_tensors = {i for i in init_tensors if isinstance(
-      i, resource_variable_ops.ResourceVariable)}
-  init_tensors = set(init_tensors).difference(variable_init_tensors)
-  base_graph = base_graph or list(init_tensors)[0].graph
+  variable_init_tensors = []
+  init_tensors = []
+  for tensor in tensors:
+    if isinstance(tensor, resource_variable_ops.ResourceVariable):
+      variable_init_tensors.append(tensor)
+    else:
+      init_tensors.append(tensor)
+  base_graph = base_graph or init_tensors[0].graph
+  op_map = op_map or object_identity.ObjectIdentityDictionary()
 
   # Check that the initializer does not depend on any placeholders.
-  sources = set(sources or [])
+  sources = object_identity.ObjectIdentitySet(sources or [])
   visited_ops = set([x.op for x in sources])
   op_outputs = collections.defaultdict(set)
 
@@ -267,20 +291,25 @@ def lift_to_graph(init_tensors, graph, sources=None,
 
   # When lifting from one FuncGraph to another, we will need to capture the
   # relevant tensors as well.
-  captures = collections.OrderedDict()
+  captures = []
+  inverse_captures = object_identity.ObjectIdentityDictionary()
+  internal_captures = []
   if (isinstance(base_graph, func_graph.FuncGraph) and
       isinstance(graph, func_graph.FuncGraph)):
     captures = base_graph.captures
-  inverse_captures = {v: k for k, v in captures.items()}
+    for external_capture, internal_capture in captures:
+      inverse_captures[internal_capture] = external_capture
+    internal_captures = base_graph.internal_captures
 
   # ops_to_copy now holds a reverse topologically sorted list of ops which
   # ends in the initializer. We copy those to the outermost graph and
   # build the initialization op there.
   with graph.as_default():
-    op_map = {i: i for i in variable_init_tensors}  # Pass through variables.
+    op_map.update({i: i for i in variable_init_tensors
+                  })  # Pass through variables.
     source_ops = set()
     # Add the sources in the same order as the original graph.
-    for s in six.itervalues(captures):
+    for s in internal_captures:
       if s in sources:
         sources.remove(s)
         source_ops.add(s.op)
@@ -289,7 +318,8 @@ def lift_to_graph(init_tensors, graph, sources=None,
             graph=graph,
             op_map=op_map,
             handle_captures=handle_captures,
-            inverse_captures=inverse_captures)
+            inverse_captures=inverse_captures,
+            base_graph=base_graph)
     for s in sources:
       source_ops.add(s.op)
       _copy_source(
@@ -297,15 +327,16 @@ def lift_to_graph(init_tensors, graph, sources=None,
           graph=graph,
           op_map=op_map,
           handle_captures=handle_captures,
-          inverse_captures=inverse_captures)
+          inverse_captures=inverse_captures,
+          base_graph=base_graph)
 
     input_mutations = []
     control_mutations = []
     for op in reversed(ops_to_copy):
-      if op in source_ops:
+      if op in source_ops or op in op_map:
         continue
       new_input_mutations, new_control_mutations = _copy_non_source(
-          op=op, graph=graph, op_map=op_map)
+          op=op, graph=graph, op_map=op_map, base_graph=base_graph)
       input_mutations.extend(new_input_mutations)
       control_mutations.extend(new_control_mutations)
 
@@ -326,4 +357,3 @@ def lift_to_graph(init_tensors, graph, sources=None,
     # pylint: enable=protected-access
 
     return op_map
-

@@ -1,0 +1,12 @@
+op {
+  name: "VarIsInitializedOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}

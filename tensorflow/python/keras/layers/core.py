@@ -404,7 +404,7 @@ class Reshape(Layer):
 
   # also supports shape inference using `-1` as dimension
   model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, 3, 2, 2)
+  # now: model.output_shape == (None, None, 2, 2)
   ```
   """
 
@@ -1043,11 +1043,7 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      # Cast the inputs to self.dtype, which is the variable dtype. We do not
-      # cast if `should_cast_variables` is True, as in that case the variable
-      # will be automatically casted to inputs.dtype.
-      if not self._mixed_precision_policy.should_cast_variables:
-        inputs = math_ops.cast(inputs, self.dtype)
+      inputs = math_ops.cast(inputs, self._compute_dtype)
       if K.is_sparse(inputs):
         outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
       else:

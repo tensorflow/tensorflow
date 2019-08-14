@@ -29,7 +29,6 @@ class ExtractI32At<int i> : NativeCodeCall<
     "$_builder.getI32IntegerAttr($_self.cast<ArrayAttr>().getValue()[" # i #
     "].cast<IntegerAttr>().getInt())">;
 
-
 // Merge the two Attributes to a ArrayAttr;
 def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 
@@ -49,6 +48,10 @@ def HasAll3Attrs : Constraint<CPred<"HasAll3Attrs($0, $1, $2)">>;
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+
+// Extracts the single integer element from $_self.
+def ExtractSingleElementAsInteger : NativeCodeCall<
+    "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -75,6 +78,9 @@ def : Pat<(TF_AvgPoolOp $value,
               /*stride_h=*/ExtractI32At<1>:$strides,
               /*stride_w=*/ExtractI32At<2>:$strides,
               /*fused_activation_function=*/TFL_AF_None)>;
+
+def : Pat<(TF_ArgMaxOp $input, $dim), (TFL_ArgMaxOp $input, $dim)>;
+def : Pat<(TF_ArgMinOp $input, $dim), (TFL_ArgMinOp $input, $dim)>;
 
 def : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
 
@@ -115,23 +121,36 @@ def : Pat<(TF_MaxPoolOp $value,
 
 def : Pat<(TF_MaximumOp $arg1, $arg2), (TFL_MaximumOp $arg1, $arg2)>;
 def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
+def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
+          (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
+           (convertIntAttrTo32Bit $axis))>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
 // The second operand is captured in the type for this transform.
 def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
           (TFL_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
+          (TFL_ReverseSequenceOp $input, $seq_lengths,
+           (convertIntAttrTo32Bit $seq_dim),
+           (convertIntAttrTo32Bit $batch_dim))>;
+def : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
+def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
+def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 // TODO(jpienaar): this is not true for all selects, TF's select supports rank 0
 // condition
 def : Pat<(TF_SelectOp $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
+def : Pat<(TF_SelectV2Op $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
 def : Pat<(TF_ShapeOp $arg), (TFL_ShapeOp $arg)>;
 def : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
 def : Pat<(TF_SliceOp $input, $begin, $size), (TFL_SliceOp $input, $begin, $size)>;
 def : Pat<(TF_SoftmaxOp $arg), (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
 def : Pat<(TF_SqueezeOp $arg, $squeeze_dims), (TFL_SqueezeOp $arg, $squeeze_dims)>;
+def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
+def : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
 
 // The following two rules can both match an tf.Placeholder.input node with
@@ -154,6 +173,20 @@ def : Pat<(TF_GreaterOp $l, $r), (TFL_GreaterOp $l, $r)>;
 
 def : Pat<(TF_LessEqualOp $l, $r), (TFL_LessEqualOp $l, $r)>;
 def : Pat<(TF_GreaterEqualOp $l, $r), (TFL_GreaterEqualOp $l, $r)>;
+
+// Gather in TF -> Gather in TFL with axis=0
+// The 'validate_indices' attribute is deprecated.
+def : Pat<(TF_GatherOp $params, $indices, $ignored_validate_indices),
+          (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
+
+def : Pat<(TF_GatherNdOp $params, $indices),
+          (TFL_GatherNdOp $params, $indices)>;
+
+def : Pat<(TF_GatherV2Op $params, $indices,
+                         (ConstantOp ElementsAttr:$axis),
+                         ConstantAttr<I64Attr, "0">:$batch_dims),
+          (TFL_GatherOp $params, $indices,
+                        ExtractSingleElementAsInteger:$axis)>;
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
@@ -222,11 +255,16 @@ def : Pat<(TF_EqualOp $arg0, $arg1), (TFL_EqualOp $arg0, $arg1)>;
 
 def : Pat<(TF_PadOp $arg0, $arg1), (TFL_PadOp $arg0, $arg1)>;
 
+def : Pat<(TF_TileOp $arg0, $arg1), (TFL_TileOp $arg0, $arg1)>;
+
 def : Pat<(TF_PadV2Op $arg0, $arg1, $cst), (TFL_PadV2Op $arg0, $arg1, $cst)>;
 
 def : Pat<(TF_MeanOp $arg0, $arg1, BoolAttr:$arg2), (TFL_MeanOp $arg0, $arg1, $arg2)>;
 
 def : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2), (TFL_SumOp $arg, $axes, $arg2)>;
+
+// TopK in TFL is always sorted so we ignore that attribute here.
+def : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted), (TFL_TopKV2Op $input, $k)>;
 
 def : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMinOp $arg0, $arg1, $arg2)>;
 
@@ -234,14 +272,35 @@ def : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMaxOp $arg0, $arg1
 
 def : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
 
+def : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
+          (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
+
+def : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
+
 def : Pat<(TF_BatchToSpaceNDOp $input, $block_shape, $crops), (TFL_BatchToSpaceNdOp $input, $block_shape, $crops)>;
 
 def : Pat<(TF_SpaceToBatchNDOp $input, $block_shape, $paddings), (TFL_SpaceToBatchNdOp $input, $block_shape, $paddings)>;
 
+def : Pat<(TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format),
+          (TFL_SpaceToDepthOp $input, (convertIntAttrTo32Bit $block_size))>;
+
 def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners)>;
+def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners)>;
+
+def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
+
+def : Pat<(TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value, $validate_indices),
+          (TFL_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value)>;
 
 def : Pat<
   (TF_StridedSliceOp $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input, $begin, $end, $strides,
     (convertIntAttrTo32Bit $begin_mask), (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
+
+def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
+def : Pat<(TF_ExpOp $arg0), (TFL_ExpOp $arg0)>;
+
+def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;

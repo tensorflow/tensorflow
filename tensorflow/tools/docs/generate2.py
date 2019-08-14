@@ -150,6 +150,16 @@ _raw_ops_doc = textwrap.dedent("""\n
 
 if LooseVersion(tf.__version__) < LooseVersion('2'):
   tf.raw_ops.__doc__ = _raw_ops_doc
+  tf.contrib.__doc__ = """
+    Contrib module containing volatile or experimental code.
+
+    Warning: The `tf.contrib` module will not be included in TensorFlow 2.0. Many
+    of its submodules have been integrated into TensorFlow core, or spun-off into
+    other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
+    [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
+    on how to upgrade see the
+    [Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+    """
 else:
   tf.raw_ops.__doc__ += _raw_ops_doc
 
@@ -240,8 +250,13 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
+  if LooseVersion(tf.__version__) < LooseVersion('2'):
+    root_title = 'TensorFlow'
+  elif LooseVersion(tf.__version__) >= LooseVersion('2'):
+    root_title = 'TensorFlow 2.0'
+
   doc_generator = generate_lib.DocGenerator(
-      root_title="TensorFlow 2.0 Preview",
+      root_title=root_title,
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,

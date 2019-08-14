@@ -19,13 +19,14 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_graphdef.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -45,6 +46,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromFile(input_filename, &graphdef));
@@ -56,6 +58,8 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
 
   NodeSpecs specs;
   specs.prune_unused_nodes = prune_unused_nodes;
+  specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
+  specs.graph_as_function = graph_as_function;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(
       input_arrays, input_dtypes, input_shapes, inference_type, min_values,
       max_values, &specs.inputs));
@@ -70,15 +74,17 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, graph_as_function, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
   }
+
   return module_or.ConsumeValueOrDie();
 }
 
@@ -88,18 +94,19 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, graph_as_function, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
   }
   auto& module = module_or.ValueOrDie();
   std::srand(0);
-  for (auto fn : *module) {
+  for (auto fn : module->getOps<mlir::FuncOp>()) {
     for (auto& bb : fn) {
       for (auto& inst : bb) {
         auto attr_id = mlir::Identifier::get("value", context);
@@ -119,7 +126,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
               break;
             default:
               inst.emitWarning()
-                  << "Skipping splat converstion for "
+                  << "Skipping splat conversion for "
                   << "an unsupported attribute type " << element_type;
               continue;
           }

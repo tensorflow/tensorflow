@@ -15,6 +15,8 @@
 
 """Testing.
 
+See the [Testing](https://tensorflow.org/api_docs/python/tf/test) guide.
+
 Note: `tf.compat.v1.test.mock` is an alias to the python `mock` or
 `unittest.mock` depending on the python version.
 """

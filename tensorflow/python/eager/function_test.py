@@ -22,6 +22,7 @@ import functools
 import itertools
 import multiprocessing.pool
 import sys
+import time
 import weakref
 
 from absl.testing import parameterized
@@ -33,6 +34,7 @@ from tensorflow.python import keras
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -40,6 +42,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -57,6 +60,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -145,6 +149,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(1.0)
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
+
+  def testVariableOnly(self):
+    v = variables.Variable(1.0)
+    add = def_function.function(lambda x: x.assign_add(1.0))
+    r1 = add(v)
+    self.assertEqual(2.0, self.evaluate(r1))
+    c = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(AttributeError, 'no attribute'):
+      add(c)
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
@@ -284,7 +297,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(TypeError, 'set'):
+    with self.assertRaisesRegexp(AttributeError, 'set'):
       f(set([]))
 
   def testFuncName(self):
@@ -680,7 +693,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     compiled = def_function.function(f)
     var_handle = compiled()
     self.assertEqual(var_handle.dtype, dtypes.resource)
-    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -757,7 +770,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       compiled = def_function.function(f)
       var_handle = compiled()
       self.assertEqual(var_handle.dtype, dtypes.resource)
-      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
       var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
       self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -787,14 +800,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def f():
         tl, value = list_ops.tensor_list_pop_back(
             tensor_list, element_dtype=dtypes.float32)
-        self.assertEqual(value.shape, tensor_shape.scalar())
+        self.assertEqual(value.shape, tensor_shape.TensorShape([]))
         return tl
 
       compiled = def_function.function(f)
       output_tensor_list = compiled()
       _, value = list_ops.tensor_list_pop_back(
           output_tensor_list, element_dtype=dtypes.float32)
-      self.assertEqual(value.shape, tensor_shape.scalar())
+      self.assertEqual(value.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
@@ -2089,7 +2102,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        composite.add_to_graph(register_gradient_functions=True)
+        composite.add_to_graph()
+        composite.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
@@ -2120,6 +2134,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Make sure the pre registered function is used, and no other function
         # is added.
         self.assertLen(graph._functions, 6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testEagerCaptures(self, function_decorator):
+    with context.eager_mode():
+      large_tensor = array_ops.ones(shape=(256,))
+      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+
+      small_tensor = array_ops.ones(shape=(4,))
+      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+    for captured, op_type in [(large_tensor, 'Placeholder'),
+                              (small_tensor, 'Const'), (v, 'Placeholder')]:
+      @function_decorator
+      def test_fn():
+        return captured + 1  # pylint: disable=cell-var-from-loop
+
+      g = test_fn.get_concrete_function().graph
+      internal_captures = g.internal_captures
+      self.assertLen(internal_captures, 1)
+      self.assertEqual(internal_captures[0].op.type, op_type)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -2738,6 +2778,65 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
+  def testCancelBeforeFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    c_mgr.start_cancel()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+
+  def testCancelBlockedFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    def cancel_thread():
+      time.sleep(0.5)
+      c_mgr.start_cancel()
+
+    t = self.checkedThread(cancel_thread)
+    t.start()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+    t.join()
+
+  def testCancelAfterFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+    q.enqueue(37)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    self.assertAllEqual(37, cancelable_func().numpy())
+
+    # Cancellation after the function executes is a no-op.
+    c_mgr.start_cancel()
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -2917,6 +3016,78 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertRegexpMatches(r2.backing_device, 'GPU')
     check_handle(res1, 3.0)
     check_handle(res2, 2.0)
+
+  @test_util.run_gpu_only
+  def testPassResourceThroughNestedFunctionCall(self):
+    """Test passing GPU resource to noinline function call placed on CPU.
+
+    PartitionedCallOp must not enforce any particular device assignment for the
+    resource output. Inner function marked as `_nospecialize`, so Grappler would
+    not prune unused function output.
+    """
+
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun_with_attributes(attributes={
+        '_noinline': True,
+        '_nospecialize': True
+    })
+    def inner(resource1):
+      return resource1 * 2, resource1.handle
+
+    @function.defun
+    def outer(resource1):
+      with ops.device('/device:CPU:0'):
+        r1, _ = inner(resource1)
+      return r1
+
+    r1 = outer(g1)
+
+    self.assertEqual(r1.numpy(), 6.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+
+  @test_util.run_gpu_only
+  def testReturnResourceFromNestedFunctionCall(self):
+    """Test returning GPU resource from noinline function call placed on CPU.
+
+    When inferring output devices for the return value, do not set a device for
+    returns of DT_RESOURCE data type based on the device assignment of the node
+    that produced that resource. As an example function call placed on CPU can
+    return resources on GPU.
+    """
+
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun_with_attributes(attributes={
+        '_noinline': True
+    })
+    def inner(resource1):
+      resource1.assign_add(2.0)
+      return resource1 * 2, resource1.handle
+
+    @function.defun
+    def outer(resource1):
+      with ops.device('/device:CPU:0'):
+        r1, res1 = inner(resource1)
+      return r1, res1
+
+    r1, res1 = outer(g1)
+
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+
+    def check_handle(handle, expected_value):
+      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      tensor = gen_resource_variable_ops.read_variable_op(
+          handle, dtypes.float32)
+      self.assertEqual(tensor.numpy(), expected_value)
+
+    # Check that handles returned from functions are on CPU and an op using
+    # the resource handle is correctly placed on the device backing the
+    # resource.
+    check_handle(res1, 5.0)
 
   @test_util.run_gpu_only
   def testComplexInputOutputDevicePattern(self):

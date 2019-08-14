@@ -37,6 +37,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
@@ -60,6 +61,7 @@ from tensorflow.python.util import nest
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
 class PForTest(PForTestCase):
 
   def test_op_conversion_fallback_to_while_loop(self):
@@ -110,6 +112,37 @@ class PForTest(PForTestCase):
     result = pfor_control_flow_ops.vectorized_map(
         compute, array_ops.ones((10, 5, 3)))
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
+  def test_vectorized_map_example_1(self):
+    def outer_product(a):
+      return math_ops.tensordot(a, a, 0)
+
+    batch_size = 100
+    a = array_ops.ones((batch_size, 32, 32))
+    c = pfor_control_flow_ops.vectorized_map(outer_product, a)
+    self.assertAllEqual((batch_size, 32, 32, 32, 32), c.shape)
+
+  def test_vectorized_map_example_2(self):
+    batch_size = 10
+    num_features = 32
+    layer = keras_core.Dense(1)
+
+    def model_fn(arg):
+      with backprop.GradientTape() as g:
+        inp, label = arg
+        inp = array_ops.expand_dims(inp, 0)
+        label = array_ops.expand_dims(label, 0)
+        prediction = layer(inp)
+        loss = nn.l2_loss(label - prediction)
+      return g.gradient(loss, (layer.kernel, layer.bias))
+
+    inputs = random_ops.random_uniform([batch_size, num_features])
+    labels = random_ops.random_uniform([batch_size, 1])
+    per_example_gradients = pfor_control_flow_ops.vectorized_map(
+        model_fn, (inputs, labels))
+    self.assertAllEqual(per_example_gradients[0].shape,
+                        (batch_size, num_features, 1))
+    self.assertAllEqual(per_example_gradients[1].shape, (batch_size, 1))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -354,6 +387,8 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_max_pool3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
       g.watch(x)

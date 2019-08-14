@@ -78,7 +78,8 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     const tflite::Tensor& flatbuffer_tensor, int create_before,
     int destroy_after,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-    ErrorReporter* error_reporter, TfLiteTensor* result) {
+    ErrorReporter* error_reporter, TfLiteTensor* result,
+    uint8_t* preallocated_buffer) {
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &result->type, error_reporter));
   result->is_variable = flatbuffer_tensor.is_variable();
@@ -101,15 +102,19 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     result->allocation_type = kTfLiteMmapRo;
   } else {
     int data_size = 1;
-    for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+    for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
       data_size *= flatbuffer_tensor.shape()->Get(n);
     }
     size_t type_size;
     TF_LITE_ENSURE_STATUS(BytesRequired(flatbuffer_tensor, data_size,
                                         &result->bytes, &type_size,
                                         error_reporter));
-    result->data.raw =
-        reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
+    if (preallocated_buffer != nullptr) {
+      result->data.raw = reinterpret_cast<char*>(preallocated_buffer);
+    } else {
+      result->data.raw =
+          reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
+    }
     if (result->data.raw == nullptr) {
       const char* tensor_name = flatbuffer_tensor.name()->c_str();
       if (tensor_name == nullptr) {
@@ -126,7 +131,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   result->dims = reinterpret_cast<TfLiteIntArray*>(AllocateMemory(
       sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1), sizeof(int)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
-  for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
   const auto* src_quantization = flatbuffer_tensor.quantization();

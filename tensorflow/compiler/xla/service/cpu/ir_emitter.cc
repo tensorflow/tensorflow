@@ -1027,10 +1027,13 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
   PrimitiveType lhs_element_type = lhs->shape().element_type();
   llvm::Type* lhs_llvm_type =
       llvm_ir::PrimitiveTypeToIrType(lhs_element_type, module_);
+  // Upcast the accumulator to F32 from F16 for increased precision.
+  llvm::Type* accumulator_type =
+      lhs_element_type == F16 ? b_.getFloatTy() : lhs_llvm_type;
   llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
-      lhs_llvm_type, "convolution_sum_address", &b_,
+      accumulator_type, "convolution_sum_address", &b_,
       MinimumAlignmentForPrimitiveType(lhs_element_type));
-  llvm::Value* constant_zero = llvm::Constant::getNullValue(lhs_llvm_type);
+  llvm::Value* constant_zero = llvm::Constant::getNullValue(accumulator_type);
   Store(constant_zero, sum_address);
 
   llvm_ir::ForLoopNest loops(IrName(convolution, "inner"), &b_);
@@ -1139,11 +1142,11 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
   TF_ASSIGN_OR_RETURN(llvm::Value* const kernel_value,
                       kernel_generator(kernel_index));
   llvm::Value* product = FMul(input_value, kernel_value);
-  llvm::Value* sum = FAdd(Load(sum_address), product);
+  llvm::Value* sum = FAdd(Load(sum_address), FPCast(product, accumulator_type));
   Store(sum, sum_address);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return Load(sum_address);
+  return FPCast(Load(sum_address), lhs_llvm_type);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -1733,6 +1736,16 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
   if (!reduction_generator) {
+    return false;
+  }
+
+  int vector_register_size_in_elements =
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
+  if (vector_register_size_in_elements == 0) {
+    // Either we don't know the vector register width for the target or the
+    // vector register is smaller than the size of the primitive type.
     return false;
   }
 

@@ -1,17 +1,11 @@
 # TensorFlow Lite for iOS
 
-load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_IOS_BUILD_VERSION", "TFL_MINIMUM_OS_VERSION")
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-apple_bundle_version(
-    name = "TensorFlowLiteC_version",
-    build_version = TFL_IOS_BUILD_VERSION,
 )
 
 ios_static_framework(
@@ -22,6 +16,5 @@ ios_static_framework(
     ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    version = ":TensorFlowLiteC_version",
     deps = ["//tensorflow/lite/experimental/c:c_api"],
 )

@@ -97,7 +97,7 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
     }
     DynamicBuffer dynamic_buffer;
 
-    auto tf_data = t.flat<string>();
+    auto tf_data = t.flat<tensorflow::tstring>();
     for (int i = 0; i < t.NumElements(); ++i) {
       dynamic_buffer.AddString(tf_data(i).data(), tf_data(i).size());
     }

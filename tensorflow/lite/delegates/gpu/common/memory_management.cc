@@ -60,6 +60,11 @@ struct QueueRecord {
   size_t object_id;
 };
 
+bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
+                   const TensorUsageWithIndex<size_t>& second) {
+  return first.usage_record->tensor_size > second.usage_record->tensor_size;
+}
+
 // Implements memory management with a naive algorithm.
 //
 // The problem of memory management is NP-complete. This implements a
@@ -202,6 +207,88 @@ Status GreedyAssignment(
       objects_in_use.push(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }
+  }
+  return OkStatus();
+}
+
+// Assigns given tensors to offsets, using the following greedy algorithm:
+// - We have tensor usage records of all intermideate tensors as an input. Each
+// record consists of tensor size, first and last tasks, that use it. Let's call
+// [first_task..last_task] a tensor usage interval;
+// - Iterate through tensor usage records in non-increasing order of
+// corresponding tensor sizes;
+// - For each of these records consider already assigned tensors, which usage
+// intervals intersect with usage interval of current tensor, and find the
+// smallest gap in memory between them such, that current tensor fits into that
+// gap;
+// - If such a gap has been found, current tensor should be allocated into this
+// gap. Otherwise we can allocate it after the rightmost tensor, which usage
+// interval intersects with usage inteval of current tensor. So we assign
+// corresponding offset to current tensor and the tensor becomes assigned.
+Status GreedyBySizeAssignment(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    OffsetsAssignment* assignment) {
+  const size_t num_tensors = usage_records.size();
+  assignment->offsets.resize(num_tensors);
+  assignment->total_size = 0;
+
+  // Ordered records are to be sorted by size of corrseponding tensor.
+  std::vector<TensorUsageWithIndex<size_t>> ordered_records;
+  for (size_t i = 0; i < num_tensors; ++i) {
+    ordered_records.emplace_back(&usage_records[i], i);
+  }
+  std::sort(ordered_records.begin(), ordered_records.end(), CompareBySize);
+
+  // Vector of ids of already allocated tensors, ordered by offset.
+  std::vector<size_t> ordered_allocs;
+
+  for (const auto& rec_with_idx : ordered_records) {
+    const TensorUsageRecord<size_t>* rec = rec_with_idx.usage_record;
+    size_t best_diff = kNotAssigned;
+    size_t best_offset = kNotAssigned;
+    size_t prev_offset = 0;
+    for (const auto& allocated_id : ordered_allocs) {
+      if (usage_records[allocated_id].last_task < rec->first_task ||
+          usage_records[allocated_id].first_task > rec->last_task) {
+        // Tensor allocated_id has usage interval, that doesn't intersect with
+        // current tensor's usage interval, so we skip it.
+        continue;
+      }
+      size_t cur_offset = assignment->offsets[allocated_id];
+      if (cur_offset >= prev_offset) {
+        size_t diff = cur_offset - prev_offset;
+        // Check, if current_tensor fits into the gap, located directly to the
+        // left of tensor allocated_id offset, and that this gap is the smallest
+        // of previously considered suitable gaps.
+        if (diff >= rec->tensor_size && diff < best_diff) {
+          best_diff = diff;
+          best_offset = prev_offset;
+        }
+      }
+      prev_offset = std::max(
+          prev_offset, cur_offset + usage_records[allocated_id].tensor_size);
+    }
+    if (assignment->total_size < prev_offset) {
+      return InternalError("Total size is wrong.");
+    }
+
+    // If no suitable gap found, we should allocate current tensor after the
+    // rightmost tensor, which usage interval intersects with the current one.
+    if (best_offset == kNotAssigned) {
+      best_offset = prev_offset;
+    }
+
+    // Assign best_offset to the current tensor and find the correct place to
+    // insert information about it into ordered_allocs to save the order.
+    auto it = ordered_allocs.begin();
+    while (it != ordered_allocs.end() &&
+           assignment->offsets[*it] <= best_offset) {
+      ++it;
+    }
+    ordered_allocs.insert(it, rec_with_idx.idx);
+    assignment->offsets[rec_with_idx.idx] = best_offset;
+    assignment->total_size =
+        std::max(assignment->total_size, best_offset + rec->tensor_size);
   }
   return OkStatus();
 }
@@ -401,6 +488,28 @@ Status MinCostFlowAssignment(
 
 }  // namespace
 
+bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
+                   const TensorUsageWithIndex<size_t>& second) {
+  return first.usage_record->tensor_size > second.usage_record->tensor_size;
+}
+
+OffsetsAssignment ObjectsToOffsets(
+    const ObjectsAssignment<size_t>& obj_assignment) {
+  size_t num_tensors = obj_assignment.object_ids.size();
+  size_t num_objects = obj_assignment.object_sizes.size();
+  OffsetsAssignment result = {/*offsets=*/std::vector<size_t>(num_tensors),
+                              /*total_size=*/0};
+  std::vector<size_t> ids_to_offset(num_objects);
+  for (size_t i = 0; i < num_objects; ++i) {
+    ids_to_offset[i] = result.total_size;
+    result.total_size += obj_assignment.object_sizes[i];
+  }
+  for (size_t i = 0; i < num_tensors; ++i) {
+    result.offsets[i] = ids_to_offset[obj_assignment.object_ids[i]];
+  }
+  return result;
+}
+
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment) {
@@ -413,6 +522,9 @@ Status AssignObjectsToTensors(
       return GreedyAssignment(usage_records, assignment);
     case MemoryStrategy::MINCOSTFLOW:
       return MinCostFlowAssignment(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
   }
   return OkStatus();
 }
@@ -429,6 +541,19 @@ Status AssignObjectsToTensors(
       return InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
   }
+  return OkStatus();
+}
+
+Status AssignOffsetsToTensors(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment) {
+  if (strategy == MemoryStrategy::GREEDY_BY_SIZE) {
+    return GreedyBySizeAssignment(usage_records, assignment);
+  }
+  ObjectsAssignment<size_t> objects_assignment;
+  RETURN_IF_ERROR(
+      AssignObjectsToTensors(usage_records, strategy, &objects_assignment));
+  *assignment = ObjectsToOffsets(objects_assignment);
   return OkStatus();
 }
 

@@ -199,4 +199,9 @@ REGISTER_OP("ShutdownDistributedTPU")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("ConfigureTPUEmbedding")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
 }  // end namespace tensorflow

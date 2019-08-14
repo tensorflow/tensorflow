@@ -17,8 +17,7 @@ import TensorFlowLiteC
 
 /// A TensorFlow Lite interpreter that performs inference from a given model.
 public final class Interpreter {
-
-  /// The `TFL_Interpreter` C pointer type represented as an `UnsafePointer<TFL_Interpreter>`.
+  /// `TFL_Interpreter` C pointer type represented as an `UnsafePointer<TFL_Interpreter>`.
   private typealias CInterpreter = OpaquePointer
 
   /// Total number of input tensors associated with the model.
@@ -31,15 +30,15 @@ public final class Interpreter {
     return Int(TFL_InterpreterGetOutputTensorCount(cInterpreter))
   }
 
-  /// The underlying `TFL_Interpreter` C pointer.
+  /// Underlying `TFL_Interpreter` C pointer.
   private var cInterpreter: CInterpreter?
 
   /// Creates a new model interpreter instance.
   ///
   /// - Parameters:
   ///   - modelPath: Local file path to a TensorFlow Lite model.
-  ///   - options: Custom configurations for the interpreter. The default is `nil` indicating that
-  ///       the interpreter will determine the configuration options.
+  ///   - options: Custom configurations for the interpreter. Default is `nil` indicating that the
+  ///       interpreter will determine the configuration options.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
   public init(modelPath: String, options: InterpreterOptions? = nil) throws {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }

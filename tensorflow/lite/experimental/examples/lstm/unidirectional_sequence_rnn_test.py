@@ -157,7 +157,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     tf.reset_default_graph()
     x, prediction, output_class = self.buildModel(rnn_layer, is_dynamic_rnn)
 
-    new_sess = tf.Session(config=CONFIG)
+    new_sess = tf.compat.v1.Session(config=CONFIG)
     saver = tf.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
@@ -215,7 +215,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=False)
@@ -233,7 +233,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), is_dynamic_rnn=True)

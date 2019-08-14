@@ -1,0 +1,33 @@
+op {
+  name: "PlaceholderV2"
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+}
+op {
+  name: "PlaceholderV2"
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  deprecation {
+    version: 23
+  }
+}

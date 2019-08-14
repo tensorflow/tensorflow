@@ -375,6 +375,13 @@ Status GrpcServer::Start() {
   }
 }
 
+Status GrpcServer::AddMasterEagerContextToEagerService(
+    const tensorflow::uint64 context_id, tensorflow::EagerContext* context) {
+  auto* eager_service =
+      static_cast<eager::GrpcEagerServiceImpl*>(eager_service_);
+  return eager_service->CreateMasterContext(context_id, context);
+}
+
 Status GrpcServer::Stop() {
   mutex_lock l(mu_);
   switch (state_) {

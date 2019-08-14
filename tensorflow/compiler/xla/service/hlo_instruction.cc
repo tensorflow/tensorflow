@@ -614,8 +614,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (!proto.dimensions().empty()) {
         inferred_dimension = proto.dimensions()[0];
       }
-      TF_RET_CHECK(ShapeUtil::ElementsIn(shape) ==
-                   ShapeUtil::ElementsIn(operands(0)->shape()))
+      TF_RET_CHECK(shape.IsArray() && operands(0)->shape().IsArray() &&
+                   ShapeUtil::ElementsIn(shape) ==
+                       ShapeUtil::ElementsIn(operands(0)->shape()))
           << "shape: " << ShapeUtil::HumanString(shape)
           << " operand: " << ShapeUtil::HumanString(operands(0)->shape());
       instruction = CreateReshape(shape, operands(0), inferred_dimension);
@@ -1079,6 +1080,14 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
                                      HloInstruction* operand) {
   auto instruction =
       absl::WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
+  instruction->AppendOperand(operand);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBitcast(
+    const Shape& shape, HloInstruction* operand) {
+  auto instruction =
+      absl::WrapUnique(new HloInstruction(HloOpcode::kBitcast, shape));
   instruction->AppendOperand(operand);
   return instruction;
 }
@@ -2170,10 +2179,20 @@ string HloInstruction::SignatureString() const {
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
+string PrintName(const string& name, bool print_ids) {
+  if (print_ids) {
+    return name;
+  } else {
+    auto dot_position = name.find_first_of(".");
+    return name.substr(0, dot_position);
+  }
+}
+
 namespace {
 
-string PrintName(const string& name, const HloPrintOptions& options) {
-  return StrCat(options.print_percent() ? "%" : "", name);
+string PrintNameInternal(const string& name, const HloPrintOptions& options) {
+  return StrCat(options.print_percent() ? "%" : "",
+                PrintName(name, options.print_ids()));
 }
 
 }  // namespace
@@ -2268,11 +2287,12 @@ string HloInstruction::ToStringWithCanonicalNameMap(
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
       StrAppend(&result,
-                PrintName(canonical_name_map->LookupOrInsert(name()), options),
+                PrintNameInternal(canonical_name_map->LookupOrInsert(name()),
+                                  options),
                 " = ");
     }
   } else {
-    StrAppend(&result, PrintName(name(), options), " = ");
+    StrAppend(&result, PrintNameInternal(name(), options), " = ");
   }
 
   // Print shape.
@@ -2338,10 +2358,10 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     // part of the canonical string.
     if (options.canonicalize_instruction_names() &&
         options.is_in_nested_computation()) {
-      str.push_back(PrintName(
+      str.push_back(PrintNameInternal(
           canonical_name_map->LookupOrInsert(operand->name()), options));
     } else if (options.print_operand_names()) {
-      str.push_back(PrintName(operand->name(), options));
+      str.push_back(PrintNameInternal(operand->name(), options));
     }
     StrAppend(out, StrJoin(str, " "));
   });
@@ -2359,27 +2379,30 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (options.print_subcomputation_mode() ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
+      extra.push_back(StrCat(
+          "condition=", PrintNameInternal(while_condition()->name(), options)));
       extra.push_back(
-          StrCat("condition=", PrintName(while_condition()->name(), options)));
-      extra.push_back(
-          StrCat("body=", PrintName(while_body()->name(), options)));
+          StrCat("body=", PrintNameInternal(while_body()->name(), options)));
     } else if (opcode() == HloOpcode::kSelectAndScatter) {
-      extra.push_back(StrCat("select=", PrintName(select()->name(), options)));
       extra.push_back(
-          StrCat("scatter=", PrintName(scatter()->name(), options)));
+          StrCat("select=", PrintNameInternal(select()->name(), options)));
+      extra.push_back(
+          StrCat("scatter=", PrintNameInternal(scatter()->name(), options)));
     } else if (opcode() == HloOpcode::kConditional) {
       if (operand(0)->shape().element_type() == PRED) {
-        extra.push_back(StrCat("true_computation=",
-                               PrintName(true_computation()->name(), options)));
+        extra.push_back(
+            StrCat("true_computation=",
+                   PrintNameInternal(true_computation()->name(), options)));
         extra.push_back(
             StrCat("false_computation=",
-                   PrintName(false_computation()->name(), options)));
+                   PrintNameInternal(false_computation()->name(), options)));
       } else {
         extra.push_back(StrCat(
             "branch_computations={",
             StrJoin(branch_computations(), ", ",
                     [&](string* out, const HloComputation* computation) {
-                      StrAppend(out, PrintName(computation->name(), options));
+                      StrAppend(
+                          out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
       }
@@ -2390,13 +2413,14 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
       extra.push_back(
-          StrCat("to_apply=", PrintName(to_apply()->name(), options)));
+          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
           StrJoin(called_computations(), ", ",
                   [&](string* out, const HloComputation* computation) {
-                    StrAppend(out, PrintName(computation->name(), options));
+                    StrAppend(out,
+                              PrintNameInternal(computation->name(), options));
                   })));
     }
   } else if (options.print_subcomputation_mode() ==
@@ -2464,8 +2488,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("control-predecessors={",
                            StrJoin(control_predecessors_, ", ",
                                    [&](string* out, HloInstruction* pre) {
-                                     StrAppend(out,
-                                               PrintName(pre->name(), options));
+                                     StrAppend(out, PrintNameInternal(
+                                                        pre->name(), options));
                                    }),
                            "}"));
   }
@@ -2564,6 +2588,9 @@ bool HloInstruction::IsFusible() const {
   switch (opcode_) {
     case HloOpcode::kDomain:
     case HloOpcode::kParameter:
+    case HloOpcode::kWhile:
+    case HloOpcode::kConditional:
+    case HloOpcode::kCall:
       return false;
     // Side effecting instrutions cannot be fused.
     default:
@@ -2992,7 +3019,7 @@ class HloInstruction::FusionReusesParamElements {
       }
     }
 
-    auto p = cache->emplace(&hlo, UseKind{});
+    auto p = cache->emplace(&hlo, UseKind::kNoUse);
     auto value_it = p.first;
     const bool key_is_new = p.second;
 
@@ -3002,8 +3029,9 @@ class HloInstruction::FusionReusesParamElements {
 
         // The next operation invalidates iterators.
         UseKind new_val =
-            Plus(old_val, std::min(hlo.OperandElementUse(j),
-                                   ComputeInternal(i, *hlo.operand(j), cache)));
+            Fold(old_val,
+                 FoldUseMandatory(hlo.OperandElementUse(j),
+                                  ComputeInternal(i, *hlo.operand(j), cache)));
 
         // Re-acquire the iterator. We could work harder to do this only if
         // absolutely necessary, but this code is not hot enough to warrant
@@ -3015,21 +3043,61 @@ class HloInstruction::FusionReusesParamElements {
     return value_it->second;
   }
 
-  // Fold operation for UseKinds.
-  static UseKind Plus(UseKind a, UseKind b) {
-    if (a == UseKind::kNoUse) {
-      return b;
-    } else if (b == UseKind::kNoUse) {
-      return a;
-    } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
-      return UseKind::kReuse;
-    } else if (a == UseKind::kUsePermutingElements ||
-               b == UseKind::kUsePermutingElements) {
-      return UseKind::kReuse;
-    } else {
-      CHECK(a == UseKind::kUse && b == UseKind::kUse);
-      return UseKind::kUse;
+  // Combines two UseKinds.
+  //
+  // This is the min operation on the lattice
+  //
+  //   kReuse < kUse < kNoUse.
+  //
+  // Two kUses uses which have different permutations count as kReuse.
+  static UseKind Fold(UseKind a, UseKind b) {
+    // Without loss of generality, let `b` be the operation with the larger use
+    // kind.
+    if (b.kind < a.kind) {
+      std::swap(a, b);
     }
+    // If the kinds are different, return the smaller one, namely `a`.
+    if (a.kind != b.kind) {
+      return a;
+    }
+    // If the kinds are both kUse, check that they're the same permutation.
+    if (a.kind == UseKind::kUse && b.kind == UseKind::kUse &&
+        a.permutation_instr != b.permutation_instr) {
+      return UseKind::kReuse;
+    }
+    return a;  // They're the same.
+  }
+
+  // Combines two UseKinds differently than Fold().
+  //
+  // This is the min operation on the lattice
+  //
+  //   kNoUse < kReuse < kUse.
+  //
+  // If `a` and `b` are both kUse and one has a non-null permutation
+  // instruction, returns kUse with that permutation.  OTOH if both have
+  // different, non-null permutation instructions, returns kReuse.
+  //
+  // You can think of this sort of as a conjunction, whereas Fold is sort of a
+  // disjunction.  FoldUseMandatory() says "no use" if either input isn't used,
+  // whereas Fold() would say "use".
+  static UseKind FoldUseMandatory(UseKind a, UseKind b) {
+    if (a.kind == UseKind::kNoUse || b.kind == UseKind::kNoUse) {
+      return UseKind::kNoUse;
+    }
+    if (a.kind == UseKind::kReuse || b.kind == UseKind::kReuse) {
+      return UseKind::kReuse;
+    }
+    if (a.permutation_instr == b.permutation_instr) {
+      return a;  // They're the same.
+    }
+    if (b.permutation_instr == nullptr) {
+      return a;
+    }
+    if (a.permutation_instr == nullptr) {
+      return b;
+    }
+    return UseKind::kReuse;
   }
 };
 
@@ -3037,20 +3105,27 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
     int64 operand_num) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
+      // A bitcast that only adds or removes degenerate (i.e. size 1) dimensions
+      // doesn't permute its elements, so it counts as a plain, non-permuting
+      // use.
+      return ShapeUtil::DropDegenerateDimensions(shape()) ==
+                     ShapeUtil::DropDegenerateDimensions(operand(0)->shape())
+                 ? UseKind::kUse
+                 : UseKind::Permuting(this);
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-      return UseKind::kUsePermutingElements;
+      return UseKind::Permuting(this);
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
+      return operand_num > 0 ? UseKind::kReuse : UseKind::Permuting(this);
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
       return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
                  ? UseKind::kReuse
-                 : UseKind::kUsePermutingElements;
+                 : UseKind::Permuting(this);
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(operand_num,
@@ -3070,6 +3145,10 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
         return UseKind::kUse;
       }
       return UseKind::kReuse;
+    case HloOpcode::kGather:
+      // Gather reads its indices in a linear fashion, and it permutes the
+      // vector it's gathering from.
+      return operand_num == 0 ? UseKind::kUse : UseKind::Permuting(this);
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }

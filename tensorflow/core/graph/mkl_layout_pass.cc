@@ -269,6 +269,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_batch_norm_v2 = "FusedBatchNormV2";
     csinfo_.fused_batch_norm_grad_v2 = "FusedBatchNormGradV2";
+    csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
+    csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
@@ -351,47 +353,49 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
-    // End - element-wise ops. See note above.
+// End - element-wise ops. See note above.
 
-    // NOTE: names are alphabetically sorted.
+// NOTE: names are alphabetically sorted.
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
-                      CopyAttrsAddN, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsDataType, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.avg_pool, mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
-         CopyAttrsPooling, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.avg_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool_grad),
-                      CopyAttrsPooling, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.avg_pool3d, mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d),
-         CopyAttrsPooling, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.avg_pool3d_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d_grad),
-                      CopyAttrsPooling, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
-                      CopyAttrsBatchMatMul, AlwaysRewrite,
-                      kRewriteForOpNameChange});
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.concat, mkl_op_registry::GetMklOpName(csinfo_.concat),
-         CopyAttrsConcat, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.concatv2, mkl_op_registry::GetMklOpName(csinfo_.concatv2),
-         CopyAttrsConcatV2, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
-         CopyAttrsTranspose, AlwaysRewrite, kRewriteForOpNameChange});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
                       CopyAttrsConvCheckConstFilter, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
                       CopyAttrsConvCheckConstFilter, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -425,76 +429,87 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.depthwise_conv2d_grad_input,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_input),
-         CopyAttrsConv2DDepthwise, AlwaysRewrite,
-         kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.depthwise_conv2d_grad_filter,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
-         CopyAttrsConv2DDepthwise, AlwaysRewrite,
-         kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.dequantize, mkl_op_registry::GetMklOpName(csinfo_.dequantize),
-         CopyAttrsDequantize, DequantizeRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, DequantizeRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
-                      CopyAttrsFusedBatchNorm, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
-         CopyAttrsFusedBatchNorm, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_v2,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v2),
-         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
-         kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v2,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v2),
-         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
-         kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+
+    // Using CopyAttrsAll for V3 on CPU, as there are no additional
+    // attributes.
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.identity, mkl_op_registry::GetMklOpName(csinfo_.identity),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.identity,
+                      mkl_op_registry::GetMklOpName(csinfo_.identity),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
+
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsLRN, LrnRewrite, kRewriteForLayoutPropagation});
+                      CopyAttrsAll, LrnRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.lrn_grad, mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-         CopyAttrsLRN, LrnGradRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, LrnGradRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.matmul),
-                      CopyAttrsMatMul, AlwaysRewrite, kRewriteForOpNameChange});
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.leakyrelu, mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
-         CopyAttrsLeakyRelu, LeakyReluRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, LeakyReluRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.leakyrelu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.leakyrelu_grad),
-                      CopyAttrsLeakyRelu, LeakyReluRewrite,
+                      CopyAttrsAll, LeakyReluRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
-                      CopyAttrsPooling, NonDepthBatchWisePoolRewrite,
+                      CopyAttrsAll, NonDepthBatchWisePoolRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
-                      CopyAttrsPooling, MaxpoolGradRewrite,
+                      CopyAttrsAll, MaxpoolGradRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.max_pool3d,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d),
-                      CopyAttrsPooling, NonDepthBatchWisePoolRewrite,
+                      CopyAttrsAll, NonDepthBatchWisePoolRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.max_pool3d_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
-                      CopyAttrsPooling, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.maximum, mkl_op_registry::GetMklOpName(csinfo_.maximum),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.maximum,
+                      mkl_op_registry::GetMklOpName(csinfo_.maximum),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.mul, mkl_op_registry::GetMklOpName(csinfo_.mul),
-                      CopyAttrsDataType, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.pad_with_conv2d, csinfo_.mkl_pad_with_conv2d,
                       CopyAttrsPadWithConv2D, AlwaysRewrite,
@@ -505,11 +520,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
-                      CopyAttrsQuantizedPooling, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantized_concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
-                      CopyAttrsConcatV2, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
@@ -558,7 +573,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantized_max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_max_pool),
-                      CopyAttrsQuantizedPooling, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_sum_and_relu,
                       mkl_op_registry::GetMklOpName(
@@ -615,55 +630,58 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.quantize_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
-                      CopyAttrsQuantizeV2, QuantizeOpRewrite,
+                      CopyAttrsAll, QuantizeOpRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
-                      CopyAttrsDataType, AlwaysRewrite,
+                      CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.relu_grad, mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.relu6, mkl_op_registry::GetMklOpName(csinfo_.relu6),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.relu6_grad, mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
-         CopyAttrsRequantize, AlwaysRewrite, kRewriteForLayoutPropagation});
-    // Disable these two MKL operators for now due to some test failures caused
-    // by these two ops
-    /*
-    rinfo_.push_back({csinfo_.tanh,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
-                      CopyAttrsDataType, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    rinfo_.push_back({csinfo_.tanh_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                      CopyAttrsDataType, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    */
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
+// Disable these two MKL operators for now due to some test failures caused
+// by these two ops
+/*
+rinfo_.push_back({csinfo_.tanh,
+                  mkl_op_registry::GetMklOpName(csinfo_.tanh),
+                  CopyAttrsAll, AlwaysRewrite,
+                  kRewriteForLayoutPropagation});
+rinfo_.push_back({csinfo_.tanh_grad,
+                  mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+                  CopyAttrsAll, AlwaysRewrite,
+                  kRewriteForLayoutPropagation});
+*/
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
-         CopyAttrsReshape, AlwaysRewrite, kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.slice, mkl_op_registry::GetMklOpName(csinfo_.slice),
-         CopyAttrsSlice, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.slice,
+                      mkl_op_registry::GetMklOpName(csinfo_.slice),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.softmax, mkl_op_registry::GetMklOpName(csinfo_.softmax),
-         CopyAttrsDataType, AlwaysRewrite, kRewriteForLayoutPropagation});
+         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
 
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
-                      CopyAttrsDataType, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
-                      CopyAttrsDataType, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.transpose, mkl_op_registry::GetMklOpName(csinfo_.transpose),
-         CopyAttrsTranspose, AlwaysRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.transpose,
+                      mkl_op_registry::GetMklOpName(csinfo_.transpose),
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
@@ -744,6 +762,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          // CheckForMklOp
          FuseConv3D,
          CopyAttrsConv});
+#endif  // !ENABLE_MKLDNN_V1
   }
 
   // Standard interface to run pass
@@ -870,6 +889,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_batch_norm_grad;
     string fused_batch_norm_v2;
     string fused_batch_norm_grad_v2;
+    string fused_batch_norm_v3;
+    string fused_batch_norm_grad_v3;
     string fused_conv2d;
     string identity;
     string leakyrelu;
@@ -1363,6 +1384,38 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @return - true (since we want to always rewrite)
   static bool AlwaysRewrite(const Node* n) { return true; }
 
+  // Rewrite rule which considers "context" of the current node to decide if we
+  // should rewrite. By "context" we currently mean all the inputs of current
+  // node. The idea is if none of the inputs of current node are not MKL nodes,
+  // then rewriting current node to MKL node _may not_ offer any performance
+  // improvement.
+  //
+  // One such case is element-wise ops. For such ops, we reuse the Eigen
+  // implementation and pass the MKL metadata tensor through so we can avoid
+  // conversions. However, if all incoming edges are in TF format, we don't
+  // need all this overhead, so replace the elementwise node only if at least
+  // one of its parents is a MKL node.
+  //
+  // More generally, all memory- or IO-bound ops (such as Identity) may fall
+  // under this category.
+  //
+  // @input - Input graph node to be rewritten
+  // @return - true if node is to be rewritten as MKL node; false otherwise.
+  static bool RewriteIfAtleastOneMklInput(const Node* n) {
+    DataType T;
+    if (GetNodeAttr(n->def(), "T", &T).ok() &&
+        mkl_op_registry::IsMklOp(
+            mkl_op_registry::GetMklOpName(n->type_string()), T)) {
+      for (auto e : n->in_edges()) {
+        if (e->IsControlEdge()) continue;
+        if (mkl_op_registry::IsMklOp(e->src())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static bool DequantizeRewrite(const Node* n) {
     DCHECK(n);
     Node* input = nullptr;
@@ -1462,7 +1515,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DCHECK(n);
 
     float alpha;
-    bool has_attr = GetNodeAttr(n->def(), "alpha", &alpha).ok();
+    bool has_attr = TryGetNodeAttr(n->def(), "alpha", &alpha);
     DCHECK(has_attr);
 
     // If the alpha of LeakyRelu is less than 1, rewrite the node.
@@ -1525,7 +1578,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
     // it includes those we support.
     DataType T;
-    if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+    if (!TryGetNodeAttr(n->def(), "T", &T) ||
         !mkl_op_registry::IsMklLayoutDependentOp(csinfo_.mkl_fused_conv2d, T)) {
       return false;
     }
@@ -1739,41 +1792,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // We need operator-specific function to copy attributes because the framework
   // does not provide any generic function for it.
   // NOTE: names are alphabetically sorted.
-  static void CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
-                            bool change_format = false);
-  static void CopyAttrsBatchMatMul(const Node* orig_node, NodeBuilder* nb,
-                                   bool change_format = false);
-  static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb,
-                                   bool change_format = false);
-  static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb,
-                              bool change_format = false);
-  static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb,
-                                bool change_format = false);
+  static void CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
+                           bool change_format = false);
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
-  static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb,
-                                       bool change_format = false);
   static void CopyAttrsConv2DDepthwiseCheckConstFilter(
       const Node* orig_node, NodeBuilder* nb, bool change_format = false);
   static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
                                             NodeBuilder* nb,
                                             bool change_format = false);
-  static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
-                                bool change_format = false);
-  static void CopyAttrsDequantize(const Node* orig_node, NodeBuilder* nb,
-                                  bool change_format = false);
-  static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
-                                      bool change_format = false);
-  static void CopyAttrsFusedBatchNormV2(const Node* orig_node, NodeBuilder* nb,
-                                        bool change_format = false);
-  static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
-                                 bool change_format = false);
   static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
                                    bool change_format = false);
-  static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
-                           bool change_format = false);
-  static void CopyAttrsMatMul(const Node* orig_node, NodeBuilder* nb,
-                              bool change_format = false);
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb,
                                      bool change_format = false);
   static void CopyAttrsPadWithFusedConv2D(const Node* orig_node,
@@ -1786,26 +1815,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                              const Node* orig_node2,
                                              NodeBuilder* nb,
                                              bool change_format = false);
-  static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
-                               bool change_format = false);
-  static void CopyAttrsQuantizedPooling(const Node* orig_node, NodeBuilder* nb,
-                                        bool change_format = false);
   static void CopyAttrsQuantizedConv2D(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
-  static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb,
-                                       bool change_format = false);
-  static void CopyAttrsQuantizeV2(const Node* orig_node, NodeBuilder* nb,
-                                  bool change_format = false);
-  static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb,
-                               bool change_format = false);
-  static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb,
-                                  bool change_format = false);
-  static void CopyAttrsSlice(const Node* orig_node, NodeBuilder* nb,
-                             bool change_format = false);
-  static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb,
-                             bool change_format = false);
-  static void CopyAttrsTranspose(const Node* orig_node, NodeBuilder* nb,
-                                 bool change_format = false);
   static void CopyFormatAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                   const std::vector<int32>& strides,
                                   const std::vector<int32>& dilations,
@@ -1957,7 +1968,7 @@ void MklLayoutRewritePass::GetNodeProducingMklTensor(
 
   // If this is an MKL op, then it will create extra output for MKL layout.
   DataType T;
-  if (GetNodeAttr(n->def(), "T", &T).ok() &&
+  if (TryGetNodeAttr(n->def(), "T", &T) &&
       mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     // If this is an MKL op, then it will generate an edge that will receive
     // Mkl tensor from a node.
@@ -2355,6 +2366,21 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
+// Generic function to copy all attributes from original node to target.
+void MklLayoutRewritePass::CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
+                                        bool change_format) {
+  string name;
+  AttrSlice attr_list(orig_node->def());
+
+  auto iter = attr_list.begin();
+  while (iter != attr_list.end()) {
+    name = iter->first;
+    auto attr = iter->second;
+    nb->Attr(name, attr);
+    ++iter;
+  }
+}
+
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
                                                          NodeBuilder* nb,
                                                          bool change_format) {
@@ -2381,23 +2407,6 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsQuantizeV2(const Node* orig_node,
-                                               NodeBuilder* nb,
-                                               bool change_format) {
-  DataType T;
-  string mode;
-  string round_mode;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "mode", &mode));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "round_mode", &round_mode));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("mode", mode);
-  nb->Attr("round_mode", round_mode);
-}
 void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
@@ -2417,21 +2426,6 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
 
   // Add attributes related to `data_format`.
   CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
-}
-
-void MklLayoutRewritePass::CopyAttrsDequantize(const Node* orig_node,
-                                               NodeBuilder* nb,
-                                               bool change_format) {
-  DataType T;
-  string mode;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "mode", &mode));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("mode", mode);
 }
 
 // Used in rinfo when replacing __MklDummyPadWithConv2D by _MklPadWithConv2D
@@ -2558,30 +2552,6 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(
   nb->Attr("fused_ops", fused_ops);
 }
 
-void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
-                                                    NodeBuilder* nb,
-                                                    bool change_format) {
-  DataType T;
-  string data_format;
-  string padding;
-  std::vector<int32> strides;
-  std::vector<int32> dilations;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("strides", strides);
-  nb->Attr("dilations", dilations);
-  nb->Attr("padding", padding);
-  nb->Attr("data_format", data_format);
-}
-
 void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
     const Node* orig_node, NodeBuilder* nb, bool change_format) {
   DataType T;
@@ -2607,131 +2577,6 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
   nb->Attr("padding", padding);
   nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("data_format", data_format);
-}
-
-void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
-                                         bool change_format) {
-  DataType T;
-  int N;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "N", &N));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("N", N);
-}
-
-void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,
-                                                NodeBuilder* nb,
-                                                bool change_format) {
-  DataType T;
-  string data_format;
-  std::vector<int32> strides;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("strides", strides);
-  nb->Attr("data_format", data_format);
-}
-
-void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
-                                        bool change_format) {
-  DataType T;
-  int depth_radius;
-  float bias;
-  float alpha;
-  float beta;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "depth_radius", &depth_radius));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "bias", &bias));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "alpha", &alpha));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "beta", &beta));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("depth_radius", depth_radius);
-  nb->Attr("bias", bias);
-  nb->Attr("alpha", alpha);
-  nb->Attr("beta", beta);
-}
-
-void MklLayoutRewritePass::CopyAttrsLeakyRelu(const Node* orig_node,
-                                              NodeBuilder* nb,
-                                              bool change_format) {
-  DataType T;
-  float alpha;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "alpha", &alpha));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("alpha", alpha);
-}
-
-void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
-                                            NodeBuilder* nb,
-                                            bool change_format) {
-  DataType T;
-  string data_format;
-  string padding;
-  std::vector<int32> ksize, strides;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("ksize", ksize);
-  nb->Attr("strides", strides);
-  nb->Attr("padding", padding);
-  nb->Attr("data_format", data_format);
-}
-
-void MklLayoutRewritePass::CopyAttrsDataType(const Node* orig_node,
-                                             NodeBuilder* nb,
-                                             bool change_format) {
-  DataType T;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-}
-
-void MklLayoutRewritePass::CopyAttrsQuantizedPooling(const Node* orig_node,
-                                                     NodeBuilder* nb,
-                                                     bool change_format) {
-  DataType T;
-  string padding;
-  std::vector<int32> ksize, strides;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("ksize", ksize);
-  nb->Attr("strides", strides);
-  nb->Attr("padding", padding);
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
@@ -2798,66 +2643,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
   if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
 }
 
-void MklLayoutRewritePass::CopyAttrsRequantize(const Node* orig_node,
-                                               NodeBuilder* nb,
-                                               bool change_format) {
-  DataType Tinput, out_type;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tinput", &Tinput));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "out_type", &out_type));
-
-  // Add attributes to new node.
-  nb->Attr("Tinput", Tinput);
-  nb->Attr("out_type", out_type);
-}
-
-void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
-                                            NodeBuilder* nb,
-                                            bool change_format) {
-  DataType T;
-  DataType Tshape;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tshape", &Tshape));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("Tshape", Tshape);
-}
-
-void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
-                                          NodeBuilder* nb, bool change_format) {
-  DataType T;
-  DataType Index;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Index", &Index));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("Index", Index);
-}
-
-void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
-                                          NodeBuilder* nb, bool change_format) {
-  DataType T;
-  string data_format;
-  int num_split;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "num_split", &num_split));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("num_split", num_split);
-  nb->Attr("data_format", data_format);
-}
-
 void MklLayoutRewritePass::CopyFormatAttrsConv(
     const Node* orig_node, NodeBuilder* nb, const std::vector<int32>& strides,
     const std::vector<int32>& dilations, bool change_format) {
@@ -2897,70 +2682,6 @@ void MklLayoutRewritePass::CopyFormatAttrsConv(
   }
 }
 
-void MklLayoutRewritePass::CopyAttrsConcat(const Node* orig_node,
-                                           NodeBuilder* nb,
-                                           bool change_format) {
-  DataType T;
-  int N;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "N", &N));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("N", N);
-}
-
-void MklLayoutRewritePass::CopyAttrsConcatV2(const Node* orig_node,
-                                             NodeBuilder* nb,
-                                             bool change_format) {
-  DataType T;
-  int N;
-  DataType tidx;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "N", &N));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tidx", &tidx));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("N", N);
-  nb->Attr("Tidx", tidx);
-}
-
-void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
-                                                   NodeBuilder* nb,
-                                                   bool change_format) {
-  DataType T;
-  float epsilon;
-  string data_format;
-  bool is_training;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "is_training", &is_training));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("epsilon", epsilon);
-  nb->Attr("data_format", data_format);
-  nb->Attr("is_training", is_training);
-}
-
-void MklLayoutRewritePass::CopyAttrsFusedBatchNormV2(const Node* orig_node,
-                                                     NodeBuilder* nb,
-                                                     bool change_format) {
-  CopyAttrsFusedBatchNorm(orig_node, nb, change_format);
-
-  DataType U;
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "U", &U));
-  nb->Attr("U", U);
-}
-
 void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
                                                 NodeBuilder* nb,
                                                 bool change_format) {
@@ -2996,54 +2717,6 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
-}
-
-void MklLayoutRewritePass::CopyAttrsMatMul(const Node* orig_node,
-                                           NodeBuilder* nb,
-                                           bool change_format) {
-  DataType T;
-  bool transpose_a, transpose_b;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "transpose_a", &transpose_a));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "transpose_b", &transpose_b));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("transpose_a", transpose_a);
-  nb->Attr("transpose_b", transpose_b);
-}
-
-void MklLayoutRewritePass::CopyAttrsTranspose(const Node* orig_node,
-                                              NodeBuilder* nb,
-                                              bool change_format) {
-  DataType T, Tperm;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tperm", &Tperm));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("Tperm", Tperm);
-}
-
-void MklLayoutRewritePass::CopyAttrsBatchMatMul(const Node* orig_node,
-                                                NodeBuilder* nb,
-                                                bool change_format) {
-  DataType T;
-  bool adj_x, adj_y;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "adj_x", &adj_x));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "adj_y", &adj_y));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("adj_x", adj_x);
-  nb->Attr("adj_y", adj_y);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -3184,7 +2857,6 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3375,7 +3047,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  DCHECK(new_node);
+  // No need to check if new_node is null because it will be null only when
+  // Finalize fails.
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode.
@@ -3484,7 +3157,6 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3641,7 +3313,6 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   if (s != Status::OK()) {
     return s;
   }
-  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3717,7 +3388,6 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   if (s != Status::OK()) {
     return s;
   }
-  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3774,7 +3444,6 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
                         "RewriteNode will fail.");
   }
   TF_CHECK_OK(ret_status);
-  DCHECK(new_node != nullptr);
 
   // Copy the runtime device assigned from original code to new node.
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
@@ -3793,19 +3462,24 @@ const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   DataType T1, T2;
   DataType Tinput, Tfilter;
+  bool type_attrs_present = false;
 
-  if ((GetNodeAttr(n->def(), "Tinput", &Tinput).ok() &&
-       GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok()) ||
-      (GetNodeAttr(n->def(), "T1", &T1).ok() &&
-       GetNodeAttr(n->def(), "T2", &T2).ok())) {
-    if (mkl_op_registry::IsMklLayoutDependentOp(
-            mkl_op_registry::GetMklOpName(n->type_string()), T1, T2) ||
-        mkl_op_registry::IsMklLayoutDependentOp(
-            mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
-      for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
-        if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
-          return &*ri;
-        }
+  if (TryGetNodeAttr(n->def(), "Tinput", &Tinput) &&
+      TryGetNodeAttr(n->def(), "Tfilter", &Tfilter) &&
+      mkl_op_registry::IsMklLayoutDependentOp(
+          mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
+    type_attrs_present = true;
+  } else if (TryGetNodeAttr(n->def(), "T1", &T1) &&
+             TryGetNodeAttr(n->def(), "T2", &T2) &&
+             mkl_op_registry::IsMklLayoutDependentOp(
+                 mkl_op_registry::GetMklOpName(n->type_string()), T1, T2)) {
+    type_attrs_present = true;
+  }
+
+  if (type_attrs_present) {
+    for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
+      if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
+        return &*ri;
       }
     }
   }
@@ -3827,7 +3501,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // E.g., MklRelu does not support INT32. So we cannot rewrite Relu to
   // MklRelu if type is INT32.
   DataType T;
-  if (!GetNodeAttr(n->def(), "T", &T).ok()) {
+  if (!TryGetNodeAttr(n->def(), "T", &T)) {
     return nullptr;
   }
 
@@ -3852,47 +3526,6 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;
-  }
-
-  // For elementwise node, we reuse the Eigen implementation and pass the MKL
-  // metadata tensor through so we can avoid conversions. However, if all
-  // incoming edges are in TF format, we don't need all this overhead, so
-  // replace the elementwise node only if at least one of its parents is a MKL
-  // node.
-  //
-  // Identity nodes can also skip replacement if they are not being served by
-  // any MKL nodes.
-  //
-  // TODO(vrane): Add implementation for element-wise ops that doesn't reuse
-  // eigen code to reduce cross-library dependency.
-  VLOG(1) << "ELEMENTWISE: checking op: " << n->type_string();
-  if (mkl_op_registry::IsMklElementWiseOp(
-          mkl_op_registry::GetMklOpName(n->type_string()), T) ||
-      n->type_string().find("Identity") != string::npos) {
-    VLOG(1) << "ELEMENTWISE: op is elementwise: " << n->type_string();
-    bool incoming_mkl_edge = false;
-    int num_parent = 0;
-    for (auto parent : n->in_edges()) {
-      if (mkl_op_registry::IsMklLayoutDependentOp(parent->src()->type_string(),
-                                                  T)) {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is MKL op: " << parent->src()->type_string();
-        incoming_mkl_edge = true;
-        break;
-      } else {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is NON-MKL op: " << parent->src()->type_string();
-      }
-    }
-    if (incoming_mkl_edge == false) {
-      VLOG(1) << "ELEMENTWISE: Skipping replacement of elementwise node which "
-                 "has no MKL "
-                 "parents.";
-      return nullptr;
-    } else {
-      VLOG(1) << "ELEMENTWISE: Replacing elementwise node " << n->type_string()
-              << " which has MKL parents";
-    }
   }
 
   // We now check if rewrite rule applies for this op. If rewrite rule passes
@@ -3962,7 +3595,8 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  DCHECK(new_node);
+  // No need to check if new_node is null because it will be null only when
+  // Finalize fails.
 
   // Fill outputs.
   for (const Edge* e : transpose_to_nchw->out_edges()) {
@@ -4082,7 +3716,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
 
   // If graph node is not Mkl node, then return.
   DataType T = DT_INVALID;
-  if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+  if (!TryGetNodeAttr(n->def(), "T", &T) ||
       !mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     return result;
   }
@@ -4107,7 +3741,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
     // Check that the source node for edge 'e' is Mkl node. If it is not an Mkl
     // node, then we don't need to do anything.
     Node* e_src = e->src();
-    if (GetNodeAttr(e_src->def(), "T", &T).ok() &&
+    if (TryGetNodeAttr(e_src->def(), "T", &T) &&
         mkl_op_registry::IsMklLayoutDependentOp(e_src->type_string(), T)) {
       // Source node for edge 'e' is Mkl node.
       // Destination node and destination input slot of e is node 'n' and 'idx'

@@ -17,7 +17,7 @@ func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
-// CHECK-NEXT:       shape: [ ],
+// CHECK-NEXT:       shape: [ 6 ],
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 2,
 // CHECK-NEXT:       name: "tfl.reshape",

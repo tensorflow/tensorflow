@@ -72,9 +72,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_TUNE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TUNE_H_
 
-#include <cstdint>
-
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/time.h"
+
+// Tuning only implemented on NEON_64 at the moment (see assembly code
+// in the nano-benchmark) and not on Apple (some Apple CPUs produce incorrect
+// results on in-order-tuned kernels combining ARM and NEON load instructions
+// and NEON `ins` instructions).
+//
+// When tuning is not implemented, we simply always use Tuning::kOutOfOrder.
+#if RUY_OPT_ENABLED(RUY_OPT_TUNING) && RUY_PLATFORM(NEON_64) && \
+    !RUY_PLATFORM(APPLE)
+#define RUY_IMPLEMENT_TUNING
+#endif
 
 namespace ruy {
 

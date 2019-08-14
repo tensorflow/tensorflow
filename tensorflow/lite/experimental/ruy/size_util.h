@@ -27,7 +27,7 @@ namespace ruy {
 inline int floor_log2(int n) {
   RUY_DCHECK_GE(n, 1);
 #ifdef _WIN32
-  unsigned long result;
+  unsigned long result;  // NOLINT[runtime/int]
   _BitScanReverse(&result, n);
   return result;
 #else

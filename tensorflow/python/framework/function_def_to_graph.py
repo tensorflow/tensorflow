@@ -46,7 +46,8 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
       a shape is None, the corresponding input placeholder will have unknown
       shape.
     copy_functions: Whether to copy all functions that exists in default graph
-      (independently of being used or not) to the created FuncGraph.
+      (independently of being used or not) to the created FuncGraph. Functions
+      required for graph import will be copied regardless.
 
   Returns:
     A FuncGraph.
@@ -61,7 +62,7 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def(graph_def, name="")
+    importer.import_graph_def_for_function(graph_def, name="")
 
     # Initialize fields specific to FuncGraph.
 
@@ -95,10 +96,17 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
         for output_index, shape in enumerate(
             output_shapes.list.shape[:len(op.outputs)]):
           op.outputs[output_index].set_shape(shape)
+    output_names = {}
+    for ret_arg_def, tensor_name in zip(
+        fdef.signature.output_arg, output_tensor_names):
+      output_names[ops.tensor_id(
+          func_graph.get_tensor_by_name(tensor_name))] = (
+              ret_arg_def.name)
+    func_graph._output_names = output_names  # pylint: disable=protected-access
   return func_graph
 
 
-def _is_function(fname):
+def is_function(fname):
   """Checks for a function definition with `fname` in the current context."""
   if context.executing_eagerly():
     return context.context().has_function(fname)
@@ -124,7 +132,8 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
       `fdef.signature.input_arg`. If a shape is None, the corresponding input
       placeholder will have unknown shape.
     copy_functions: Whether to copy all functions that exists in default graph
-      (independently of being used or not) to the created GraphDef.
+      (independently of being used or not) to the created GraphDef. Directly
+      referenced functions are copied regardless.
 
   Returns:
     A tuple of (GraphDef, dict<string, string>). The dict contains a mapping
@@ -140,10 +149,18 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
           producer=versions.GRAPH_DEF_VERSION,
           min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER))
 
+  default_graph = ops.get_default_graph()
+
+  copied_functions = set()
+
   # Copy *all* functions from outer graph to `graph_def` so that both direct
   # and indirect references are safely handled.
   if copy_functions:
-    ops.get_default_graph()._copy_functions_to_graph_def(graph_def, 0)  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    default_graph._copy_functions_to_graph_def(graph_def, 0)
+    for function_name in default_graph._functions.keys():
+      copied_functions.add(function_name)
+    # pylint: enable=protected-access
 
   if input_shapes and len(input_shapes) != len(fdef.signature.input_arg):
     raise ValueError("Length of input_shapes must match the number of " +
@@ -184,17 +201,27 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
     nested_to_flat_tensor_name[control_name] = control_name
 
   for node_def in fdef.node_def:
-    op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access
+    f = default_graph._functions.get(node_def.op, None)  # pylint: disable=protected-access
+    if f is not None and hasattr(f, "signature"):
+      op_def = f.signature
+      if node_def.op not in copied_functions:
+        # Since this function is referenced as an op type, we have no choice but
+        # to copy it into the GraphDef if we want downstream tools to process
+        # it.
+        graph_def.library.function.append(f.definition)
+        copied_functions.add(node_def.op)
+    else:
+      op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
-        if not _is_function(fname):
+        if not is_function(fname):
           raise ValueError("%s function not found." % fname)
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
-          if not _is_function(fname):
+          if not is_function(fname):
             raise ValueError("%s function not found." % fname)
 
     # Iterate over output_args in op_def to build the map.

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -73,6 +74,7 @@ def random_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
+    tensor_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -129,6 +131,7 @@ def parameterized_truncated_normal(shape,
         maxvals_tensor,
         seed=seed1,
         seed2=seed2)
+    tensor_util.maybe_set_static_shape(rnd, shape)
     return rnd
 
 
@@ -172,6 +175,7 @@ def truncated_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
+    tensor_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -235,11 +239,17 @@ def random_uniform(shape,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops.random_uniform_int(
+      result = gen_random_ops.random_uniform_int(
           shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
       rnd = gen_random_ops.random_uniform(shape, dtype, seed=seed1, seed2=seed2)
-      return math_ops.add(rnd * (maxval - minval), minval, name=name)
+      result = math_ops.add(rnd * (maxval - minval), minval, name=name)
+    # TODO(b/132092188): C++ shape inference inside functional ops does not
+    # cross FuncGraph boundaries since that information is only available in
+    # python. So we manually get the static shape using
+    # `constant_value_as_shape` which *does* cross function boundaries.
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 ops.NotDifferentiable("RandomUniform")
@@ -332,7 +342,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:
@@ -360,7 +370,7 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:
@@ -388,6 +398,16 @@ def multinomial_categorical_impl(logits, num_samples, dtype, seed):
 
 
 ops.NotDifferentiable("Multinomial")
+
+
+def _maybe_set_static_shape_helper(tensor, shape, postfix_tensor):
+  if (not context.executing_eagerly() and
+      ops.get_default_graph().building_function and
+      not tensor.shape.is_fully_defined()):
+    shape = tensor_util.shape_tensor(shape)
+    const_shape = tensor_util.constant_value_as_shape(shape)
+    postfix_tensor = ops.convert_to_tensor(postfix_tensor)
+    tensor.set_shape(const_shape.concatenate(postfix_tensor.shape))
 
 
 @tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
@@ -468,10 +488,12 @@ def random_gamma(shape,
         beta if beta is not None else 1, name="beta", dtype=dtype)
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
-    return math_ops.maximum(
+    result = math_ops.maximum(
         np.finfo(dtype.as_numpy_dtype).tiny,
         gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
+    _maybe_set_static_shape_helper(result, shape, alpha_broadcast)
+    return result
 
 
 @tf_export(v1=["random.poisson", "random_poisson"])
@@ -553,5 +575,7 @@ def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
   with ops.name_scope(name, "random_poisson", [lam, shape]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.random_poisson_v2(
+    result = gen_random_ops.random_poisson_v2(
         shape, lam, dtype=dtype, seed=seed1, seed2=seed2)
+    _maybe_set_static_shape_helper(result, shape, lam)
+    return result

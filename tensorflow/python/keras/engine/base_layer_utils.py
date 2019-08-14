@@ -19,8 +19,7 @@ from __future__ import print_function
 
 import threading
 
-import enum
-
+from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -29,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -37,20 +36,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 _call_context = threading.local()
-
-
-class CallConvention(enum.Enum):
-  """Calling conventions for passing `Layer` inputs to `Layer.call`."""
-  # The Layer takes inputs as its first argument, named "inputs" for
-  # compatibility with the signature of Layer.__call__. This is the mode assumed
-  # for Layers which are not subclassed Models.
-  EXPLICIT_INPUTS_ARGUMENT = 1
-  # The Layer takes a single positional argument, not named "inputs". It's
-  # treated like an "inputs" argument.
-  SINGLE_POSITIONAL_ARGUMENT = 2
-  # The Layer has multiple positional arguments to which its inputs should be
-  # bound.
-  POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
 
 
 def create_mean_metric(value, name=None):
@@ -240,7 +225,8 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             # configured improperly.
             constants[i] = op_input
           else:
-            constants[i] = backend.function([], op_input)([])
+            with ops.init_scope():
+              constants[i] = backend.function([], op_input)([])
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
       name = op.name
@@ -254,7 +240,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   return processed_ops, created_layers
 
 
-def needs_keras_history(tensors):
+def needs_keras_history(tensors, ignore_call_context=False):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
   This will never return True inside a sublayer, because sublayers
@@ -264,12 +250,18 @@ def needs_keras_history(tensors):
 
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
+    ignore_call_context: Whether to ignore the check of if currently
+      outside of a `call` context. This is `True` when creating
+      KerasHistory inside `Node`, where we always know that Tensors
+      are being used with the Functional API.
 
   Returns:
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if call_context().in_call or all(
+  if call_context().in_call and not ignore_call_context:
+    return False
+  if all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -324,21 +316,25 @@ def uses_keras_history(tensors):
   tensors_to_check = nest.flatten(tensors)
 
   while tensors_to_check:
-    new_tensors_to_check = set()
+    new_tensors_to_check = []
     for tensor in tensors_to_check:
+      if id(tensor) in checked_tensors:
+        continue
+
+      checked_tensors.add(id(tensor))
+
       if getattr(tensor, '_keras_history_checked', None) is not None:
         continue
       if getattr(tensor, '_keras_history', None) is not None:
         return True
 
       try:
-        new_tensors_to_check.update(tensor.op.inputs)
+        new_tensors_to_check.extend(tensor.op.inputs)
       except AttributeError:
         # In case `tensor` is a Variable created in an Eager context.
         pass
 
-    checked_tensors.update(tensors_to_check)
-    tensors_to_check = list(new_tensors_to_check - checked_tensors)
+    tensors_to_check = new_tensors_to_check
 
   # Mark that these Tensors have been checked once for `_keras_history`,
   # and should not be checked again for performance reasons.
@@ -438,10 +434,32 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   return 'training' in full_args and full_args['training'] is not None
 
 
+def autocast_context_manager(dtype):
+  """Returns a context manager to autocast AutoCastVariables.
+
+  Under this context manager, AutoCastVariables will be casted to `dtype` if
+  `dtype` is floating-point. Otherwise, AutoCastVariables will not be casted.
+
+  Args:
+    dtype: The dtype to cast AutoCastVariables to, or None.
+
+  Returns:
+    A context manager to automatically cast AutoCastVariables.
+  """
+  if dtype and not dtypes.as_dtype(dtype).is_floating:
+    dtype = None
+  return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
+
+
 def is_subclassed(layer):
   """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
           layer.__module__.find('keras.layers') == -1)
+
+
+def from_saved_model(layer):
+  """Returns whether the layer is loaded from a SavedModel."""
+  return layer.__module__.find('keras.saving.saved_model') != -1
 
 
 def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
@@ -460,12 +478,13 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if (force_raise or (ops.executing_eagerly_outside_functions() and
-                      hasattr(tensor, 'graph') and
-                      isinstance(tensor.graph,
-                                 (control_flow_util_v2.CondBranchFuncGraph,
-                                  control_flow_util_v2.WhileCondFuncGraph,
-                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+  if (force_raise or
+      (ops.executing_eagerly_outside_functions() and
+       hasattr(tensor, 'graph') and
+       isinstance(tensor.graph,
+                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
+                   control_flow_v2_func_graphs.WhileCondFuncGraph,
+                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -601,3 +620,60 @@ def default(method):
   """Decorates a method to detect overrides in subclasses."""
   method._is_default = True  # pylint: disable=protected-access
   return method
+
+
+V2_DTYPE_BEHAVIOR = None
+
+
+# These two functions are not exported because we plan on removing them in the
+# future.
+def enable_v2_dtype_behavior():
+  """Enable the V2 dtype behavior for Keras layers.
+
+  By default, the V2 dtype behavior is enabled in TensorFlow 2.
+
+  When enabled, the dtype of Keras layers defaults to floatx (which is typically
+  float32) instead of None. In addition, layers will automatically cast
+  floating-point inputs to the layer's dtype.
+
+  For example, once enabled, the following block will run a Conv2D layer
+  in float32:
+
+  ```python
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  print(layer.dtype)  # Float32 when enabled. None when disabled.
+  # When enabled, will cast inputs to the layer's dtype, which is float32. When
+  # disabled, will do no casting, so the layer is done in float64.
+  y = layer(x)
+  ```
+
+  A layer author can opt-out their layer from the automatic input casting by
+  passing `autocast=False` to the base Layer's constructor. This disables the
+  autocasting part of the V2 behavior for that layer, but not the defaulting to
+  floatx part of the V2 behavior.
+
+  When a global `tf.keras.mixed_precision.experimental.Policy` is set, the
+  layer's dtype will default to the global policy instead of floatx. Layers
+  will automatically cast inputs to the policy's compute_dtype.
+  """
+  global V2_DTYPE_BEHAVIOR
+  V2_DTYPE_BEHAVIOR = True
+
+
+def disable_v2_dtype_behavior():
+  """Disables the V2 dtype behavior for Keras layers.
+
+  See `enable_v2_dtype_behavior`.
+
+  This function will be removed in the future.
+  """
+  global V2_DTYPE_BEHAVIOR
+  V2_DTYPE_BEHAVIOR = False
+
+
+def v2_dtype_behavior_enabled():
+  """Returns True if the V2 dtype behavior is enabled."""
+  if V2_DTYPE_BEHAVIOR is None:
+    return tf2.enabled()
+  return V2_DTYPE_BEHAVIOR

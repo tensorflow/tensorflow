@@ -107,10 +107,12 @@ class GpuAlarmClock {
       total_alarms_ = 1;
       NSString* error;
       id<MTLComputePipelineState> program;
+      // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
                            @"kernel void ComputeFunction(device int* output_buffer [[buffer(0)]]) "
                            @"{ output_buffer[0] = 0; }",
-                           @"ComputeFunction", nullptr, &program);
+                           @"ComputeFunction", nullptr, &program)
+          .IgnoreError();
       stub_program_ = program;
       stub_buffer_ = [device_ newBufferWithLength:sizeof(int) * 4
                                           options:MTLResourceHazardTrackingModeUntracked];
@@ -185,7 +187,9 @@ class Delegate {
         )";
       NSString* error;
       id<MTLComputePipelineState> signal_program;
-      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program);
+      // TODO(impjdi): Properly handle returned status.
+      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program)
+          .IgnoreError();
       signal_program_ = signal_program;
       signal_buffer_ = [metal_device_ newBufferWithLength:sizeof(int) * 4
                                                   options:MTLResourceStorageModeShared |
@@ -613,22 +617,25 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace gpu
 }  // namespace tflite
 
-TfLiteDelegate* NewGpuDelegate(const GpuDelegateOptions* options) {
+TfLiteDelegate* TFLGpuDelegateCreate(const GpuDelegateOptions* options) {
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO, "Created TensorFlow Lite delegate for Metal.");
   auto* metal_delegate = new ::tflite::gpu::metal::Delegate(options);
   return metal_delegate ? metal_delegate->tflite_delegate() : nullptr;
 }
 
-void DeleteGpuDelegate(TfLiteDelegate* delegate) {
+void TFLGpuDelegateDelete(TfLiteDelegate* delegate) {
   delete ::tflite::gpu::metal::GetMetalDelegate(delegate);
 }
 
-bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index, id<MTLBuffer> buffer) {
+bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
+                                           id<MTLBuffer> buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
   return metal_delegate && metal_delegate->BindBufferToTensor(buffer, tensor_index).ok();
 }
 
-bool TFLSetCommandEncoder(
+// Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
+// `metal_delegate_internal.h`.
+bool TFLGpuDelegateSetCommandEncoder(
     TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
     std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);

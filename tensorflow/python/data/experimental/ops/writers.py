@@ -17,12 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -78,15 +77,11 @@ class TFRecordWriter(object):
     if not isinstance(dataset, dataset_ops.DatasetV2):
       raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
     if not dataset_ops.get_structure(dataset).is_compatible_with(
-        structure.TensorStructure(dtypes.string, [])):
+        tensor_spec.TensorSpec([], dtypes.string)):
       raise TypeError(
           "`dataset` must produce scalar `DT_STRING` tensors whereas it "
           "produces shape {0} and types {1}".format(
               dataset_ops.get_legacy_output_shapes(dataset),
               dataset_ops.get_legacy_output_types(dataset)))
-    if compat.forward_compatible(2019, 8, 3):
-      return gen_experimental_dataset_ops.dataset_to_tf_record(
-          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
-    else:
-      return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
-          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+    return gen_experimental_dataset_ops.dataset_to_tf_record(
+        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access

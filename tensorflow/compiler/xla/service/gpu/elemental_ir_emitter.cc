@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 
 #include <stddef.h>
+
 #include <unordered_map>
 #include <vector>
 
@@ -144,7 +145,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
-      return Unimplemented("Input type ≠ output type: %s ≠ %s",
+      return Unimplemented("Input type != output type: %s != %s",
                            PrimitiveType_Name(input_type),
                            PrimitiveType_Name(output_type));
     }
@@ -152,7 +153,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
 
   return EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind});
+      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b_);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
@@ -269,51 +270,38 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Upcast F16 to F32 if necessary.
   llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
   llvm::Value* input = FPCast(value, type);
+
+  // If |value| >= kMaxValue, tanh() is set to -1.0 or 1.0.
+  constexpr double kMaxValue = 20.0;
+  auto max_value = llvm::ConstantFP::get(type, kMaxValue);
+  llvm::Value* abs_value =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b_);
+
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
-  return FPCast(fast_tanh, value->getType());
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
+                                                    {one, input}, {type}, b_);
+  return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
+                value->getType());
 }
 
-llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
-    const string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes) {
-  std::vector<llvm::Type*> ir_input_types;
-  for (PrimitiveType input_type : input_types) {
-    ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, module_));
-  }
-  llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type, module_),  // Return type.
-      ir_input_types,                                        // Parameter types.
-      false);  // No variadic arguments.
-
-  // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
-      b_->GetInsertBlock()
-          ->getModule()
-          ->getOrInsertFunction(callee_name, callee_type)
-          .getCallee());
-
-  for (auto attribute : attributes) {
-    callee->addFnAttr(attribute);
-  }
-
-  return Call(callee, llvm_ir::AsArrayRef(operands));
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
+                            {EmitExtractReal(value), EmitExtractImag(value)},
+                            {prim_type, prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
-  llvm::Value* block_id =
-      IntCast(llvm_ir::EmitCallToIntrinsic(
-                  llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_),
-              b_->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block =
-      IntCast(llvm_ir::EmitCallToIntrinsic(
-                  llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_),
-              b_->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block =
-      IntCast(llvm_ir::EmitCallToIntrinsic(
-                  llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x, {}, {}, b_),
-              b_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
+  llvm::Value* block_id = IntCast(
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "block.id");
+  llvm::Value* thread_id_in_block = IntCast(
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "thread.id");
+  llvm::Value* threads_per_block = IntCast(
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b_),
+      b_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 
@@ -401,7 +389,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
               SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // We must check whether 0 <= input_multi_index[i] < bound, as
           // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
           // input_multi_index[i] < bound, as a negative value wraps to a large

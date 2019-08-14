@@ -177,7 +177,7 @@ class XRTAllocateOp : public OpKernel {
     xrt::XLAAllocation allocation_proto;
     OP_REQUIRES(
         ctx,
-        allocation_proto.ParseFromString(allocation_info.scalar<string>()()),
+        allocation_proto.ParseFromString(allocation_info.scalar<tstring>()()),
         errors::InvalidArgument(
             "Unable to parse allocation input to XLAAllocation"));
 
@@ -419,7 +419,7 @@ class XRTMakeTupleOp : public OpKernel {
         errors::Internal("tuple description input should be a string scalar"));
     xrt::XLATupleNode tuple_proto;
     OP_REQUIRES(
-        ctx, tuple_proto.ParseFromString(tuple_info.scalar<string>()()),
+        ctx, tuple_proto.ParseFromString(tuple_info.scalar<tstring>()()),
         errors::InvalidArgument("Unable to parse tuple input to XLATupleNode"));
 
     OpInputList arg_list;
@@ -627,7 +627,7 @@ class XRTWriteLiteralOp : public OpKernel {
                 errors::Internal("literal input should be a string scalar"));
     xla::LiteralProto literal_proto;
     OP_REQUIRES(ctx,
-                literal_proto.ParseFromString(literal_info.scalar<string>()()),
+                literal_proto.ParseFromString(literal_info.scalar<tstring>()()),
                 errors::InvalidArgument(
                     "Unable to parse allocation input to LiteralProto"));
     xla::Literal literal;

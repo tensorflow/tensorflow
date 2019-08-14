@@ -3,6 +3,10 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     default_visibility = [
@@ -48,6 +52,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -247,12 +252,14 @@ cc_library(
         ":kernel_and_device",
         ":tensor_handle",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -261,8 +268,21 @@ cc_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }),
+    }) + if_mkl([":mkl_eager_op_rewrite"]),
+)
+
+cc_library(
+    name = "mkl_eager_op_rewrite",
+    srcs = ["mkl_eager_op_rewrite.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:mkl_graph_util",
+    ],
 )
 
 cc_library(
@@ -335,6 +355,9 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*_test.cc"],
+        exclude = [
+            "*_test.cc",
+            "remote_*",
+        ],
     ),
 )

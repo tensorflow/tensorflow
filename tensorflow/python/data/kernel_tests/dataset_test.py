@@ -34,13 +34,16 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -50,7 +53,13 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
-    self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+    self.assertTrue(any([node.op == "RangeDataset" for node in graph.node]))
+
+  def testAsSerializedGraphStateful(self):
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda _: random_ops.random_uniform(()))
+    with self.assertRaises(errors.FailedPreconditionError):
+      self.evaluate(dataset._as_serialized_graph())
 
   def testAsFunctionWithMap(self):
     if not context.executing_eagerly():
@@ -253,39 +262,40 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
-       structure.TensorStructure(dtypes.float32, [])),
+       tensor_spec.TensorSpec([], dtypes.float32)),
       ("SparseTensor", lambda: sparse_tensor.SparseTensor(
           indices=[[0]],
           values=constant_op.constant([0], dtype=dtypes.int32),
-          dense_shape=[1]), structure.SparseTensorStructure(dtypes.int32, [1])),
+          dense_shape=[1]), sparse_tensor.SparseTensorSpec([1], dtypes.int32)),
       ("Nest", lambda: {
           "a": constant_op.constant(37.0),
           "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
       }, {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.TensorStructure(
-              dtypes.string, [1]), structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (
+              tensor_spec.TensorSpec([1], dtypes.string),
+              tensor_spec.TensorSpec([], dtypes.string),
+          )
       }),
       ("Dataset", lambda: dataset_ops.Dataset.from_tensor_slices(
           constant_op.constant([1, 2, 3])),
-       dataset_ops.DatasetStructure(
-           structure.TensorStructure(dtypes.int32, []))),
+       dataset_ops.DatasetSpec(tensor_spec.TensorSpec([], dtypes.int32))),
       ("Optional", lambda: optional_ops.Optional.from_value(37.0),
-       optional_ops.OptionalStructure(
-           structure.TensorStructure(dtypes.float32, []))),
+       optional_ops.OptionalSpec(
+           tensor_spec.TensorSpec([], dtypes.float32))),
   )
-  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
+  def testDatasetSpec(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
     dataset_structure = structure.type_spec_from_value(dataset)
-    self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
+    self.assertIsInstance(dataset_structure, dataset_ops.DatasetSpec)
 
     self.assertTrue(
         structure.are_compatible(
             dataset_ops.get_structure(dataset), expected_element_structure))
     self.assertEqual([dtypes.variant],
                      structure.get_flat_tensor_types(dataset_structure))
-    self.assertEqual([tensor_shape.scalar()],
+    self.assertEqual([tensor_shape.TensorShape([])],
                      structure.get_flat_tensor_shapes(dataset_structure))
 
     # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
@@ -318,7 +328,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSkipEagerSameGraphErrorOneShotSimple(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with test.mock.patch.object(logging, "warning") as mock_log:
+      with test.mock.patch.object(tf_logging, "warning") as mock_log:
         _ = dataset_ops.make_one_shot_iterator(dataset)
         self.assertRegexpMatches(
             str(mock_log.call_args), "Please ensure that all datasets in the "

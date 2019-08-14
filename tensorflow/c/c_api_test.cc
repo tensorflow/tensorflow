@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -233,7 +234,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      src.flat<string>()(i) = data[i];
+      src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -243,7 +244,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
+      ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
     TF_DeleteTensor(dst);
@@ -1385,7 +1386,7 @@ TEST(CAPI, SavedModel) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);
-    input.flat<string>()(i) = example.SerializeAsString();
+    input.flat<tstring>()(i) = example.SerializeAsString();
   }
 
   const tensorflow::string input_op_name(
@@ -2497,6 +2498,38 @@ TEST(TestKernel, TestGetRegisteredKernelsForOpNoKernels) {
 }
 
 #undef EXPECT_TF_META
+
+TEST(CAPI, TestTensorAligned) {
+  int64_t dim = 7;
+  size_t tensor_size_bytes = dim * TF_DataTypeSize(TF_FLOAT);
+  TF_Tensor* a = TF_AllocateTensor(
+      /*dtype=*/TF_FLOAT, /*dims=*/&dim, /*num_dims=*/1,
+      /*len=*/tensor_size_bytes);
+  float* data = reinterpret_cast<float*>(TF_TensorData(a));
+  for (int i = 0; i < dim; ++i) {
+    data[i] = 0;
+  }
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_TRUE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteTensor(a);
+}
+
+TEST(CAPI, TestTensorIsNotAligned) {
+  // Test unaligned access via a Slice.
+  Tensor x(DT_FLOAT, TensorShape({30}));
+  x.flat<float>().setConstant(0.0);
+
+  // Take an unaligned slice.
+  Tensor y = x.Slice(1, 13);
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* a = TF_TensorFromTensor(y, status);
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_FALSE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(a);
+}
 
 }  // namespace
 }  // namespace tensorflow

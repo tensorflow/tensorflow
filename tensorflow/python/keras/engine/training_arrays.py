@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -90,9 +91,10 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
-        validation from data tensors). Ignored with the default value of `None`.
+        validation from data tensors). Ignored with the default value of
+        `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -100,8 +102,8 @@ def model_iteration(model,
         validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In the case where `val_inputs` is a
-        dataset, this flag indicates that its iterator and feed values are
+        training iteration (for validation). In the case where `val_inputs` is
+        a dataset, this flag indicates that its iterator and feed values are
         already created so should properly reuse resources.
       prepared_feed_values_from_dataset: if True, `inputs` is a list of feed
         tensors returned from `_prepare_feed_values` call on the validation
@@ -138,7 +140,7 @@ def model_iteration(model,
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+          model, inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
   # Enter tf.distribute.Strategy scope.
@@ -196,6 +198,7 @@ def model_iteration(model,
       # that determines the number of steps required. To avoid this issue,
       # set validation_steps here if validation_steps is None.
       validation_steps = training_utils.infer_steps_for_dataset(
+          model,
           val_inputs,
           validation_steps,
           epochs=epochs,
@@ -207,7 +210,8 @@ def model_iteration(model,
     val_samples_or_steps = validation_steps
   else:
     # Get num samples for printing.
-    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+    val_samples_or_steps = val_inputs and nest.flatten(
+        val_inputs)[0].shape[0] or None
 
   if mode == ModeKeys.TRAIN and verbose:
     _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
@@ -239,11 +243,15 @@ def model_iteration(model,
 
   # Select aggregation method.
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.OutputsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.MetricsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(model, mode)
@@ -283,8 +291,6 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          # TODO(b/134179782):  Simplify this condition when cloning never
-          # happens.
           if not callable(ins) or (
               model._distribution_strategy and
               not distributed_training_utils.is_distributing_by_cloning(model)):
@@ -309,7 +315,7 @@ def model_iteration(model,
                   % (steps_name, steps_per_epoch * epochs))
             elif step > 0:
               steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
+              aggregator.steps = steps_per_epoch
               if mode == ModeKeys.TRAIN:
                 progbar.params['steps'] = steps_per_epoch
                 progbar.progbar.target = steps_per_epoch
@@ -330,7 +336,7 @@ def model_iteration(model,
 
         if model._distribution_strategy:
           batch_outs = distributed_training_utils._per_replica_aggregate_batch(
-              batch_outs, model, mode)
+              model._distribution_strategy, batch_outs, model, mode)
 
         # Aggregate results.
         if step == 0:
@@ -427,7 +433,7 @@ def model_iteration(model,
           batch_size=batch_size,
           steps_per_epoch=validation_steps,
           callbacks=callbacks,
-          verbose=0,
+          verbose=verbose,
           mode=ModeKeys.TEST,
           validation_in_fit=True,
           prepared_feed_values_from_dataset=(val_iterator is not None),

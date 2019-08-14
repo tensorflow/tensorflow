@@ -23,6 +23,7 @@ import pprint
 import random
 import sys
 
+from absl import logging
 import six
 
 from tensorflow.python import pywrap_tensorflow
@@ -69,21 +70,7 @@ except NameError:
             "directly specified in session.run or used as a "
             "control dependency for other operators. This is "
             "only a concern in graph mode. Below is an example "
-            "of how to ensure tf.print executes in graph mode:\n"
-            """```python
-    sess = tf.compat.v1.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print(tensor)
-        with tf.control_dependencies([print_op]):
-          out = tf.add(tensor, tensor)
-        sess.run(out)
-    ```
-Additionally, to use tf.print in python 2.7, users must make sure to import
-the following:
-
-  `from __future__ import print_function`
-""")
+            "of how to ensure tf.print executes in graph mode:\n")
 @tf_export(v1=["Print"])
 def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   """Prints a list of tensors.
@@ -107,6 +94,20 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
 
   Returns:
     A `Tensor`. Has the same type and contents as `input_`.
+
+  	```python
+    sess = tf.compat.v1.Session()
+    with sess.as_default():
+        tensor = tf.range(10)
+        print_op = tf.print(tensor)
+        with tf.control_dependencies([print_op]):
+          out = tf.add(tensor, tensor)
+        sess.run(out)
+  	```
+	Additionally, to use tf.print in python 2.7, users must make sure to import
+	the following:
+
+  `from __future__ import print_function`
   """
   return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
@@ -221,10 +222,10 @@ def print_v2(*inputs, **kwargs):
       ways), and printable python objects.
     output_stream: The output stream, logging level, or file to print to.
       Defaults to sys.stderr, but sys.stdout, tf.compat.v1.logging.info,
-      tf.compat.v1.logging.warning, and tf.compat.v1.logging.error are also
-      supported. To print to
-      a file, pass a string started with "file://" followed by the file path,
-      e.g., "file:///tmp/foo.out".
+      tf.compat.v1.logging.warning, tf.compat.v1.logging.error,
+      absl.logging.info, absl.logging.warning and absl.loogging,error are also
+      supported. To print to a file, pass a string started with "file://"
+      followed by the file path, e.g., "file:///tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
@@ -268,6 +269,15 @@ def print_v2(*inputs, **kwargs):
       tf_logging.warn: "log(warning)",
       tf_logging.ERROR: "log(error)",
       tf_logging.error: "log(error)",
+      logging.INFO: "log(info)",
+      logging.info: "log(info)",
+      logging.INFO: "log(info)",
+      logging.WARNING: "log(warning)",
+      logging.WARN: "log(warning)",
+      logging.warning: "log(warning)",
+      logging.warn: "log(warning)",
+      logging.ERROR: "log(error)",
+      logging.error: "log(error)",
   }
 
   if _is_filepath(output_stream):

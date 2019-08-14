@@ -99,6 +99,22 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
+  const char *const kHloString = R"(
+    HloModule unnested_transpose_3
+
+    ENTRY unnested_transpose_3 {
+      para0 = c128[65,65]{1,0} parameter(0)
+      ROOT copy1 = c128[65,65]{0,1} copy(para0)
+    })";
+
+  // With the current implementation for the available hardwares, we bail out
+  // from the tiled transpose implementation at the last minute. Instead of
+  // checking the transpose is not tiled, we only check the module compiled and
+  // run in this test.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
+}
+
 TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   const char *const kHloString = R"(
     HloModule multiple_output_fusion_1
@@ -316,9 +332,9 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -363,8 +379,8 @@ TEST_F(GpuKernelTilingTest,
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -411,11 +427,11 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
-; CHECK-NOT: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK: atomicrmw fadd float
+; CHECK-NOT: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -446,7 +462,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
@@ -511,13 +527,58 @@ TEST_F(GpuKernelTilingTest,
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: atomicrmw fadd float
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
+TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
+  const char *const kHloString = R"(
+  HloModule Test
+
+  scalar_add_computation.1 {
+    scalar_lhs.1 = f32[] parameter(0)
+    scalar_rhs.1 = f32[] parameter(1)
+    ROOT add.6 = f32[] add(scalar_lhs.1, scalar_rhs.1)
+  }
+  ENTRY Test {
+    param_3.241 = f16[512,2,9,9]{1,3,2,0} parameter(3)
+    constant_661 = f16[] constant(0)
+    broadcast.695 = f16[512,2,9,9]{1,3,2,0} broadcast(constant_661), dimensions={}
+    compare.42 = pred[512,2,9,9]{1,3,2,0} compare(param_3.241, broadcast.695), direction=GT
+    param_2.401 = f16[512,2,9,9]{1,3,2,0} parameter(2)
+    select.40 = f16[512,2,9,9]{1,3,2,0} select(compare.42, param_2.401, broadcast.695)
+    convert.196 = f32[512,2,9,9]{1,3,2,0} convert(select.40)
+    param_1.809 = f16[512,2,9,9]{1,3,2,0} parameter(1)
+    copy.335 = f16[512,2,9,9]{1,3,2,0} copy(param_1.809)
+    convert.218 = f32[512,2,9,9]{1,3,2,0} convert(copy.335)
+    param_0.668 = f32[2]{0} parameter(0)
+    broadcast.687 = f32[512,2,9,9]{1,3,2,0} broadcast(param_0.668), dimensions={1}
+    subtract.136 = f32[512,2,9,9]{1,3,2,0} subtract(convert.218, broadcast.687)
+    multiply.579 = f32[512,2,9,9]{1,3,2,0} multiply(convert.196, subtract.136)
+    constant_485 = f32[] constant(0)
+    reduce.139 = f32[2]{0} reduce(multiply.579, constant_485), dimensions={0,2,3}, to_apply=scalar_add_computation.1
+    reduce.140.clone.1 = f32[2]{0} reduce(convert.196, constant_485), dimensions={0,2,3}, to_apply=scalar_add_computation.1
+    ROOT tuple.102 = (f32[2]{0}, f32[2]{0}) tuple(reduce.139, reduce.140.clone.1)
+  })";
+
+  // Check that no loop is generated for reduction.
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
+          .ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @fusion
+; CHECK-NOT: reduce.0.loop_header
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {

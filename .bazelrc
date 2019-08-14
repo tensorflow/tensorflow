@@ -30,6 +30,10 @@ build:monolithic --define framework_shared_object=false
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
 
+# Flags for open source build, always set to be true.
+build --define open_source_build=true
+test --define open_source_build=true
+
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
 # environment variable "TF_MKL_ROOT" every time before build.
@@ -40,6 +44,7 @@ build:mkl -c opt
 # This config option is used to enable MKL-DNN open source library only,
 # without depending on MKL binary version.
 build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
+build:mkl_open_source_only --define=build_with_mkl_dnn_v1_only=true
 build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -30,7 +31,8 @@ class EagerOperation {
         attrs_(op),
         attr_types_(t),
         device_(nullptr),
-        is_function_(is_function) {}
+        is_function_(is_function),
+        executor_(ctx ? ctx->Executor() : nullptr) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -73,6 +75,15 @@ class EagerOperation {
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
 
+  CancellationManager* GetCancellationManager() const {
+    return cancellation_manager_;
+  }
+  void SetCancellationManager(CancellationManager* cancellation_manager) {
+    cancellation_manager_ = cancellation_manager;
+  }
+
+  EagerExecutor* Executor() { return executor_; }
+
   string DebugString() const;
 
  private:
@@ -85,6 +96,8 @@ class EagerOperation {
   DeviceNameUtils::ParsedName device_name_;
   bool use_xla_ = false;
   const bool is_function_;
+  CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
+  EagerExecutor* const executor_;                        // Not owned.
 };
 }  // namespace tensorflow
 

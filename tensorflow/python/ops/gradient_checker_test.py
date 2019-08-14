@@ -60,7 +60,7 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testAddSimpleGPU(self):
@@ -75,7 +75,7 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testAddCustomized(self):
@@ -94,7 +94,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(
           x2, size, y, size, x_init_value=x_init_value, delta=1e-2)
     tf_logging.info("x2 error = %f", error)
-    assert error < 1e-10
+    self.assertLess(error, 1e-10)
 
   @test_util.run_deprecated_v1
   def testGather(self):
@@ -112,7 +112,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y,
                                                       y_shape)
     tf_logging.info("gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testNestedGather(self):
@@ -134,7 +134,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y2,
                                                       y2_shape)
     tf_logging.info("nested gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testComplexMul(self):

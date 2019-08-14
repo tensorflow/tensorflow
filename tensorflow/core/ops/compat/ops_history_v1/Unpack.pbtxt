@@ -1,0 +1,28 @@
+op {
+  name: "Unpack"
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    number_attr: "num"
+  }
+  attr {
+    name: "num"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}

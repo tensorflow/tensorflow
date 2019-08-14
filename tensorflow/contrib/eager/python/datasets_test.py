@@ -25,9 +25,9 @@ import numpy as np
 
 from tensorflow.contrib import lookup
 from tensorflow.contrib.eager.python import datasets
-from tensorflow.python.data import Dataset
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.experimental.ops import unique
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -44,24 +44,24 @@ class IteratorTest(test.TestCase):
 
   def testBasic(self):
     got = []
-    for t in datasets.Iterator(Dataset.range(4)):
+    for t in datasets.Iterator(dataset_ops.Dataset.range(4)):
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
 
   def testBasicOneShotIterator(self):
     got = []
-    for t in Dataset.range(4).make_one_shot_iterator():
+    for t in dataset_ops.Dataset.range(4).make_one_shot_iterator():
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
 
   def testBasicImplicitIterator(self):
     got = []
-    for t in Dataset.range(4):
+    for t in dataset_ops.Dataset.range(4):
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
 
   def testGetNext(self):
-    iterator = datasets.Iterator(Dataset.range(4))
+    iterator = datasets.Iterator(dataset_ops.Dataset.range(4))
     self.assertEqual(0, iterator.get_next().numpy())
     self.assertEqual(1, iterator.get_next().numpy())
     self.assertEqual(2, iterator.get_next().numpy())
@@ -70,7 +70,7 @@ class IteratorTest(test.TestCase):
       iterator.get_next()
 
   def testGetNextOneShotIterator(self):
-    iterator = Dataset.range(4).make_one_shot_iterator()
+    iterator = dataset_ops.Dataset.range(4).make_one_shot_iterator()
     self.assertEqual(0, iterator.get_next().numpy())
     self.assertEqual(1, iterator.get_next().numpy())
     self.assertEqual(2, iterator.get_next().numpy())
@@ -79,7 +79,7 @@ class IteratorTest(test.TestCase):
       iterator.get_next()
 
   def testMultipleIteratorsOnTheSameDataset(self):
-    ds = Dataset.range(4)
+    ds = dataset_ops.Dataset.range(4)
     it1 = datasets.Iterator(ds)
     it2 = datasets.Iterator(ds)
     got = [x.numpy() for x in it1]
@@ -89,8 +89,10 @@ class IteratorTest(test.TestCase):
     self.assertAllEqual([0, 1, 2, 3], got)
 
   def testNestedOutputs(self):
-    ds = Dataset.zip((Dataset.range(4), Dataset.zip((Dataset.range(4),
-                                                     Dataset.range(4)))))
+    ds = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(4),
+         dataset_ops.Dataset.zip(
+             (dataset_ops.Dataset.range(4), dataset_ops.Dataset.range(4)))))
     total = 0
     # The Iterator will return a nested structure of Tensor objects.
     # Some funkiness to compare against simple integers.
@@ -102,10 +104,12 @@ class IteratorTest(test.TestCase):
     self.assertEqual(4, total)
 
   def testMapAndFilter(self):
+
     def even(x):
       return math_ops.equal(math_ops.mod(x, 2), 0)
 
-    it = datasets.Iterator(Dataset.range(8).map(math_ops.square).filter(even))
+    it = datasets.Iterator(
+        dataset_ops.Dataset.range(8).map(math_ops.square).filter(even))
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
 
@@ -115,14 +119,16 @@ class IteratorTest(test.TestCase):
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = lookup.HashTable(
         lookup.KeyValueTensorInitializer(keys, values), default_val)
-    dataset = Dataset.from_tensor_slices(['brain', 'salad', 'surgery'])
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ['brain', 'salad', 'surgery'])
     dataset = dataset.map(table.lookup)
     it = datasets.Iterator(dataset)
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 1, 2], got)
 
   def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
-    ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)
+    ds = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5,
+                                                 6]).map(math_ops.square)
 
     got1 = [x.numpy() for x in datasets.Iterator(ds)]
     self.assertAllEqual([1, 4, 9, 16, 25, 36], got1)
@@ -172,7 +178,7 @@ class IteratorTest(test.TestCase):
     ]
 
     for i, result in enumerate(
-        datasets.Iterator(Dataset.from_tensor_slices(components))):
+        datasets.Iterator(dataset_ops.Dataset.from_tensor_slices(components))):
       self.assertSparseValuesEqual(expected[i][0], result[0])
       self.assertSparseValuesEqual(expected[i][1], result[1])
 
@@ -181,20 +187,20 @@ class IteratorTest(test.TestCase):
     def my_map(inp):
       return [[x + 1 for x in inp]]
 
-    ds = Dataset.range(4).map(
+    ds = dataset_ops.Dataset.range(4).map(
         lambda x: script_ops.py_func(my_map, [[x]], dtypes.int64))
     got = [x.numpy() for x in datasets.Iterator(ds)]
     self.assertAllEqual([[1], [2], [3], [4]], got)
 
   def testTensorsPlacedOnDevice(self):
-    ds = Dataset.from_tensors([0., 1.])
+    ds = dataset_ops.Dataset.from_tensors([0., 1.])
     with ops.device(test.gpu_device_name()):
       x = datasets.Iterator(ds).next()
       x = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], x.numpy())
 
   def testGpuTensor(self):
-    ds = Dataset.from_tensors([0., 1.])
+    ds = dataset_ops.Dataset.from_tensors([0., 1.])
     with ops.device(test.gpu_device_name()):
       for x in ds:
         y = math_ops.add(x, x)
@@ -213,7 +219,7 @@ class IteratorTest(test.TestCase):
     for num_threads in [1, 2, 4, 8, 16]:
 
       dataset = (
-          Dataset.range(1000).map(
+          dataset_ops.Dataset.range(1000).map(
               lambda x: script_ops.py_func(get_thread_id, [x], dtypes.int64),
               num_parallel_calls=32).apply(unique.unique()))
 
@@ -235,8 +241,13 @@ class IteratorTest(test.TestCase):
   def testSaveRestore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
-    dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
+    # TODO(b/138399725): Re-enable default optimizations.
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = datasets.Iterator(dataset)
     checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual([1, 4], iterator.get_next().numpy())
@@ -250,11 +261,16 @@ class IteratorTest(test.TestCase):
   def testSaveRestoreMultipleIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
-    dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
+    # TODO(b/138399725): Re-enable default optimizations.
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator_1 = datasets.Iterator(dataset)
     iterator_2 = datasets.Iterator(dataset)
-    dataset_2 = Dataset.range(10)
+    dataset_2 = dataset_ops.Dataset.range(10)
     iterator_3 = datasets.Iterator(dataset_2)
 
     checkpoint = trackable_utils.Checkpoint(
@@ -276,7 +292,7 @@ class IteratorTest(test.TestCase):
   def testRestoreExhaustedIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
-    dataset = Dataset.range(3)
+    dataset = dataset_ops.Dataset.range(3)
     iterator = datasets.Iterator(dataset)
 
     checkpoint = trackable_utils.Checkpoint(iterator=iterator)
@@ -290,12 +306,12 @@ class IteratorTest(test.TestCase):
   def testRestoreInReconstructedIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
-    dataset = Dataset.range(10)
+    dataset = dataset_ops.Dataset.range(10)
     for i in range(5):
       iterator = datasets.Iterator(dataset)
       checkpoint = trackable_utils.Checkpoint(iterator=iterator)
-      checkpoint.restore(checkpoint_management.latest_checkpoint(
-          checkpoint_directory))
+      checkpoint.restore(
+          checkpoint_management.latest_checkpoint(checkpoint_directory))
       for j in range(2):
         self.assertEqual(i * 2 + j, iterator.get_next().numpy())
       checkpoint.save(file_prefix=checkpoint_prefix)
@@ -311,8 +327,8 @@ class DatasetConstructorBenchmark(test.Benchmark):
     input_data = np.random.randn(input_size)
 
     dataset = (
-        Dataset.from_tensor_slices(input_data).repeat(num_epochs)
-        .batch(batch_size))
+        dataset_ops.Dataset.from_tensor_slices(input_data).repeat(
+            num_epochs).batch(batch_size))
     iterator = datasets.Iterator(dataset)
 
     ends = [time.time()]
@@ -321,10 +337,8 @@ class DatasetConstructorBenchmark(test.Benchmark):
 
     deltas = np.ediff1d(ends)
     median_wall_time = np.median(deltas)
-    print(
-        'Slice/repeat/batch eager input size: %d batch size: %d Median wall '
-        'time per element: %f'
-        % (input_size, batch_size, median_wall_time))
+    print('Slice/repeat/batch eager input size: %d batch size: %d Median wall '
+          'time per element: %f' % (input_size, batch_size, median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,
@@ -339,8 +353,8 @@ class DatasetConstructorBenchmark(test.Benchmark):
     input_data = np.random.randn(input_size)
 
     dataset = (
-        Dataset.from_tensor_slices(input_data).batch(batch_size).cache()
-        .repeat(num_epochs))
+        dataset_ops.Dataset.from_tensor_slices(input_data).batch(
+            batch_size).cache().repeat(num_epochs))
     iterator = datasets.Iterator(dataset)
 
     ends = [time.time()]
@@ -349,10 +363,9 @@ class DatasetConstructorBenchmark(test.Benchmark):
 
     deltas = np.ediff1d(ends)
     median_wall_time = np.median(deltas)
-    print(
-        'Slice/batch/cache/repeat eager input size: %d batch size: %d Median '
-        'wall time per element: %f'
-        % (input_size, batch_size, median_wall_time))
+    print('Slice/batch/cache/repeat eager input size: %d batch size: %d Median '
+          'wall time per element: %f' %
+          (input_size, batch_size, median_wall_time))
     self.report_benchmark(
         iters=len(deltas),
         wall_time=median_wall_time,

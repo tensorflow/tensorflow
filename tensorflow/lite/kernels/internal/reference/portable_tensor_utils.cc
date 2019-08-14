@@ -249,13 +249,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   }
 }
 
-void PortableVectorBatchVectorAssign(const float* vector, int v_size,
-                                     int n_batch, float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    memcpy(batch_vector + b * v_size, vector, v_size * sizeof(float));
-  }
-}
-
 void PortableApplySigmoidToVector(const float* vector, int v_size,
                                   float* result) {
   auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);
@@ -299,14 +292,6 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
   for (int v = 0; v < v_size; v++) {
     *result++ = PortableClip(*vector++, abs_limit);
   }
-}
-
-void PortableVectorShiftLeft(float* vector, int v_size, float shift_value) {
-  TF_LITE_ASSERT(v_size > 0);
-  for (int i = 0; i < v_size - 1; i++) {
-    vector[i] = vector[i + 1];
-  }
-  vector[v_size - 1] = shift_value;
 }
 
 void PortableReductionSumVector(const float* input_vector, float* output_vector,

@@ -677,8 +677,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
-      !DataTypeIsInteger(dtype)) {
+  if (!TryGetNodeAttr(n->def(), "dtype", &dtype) || !DataTypeIsInteger(dtype)) {
     return false;
   }
 
@@ -695,7 +694,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+  if (!TryGetNodeAttr(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -935,8 +934,8 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
     return absl::nullopt;
   }
 
-  string scope;
-  if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
+  const string& scope = GetNodeAttrString(node->attrs(), kXlaScopeAttr);
+  if (!scope.empty()) {
     return scope;
   }
 
@@ -970,8 +969,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     int effective_cluster_size =
         (node->IsIdentity() || node->IsConstant()) ? 0 : 1;
 
-    bool has_functional_control_flow =
-        node->type_string() == "While" || node->IsIfNode();
+    bool has_functional_control_flow = node->IsWhileNode() || node->IsIfNode();
 
     absl::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {
@@ -1000,7 +998,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     bool is_xla_compile_attr_true = false;
 
     bool xla_compile_attr;
-    if (GetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr).ok()) {
+    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 
@@ -1549,9 +1547,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level_ != OptimizerOptions::OFF);
 
-  if (!should_compile &&
-      registration->autoclustering_policy ==
-          XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+  if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
     static std::once_flag once;
     std::call_once(once, [] {

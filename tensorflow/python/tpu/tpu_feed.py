@@ -908,7 +908,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
 
     if dims.prod() != self._device_assignment.num_cores_per_replica:
       raise ValueError(
-          "The product of each input parition dim should equal to "
+          "The product of each input partition dim should equal to "
           "num_cores_per_replica. (dim = {}, num_cores_per_replica "
           "= {})".format(dims, self._device_assignment.num_cores_per_replica))
     if dims.shape[0] != tensor.shape.ndims:

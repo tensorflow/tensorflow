@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import values as distribute_values
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -30,9 +31,8 @@ class AutoCastVariable(trackable.Trackable):
 
   This class wraps a floating-point tf.Variable. It emulates the variable
   interface and delegates to the wrapped variable, but it additionally will cast
-  the wrapped variable to `auto_cast_variable._read_dtype`. `_read_dtype`
-  defaults to the wrapped Variable's dtype, meaning the casts are a no-op, but
-  `_read_dtype` can be set to a different value,
+  the wrapped variable under a `Graph._enable_variable_auto_cast(dtype)` context
+  manager.
 
   For example:
 
@@ -40,15 +40,14 @@ class AutoCastVariable(trackable.Trackable):
   v = tf.Variable(1.0, dtype=tf.float32)
   v = AutoCastVariable(v)
   print(tf.identity(v).dtype)  # tf.float32
-  v._read_dtype = tf.float16
-  print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
-  print(v.dtype)  # tf.float16, as v.dtype also changes
+  with ops.get_default_graph()._enable_variable_auto_cast(tf.float16):
+    print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
+    print(v.dtype)  # tf.float16, as v.dtype also changes under the ctx manager.
   ```
 
   The purpose of this class is to allow Keras layers to create variables in
   float32, and automatically cast them to float16 or bfloat16 when the layer is
-  called. Keras layers will set `_read_dtype` to the appropriate dtype when
-  called, then set it back to None when the call returns.
+  called.
   """
 
   def __init__(self, variable):
@@ -68,11 +67,6 @@ class AutoCastVariable(trackable.Trackable):
                        'type: %s' % variable.dtype.name)
     self._variable = variable
 
-    # The dtype this variable will be read in. This is public to other internal
-    # classes, but not externally. It can be accessed externally via the `dtype`
-    # property.
-    self._read_dtype = self._variable.dtype
-
     # Delegate to the underlying variable for checkpointing.
     self._gather_saveables_for_checkpoint = (
         self._variable._gather_saveables_for_checkpoint)  # pylint: disable=protected-access
@@ -81,10 +75,21 @@ class AutoCastVariable(trackable.Trackable):
   def name(self):
     return self._variable.name
 
+  def _should_cast(self):
+    """Returns True if this variable should be casted when accessed."""
+    g = ops.get_default_graph()
+    # pylint:disable=protected-access
+    return (g._auto_cast_variable_read_dtype is not None and
+            self.true_dtype != g._auto_cast_variable_read_dtype)
+    # pylint:enable=protected-access
+
   @property
   def dtype(self):
     """The dtype this variable will be casted to when read."""
-    return self._read_dtype
+    if self._should_cast():
+      return ops.get_default_graph()._auto_cast_variable_read_dtype  # pylint:disable=protected-access
+    else:
+      return self._variable.dtype
 
   @property
   def true_dtype(self):
@@ -93,6 +98,8 @@ class AutoCastVariable(trackable.Trackable):
 
   def value(self):
     val = self._variable.value()
+    if not self._should_cast():
+      return val
     # We colocate_with(None) to ignore the existing device constraints, so that
     # the cast is always done on the variable's device
     with ops.colocate_with(None, ignore_existing=True):
@@ -101,11 +108,15 @@ class AutoCastVariable(trackable.Trackable):
 
   def read_value(self):
     val = self._variable.read_value()
+    if not self._should_cast():
+      return val
     return math_ops.cast(val, self.dtype)
 
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     val = self._variable.sparse_read(indices, name=name)
+    if not self._should_cast():
+      return val
     return math_ops.cast(val, self.dtype)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
@@ -128,7 +139,7 @@ class AutoCastVariable(trackable.Trackable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts this variable to a tensor."""
-    if self.dtype == self.true_dtype:
+    if not self._should_cast():
       return ops.internal_convert_to_tensor(self._variable, dtype, name,
                                             as_ref)
     # TODO(reedwm): Support as_ref?
@@ -147,6 +158,18 @@ class AutoCastVariable(trackable.Trackable):
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
+
+  def __repr__(self):
+    if context.executing_eagerly() and not self._in_graph_mode:
+      repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
+                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}, '
+                  'numpy={np_repr}>')
+      return repr_str.format(
+          v=self, np_repr=ops.numpy_text(self.read_value(), is_repr=True))
+    else:
+      repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
+                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}>')
+      return repr_str.format(v=self)
 
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
@@ -226,3 +249,6 @@ class AutoCastDistributedVariable(AutoCastVariable,
       raise ValueError('variable must be of type DistributedValues, '
                        'but got: %s' % variable)
     super(AutoCastDistributedVariable, self).__init__(variable)
+
+  def __repr__(self):
+    return distribute_values.DistributedVariable.__repr__(self)

@@ -39,6 +39,8 @@ class MetaOptimizer : public GraphOptimizer {
 
   string name() const override { return "meta_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 

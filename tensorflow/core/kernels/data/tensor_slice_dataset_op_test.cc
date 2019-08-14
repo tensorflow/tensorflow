@@ -64,70 +64,61 @@ struct TestCase {
 
 TestCase PlainTensorTestCase() {
   return {/*components*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {1, 2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2, 2}),
-                                                   {1, 2, 3, 4}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {2, 3}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2, 2}),
-                                                    {2, 3, 4, 5}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {3, 4}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2, 2}),
-                                                    {3, 4, 5, 6}),
-           DatasetOpsTestBase::CreateTensor<double>(TensorShape({2, 1}),
-                                                    {37.0, 38.0}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({2, 1}),
-                                                    {"a", "b"})},
+          {CreateTensor<int64>(TensorShape({2}), {1, 2}),
+           CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4}),
+           CreateTensor<uint32>(TensorShape({2}), {2, 3}),
+           CreateTensor<uint32>(TensorShape({2, 2}), {2, 3, 4, 5}),
+           CreateTensor<uint64>(TensorShape({2}), {3, 4}),
+           CreateTensor<uint64>(TensorShape({2, 2}), {3, 4, 5, 6}),
+           CreateTensor<double>(TensorShape({2, 1}), {37.0, 38.0}),
+           CreateTensor<string>(TensorShape({2, 1}), {"a", "b"})},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {1, 2}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({}), {2}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {2, 3}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({}), {3}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {3, 4}),
-           DatasetOpsTestBase::CreateTensor<double>(TensorShape({1}), {37.0}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"a"}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2}), {3, 4}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({}), {3}),
-           DatasetOpsTestBase::CreateTensor<uint32>(TensorShape({2}), {4, 5}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({}), {4}),
-           DatasetOpsTestBase::CreateTensor<uint64>(TensorShape({2}), {5, 6}),
-           DatasetOpsTestBase::CreateTensor<double>(TensorShape({1}), {38.0}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"b"})},
+          {CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({2}), {1, 2}),
+           CreateTensor<uint32>(TensorShape({}), {2}),
+           CreateTensor<uint32>(TensorShape({2}), {2, 3}),
+           CreateTensor<uint64>(TensorShape({}), {3}),
+           CreateTensor<uint64>(TensorShape({2}), {3, 4}),
+           CreateTensor<double>(TensorShape({1}), {37.0}),
+           CreateTensor<string>(TensorShape({1}), {"a"}),
+           CreateTensor<int64>(TensorShape({}), {2}),
+           CreateTensor<int64>(TensorShape({2}), {3, 4}),
+           CreateTensor<uint32>(TensorShape({}), {3}),
+           CreateTensor<uint32>(TensorShape({2}), {4, 5}),
+           CreateTensor<uint64>(TensorShape({}), {4}),
+           CreateTensor<uint64>(TensorShape({2}), {5, 6}),
+           CreateTensor<double>(TensorShape({1}), {38.0}),
+           CreateTensor<string>(TensorShape({1}), {"b"})},
           /*breakpoints*/ {0, 1, 3}};
 }
 
 TestCase NestedTensorTestCase() {
   return {
       /*components*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
+      {CreateTensor<Variant>(
            TensorShape({2, 1}),
-           {DatasetOpsTestBase::CreateTensor<double>(TensorShape({2, 2}),
-                                                     {1.0, 2.0, 3.0, 4.0}),
-            DatasetOpsTestBase::CreateTensor<double>(TensorShape({2, 2}),
-                                                     {5.0, 6.0, 7.0, 8.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({2, 1}), {DatasetOpsTestBase::CreateTensor<string>(
-                                     TensorShape({1, 2}), {"a", "b"}),
-                                 DatasetOpsTestBase::CreateTensor<string>(
-                                     TensorShape({1, 2}), {"c", "d"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({2, 3}),
-                                               {1, 2, 3, 4, 5, 6})},
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0}),
+            CreateTensor<double>(TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
+       CreateTensor<Variant>(
+           TensorShape({2, 1}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"}),
+            CreateTensor<string>(TensorShape({1, 2}), {"c", "d"})}),
+       CreateTensor<int64>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({1}), {DatasetOpsTestBase::CreateTensor<double>(
-                                 TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({1}), {DatasetOpsTestBase::CreateTensor<string>(
-                                 TensorShape({1, 2}), {"a", "b"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({1}), {DatasetOpsTestBase::CreateTensor<double>(
-                                 TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({1}), {DatasetOpsTestBase::CreateTensor<string>(
-                                 TensorShape({1, 2}), {"c", "d"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {4, 5, 6})},
+      {CreateTensor<Variant>(
+           TensorShape({1}),
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+       CreateTensor<Variant>(
+           TensorShape({1}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+       CreateTensor<int64>(TensorShape({3}), {1, 2, 3}),
+       CreateTensor<Variant>(
+           TensorShape({1}),
+           {CreateTensor<double>(TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
+       CreateTensor<Variant>(
+           TensorShape({1}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"c", "d"})}),
+       CreateTensor<int64>(TensorShape({3}), {4, 5, 6})},
       /*breakpoints*/ {0, 1, 2}};
 }
 
@@ -394,48 +385,6 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   EXPECT_EQ(tensor_slice_dataset->Cardinality(), inputs[0].tensor->dim_size(0));
-}
-
-TEST_F(TensorSliceDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = PlainTensorTestCase();
-  const std::vector<Tensor> &expected_outputs = test_case.expected_outputs;
-  std::vector<Tensor> components = test_case.components;
-  DataTypeVector dtypes;
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
-    inputs.emplace_back(&component);
-    dtypes.emplace_back(component.dtype());
-  }
-  size_t num_tensors_per_slice = components.size();
-  std::vector<PartialTensorShape> shapes;
-  shapes.reserve(num_tensors_per_slice);
-  for (int i = 0; i < num_tensors_per_slice; ++i) {
-    shapes.emplace_back(expected_outputs[i].shape());
-  }
-  std::unique_ptr<OpKernel> tensor_slice_dataset_kernel;
-  TF_ASSERT_OK(CreateTensorSliceDatasetKernel(dtypes, shapes,
-                                              &tensor_slice_dataset_kernel));
-  std::unique_ptr<OpKernelContext> tensor_slice_dataset_context;
-  TF_ASSERT_OK(
-      CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
-                                      &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
-  TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
-                             tensor_slice_dataset_context.get(),
-                             &tensor_slice_dataset));
-  core::ScopedUnref scoped_unref(tensor_slice_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      tensor_slice_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedTensorSliceDatasetOpTest, IteratorOutputDtypes) {

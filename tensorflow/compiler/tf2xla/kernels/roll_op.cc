@@ -47,11 +47,8 @@ class RollOp : public XlaOpKernel {
     xla::PrimitiveType shift_type = ctx->input_xla_type(1);
     int64 num_axes = axis_shape.dims() == 0 ? 1 : axis_shape.dim_size(0);
     for (int64 i = 0; i != num_axes; ++i) {
-      auto cur_axis_status = axis_shape.dims() == 0
-                                 ? axis.GetIntegralAsS64({})
-                                 : axis.GetIntegralAsS64({i});
-      OP_REQUIRES_OK(ctx, cur_axis_status.status());
-      int64 cur_axis = cur_axis_status.ValueOrDie();
+      int64 cur_axis = axis_shape.dims() == 0 ? *axis.GetIntegralAsS64({})
+                                              : *axis.GetIntegralAsS64({i});
 
       xla::XlaOp offset =
           shift_shape.dims() == 0

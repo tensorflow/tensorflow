@@ -1,5 +1,5 @@
 # Description:
-#   TensorFlow Lite microcontroller example.
+#   TensorFlow Lite for Microcontrollers Vision Example.
 
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
@@ -74,12 +74,38 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "detection_responder",
+    srcs = [
+        "detection_responder.cc",
+    ],
+    hdrs = [
+        "detection_responder.h",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "detection_responder_test",
+    srcs = [
+        "detection_responder_test.cc",
+    ],
+    deps = [
+        ":detection_responder",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
 cc_binary(
     name = "micro_vision",
     srcs = [
         "main.cc",
     ],
     deps = [
+        ":detection_responder",
         ":image_provider",
         ":model_settings",
         ":person_detect_model_data",

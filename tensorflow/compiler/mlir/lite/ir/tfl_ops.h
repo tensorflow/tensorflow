@@ -27,7 +27,9 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/ir/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 namespace TFL {
@@ -35,6 +37,11 @@ namespace TFL {
 class TensorFlowLiteDialect : public Dialect {
  public:
   explicit TensorFlowLiteDialect(MLIRContext *context);
+
+  // Registered hook to materialize a constant operation from a given attribute
+  // value with the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 #define GET_OP_CLASSES

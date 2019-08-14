@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -27,30 +28,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
-  if (constant->opcode() != HloOpcode::kConstant ||
-      !ShapeUtil::IsScalar(constant->shape())) {
-    return false;
-  }
-  auto type = constant->shape().element_type();
-  return type == F16 || type == F32 || type == F64;
-}
-
-}  // namespace
-
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  switch (instruction.opcode()) {
-    // We say that floating-point division is cheap on the GPU.
-    case HloOpcode::kDivide:
-      return !ShapeUtil::ElementIsFloating(instruction.shape()) &&
-             InstructionFusion::IsExpensive(instruction);
-
-    default:
-      return InstructionFusion::IsExpensive(instruction);
+  // We say that floating-point division is cheap on the GPU.
+  if (instruction.opcode() == HloOpcode::kDivide &&
+      ShapeUtil::ElementIsFloating(instruction.shape())) {
+    return false;
   }
+  return InstructionFusion::IsExpensive(instruction);
 }
 
 bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,

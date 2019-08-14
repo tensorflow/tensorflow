@@ -1,6 +1,6 @@
 path: "tensorflow.OptionalSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.ops.optional_ops.OptionalStructure\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.optional_ops.OptionalSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<type \'object\'>"
   member {

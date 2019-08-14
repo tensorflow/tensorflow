@@ -37,6 +37,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
@@ -219,6 +220,31 @@ class DistributedIteratorTestBase(test.TestCase):
 
 class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                           parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ]))
+  def testMultiDeviceIterInitialize(self, distribution):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
+
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    device_map = values.ReplicaDeviceMap(devices)
+    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+
+    dist_dataset = input_lib.get_distributed_dataset(
+        dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
+
+    iterator = dataset_ops.make_one_shot_iterator(dist_dataset)
+
+    @def_function.function
+    def init_func_for_iter():
+      self.evaluate(iterator.initializer)
+
+    init_func_for_iter()
 
   @combinations.generate(
       combinations.combine(
@@ -763,7 +789,6 @@ class DistributedIteratorMultiWorkerTest(
             strategy,
             sess=sess,
             input_context=input_context)
-        return True
 
     self._run_between_graph_clients(_worker_fn, self._cluster_spec, 0)
 

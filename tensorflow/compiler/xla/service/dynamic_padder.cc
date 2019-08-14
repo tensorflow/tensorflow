@@ -90,6 +90,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:
     case HloOpcode::kTranspose:
+    case HloOpcode::kSort:
     case HloOpcode::kSlice:
       return nullptr;
     default:

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInfer.h"
 #endif
 
@@ -23,13 +24,16 @@ namespace tensorflow {
 namespace tensorrt {
 
 bool IsGoogleTensorRTEnabled() {
-  // TODO(laigd): consider also checking if tensorrt shared libraries are
-  // accessible. We can then direct users to this function to make sure they can
-  // safely write code that uses tensorrt conditionally. E.g. if it does not
-  // check for for tensorrt, and user mistakenly uses tensorrt, they will just
-  // crash and burn.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-  return true;
+  auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
+  if (!handle_or.ok()) {
+    LOG(WARNING) << "Cannot dlopen some TensorRT libraries. If you would like "
+                    "to use Nvidia GPU with TensorRT, please make sure the "
+                    "missing libraries mentioned above are installed properly.";
+    return false;
+  } else {
+    return true;
+  }
 #else
   return false;
 #endif

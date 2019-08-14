@@ -123,11 +123,12 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   if (fused->IsMultiOutputFusion()) {
     std::swap(remaining, fused);
   }
-
   if (fused->opcode() == HloOpcode::kFusion) {
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
+    CHECK_EQ(0, fused->user_count());
+    TF_CHECK_OK(computation()->RemoveInstruction(fused));
   }
   return remaining;
 }
@@ -223,7 +224,7 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
-  // Fusing nodes with 0 user makes no sense and the rest of the implementation
+  // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
   if (instr1->user_count() == 0 || instr2->user_count() == 0) {
     return false;
@@ -247,14 +248,12 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
       multioutput_user_is_not_gte(instr2)) {
     return false;
   }
-
   if (is_connected(instr1, instr2)) {
     return false;
   }
   if (!ShapesCompatibleForFusion(instr1, instr2)) {
     return false;
   }
-
   return true;
 }
 
@@ -337,4 +336,5 @@ bool MultiOutputFusion::Perform() {
 }
 
 bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
+
 }  // namespace xla

@@ -104,7 +104,7 @@ struct type_caster<absl::Span<const T>> {
   using value_conv = make_caster<T>;
 
   PYBIND11_TYPE_CASTER(absl::Span<const T>,
-                       _("Span[") + value_conv::name() + _("]"));
+                       _("Span[") + value_conv::name + _("]"));
 
   // absl::Span doesn't hold ownership. We therefore need a temporary array.
   // Pybind appears to keep type_casters alive until the callee has run.
@@ -151,7 +151,7 @@ struct type_caster<xla::StatusOr<T>> {
   using value_conv = make_caster<T>;
 
   PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
-                       _("StatusOr[") + value_conv::name() + _("]"));
+                       _("StatusOr[") + value_conv::name + _("]"));
 
   static handle cast(xla::StatusOr<T> src, return_value_policy policy,
                      handle parent) {

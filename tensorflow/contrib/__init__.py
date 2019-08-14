@@ -35,8 +35,6 @@ from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import checkpoint
-if os.name != "nt" and platform.machine() != "s390x":
-  from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import compiler
 from tensorflow.contrib import constrained_optimization
@@ -51,7 +49,6 @@ from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
 from tensorflow.contrib import feature_column
 from tensorflow.contrib import framework
-from tensorflow.contrib import gan
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import image
@@ -105,6 +102,12 @@ from tensorflow.contrib.recurrent.python import recurrent_api as recurrent
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 from tensorflow.contrib.summary import summary
+
+if os.name != "nt" and platform.machine() != "s390x":
+  try:
+    from tensorflow.contrib import cloud
+  except ImportError:
+    pass
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg", globals(),

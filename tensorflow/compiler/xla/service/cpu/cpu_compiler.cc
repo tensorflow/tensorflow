@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
@@ -100,6 +99,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -607,6 +607,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -656,7 +657,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(

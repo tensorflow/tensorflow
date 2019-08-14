@@ -17,10 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -38,22 +37,15 @@ class _TakeWhileDataset(dataset_ops.UnaryUnchangedStructureDataset):
         dataset=self._input_dataset)
 
     if not wrapped_func.output_structure.is_compatible_with(
-        structure_lib.TensorStructure(dtypes.bool, [])):
+        tensor_spec.TensorSpec([], dtypes.bool)):
       raise ValueError("`predicate` must return a scalar boolean tensor.")
 
     self._predicate = wrapped_func
-    if compat.forward_compatible(2019, 8, 3):
-      var_tensor = gen_experimental_dataset_ops.take_while_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          other_arguments=self._predicate.function.captured_inputs,
-          predicate=self._predicate.function,
-          **self._flat_structure)
-    else:
-      var_tensor = gen_experimental_dataset_ops.experimental_take_while_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          other_arguments=self._predicate.function.captured_inputs,
-          predicate=self._predicate.function,
-          **self._flat_structure)
+    var_tensor = gen_experimental_dataset_ops.take_while_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        other_arguments=self._predicate.function.captured_inputs,
+        predicate=self._predicate.function,
+        **self._flat_structure)
     super(_TakeWhileDataset, self).__init__(input_dataset, var_tensor)
 
   def _functions(self):

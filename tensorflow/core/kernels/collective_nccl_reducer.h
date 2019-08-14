@@ -15,32 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_REDUCER_H_
 #define TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_REDUCER_H_
 
-#include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/kernels/collective_nccl.h"
 
 namespace tensorflow {
 #ifdef GOOGLE_CUDA
 
-class NcclReducer : public CollectiveImplementationInterface {
+class NcclReducer : public NcclBase {
  public:
-  NcclReducer();
+  NcclReducer() : NcclBase(REDUCTION_COLLECTIVE, "NcclReduce") {}
   ~NcclReducer() override = default;
-
-  // No-op for this collective implementation.
-  Status InitializeCollectiveParams(CollectiveParams* col_params) override;
-
-  // Initializes the device objects and device localities.
-  Status InitializeCollectiveContext(CollectiveContext* col_ctx) override;
-
-  // Initialize nccl communicator key.
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails* col_group_runtime_details) override;
 
   // Hands off all reduce to NcclManager.
   void Run(StatusCallback done) override;
-
- private:
-  CollectiveContext* col_ctx_;          // Not owned
-  const CollectiveParams* col_params_;  // Not owned
 };
 
 #endif  // GOOGLE_CUDA

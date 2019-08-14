@@ -94,3 +94,27 @@ message XlaJitCompilationActivity {
   // Total microseconds spent in (re-)compiling this cluster so far.
   int64 cumulative_compile_time_us = 4;
 }
+
+// LINT.IfChange
+//
+// Used for logging situations seen in Tensorflow models being optimized that
+// are known to not perform well with XLA.
+//
+// Next ID: 3
+message XlaOptimizationRemark {
+  // Next ID: 6
+  enum Warning {
+    NONE = 0;
+    INACCURATE_OPERATION = 1;
+    SLOW_OPERATION = 2;
+    UNIMPLEMENTED_OPERATION = 3;
+    SLOW_IMAGE_RESIZE_DIMENSIONS = 4;
+    MEGAMORPHIC_FUNCTION = 5;
+  }
+
+  Warning warning = 1;
+
+  // Information such as which node was the problem.
+  string debug_information = 2;
+}
+// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/compiler/jit/xla_activity_listener.h)

@@ -42,7 +42,7 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     OpData* data) {
   if (input->type == kTfLiteUInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-    TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
+    TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
 
     static const int kScaledDiffIntegerBits = 5;
 

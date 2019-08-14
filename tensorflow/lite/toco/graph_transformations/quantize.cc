@@ -31,11 +31,16 @@ namespace toco {
 
 namespace {
 
-bool SupportsQuantization(const Operator& op) {
+bool SupportsQuantization(Model* model, const Operator& op) {
   auto type = op.type;
   if (type == OperatorType::kUnsupported) {
     auto* unsupported = static_cast<const TensorFlowUnsupportedOperator*>(&op);
     return unsupported->quantized;
+  }
+  if (op.type == OperatorType::kRange) {
+    const auto& array = model->GetArray(op.outputs[0]);
+    return (array.data_type != ArrayDataType::kFloat &&
+            array.data_type != ArrayDataType::kFloat16);
   }
   return type == OperatorType::kConv || type == OperatorType::kDepthwiseConv ||
          type == OperatorType::kFullyConnected ||
@@ -71,7 +76,9 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kReduceMin ||
          type == OperatorType::kTransposeConv ||
          type == OperatorType::kMatrixSetDiag ||
-         type == OperatorType::kMatrixDiag || type == OperatorType::kHardSwish;
+         type == OperatorType::kMatrixDiag ||
+         type == OperatorType::kSparseToDense ||
+         type == OperatorType::kHardSwish;
 }
 
 // The quantized op allows output arrays of type float using
@@ -492,7 +499,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
           << "Input array " << input << " is missing quantization_params";
     }
   }
-  if (!SupportsQuantization(op)) {
+  if (!SupportsQuantization(model, op)) {
     return tensorflow::errors::InvalidArgument(
         "Unimplemented: this graph contains an operator of type ",
         HelpfulOperatorTypeName(op),

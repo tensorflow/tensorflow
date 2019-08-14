@@ -20,7 +20,6 @@ from __future__ import print_function
 import threading
 import warnings
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -201,29 +200,22 @@ class Iterator(trackable.Trackable):
         output_types, output_shapes, output_classes)
     if shared_name is None:
       shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      if _device_stack_is_empty():
-        with ops.device("/cpu:0"):
-          iterator_resource = gen_dataset_ops.iterator_v2(
-              container="",
-              shared_name=shared_name,
-              output_types=structure.get_flat_tensor_types(
-                  output_structure),
-              output_shapes=structure.get_flat_tensor_shapes(
-                  output_structure))
-      else:
+    if _device_stack_is_empty():
+      with ops.device("/cpu:0"):
         iterator_resource = gen_dataset_ops.iterator_v2(
             container="",
             shared_name=shared_name,
-            output_types=structure.get_flat_tensor_types(output_structure),
+            output_types=structure.get_flat_tensor_types(
+                output_structure),
             output_shapes=structure.get_flat_tensor_shapes(
                 output_structure))
     else:
-      iterator_resource = gen_dataset_ops.iterator(
+      iterator_resource = gen_dataset_ops.iterator_v2(
           container="",
           shared_name=shared_name,
           output_types=structure.get_flat_tensor_types(output_structure),
-          output_shapes=structure.get_flat_tensor_shapes(output_structure))
+          output_shapes=structure.get_flat_tensor_shapes(
+              output_structure))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -291,20 +283,14 @@ class Iterator(trackable.Trackable):
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
-    if compat.forward_compatible(2018, 8, 3):
-      if _device_stack_is_empty():
-        with ops.device("/cpu:0"):
-          iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
-              string_handle,
-              output_types=structure.get_flat_tensor_types(output_structure),
-              output_shapes=structure.get_flat_tensor_shapes(output_structure))
-      else:
+    if _device_stack_is_empty():
+      with ops.device("/cpu:0"):
         iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
             string_handle,
             output_types=structure.get_flat_tensor_types(output_structure),
             output_shapes=structure.get_flat_tensor_shapes(output_structure))
     else:
-      iterator_resource = gen_dataset_ops.iterator_from_string_handle(
+      iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
           output_types=structure.get_flat_tensor_types(output_structure),
           output_shapes=structure.get_flat_tensor_shapes(output_structure))
@@ -795,8 +781,7 @@ class IteratorSpec(type_spec.TypeSpec):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
 
 
-# TODO(b/71645805): Expose trackable stateful objects from dataset
-# attributes(potential).
+# TODO(b/71645805): Expose trackable stateful objects from dataset.
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""
 

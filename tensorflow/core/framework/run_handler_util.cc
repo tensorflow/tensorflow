@@ -75,4 +75,45 @@ void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
   }
 }
 
+std::vector<int> ChooseRequestsWithExponentialDistribution(
+    int num_active_requests, int num_threads) {
+  // Fraction of the total threads that will be evenly distributed across
+  // requests. The rest of threads will be exponentially distributed across
+  // requests.
+  const double kCapacityFractionForEvenDistribution = 0.5;
+  // For the threads that will be exponentially distributed across requests,
+  // a request will get allocated (kPowerBase - 1) times as much threads as
+  // threads allocated to all requests that arrive after it. For example, the
+  // oldest request will be allocated num_threads*(kPowerBase-1)/kPowerBase
+  // number of threads.
+  const double kPowerBase = 2;
+
+  std::vector<int> request_idx_list;
+  request_idx_list.resize(num_threads);
+  // Each request gets at least this number of threads that steal from it first.
+  int min_threads_per_request =
+      num_threads * kCapacityFractionForEvenDistribution / num_active_requests;
+  min_threads_per_request = std::max(1, min_threads_per_request);
+  min_threads_per_request = std::min(3, min_threads_per_request);
+
+  int num_remaining_threads =
+      std::max(0, num_threads - num_active_requests * min_threads_per_request);
+  int request_idx = -1;
+  int num_threads_next_request = 0;
+
+  for (int tid = 0; tid < num_threads; ++tid) {
+    if (num_threads_next_request <= 0) {
+      request_idx = std::min(num_active_requests - 1, request_idx + 1);
+      int num_extra_threads_next_request =
+          std::ceil(num_remaining_threads * (kPowerBase - 1.0) / kPowerBase);
+      num_remaining_threads -= num_extra_threads_next_request;
+      num_threads_next_request =
+          num_extra_threads_next_request + min_threads_per_request;
+    }
+    num_threads_next_request--;
+    request_idx_list[tid] = request_idx;
+  }
+  return request_idx_list;
+}
+
 }  // namespace tensorflow

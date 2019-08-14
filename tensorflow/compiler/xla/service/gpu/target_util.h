@@ -39,6 +39,9 @@ enum class TargetIntrinsicID {
   kBlockIdy,
   kBlockIdz,
   kBarrierId,
+  kBlockDimx,
+  kBlockDimy,
+  kBlockDimz,
 };
 
 // Enumeration to get target specific device math function.
@@ -55,11 +58,19 @@ enum class TargetDeviceFunctionID {
   kRsqrt,
   kAtan2,
   kFmod,
-  kRound
+  kRound,
+  kHypot
 };
 
-// Emits a call to the specified target intrinsic with the given operands.
+// Emits IR to call a device function named "callee_name" on the given
+// operand. Returns the IR value that represents the return value.
+llvm::CallInst* EmitDeviceFunctionCall(
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes,
+    llvm::IRBuilder<>* b);
 
+// Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type
 // in overloaded_types  for each overloaded type. Typically, overloaded
 // intrinsics have only a single overloaded type.

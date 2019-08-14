@@ -234,10 +234,9 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_gpu",  # TODO(b/131773093): Re-enable.
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -310,6 +309,22 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "cumulative_logsumexp_test",
+    size = "medium",
+    srcs = ["cumulative_logsumexp_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:array_ops",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1294,7 +1309,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "topk_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["topk_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1697,10 +1712,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-    ],
-    tags = [
-        # TODO(b/134600611): Re-enable this test.
-        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -3108,6 +3119,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
@@ -3504,6 +3516,9 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = [
+        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3582,8 +3597,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    # TODO(b/134764123): Re-enable this test.
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 sycl_py_test(
@@ -3848,6 +3862,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -3873,6 +3888,7 @@ cuda_py_test(
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
