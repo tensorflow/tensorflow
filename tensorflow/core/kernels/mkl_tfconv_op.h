@@ -37,13 +37,17 @@ limitations under the License.
 using mkldnn::stream;
 
 namespace tensorflow {
+
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
+#define NET_ARGS_PTR &net_args
 #define OUTPUT_TF_MD output_tf_md
 #else
 #define ENGINE_CPU engine::cpu
+#define NET_ARGS_PTR nullptr
 #define OUTPUT_TF_MD output_tf_pd
 #endif  // ENABLE_MKLDNN_V1
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 ///////////////////////////////////////////////////////////
@@ -110,32 +114,16 @@ class MklToTfOp : public OpKernel {
                                   input_number, output_shape, &output_tensor));
       CHECK_NOTNULL(output_tensor);
 
-      // Do we need to reorder MKL layout into TensorFlow layout?
+      // Check if input needs to be reordered
       if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
-#ifdef ENABLE_MKLDNN_V1
-        std::vector<primitive> net;
-        std::vector<MemoryArgsMap> net_args;
-        // Insert reorder between MKL layout and TensorFlow layout.
-        // TODO(bhavanis): Refactor CheckReorderToOpMem() to directly insert
-        // the reorder primitive
-        bool status = input.CheckReorderToOpMem(output_tf_md, output_tensor,
-                                                net, net_args, cpu_engine);
+        // Insert reorder between MKL layout and TensorFlow layout
         OP_REQUIRES(
-            context, status,
+            context, input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor),
             errors::Internal("MklToTfOp: Failed to create input reorder"));
-
-        ExecutePrimitive(net, &net_args, cpu_engine);
-#else
-        // Insert reorder between MKL layout and TensorFlow layout.
-        bool status = input.CheckReorderToOpMem(output_tf_pd, output_tensor);
-        OP_REQUIRES(
-            context, status,
-            errors::Internal("MklToTfOp: Failed to create input reorder"));
-#endif  // ENABLE_MKLDNN_V1
       } else {
         // If not, just forward input tensor to output tensor.
-        bool status = output_tensor->CopyFrom(input_tensor, output_shape);
-        OP_REQUIRES(context, status,
+        OP_REQUIRES(context,
+                    output_tensor->CopyFrom(input_tensor, output_shape),
                     errors::Internal(
                         "MklToTfOp: Failed to forward input tensor to output"));
       }
@@ -176,6 +164,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #undef ENGINE_CPU
+#undef NET_ARGS_PTR
 #undef OUTPUT_TF_MD
 
 }  // namespace tensorflow
