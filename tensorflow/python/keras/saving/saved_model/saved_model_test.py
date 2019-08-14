@@ -435,6 +435,21 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         load.layer_with_required_training_arg.__call__)
     self.assertFalse(arg_spec.defaults)  # defaults is None or empty
 
+  def testTraceModelWithKwarg(self):
+    class Model(keras.models.Model):
+
+      def call(self, inputs, keyword=None):
+        return array_ops.identity(inputs)
+
+    model = Model()
+    prediction = model.predict(np.ones([1, 3]).astype('float32'))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(prediction,
+                        loaded.predict(np.ones([1, 3]).astype('float32')))
+
 
 class TestLayerCallTracing(test.TestCase):
 
