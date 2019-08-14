@@ -72,8 +72,9 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   explicit tstring(const T& str) : str_(str.data(), str.size()) {}
 
   tstring(tstring&&) noexcept = default;
@@ -88,8 +89,9 @@ class tstring {
     return *this;
   }
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   tstring& operator=(const T& str) {
     str_.assign(str.data(), str.size());
 
@@ -118,8 +120,9 @@ class tstring {
 
   operator std::string() const { return str_; }
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   operator T() const {
     return T(str_.data(), str_.size());
   }
