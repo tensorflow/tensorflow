@@ -26,8 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_graphdef.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -35,14 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-
-namespace mlir {
-/// Create a pass to convert from the TF control to the TFExecutor dialect.
-FunctionPassBase* CreateTFControlToExecutorDialectConversion();
-
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase* CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
 
 namespace tensorflow {
 
@@ -55,6 +46,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromFile(input_filename, &graphdef));
@@ -66,6 +58,8 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
 
   NodeSpecs specs;
   specs.prune_unused_nodes = prune_unused_nodes;
+  specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
+  specs.graph_as_function = graph_as_function;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(
       input_arrays, input_dtypes, input_shapes, inference_type, min_values,
       max_values, &specs.inputs));
@@ -80,27 +74,15 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, graph_as_function, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
-  }
-
-  // Round-trip to the tf_executor dialect, this is temporary while bringing up
-  // the new dialect.
-  {
-    mlir::PassManager pm;
-    pm.addPass(mlir::CreateTFControlToExecutorDialectConversion());
-    pm.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-    if (failed(pm.run(module_or.ValueOrDie().get()))) {
-      module_or.ValueOrDie()->emitOpError()
-          << "Round-trip to tf_executor dialect failed";
-      return nullptr;
-    }
   }
 
   return module_or.ConsumeValueOrDie();
@@ -112,11 +94,12 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, graph_as_function, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;

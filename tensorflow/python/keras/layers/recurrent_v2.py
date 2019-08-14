@@ -306,7 +306,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias and
-        reset_after)
+        reset_after and ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # GRU does not support constants. Ignore it during process.
@@ -486,9 +486,14 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
 def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
               go_backwards):
   """GRU with CuDNN implementation which is only available for GPU."""
-  if not time_major:
+  if not time_major and mask is None:
     inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-  init_h = array_ops.expand_dims(init_h, axis=0)
+    seq_axis, batch_axis = (0, 1)
+  else:
+    seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  # For init_h, cuDNN expects one more dim of num_layers before or after batch
+  # dim for time major or batch major inputs respectively
+  init_h = array_ops.expand_dims(init_h, axis=seq_axis)
 
   weights = array_ops.split(kernel, 3, axis=1)
   weights += array_ops.split(recurrent_kernel, 3, axis=1)
@@ -520,15 +525,21 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
       # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
       # output_from_cudnn = [6, 5, 4, 0, 0]
       # expected_output = [0, 0, 6, 5 ,4]
-      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
-                                             seq_axis=0, batch_axis=1)
+      inputs = array_ops.reverse_sequence_v2(
+          inputs, sequence_length, seq_axis=seq_axis, batch_axis=batch_axis)
     outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
-        rnn_mode='gru', sequence_lengths=sequence_length)
+        inputs,
+        input_h=init_h,
+        input_c=0,
+        params=params,
+        is_training=True,
+        rnn_mode='gru',
+        sequence_lengths=sequence_length,
+        time_major=time_major)
     if go_backwards:
-      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
-                                              seq_axis=0, batch_axis=1)
-      outputs = array_ops.reverse(outputs, axis=[0])
+      outputs = array_ops.reverse_sequence_v2(
+          outputs, sequence_length, seq_axis=seq_axis, batch_axis=batch_axis)
+      outputs = array_ops.reverse(outputs, axis=[seq_axis])
   else:
     if go_backwards:
       # Reverse axis 0 since the input is already convert to time major.
@@ -538,9 +549,9 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
         rnn_mode='gru')
 
   last_output = outputs[-1]
-  if not time_major:
+  if not time_major and mask is None:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
-  h = h[0]
+  h = array_ops.squeeze(h, axis=seq_axis)
 
   # In the case of variable length input, the cudnn kernel will fill zeros for
   # the output, whereas the default keras behavior is to bring over the previous
@@ -885,7 +896,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     ]
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
-        recurrent_dropout == 0 and not unroll and use_bias)
+        recurrent_dropout == 0 and not unroll and use_bias and
+        ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.
@@ -1126,11 +1138,15 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     runtime: Constant string tensor which indicate real runtime hardware. This
       value is for testing purpose and should not be used by user.
   """
-  if not time_major:
-    # Cudnn kernel prefer the input to be time major.
+  if not time_major and mask is None:
     inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
-  init_h = array_ops.expand_dims(init_h, axis=0)
-  init_c = array_ops.expand_dims(init_c, axis=0)
+    seq_axis, batch_axis = (0, 1)
+  else:
+    seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  # For init_h and init_c, cuDNN expects one more dim of num_layers before or
+  # after batch dim for time major or batch major inputs respectively
+  init_h = array_ops.expand_dims(init_h, axis=seq_axis)
+  init_c = array_ops.expand_dims(init_c, axis=seq_axis)
 
   weights = array_ops.split(kernel, 4, axis=1)
   weights += array_ops.split(recurrent_kernel, 4, axis=1)
@@ -1152,15 +1168,21 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
       # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
       # output_from_cudnn = [6, 5, 4, 0, 0]
       # expected_output = [0, 0, 6, 5 ,4]
-      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
-                                             seq_axis=0, batch_axis=1)
+      inputs = array_ops.reverse_sequence_v2(
+          inputs, sequence_length, seq_axis=seq_axis, batch_axis=batch_axis)
     outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
-        rnn_mode='lstm', sequence_lengths=sequence_length)
+        inputs,
+        input_h=init_h,
+        input_c=init_c,
+        params=params,
+        is_training=True,
+        rnn_mode='lstm',
+        sequence_lengths=sequence_length,
+        time_major=time_major)
     if go_backwards:
-      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
-                                              seq_axis=0, batch_axis=1)
-      outputs = array_ops.reverse(outputs, axis=[0])
+      outputs = array_ops.reverse_sequence_v2(
+          outputs, sequence_length, seq_axis=seq_axis, batch_axis=batch_axis)
+      outputs = array_ops.reverse(outputs, axis=[seq_axis])
   else:
     # # Fill the array with shape [batch] with value of max timesteps.
     # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
@@ -1173,10 +1195,10 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
         rnn_mode='lstm')
 
   last_output = outputs[-1]
-  if not time_major:
+  if not time_major and mask is None:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
-  h = h[0]
-  c = c[0]
+  h = array_ops.squeeze(h, axis=seq_axis)
+  c = array_ops.squeeze(c, axis=seq_axis)
 
   # In the case of variable length input, the cudnn kernel will fill zeros for
   # the output, whereas the default keras behavior is to bring over the previous

@@ -115,73 +115,64 @@ def run_one_epoch(model,
       current_batch_size = batch_size
     else:
       current_batch_size = num_samples - step * batch_size
+    with training_context.on_batch(
+        step=step, mode=mode, size=current_batch_size) as batch_logs:
+      try:
+        batch_outs = execution_function(iterator)
+      except (StopIteration, errors.OutOfRangeError):
+        # TODO(kaftan): File bug about tf function and errors.OutOfRangeError?
+        # Are there any other C++ errors tf function should recapture?
+        # The only acceptable case here is that the input has a unknown
+        # length, and configured to fully consume it.
+        if (dataset_size is None
+            and steps_per_epoch is None
+            and step > 0):
+          # The input passed by the user ran out of batches.
+          # Now we know the cardinality of the input(dataset or generator).
+          steps_per_epoch = step
+          aggregator.steps = steps_per_epoch
+          progbar.params['steps'] = steps_per_epoch
+          progbar.progbar.target = steps_per_epoch
+        else:
+          callbacks.model.stop_training = True
+          logging.warning(
+              'Your input ran out of data; interrupting training. '
+              'Make sure that your dataset or generator can generate at '
+              'least `steps_per_epoch * epochs` batches (in this case, '
+              '{} batches). You may need to use the repeat() function '
+              'when building your dataset.'.format(
+                  total_epochs * steps_per_epoch))
+        # In either case, break out the loop for training batch.
+        # Also note the training_context that data inputs are exhausted, so all
+        # the post batch hooks can be skipped.
+        batch_logs['data_exhausted'] = True
+        break
 
-    # TODO(scottzhu): Maybe update the training context to take into account
-    #  whether a batch of training happens. Then it could still use a
-    #  context manager
-    batch_logs = {'batch': step, 'size': current_batch_size}
-    training_context.callbacks._call_batch_hook(
-        mode, 'begin', step, batch_logs)
-    training_context.progbar.on_batch_begin(step, batch_logs)
-    try:
-      batch_outs = execution_function(iterator)
-    except (StopIteration, errors.OutOfRangeError):
-      # TODO(kaftan): File bug about tf function and errors.OutOfRangeError?
-      # Are there any other C++ errors tf function should recapture?
-      # The only acceptable case here is that the input has a unknown
-      # length, and configured to fully consume it.
-      if (dataset_size is None
-          and steps_per_epoch is None
-          and step > 0):
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
-        steps_per_epoch = step
-        aggregator.steps = steps_per_epoch
-        progbar.params['steps'] = steps_per_epoch
-        progbar.progbar.target = steps_per_epoch
+      if not isinstance(batch_outs, list):
+        batch_outs = [batch_outs]
+      if strategy:
+        batch_outs = dist_utils._per_replica_aggregate_batch(
+            strategy, batch_outs, model, mode)
+
+      if step == 0:
+        aggregator.create(batch_outs)
+
+      if use_steps:
+        aggregator.aggregate(batch_outs)
       else:
-        callbacks.model.stop_training = True
-        logging.warning(
-            'Your input ran out of data; interrupting training. '
-            'Make sure that your dataset or generator can generate at '
-            'least `steps_per_epoch * epochs` batches (in this case, '
-            '{} batches). You may need to use the repeat() function '
-            'when building your dataset.'.format(
-                total_epochs * steps_per_epoch))
-      # In either case, break out the loop for training batch.
-      break
-
-    if not isinstance(batch_outs, list):
-      batch_outs = [batch_outs]
-    if strategy:
-      batch_outs = dist_utils._per_replica_aggregate_batch(
-          strategy, batch_outs, model, mode)
-
-    if step == 0:
-      aggregator.create(batch_outs)
-
-    if use_steps:
-      aggregator.aggregate(batch_outs)
-    else:
-      aggregator.aggregate(
-          batch_outs,
-          batch_start=step * batch_size,
-          batch_end=step * batch_size + current_batch_size)
-    cbks.make_logs(model, batch_logs, batch_outs, mode)
-
-    training_context.callbacks._call_batch_hook(
-        mode, 'end', step, batch_logs)
-    training_context.progbar.on_batch_end(step, batch_logs)
-
-    step += 1
+        aggregator.aggregate(
+            batch_outs,
+            batch_start=step * batch_size,
+            batch_end=step * batch_size + current_batch_size)
+      cbks.make_logs(model, batch_logs, batch_outs, mode)
+      step += 1
 
     if callbacks.model.stop_training:
       break
 
   # End of an epoch.
   aggregator.finalize()
-  results = aggregator.results
-  return results
+  return aggregator.results
 
 
 class Loop(training_utils.TrainingLoop):
@@ -195,7 +186,8 @@ class Loop(training_utils.TrainingLoop):
       self, model, x=None, y=None, batch_size=None, epochs=1, verbose=1,
       callbacks=None, validation_split=0., validation_data=None, shuffle=True,
       class_weight=None, sample_weight=None, initial_epoch=0,
-      steps_per_epoch=None, validation_steps=None, validation_freq=1, **kwargs):
+      steps_per_epoch=None, validation_steps=None, validation_freq=1,
+      max_queue_size=10, workers=1, use_multiprocessing=False, **kwargs):
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
 
@@ -218,7 +210,10 @@ class Loop(training_utils.TrainingLoop):
           shuffle=shuffle,
           validation_data=validation_data,
           validation_steps=validation_steps,
-          distribution_strategy=strategy)
+          distribution_strategy=strategy,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
 
       total_samples = _get_total_number_of_samples(training_data_adapter)
       use_sample = total_samples is not None
@@ -238,13 +233,15 @@ class Loop(training_utils.TrainingLoop):
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
       training_utils.infer_steps_for_dataset(
-          training_dataset, steps_per_epoch, steps_name='steps_per_epoch',
+          model,
+          training_dataset,
+          steps_per_epoch,
+          steps_name='steps_per_epoch',
           epochs=0)
 
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
 
-      _update_sample_weight_mode(model, ModeKeys.TRAIN, training_dataset)
       training_function = training_v2_utils._get_or_make_execution_function(
           model, ModeKeys.TRAIN)
 
@@ -267,7 +264,10 @@ class Loop(training_utils.TrainingLoop):
         # dataset is infinite.
         # TODO(scottzhu): This check should probably happen in the adapter
         training_utils.infer_steps_for_dataset(
-            validation_dataset, validation_steps, steps_name='validation_steps',
+            model,
+            validation_dataset,
+            validation_steps,
+            steps_name='validation_steps',
             epochs=0)
         validation_dataset = strategy.experimental_distribute_dataset(
             validation_dataset)
@@ -355,7 +355,8 @@ class Loop(training_utils.TrainingLoop):
 
   def _model_iteration(
       self, model, mode, x=None, y=None, batch_size=None, verbose=1,
-      sample_weight=None, steps=None, callbacks=None, **kwargs):
+      sample_weight=None, steps=None, callbacks=None, max_queue_size=10,
+      workers=1, use_multiprocessing=False, **kwargs):
 
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps, x)
@@ -373,7 +374,10 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           sample_weights=sample_weight,
           steps=steps,
-          distribution_strategy=strategy)
+          distribution_strategy=strategy,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
       total_samples = _get_total_number_of_samples(adapter)
       use_sample = total_samples is not None
 
@@ -388,10 +392,9 @@ class Loop(training_utils.TrainingLoop):
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
       training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps', epochs=0)
+          model, dataset, steps, steps_name='steps', epochs=0)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
-      _update_sample_weight_mode(model, mode, dataset)
       execution_function = training_v2_utils._get_or_make_execution_function(
           model, mode)
 
@@ -434,16 +437,21 @@ class Loop(training_utils.TrainingLoop):
 
   def evaluate(
       self, model, x=None, y=None, batch_size=None, verbose=1,
-      sample_weight=None, steps=None, callbacks=None, **kwargs):
+      sample_weight=None, steps=None, callbacks=None, max_queue_size=10,
+      workers=1, use_multiprocessing=False, **kwargs):
     return self._model_iteration(
         model, ModeKeys.TEST, x=x, y=y, batch_size=batch_size, verbose=verbose,
-        sample_weight=sample_weight, steps=steps, callbacks=callbacks, **kwargs)
+        sample_weight=sample_weight, steps=steps, callbacks=callbacks,
+        max_queue_size=max_queue_size, workers=workers,
+        use_multiprocessing=use_multiprocessing, **kwargs)
 
   def predict(self, model, x, batch_size=None, verbose=0, steps=None,
-              callbacks=None, **kwargs):
+              callbacks=None, max_queue_size=10, workers=1,
+              use_multiprocessing=False, **kwargs):
     return self._model_iteration(
         model, ModeKeys.PREDICT, x=x, batch_size=batch_size, verbose=verbose,
-        steps=steps, callbacks=callbacks, **kwargs)
+        steps=steps, callbacks=callbacks, max_queue_size=max_queue_size,
+        workers=workers, use_multiprocessing=use_multiprocessing, **kwargs)
 
 
 def _get_distribution_strategy(model):
@@ -461,7 +469,9 @@ def _process_training_inputs(model, x, y, batch_size=None,
                              sample_weights=None, class_weights=None,
                              steps_per_epoch=None, validation_split=0.,
                              validation_data=None, validation_steps=None,
-                             shuffle=True, distribution_strategy=None):
+                             shuffle=True, distribution_strategy=None,
+                             max_queue_size=10, workers=1,
+                             use_multiprocessing=False):
   """Process the data input for fit() with respect to validation_split."""
   if validation_split and 0. < validation_split < 1. and validation_data:
     raise ValueError('validation_data and validation_split cannot be used '
@@ -501,7 +511,10 @@ def _process_training_inputs(model, x, y, batch_size=None,
                                     batch_size=batch_size,
                                     class_weights=class_weights,
                                     shuffle=shuffle, steps=steps_per_epoch,
-                                    distribution_strategy=distribution_strategy)
+                                    distribution_strategy=distribution_strategy,
+                                    max_queue_size=max_queue_size,
+                                    workers=workers,
+                                    use_multiprocessing=use_multiprocessing)
     val_adapter = None
     if validation_data:
       (val_x, val_y,
@@ -526,7 +539,8 @@ def _process_training_inputs(model, x, y, batch_size=None,
 
 def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
                     class_weights=None, shuffle=False, steps=None,
-                    distribution_strategy=None):
+                    distribution_strategy=None, max_queue_size=10, workers=1,
+                    use_multiprocessing=False):
   """Process the inputs for fit/eval/predict()."""
   adapter_cls = data_adapter.select_data_adapter(x, y)
   if adapter_cls in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
@@ -538,38 +552,16 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
         batch_size=batch_size,
         check_steps=True,
         steps=steps)
-    # TODO(scottzhu): The generator and keras.sequence does not work with
-    # model._standardize_user_data() so far. However that method is very
-    # important which contains on-fly model build/tensor align for dict input,
-    # etc. We should still call the _standardize_user_data with the peeked data
-    # from generator or sequence, and let model compile.
-  return adapter_cls(x, y, batch_size=batch_size, steps=steps,
-                     sample_weights=sample_weights, shuffle=shuffle,
-                     distribution_strategy=distribution_strategy)
-
-
-def _update_sample_weight_mode(model, mode, dataset):
-  """Updates the sample_weight_mode of a given model."""
-  # TODO(kaftan): This won't actually do anything right now because
-  ## dist_utils._update_sample_weight_modes only does things when the model
-  ## is distributed by cloning. We will need to revisit if a method here
-  ## is needed at all, and if so how it should look.
-  # Add a quick return to prevent us from calling model._feed_targets that
-  # accesses certain model properties that may not be set in the `PREDICT` mode.
-  if mode == ModeKeys.PREDICT:
-    return
-
-  # Get some sample inputs from the data_adapter
-  iterator = iter(dataset)
-  _, _, sample_weights = training_v2_utils._prepare_feed_values(
-      model, iterator, mode)
-
-  # Call the DistributionStrategy specific function to update the
-  # sample_weight_mode on the model.
-  dist_utils._update_sample_weight_modes(model, mode, sample_weights)
-
-  # Force delete the iterator.
-  del iterator
+  adapter = adapter_cls(x, y, batch_size=batch_size, steps=steps,
+                        sample_weights=sample_weights, shuffle=shuffle,
+                        distribution_strategy=distribution_strategy,
+                        max_queue_size=max_queue_size, workers=workers,
+                        use_multiprocessing=use_multiprocessing)
+  # As a fallback for the data type that does not work with
+  # _standardize_user_data, use the _prepare_model_with_inputs.
+  if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
+    training_v2_utils._prepare_model_with_inputs(model, adapter.get_dataset())
+  return adapter
 
 
 def _get_total_number_of_samples(adapter):
@@ -623,15 +615,16 @@ class TrainingContext(object):
       self.progbar.on_epoch_end(epoch, epoch_logs)
 
   @tf_contextlib.contextmanager
-  def on_batch(self, step=0, mode=ModeKeys.TRAIN):
+  def on_batch(self, step=0, mode=ModeKeys.TRAIN, size=1):
     """Provide a scope for running one batch."""
-    batch_logs = {'batch': step, 'size': 1}
+    batch_logs = {'batch': step, 'size': size}
     self.callbacks._call_batch_hook(
         mode, 'begin', step, batch_logs)
     self.progbar.on_batch_begin(step, batch_logs)
     try:
       yield batch_logs
     finally:
-      self.callbacks._call_batch_hook(
-          mode, 'end', step, batch_logs)
-      self.progbar.on_batch_end(step, batch_logs)
+      if not batch_logs.pop('data_exhausted', False):
+        self.callbacks._call_batch_hook(
+            mode, 'end', step, batch_logs)
+        self.progbar.on_batch_end(step, batch_logs)

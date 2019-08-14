@@ -147,16 +147,6 @@ template <typename Predicate>
 ABSL_DEPRECATED("Use absl::StrSplit instead.")
 std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
-// Split "text" at "delim" characters, and parse each component as
-// an integer.  If successful, adds the individual numbers in order
-// to "*result" and returns true.  Otherwise returns false.
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int32>* result);
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int64>* result);
-bool SplitAndParseAsFloats(StringPiece text, char delim,
-                           std::vector<float>* result);
-
 // StartsWith()
 //
 // Returns whether a given string `text` begins with `prefix`.

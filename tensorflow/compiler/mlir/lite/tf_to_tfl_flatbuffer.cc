@@ -31,6 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+namespace mlir {
+/// Create a pass to convert from the TFExecutor to the TF control dialect.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
+}  // namespace mlir
+
 namespace tensorflow {
 
 using mlir::MLIRContext;
@@ -79,12 +84,13 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         input_filename, debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, context);
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
 bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
@@ -99,6 +105,7 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
                                 bool emit_quant_adaptor_ops,
                                 bool lower_tensor_list_ops,
                                 mlir::PassManager *pass_manager) {
+  pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
 
   if (lower_tensor_list_ops) {
@@ -138,7 +145,7 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
   }
 }
 
-Status ConvertTFControlFlowToTFLOrFlatbuffer(
+Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, std::string *result) {

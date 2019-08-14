@@ -37,7 +37,7 @@ class DistributionStrategyLstmModelCorrectnessTest(
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                run_distributed=None,
+                experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
 
@@ -67,15 +67,16 @@ class DistributionStrategyLstmModelCorrectnessTest(
           optimizer=optimizer_fn(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'],
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
     return model
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_lstm_model_correctness(self, distribution, use_numpy,
-                                  use_validation_data, run_distributed):
+                                  use_validation_data,
+                                  experimental_run_tf_function):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+                              experimental_run_tf_function)
 
 
 if __name__ == '__main__':

@@ -91,12 +91,12 @@ TestParam TestCase1() {
   return {/*input_range_dataset_params*/
           {RangeDatasetParam{0, 3, 1}, RangeDatasetParam{10, 13, 1}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {10}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {11}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {12})},
+          {CreateTensor<int64>(TensorShape{}, {0}),
+           CreateTensor<int64>(TensorShape{}, {10}),
+           CreateTensor<int64>(TensorShape{}, {1}),
+           CreateTensor<int64>(TensorShape{}, {11}),
+           CreateTensor<int64>(TensorShape{}, {2}),
+           CreateTensor<int64>(TensorShape{}, {12})},
           /*breakpoints*/ {0, 1, 4}};
 }
 
@@ -105,12 +105,12 @@ TestParam TestCase2() {
   return {/*input_range_dataset_params*/
           {RangeDatasetParam{0, 3, 1}, RangeDatasetParam{10, 15, 1}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {10}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {11}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {12})},
+          {CreateTensor<int64>(TensorShape{}, {0}),
+           CreateTensor<int64>(TensorShape{}, {10}),
+           CreateTensor<int64>(TensorShape{}, {1}),
+           CreateTensor<int64>(TensorShape{}, {11}),
+           CreateTensor<int64>(TensorShape{}, {2}),
+           CreateTensor<int64>(TensorShape{}, {12})},
           /*breakpoints*/ {0, 1, 4}};
 }
 
@@ -331,41 +331,6 @@ TEST_P(ParameterizedZipDatasetOpTest, Cardinality) {
 
   EXPECT_EQ(zip_dataset->Cardinality(),
             test_case.expected_outputs.size() / num_tensors_per_slice);
-}
-
-TEST_F(ZipDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestParam &test_case = TestCase1();
-  std::vector<Tensor> range_dataset_tensors;
-  range_dataset_tensors.reserve(test_case.input_range_dataset_params.size());
-  TF_ASSERT_OK(CreateRangeDatasetTensors(test_case.input_range_dataset_params,
-                                         &range_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  inputs.reserve(range_dataset_tensors.size());
-  for (auto &tensor : range_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::unique_ptr<OpKernel> dataset_kernel;
-  int num_tensors_per_slice = test_case.input_range_dataset_params.size();
-  TF_ASSERT_OK(CreateZipDatasetKernel({DT_INT64}, {{num_tensors_per_slice}},
-                                      inputs.size(), &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateZipDatasetContext(dataset_kernel.get(), &inputs,
-                                       &dataset_kernel_ctx));
-  DatasetBase *zip_dataset;
-  TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
-                             &zip_dataset));
-  core::ScopedUnref scoped_unref(zip_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(zip_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedZipDatasetOpTest, IteratorOutputDtypes) {

@@ -97,8 +97,11 @@ from __future__ import print_function
 
 import copy
 import enum  # pylint: disable=g-bad-import-order
+import json
+import os
 import threading
 import weakref
+
 import six
 
 from tensorflow.python.autograph.core import ag_ctx
@@ -123,6 +126,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import server_lib
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -410,13 +415,16 @@ class InputContext(object):
 # pylint: disable=line-too-long
 @tf_export("distribute.Strategy", v1=[])
 class Strategy(object):
-  """A list of devices with a state & compute distribution policy.
+  """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy)
   for overview and examples.
 
   In short:
 
+  * To use it with Keras `compile`/`fit`,
+    [please
+    read](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * You may pass descendant of `tf.distribute.Strategy` to
     `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
     should distribute its computation. See
@@ -425,11 +433,10 @@ class Strategy(object):
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
     means the strategy is put in control of things like variable placement.)
-  * If using Keras `compile`/`fit`,
-    [that is it](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * If you are writing a custom training loop, you will need to call a few more
     methods,
-    [see the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
+    [see the
+    guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
 
       * Start by either creating a `tf.data.Dataset` normally or using
         `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
@@ -484,7 +491,8 @@ class Strategy(object):
   accumulate metrics across steps in a given epoch.
 
   See the
-  [custom training loop tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
+  [custom training loop
+  tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
   for a more detailed example.
 
   Note: `tf.distribute.Strategy` currently does not support TensorFlow's
@@ -725,14 +733,17 @@ class Strategy(object):
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
     when `fn` is executed on a particular replica, it will be executed with the
-    component of those "per-replica" values that corresponds to that replica.
+    component of those "per-replica" values that correspond to that replica.
 
     `fn` may call `tf.distribute.get_replica_context()` to access members such
     as `all_reduce`.
 
-    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
-    used, and whether eager execution is enabled, `fn` may be called one or more
-    times (once for each replica).
+    All arguments in `args` or `kwargs` should either be nest of tensors or
+    per-replica objects containing tensors or composite tensors.
+
+    IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
+    whether eager execution is enabled, `fn` may be called one or more times (
+    once for each replica).
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -871,7 +882,7 @@ class Strategy(object):
   def experimental_local_results(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
-    Note: This only returns values on the workers initiated by this client.
+    Note: This only returns values on the worker initiated by this client.
     When using a `tf.distribute.Strategy` like
     `tf.distribute.experimental.MultiWorkerMirroredStrategy`, each worker
     will be its own client, and this function will only return values
@@ -936,6 +947,20 @@ class Strategy(object):
 
   def __copy__(self):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
+
+  def _in_multi_worker_mode(self):
+    """Method to infer if this `Strategy` is working in multi-worker settings.
+
+    Experimental. Signature and implementation are subject to change.
+
+    Returns:
+      Whether this strategy indicates working in multi-worker settings.
+    """
+    # TODO(b/137857865): Check for whether it is multi_worker_mode should not
+    # rely on TF_CONFIG environment variable.
+    tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
+    cluster_spec = server_lib.ClusterSpec(tf_config.get("cluster", {}))
+    return tf_config and "master" not in cluster_spec.jobs
 
 
 # TF v1.x version has additional deprecated APIs
@@ -1300,9 +1325,18 @@ class StrategyExtendedV2(object):
   def _scope(self, strategy):
     """Implementation of tf.distribute.Strategy.scope()."""
     def creator_with_resource_vars(*args, **kwargs):
+      """Variable creator to use in `_CurrentDistributionContext`."""
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
       kwargs["distribute_strategy"] = strategy
+
+      # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
+      # dereferencing a `Tensor` that is without a `name`.
+      # TODO(b/138130844): Revisit the following check once
+      # `CheckpointInitialValue` class is removed.
+      if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+        kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+
       return self._create_variable(*args, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):
@@ -1431,7 +1465,7 @@ class StrategyExtendedV2(object):
         all-reduction, pass `value` to `destinations`.
 
     Returns:
-      A value mirrored to `destinations`.
+      A tensor or value mirrored to `destinations`.
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
@@ -2290,9 +2324,12 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     if kwargs.get("trainable", True):
       collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
       l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        if v in l:
-          l.remove(v)
+      for value in value_list:
+        for i, trainable_variable in enumerate(l):
+          if value is trainable_variable:
+            del l[i]
+            break
+
     g.add_to_collections(collections, result)
   elif ops.GraphKeys.GLOBAL_STEP in collections:
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)

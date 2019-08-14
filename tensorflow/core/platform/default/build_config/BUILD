@@ -12,7 +12,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
@@ -65,13 +65,13 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         ":stream_executor_no_cuda",
-    ] + if_static(
-        [
+    ] + select({
+        "//tensorflow:oss": ["//tensorflow/stream_executor/cuda:cudart_stub"],
+        "//conditions:default": [
             "//tensorflow/stream_executor/cuda:all_runtime",
             ":cuda",
         ],
-        ["//tensorflow/stream_executor/cuda:cudart_stub"],
-    ) + select({
+    }) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),

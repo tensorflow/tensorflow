@@ -18,10 +18,10 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/base/optimization.h"
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -109,7 +109,7 @@ class TraceMeRecorder {
   mutex mutex_;
   // Map of the static container instances (thread_local storage) for each
   // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
+  std::unordered_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
   // Events from threads that died during recording.
   TraceMeRecorder::Events orphaned_events_ GUARDED_BY(mutex_);
 };

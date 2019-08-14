@@ -103,11 +103,6 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector) {
-  PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
-}
-
 void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
   PortableApplySigmoidToVector(vector, v_size, result);
 }
@@ -150,10 +145,6 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              float* max_value, float* scaling_factor) {
   NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
                    min_value, max_value, scaling_factor);
-}
-
-void VectorShiftLeft(float* vector, int v_size, float shift_value) {
-  NEON_OR_PORTABLE(VectorShiftLeft, vector, v_size, shift_value);
 }
 
 void ReductionSumVector(const float* input_vector, float* output_vector,

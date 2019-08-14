@@ -479,7 +479,7 @@ class AnfConfiguredTest(AnfTestBase):
   def test_constants_in_function_calls(self):
     # An example specific configuration that differs from the default: Moving
     # literals out of being directly passed to functions, but nothing else.
-    literals = (gast.Num, gast.Str, gast.Bytes, gast.NameConstant)
+    literals = (gast.Num, gast.Str, gast.Bytes, gast.NameConstant, gast.Name)
     config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, literals), anf.REPLACE)]
 
     def test_function(x, frob):
@@ -511,6 +511,24 @@ class AnfConfiguredTest(AnfTestBase):
       tmp_1002 = 2
       y = foo(x, tmp_1001, tmp_1002)
       return bar(y, y+1, 2)
+
+    self.assert_body_anfs_as_expected(expected_result, test_function, config)
+
+  def test_touching_name_constant(self):
+    # Checking that the nodes for `True`, `False`, and `None` can be manipulated
+    # by a configuration.  This is non-trivial, because in Python 2 those are
+    # represented as `Name`, which is the same node type as variable references.
+    specials = (gast.Name, gast.NameConstant)
+    config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, specials), anf.REPLACE)]
+
+    def test_function(f):
+      return f(True, False, None)
+
+    def expected_result(f):
+      tmp_1001 = True
+      tmp_1002 = False
+      tmp_1003 = None
+      return f(tmp_1001, tmp_1002, tmp_1003)
 
     self.assert_body_anfs_as_expected(expected_result, test_function, config)
 

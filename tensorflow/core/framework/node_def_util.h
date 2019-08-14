@@ -235,11 +235,15 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const TensorProto** value);  // type: "tensor"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const TensorProto** value);  // type: "tensor"
 
 // This version avoids copying the NameAttrList.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const NameAttrList** value);  // type: "func"
 
 // These versions copies the NameAttrList(s).
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -250,10 +254,43 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, false is returned.
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       string* value);  // type: "string"
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       std::vector<string>* value);  // type: "string"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    string* value);  // type: "string"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    int64* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<int64>* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    int32* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    float* value);  // type: "float"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    bool* value);  // type: "bool"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    DataType* value);  // type: "type"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    TensorShape* value);  // type: "shape"
+
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<string>* value);  // type: "list(string)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<int32>* value);  // type: "list(int)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<float>* value);  // type: "list(float)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<bool>* value);  // type: "list(bool)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<DataType>* value);  // type: "list(type)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<TensorShape> value);  // type: "shape"
+
+// Overloads of TryGetNodeAttr() that avoid copying the non-POD attribute
+// values.
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const string*>* value);  // type: "list(string)"
+bool TryGetNodeAttr(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<const TensorShapeProto*>* value);  // type: "list(shape)"
 
 // Look up the attr with name attr_name and return a reference to its value.
 // If no attr with attr_name is found in node_def, or the attr does not have

@@ -16,6 +16,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "auto_shard_dataset";
@@ -55,14 +56,11 @@ struct TestCase {
            DataTypeVector expected_output_dtypes,
            std::vector<PartialTensorShape> expected_output_shapes,
            int64 expected_cardinality, std::vector<int> breakpoints)
-      : start(
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {start})),
-        stop(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {stop})),
-        step(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {step})),
-        num_workers(DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                                            {num_workers})),
-        index(
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {index})),
+      : start(CreateTensor<int64>(TensorShape({}), {start})),
+        stop(CreateTensor<int64>(TensorShape({}), {stop})),
+        step(CreateTensor<int64>(TensorShape({}), {step})),
+        num_workers(CreateTensor<int64>(TensorShape({}), {num_workers})),
+        index(CreateTensor<int64>(TensorShape({}), {index})),
         expected_outputs(std::move(expected_outputs)),
         expected_output_dtypes(std::move(expected_output_dtypes)),
         expected_output_shapes(std::move(expected_output_shapes)),
@@ -89,8 +87,8 @@ TestCase SimpleCase() {
           /*num_workers=*/5,
           /*index=*/2,
           /*expected_outputs=*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
+          {CreateTensor<int64>(TensorShape({}), {2}),
+           CreateTensor<int64>(TensorShape({}), {7})},
           /*expected_output_dtypes=*/{DT_INT64},
           /*expected_output_shapes=*/{PartialTensorShape({})},
           /*expected_cardinality=*/2,
@@ -120,8 +118,8 @@ TestCase ElementsUnequallyDividedCase() {
           /*num_workers=*/4,
           /*index=*/3,
           /*expected_outputs=*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
+          {CreateTensor<int64>(TensorShape({}), {3}),
+           CreateTensor<int64>(TensorShape({}), {7})},
           /*expected_output_dtypes=*/{DT_INT64},
           /*expected_output_shapes=*/{PartialTensorShape({})},
           /*expected_cardinality=*/2,
@@ -279,5 +277,6 @@ TEST_F(AutoShardDatasetOpTest, InvalidArguments) {
 }
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

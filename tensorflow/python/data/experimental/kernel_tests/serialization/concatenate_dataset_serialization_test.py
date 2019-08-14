@@ -39,9 +39,7 @@ class ConcatenateDatasetSerializationTest(
   def testConcatenateCore(self):
     num_outputs = 9
     array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
-    diff_array = np.array([[1], [2], [3], [4], [5]])
     self.run_core_tests(lambda: self._build_concatenate_dataset(array),
-                        lambda: self._build_concatenate_dataset(diff_array),
                         num_outputs)
 
 

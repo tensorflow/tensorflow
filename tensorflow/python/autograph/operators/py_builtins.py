@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,11 +49,34 @@ def overload_of(f):
   return f
 
 
-def eval_in_original_context(f, args, caller_level_delta):
-  """Executes the eval function with the user-specified globals/locals."""
+def _find_originating_frame(caller_fn_scope, innermost=True):
+  """Locates the frame in which `caller_fn_scope` was defined."""
   ctx_frame = inspect.currentframe()
-  for _ in range(caller_level_delta + 1):
+  result = None
+  while ctx_frame is not None:
+    # Note it should not be normally possible to get false positives this way
+    # because the function scope object is not accessible to user code (barring
+    # call stack introspection).
+    if ctx_frame.f_locals.get(caller_fn_scope.name, None) is caller_fn_scope:
+      result = ctx_frame
+      if innermost:
+        break
     ctx_frame = ctx_frame.f_back
+
+  assert result is not None, (
+      'the conversion process should ensure the caller_fn_scope is always'
+      ' found somewhere on the call stack')
+
+  return result
+
+
+def eval_in_original_context(f, args, caller_fn_scope):
+  """Executes the eval function in the context of a specified function."""
+  # When control flow is rewritten using functions, eval should use the
+  # variables found in the same block where it was called. That is equivalent
+  # to the innermost function call.
+  ctx_frame = _find_originating_frame(caller_fn_scope, innermost=True)
+
   args = (
       args[0],
       ctx_frame.f_globals if len(args) < 2 else args[1],
@@ -61,33 +85,34 @@ def eval_in_original_context(f, args, caller_level_delta):
   return f(*args)
 
 
-def super_in_original_context(f, args, caller_level_delta):
-  """Executes the super function with the correct implicit argument handling.
+def super_in_original_context(f, args, caller_fn_scope):
+  """Executes the super function in the context of a specified function.
 
   See https://docs.python.org/3/library/functions.html#super for the exact
   details
 
   Args:
-    f: super builtin function object.
-    args: Arguments that will be passed to super(...).  A valid call should have
-      0, 1, or 2 number of arguments
-    caller_level_delta: The number of nested frames to the original super(...)'s
-      context frame.
+    f: Callable, typically the super builtin
+    args: List[Any], the original call arguments
+    caller_fn_scope: Optional[function_wrappers.FunctionScope], the function
+      scope of the converted function in which this call was originally made
 
   Returns:
-    The result of super(...) call.
+    The result of calling `f` as if it was called in the frame indicated by
+      `caller_fn_scope`.
   """
 
   # Python 2 doesn't support implicit argument super variants.
   if six.PY2:
-    return overload_of(f)(*args)
+    return f(*args)
 
-  if len(args) >= 1:
-    return overload_of(f)(*args)
+  # Only the no-arg call is desugared.
+  if args:
+    return f(*args)
 
-  ctx_frame = inspect.currentframe()
-  for _ in range(caller_level_delta + 1):
-    ctx_frame = ctx_frame.f_back
+  # Inner functions seem to include their closure in f_locals, so we need
+  # to find the outermost frame.
+  ctx_frame = _find_originating_frame(caller_fn_scope, innermost=False)
 
   # When super(..) is called without arguments, it looks for __class__ cell
   # variable and the first argument passed in the enclosing function according
@@ -103,33 +128,23 @@ def super_in_original_context(f, args, caller_level_delta):
   #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py2_test_grammar.py#L157
   #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py3_test_grammar.py#L192
   #
-  # TODO(kkimlabs): mdan@ had an idea to do it more correctly without relying
-  #                 on the co_varnames argument order assumption.
-  #                 1. Getting the caller function from the call stack.
-  #                 2. Getting its argspec.
-  #                 3. Get the name of the first argument from argspec.
-  #                 4. Retrieve its value from locals.
+  # Note: the name can be more reliably obtained by inspecting the calling
+  # function's argspec.
   #
-  #                 Sample code snippet:
+  # Even though methods can be declared using *args (def method(*args)),
+  # that pattern is disallowed by super() -- it raises super() no arguments.
+  # Method definitions using **kwargs are not allowed at all.
+  # In other words, we can always assume that self is on the first positional
+  # argument (for correct code).
   #
-  #                 def fn2():
-  #                   fr = inspect.currentframe()
-  #                   parent_fr = fr.f_back
-  #                   grandparent_fr = parent_fr.f_back
-  #                   f_name = parent_fr.f_code.co_name
-  #                   f = grandparent_fr.f_locals[f_name]
-  #
-  #                 def fn1():
-  #                   fn2()
-  #
-  #                 fn1()
-  #
-  #                 However, we also need to handle some edge cases like
-  #                 function in the closure or globals, etc,...
+  # TODO(mdan): Consider additional checks in case the input code is incorrect.
+  # For example, the error might be cryptic compared to what super() regularly
+  # raises.
 
-  first_arg_name = ctx_frame.f_code.co_varnames[0]
-  first_arg = ctx_frame.f_locals[first_arg_name]
-  return f(ctx_frame.f_locals['__class__'], first_arg)
+  type_arg = ctx_frame.f_locals['__class__']
+  self_arg_name = ctx_frame.f_code.co_varnames[0]
+  self_arg = ctx_frame.f_locals[self_arg_name]
+  return f(type_arg, self_arg)
 
 
 def abs_(x):
@@ -210,7 +225,7 @@ def _tf_tensor_len(s):
     return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
-  # chech that it's a scalar.
+  # check that it's a scalar.
   shape = array_ops.shape(s)
 
   assert shape.shape, 'shape tensor of zero size? {}'.format(shape)
@@ -313,7 +328,21 @@ def _py_range(start_or_stop, stop, step):
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
+def enumerate_(s, start=0):
+  if isinstance(s, dataset_ops.DatasetV2):
+    return _tf_dataset_enumerate(s, start)
+  return _py_enumerate(s, start)
+
+
+def _tf_dataset_enumerate(s, start=0):
+  return s.enumerate(start)
+
+
+def _py_enumerate(s, start=0):
+  return enumerate(s, start)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -327,4 +356,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'range': range_,
     # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
+    'enumerate': enumerate_,
 }

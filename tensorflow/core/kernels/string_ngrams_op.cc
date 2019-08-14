@@ -54,14 +54,14 @@ class StringNGramsOp : public tensorflow::OpKernel {
   void Compute(tensorflow::OpKernelContext* context) override {
     const tensorflow::Tensor* data;
     OP_REQUIRES_OK(context, context->input("data", &data));
-    const auto& input_data = data->flat<string>().data();
+    const auto& input_data = data->flat<tstring>().data();
 
     const tensorflow::Tensor* splits;
     OP_REQUIRES_OK(context, context->input("data_splits", &splits));
     const auto& splits_vec = splits->flat<SPLITS_TYPE>();
 
     // If there is no data or size, return an empty RT.
-    if (data->flat<string>().size() == 0 || splits_vec.size() == 0) {
+    if (data->flat<tstring>().size() == 0 || splits_vec.size() == 0) {
       tensorflow::Tensor* empty;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, data->shape(), &empty));
@@ -93,7 +93,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
         context,
         context->allocate_output(
             0, TensorShape({ngrams_splits_data[num_batch_items]}), &ngrams));
-    auto ngrams_data = ngrams->flat<string>().data();
+    auto ngrams_data = ngrams->flat<tstring>().data();
 
     for (int i = 0; i < num_batch_items; ++i) {
       auto data_start = &input_data[splits_vec(i)];

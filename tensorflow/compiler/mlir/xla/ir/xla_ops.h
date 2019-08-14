@@ -18,21 +18,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_XLA_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_XLA_OPS_H_
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 
 namespace mlir {
-class Builder;
+class OpBuilder;
 
 namespace XLA {
 
-class XLADialect : public Dialect {
+class XlaHloDialect : public Dialect {
  public:
-  XLADialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla"; }
+  explicit XlaHloDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "xla_hlo"; }
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.

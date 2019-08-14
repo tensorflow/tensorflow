@@ -19,6 +19,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+EagerExecutor::EagerExecutor(bool async)
+    : thread_(async ? tensorflow::Env::Default()->StartThread(
+                          tensorflow::ThreadOptions(), "eager_async_executor",
+                          std::bind(&EagerExecutor::Run, this))
+                    : nullptr) {}
+
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   state_ = ExecutorState::kShutDown;
@@ -72,13 +78,8 @@ void EagerExecutor::WaitForOrDestroyAllPendingNodes(mutex_lock* lock) {
   WaitForAllPendingNodesLocked(lock).IgnoreError();
 }
 
-void EagerExecutor::EnableAsync() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
-  if (thread_ == nullptr) {
-    thread_.reset(tensorflow::Env::Default()->StartThread(
-        tensorflow::ThreadOptions(), "eager_async_executor",
-        std::bind(&EagerExecutor::Run, this)));
-  }
+bool EagerExecutor::Async() const {
+  return thread_ != nullptr;
 }
 
 const char* EagerExecutor::StateStringLocked() {

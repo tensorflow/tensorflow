@@ -45,6 +45,13 @@ _VARIABLE_OPS = {
     "VariableV2",
 }
 
+_CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
+    "Switch",
+    "Enter",
+    "Exit",
+    "Identity",
+]
+
 
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
@@ -290,11 +297,12 @@ def convert_variables_to_constants(sess,
       else:
         variable_names.append(variable_name + ":0")
     elif node.op in ["ReadVariableOp", "ResourceGather"]:
-      # There can be one or more Identity or Switch ops in between the
+      # There can be one or more Identity or control flow ops in between the
       # ReadVariableOp and VarHandleOp. Store the ops with the associated
       # dtypes.
       source_op_name = get_input_name(node)
-      while map_name_to_node[source_op_name].op in ["Identity", "Switch"]:
+      while (map_name_to_node[source_op_name].op in
+             _CONTROL_FLOW_OP_NAMES_OR_IDENTITY):
         resource_op_types[source_op_name] = node.attr["dtype"]
         source_op_name = get_input_name(map_name_to_node[source_op_name])
       if map_name_to_node[source_op_name].op != "VarHandleOp":

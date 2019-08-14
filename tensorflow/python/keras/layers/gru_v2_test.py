@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -136,7 +137,6 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
-  # Due to b/120160788
   @test_util.run_v2_only
   def test_gru_v2_feature_parity_with_canonical_gru(self):
     input_shape = 10
@@ -259,8 +259,8 @@ class GRUV2Test(keras_parameterized.TestCase):
       canonical_model.set_weights(weights)
       y_3 = canonical_model.predict(x_train)
 
-    self.assertAllClose(y_1, y_2)
-    self.assertAllClose(y_2, y_3)
+    self.assertAllClose(y_1, y_2, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(y_2, y_3, rtol=1e-5, atol=1e-5)
 
   @parameterized.named_parameters(
       # test_name, time_major, go_backwards
@@ -342,6 +342,19 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_float64_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.GRU,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_return_states_GRU(self):
     layer_class = rnn.GRU
     x = np.random.random((2, 3, 4))
@@ -422,8 +435,6 @@ class GRUV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  # Run in V2 only due to b/120160788.
-  @test_util.run_v2_only
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -445,7 +456,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -518,7 +529,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
 
   @test_util.run_v2_only
@@ -545,6 +556,23 @@ class GRUV2Test(keras_parameterized.TestCase):
       outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
+
+  @test_util.run_deprecated_v1
+  def test_v1_session_behavior(self):
+    # See b/139132348 for more details.
+    x = np.random.uniform(size=(100, 4, 8))
+    y = np.random.uniform(size=(100, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).shuffle(100).batch(32)
+
+    inp = keras.layers.Input(shape=(4, 8))
+    layer = rnn.GRU(1)(inp)
+    layer = keras.layers.Dense(1)(layer)
+
+    model = keras.models.Model(inp, layer)
+
+    model.compile(loss='mse', optimizer='sgd')
+    model.fit(dataset)
 
 
 class GRULayerGradientTapeTest(test.TestCase):
@@ -593,9 +621,10 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None],
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     existing_loss = 0
     for _ in range(self.epoch):
@@ -611,6 +640,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
+  @test_util.run_v2_only
   def test_GRU_runtime(self):
     layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
 
@@ -626,6 +656,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+  @test_util.run_v2_only
   def test_GRU_runtime_with_mask(self):
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.
@@ -650,10 +681,11 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None],
-                  run_eagerly=testing_utils.should_run_eagerly(),
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit(x_train, y_train)
 
@@ -680,7 +712,6 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     _, runtime_value = model.predict(x_train)
     self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  # Due to b/120160788.
   @test_util.run_v2_only
   def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under

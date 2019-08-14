@@ -496,6 +496,10 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
 
+    # Short-circuit if x and y are the same tensor.
+    if x is y:
+      return None if context.executing_eagerly() else control_flow_ops.no_op()
+
     if context.executing_eagerly():
       eq = math_ops.equal(x, y)
       condition = math_ops.reduce_all(eq)

@@ -184,3 +184,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           RuntimeError, "You are calling `scale_regularization_loss` in "
           "cross replica context"):
         nn_impl.scale_regularization_loss([2, 3])
+
+
+if __name__ == "__main__":
+  test_lib.main()

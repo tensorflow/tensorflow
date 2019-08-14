@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <queue>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -442,12 +443,6 @@ void RecomputeSubgraph(
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
                                 const string& recomputation_targets_name_scope,
                                 GraphDef* graph, const GrapplerItem& item) {
-  if (optimization_level != RewriterConfig::RECOMPUTATION_HEURISTICS &&
-      optimization_level != RewriterConfig::HEURISTICS &&
-      optimization_level != RewriterConfig::MANUAL) {
-    // Nothing to do
-    return;
-  }
   // The topological numberings and NodeMap will be stale as soon as we start
   // modifying the graph in RecomputeSubgraph. However, RecomputeSubgraph only
   // looks up nodes which were in the original graph, and preserves the graph
@@ -1274,13 +1269,24 @@ bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
           absl::StrContains(device2, DEVICE_CPU));
 }
 
+void RelaxAssignNodes(const std::set<int>& nodes_to_relax,
+                      GraphDef* optimized_graph) {
+  for (int idx : nodes_to_relax) {
+    // Set an attribute telling AssignOp to ignore allocator constraints.
+    NodeDef* assign_node = optimized_graph->mutable_node(idx);
+    (*assign_node->mutable_attr())["_grappler_relax_allocator_constraints"]
+        .set_b(true);
+  }
+}
+
 // TODO(rmlarsen): Add distributed TF test.
-Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
+Status FindAssignNodesToRelax(const GraphDef& graph,
+                              std::set<int>* nodes_to_relax) {
   std::unordered_set<string> devices;
   std::vector<int> assign_nodes;
   bool found_send = false;
-  for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    const NodeDef& node = optimized_graph->node(i);
+  for (int i = 0; i < graph.node_size(); ++i) {
+    const NodeDef& node = graph.node(i);
     devices.insert(node.device());
     if (IsAssign(node)) {
       assign_nodes.push_back(i);
@@ -1291,22 +1297,17 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
     }
   }
   if (!found_send && devices.size() == 1) {
-    for (int assign_idx : assign_nodes) {
-      // Set an attribute telling AssignOp to ignore allocator constraints.
-      NodeDef* assign_node = optimized_graph->mutable_node(assign_idx);
-      (*assign_node->mutable_attr())["_grappler_relax_allocator_constraints"]
-          .set_b(true);
-    }
+    nodes_to_relax->insert(assign_nodes.begin(), assign_nodes.end());
     return Status::OK();
   }
 
   GraphTopologyView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(
-      *optimized_graph, /*ignore_control_edges=*/true));
+  TF_RETURN_IF_ERROR(
+      graph_view.InitializeFromGraph(graph, /*ignore_control_edges=*/true));
   std::unordered_set<const NodeDef*> optimized_nodes;
 
   for (int i : assign_nodes) {
-    const NodeDef& assign_node = optimized_graph->node(i);
+    const NodeDef& assign_node = graph.node(i);
 
     if (optimized_nodes.find(&assign_node) == optimized_nodes.end()) {
       std::vector<const NodeDef*> assign_nodes_in_fanout;
@@ -1352,11 +1353,7 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
           // Set an attribute telling AssignOp to ignore allocator constraints.
           const absl::optional<int> assign_node_idx =
               graph_view.GetNodeIndex(*assign_node_in_fanout);
-          NodeDef* assign_node_to_relax =
-              optimized_graph->mutable_node(assign_node_idx.value());
-          (*assign_node_to_relax
-                ->mutable_attr())["_grappler_relax_allocator_constraints"]
-              .set_b(true);
+          nodes_to_relax->insert(assign_node_idx.value());
         }
       }
     }
@@ -1368,38 +1365,54 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
 
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
-  GrapplerItem optimized_item(item);
+  std::set<int> nodes_to_relax;
+  TF_RETURN_IF_ERROR(FindAssignNodesToRelax(item.graph, &nodes_to_relax));
 
-  RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_scope_,
-                             &optimized_item.graph, item);
+  bool run_recomputation_pass =
+      (optimization_level_ == RewriterConfig::RECOMPUTATION_HEURISTICS ||
+       optimization_level_ == RewriterConfig::HEURISTICS ||
+       optimization_level_ == RewriterConfig::MANUAL);
+  if (!run_recomputation_pass && nodes_to_relax.empty() && item.fetch.empty()) {
+    return errors::Aborted("Nothing to do.");
+  }
+
+  GrapplerItem optimized_item(item);
+  RelaxAssignNodes(nodes_to_relax, &optimized_item.graph);
+
+  if (run_recomputation_pass) {
+    RecomputationRewritingPass(optimization_level_,
+                               recomputation_targets_name_scope_,
+                               &optimized_item.graph, item);
+  }
 
   std::unordered_set<string> skip_list;
   // Bound the number of rewrite passes to avoid long processing times on graphs
   // that simply won't fit in memory.
-  bool updated_graph = true;
-  for (int i = 0; i < 25 && updated_graph; ++i) {
-    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-    updated_graph = false;
-    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
-         optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
-         optimization_level_ == RewriterConfig::HEURISTICS) &&
-        cluster != nullptr) {
-      updated_graph |= SchedulingPass(cluster, &optimized_item);
-    }
+  // SchedulingPass() and SwappingPass() rely on defined fetches in order to
+  // infer the memory usage, so skip optimization if there are no fetches.
+  if (!item.fetch.empty()) {
+    bool updated_graph = true;
+    for (int i = 0; i < 25 && updated_graph; ++i) {
+      GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
+      updated_graph = false;
+      if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+           optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
+           optimization_level_ == RewriterConfig::HEURISTICS) &&
+          cluster != nullptr) {
+        updated_graph |= SchedulingPass(cluster, &optimized_item);
+      }
 
-    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
-         optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
-         optimization_level_ == RewriterConfig::HEURISTICS ||
-         optimization_level_ == RewriterConfig::MANUAL) &&
-        cluster != nullptr) {
-      updated_graph |= SwappingPass(optimization_level_, cluster,
-                                    &optimized_item, &skip_list);
+      GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
+      if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+           optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
+           optimization_level_ == RewriterConfig::HEURISTICS ||
+           optimization_level_ == RewriterConfig::MANUAL) &&
+          cluster != nullptr) {
+        updated_graph |= SwappingPass(optimization_level_, cluster,
+                                      &optimized_item, &skip_list);
+      }
     }
   }
-
-  TF_RETURN_IF_ERROR(RelaxAllocatorConstraints(&optimized_item.graph));
 
   optimized_graph->Swap(&optimized_item.graph);
   return Status::OK();

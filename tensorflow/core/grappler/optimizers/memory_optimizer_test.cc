@@ -240,6 +240,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e"};
 
   EXPECT_EQ(7, item.graph.node_size());
   EXPECT_EQ(NodeName(e.name()), item.graph.node(4).name());

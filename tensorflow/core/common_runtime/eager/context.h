@@ -107,6 +107,16 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
+  static const uint64 kInvalidContextId = 0;
+
+  static uint64 NewContextId() {
+    uint64 context_id = random::New64();
+    while (context_id == kInvalidContextId) {
+      context_id = random::New64();
+    }
+    return context_id;
+  }
+
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,
@@ -124,15 +134,10 @@ class EagerContext : public core::RefCounted {
 
   ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
 
-  // True if running in asynchronous mode.
-  bool Async() const;
-
-  EagerExecutor* Executor() { return &executor_; }
-
   std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
-  // Sets whether this thread should run in synchronous or asynchronous mode.
-  Status SetAsyncForThread(bool async);
+  // Specify a executor for this thread.
+  void SetExecutorForThread(EagerExecutor* executor);
 
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
@@ -162,12 +167,6 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  Status AsyncWait() { return executor_.WaitForAllPendingNodes(); }
-
-  Status GetStatus() { return executor_.status(); }
-
-  void ClearAsyncError() { executor_.ClearError(); }
-
   bool FindFunctionByName(const string& name);
 
   Status FindFunctionOpData(const string& name,
@@ -184,9 +183,7 @@ class EagerContext : public core::RefCounted {
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  Status ExecutorAdd(std::unique_ptr<EagerNode> node) {
-    return executor_.Add(std::move(node));
-  }
+  EagerExecutor* Executor();
 
   Status AddFunctionDef(const FunctionDef& fdef);
 
@@ -320,7 +317,19 @@ class EagerContext : public core::RefCounted {
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
 #endif  // IS_MOBILE_PLATFORM
+
+  // Closes remote eager contexts, waits for all RPCs to finish, and
+  // destroys the EagerClientCache. No RPCs can be made through this context
+  // after this method has been called.
+  // This method exists to aid a clean shutdown. It causes all RPCs to finish
+  // and remote TensorHandles to release their references to this context.
+  // To avoid deadlocks, this method must not be called on the thread
+  // processing RPCs because it makes RPCs and waits for their completion.
+  //
+  // On mobile, it just cleans the caches.
+  void WaitForAndCloseRemoteContexts();
 
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
@@ -399,19 +408,16 @@ class EagerContext : public core::RefCounted {
   // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
   const bool allow_soft_placement_;
-  // EagerExecutor for async execution.
-  EagerExecutor executor_;
 
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
   std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
 
-  // True if the default value for execution mode is async. Note that this value
-  // can be overridden per thread based on `thread_local_async` overrides.
-  const bool async_default_;
-  mutable mutex async_map_mu_;
-  std::unordered_map<std::thread::id, bool> thread_local_async_
-      GUARDED_BY(async_map_mu_);
+  EagerExecutor default_executor_;
+  mutable mutex executor_map_mu_;
+  // Not owned.
+  std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
+      GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
 
@@ -433,7 +439,7 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  uint64 context_id_;
+  uint64 context_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);

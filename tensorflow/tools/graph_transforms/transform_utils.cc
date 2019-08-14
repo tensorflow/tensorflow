@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -596,10 +597,16 @@ Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
   if (shape_string.empty()) {
     return errors::InvalidArgument("Specificed shape is empty.");
   }
+  std::vector<string> dims_as_str = str_util::Split(shape_string, ",");
   std::vector<int64> dims;
-  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
-    return errors::InvalidArgument("Could parse as shape: '", shape_string,
-                                   "'");
+  for (const string& dim : dims_as_str) {
+    int64 tmp;
+    if (strings::safe_strto64(dim, &tmp)) {
+      dims.push_back(tmp);
+    } else {
+      return errors::InvalidArgument("Could parse as shape: '", shape_string,
+                                     "'");
+    }
   }
   *result = TensorShape(dims);
   return Status::OK();

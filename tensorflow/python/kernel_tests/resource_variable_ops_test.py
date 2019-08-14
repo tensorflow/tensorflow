@@ -118,6 +118,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertAllEqual(variable.numpy(), 1.0)
       self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
 
+  def testInitializeVariableUsingInitializedValue(self):
+    var1 = resource_variable_ops.ResourceVariable(1.0, name="var1")
+    var2 = resource_variable_ops.ResourceVariable(var1.initialized_value(),
+                                                  name="var2")
+    self.assertAllEqual(var2.initialized_value(), 1.0)
+
   def testEagerBool(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")

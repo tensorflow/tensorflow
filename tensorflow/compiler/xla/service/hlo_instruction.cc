@@ -2588,6 +2588,9 @@ bool HloInstruction::IsFusible() const {
   switch (opcode_) {
     case HloOpcode::kDomain:
     case HloOpcode::kParameter:
+    case HloOpcode::kWhile:
+    case HloOpcode::kConditional:
+    case HloOpcode::kCall:
       return false;
     // Side effecting instrutions cannot be fused.
     default:

@@ -56,9 +56,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class ProfilingListener : public BenchmarkListener {
  public:
   explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter),
-        profiler_(max_num_entries),
-        has_profiles_(false) {
+      : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
   }
@@ -73,7 +71,6 @@ class ProfilingListener : public BenchmarkListener {
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
   profiling::ProfileSummarizer summarizer_;
-  bool has_profiles_;
 };
 
 // Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
@@ -92,7 +89,7 @@ void ProfilingListener::OnSingleRunStart(RunType run_type) {
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (has_profiles_) {
+  if (summarizer_.HasProfiles()) {
     TFLITE_LOG(INFO) << summarizer_.GetOutputString();
   }
 }
@@ -100,7 +97,6 @@ void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  has_profiles_ = !profile_events.empty();
   summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
@@ -151,6 +147,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
 bool PopulateInputLayerInfo(
     const string& names_string, const string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
+  info->clear();
   std::vector<std::string> names = Split(names_string, ',');
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
@@ -326,6 +323,12 @@ void BenchmarkTfLiteModel::PrepareInputData() {
       FillRandomValue<float>(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
+    } else if (t->type == kTfLiteInt64) {
+      t_data.bytes = sizeof(int64_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int64_t>(t_data.data.i64, num_elements, []() {
+        return static_cast<int64_t>(rand()) % 100;
+      });
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
       // for speech models. Generalize if necessary.
@@ -371,9 +374,15 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     if (t->type == kTfLiteFloat32) {
       std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
                   inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt64) {
+      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
+                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt32) {
       std::memcpy(interpreter_->typed_tensor<int32_t>(i),
                   inputs_data_[j].data.i32, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt64) {
+      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
+                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt16) {
       std::memcpy(interpreter_->typed_tensor<int16_t>(i),
                   inputs_data_[j].data.i16, inputs_data_[j].bytes);

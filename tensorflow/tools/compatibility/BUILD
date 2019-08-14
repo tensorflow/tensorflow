@@ -153,6 +153,7 @@ py_test(
     srcs = ["tf_upgrade_v2_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["v1only"],
     deps = [
         ":tf_upgrade_v2_lib",
         "//tensorflow:tensorflow_py",
@@ -225,7 +226,8 @@ genrule(
     cmd = ("$(location :tf_upgrade_v2)" +
            " --infile $(location testdata/test_file_v1_12.py)" +
            " --outfile $(location test_file_v2_0.py)" +
-           " --reportfile $(location report_v2.txt)"),
+           " --reportfile $(location report_v2.txt) && " +
+           "sed -i'.original' 's/_TEST_VERSION = 1/_TEST_VERSION = 2/g' $(location test_file_v2_0.py)"),
     tools = [":tf_upgrade_v2"],
 )
 
@@ -235,6 +237,7 @@ py_test(
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["v1only"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -31,24 +30,6 @@ namespace tensorflow {
 namespace str_util {
 
 string CEscape(StringPiece src) { return absl::CEscape(src); }
-
-namespace {  // Private helpers for CUnescape().
-
-template <typename T>
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::function<bool(StringPiece, T*)> converter,
-                         std::vector<T>* result) {
-  result->clear();
-  std::vector<string> num_strings = Split(text, delim);
-  for (const auto& s : num_strings) {
-    T num;
-    if (!converter(s, &num)) return false;
-    result->push_back(num);
-  }
-  return true;
-}
-
-}  // namespace
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   return absl::CUnescape(source, dest, error);
@@ -216,26 +197,6 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
     *val = StringPiece();
     return false;
   }
-}
-
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int32>* result) {
-  return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
-}
-
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int64>* result) {
-  return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
-}
-
-bool SplitAndParseAsFloats(StringPiece text, char delim,
-                           std::vector<float>* result) {
-  return SplitAndParseAsInts<float>(
-      text, delim,
-      [](StringPiece str, float* value) {
-        return strings::safe_strtof(str, value);
-      },
-      result);
 }
 
 size_t Strnlen(const char* str, const size_t string_max_len) {

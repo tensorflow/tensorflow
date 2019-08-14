@@ -65,10 +65,7 @@ def _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes):
   ancillary_layers = [
       layer for layer in ancillary_layers if not isinstance(layer, AddMetric)
   ] + metric_layers
-  nodes = set(
-      nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
-  relevant_nodes = list(nodes.intersection(new_nodes))
-  model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+  model._insert_layers(ancillary_layers, relevant_nodes=list(new_nodes))
 
 
 def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):
@@ -174,11 +171,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     # Create placeholders to build the model on top of.
     input_tensors = []
     for layer in model._input_layers:
-      input_tensor = Input(
-          batch_shape=layer._batch_input_shape,
-          dtype=layer.dtype,
-          sparse=layer.sparse,
-          name=layer.name)
+      input_tensor = Input(**layer.get_config())
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
       newly_created_input_layer = input_tensor._keras_history.layer

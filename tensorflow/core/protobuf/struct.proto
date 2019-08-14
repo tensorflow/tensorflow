@@ -125,4 +125,10 @@ message TypeSpecProto {
 
   // The value returned by TypeSpec._serialize().
   StructuredValue type_state = 2;
+
+  // This is currently redundant with the type_spec_class enum, and is only
+  // used for error reporting.  In particular, if you use an older binary to
+  // load a newer model, and the model uses a TypeSpecClass that the older
+  // binary doesn't support, then this lets us display a useful error message.
+  string type_spec_class_name = 3;
 }

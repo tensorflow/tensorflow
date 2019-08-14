@@ -81,7 +81,9 @@ struct CollImplDetails {
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>
-      dependencies;  // collective instances on which this node depends
+      dependencies;           // collective instances on which this node depends
+  string communication_hint;  // user-supplied hint for implementation choice,
+                              // e.g. ring or nccl
 };
 
 // Data common to all members of a collective instance.
@@ -259,6 +261,9 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;

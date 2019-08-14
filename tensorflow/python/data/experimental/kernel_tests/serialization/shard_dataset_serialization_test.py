@@ -31,10 +31,9 @@ class ShardDatasetSerializationTest(
   def _build_dataset(self, num_elements, num_shards, index):
     return dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
 
-  @parameterized.parameters((10, 5, 2, 3), (10, 10, 0, 9), (100, 2, 0, 1))
-  def testCore(self, elems, num_shards, index1, index2):
-    self.run_core_tests(lambda: self._build_dataset(elems, num_shards, index1),
-                        lambda: self._build_dataset(elems, num_shards, index2),
+  @parameterized.parameters((10, 5, 2), (10, 10, 0), (100, 2, 0))
+  def testCore(self, elems, num_shards, index):
+    self.run_core_tests(lambda: self._build_dataset(elems, num_shards, index),
                         elems // num_shards)
 
 

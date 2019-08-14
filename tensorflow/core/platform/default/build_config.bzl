@@ -4,7 +4,7 @@ load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
@@ -471,12 +471,12 @@ def tf_proto_library(
 # must be compiled in the 'default' platform, this is a list of all headers
 # mentioned in the platform/* files.
 def tf_platform_hdrs(files):
-    return native.glob(["platform/*/" + f for f in files])
+    return native.glob(["*/" + f for f in files])
 
 def tf_platform_srcs(files):
-    base_set = ["platform/default/" + f for f in files]
-    windows_set = base_set + ["platform/windows/" + f for f in files]
-    posix_set = base_set + ["platform/posix/" + f for f in files]
+    base_set = ["default/" + f for f in files]
+    windows_set = base_set + ["windows/" + f for f in files]
+    posix_set = base_set + ["posix/" + f for f in files]
 
     # Handle cases where we must also bring the posix file in. Usually, the list
     # of files to build on windows builds is just all the stuff in the
@@ -485,7 +485,7 @@ def tf_platform_srcs(files):
     # file instead of making a copy in 'windows'.
     for f in files:
         if f == "error.cc":
-            windows_set.append("platform/posix/" + f)
+            windows_set.append("posix/" + f)
 
     return select({
         "//tensorflow:windows": native.glob(windows_set),
@@ -494,29 +494,29 @@ def tf_platform_srcs(files):
 
 def tf_additional_lib_hdrs(exclude = []):
     windows_hdrs = native.glob([
-        "platform/default/*.h",
-        "platform/windows/*.h",
-        "platform/posix/error.h",
+        "default/*.h",
+        "windows/*.h",
+        "posix/error.h",
     ], exclude = exclude)
     return select({
         "//tensorflow:windows": windows_hdrs,
         "//conditions:default": native.glob([
-            "platform/default/*.h",
-            "platform/posix/*.h",
+            "default/*.h",
+            "posix/*.h",
         ], exclude = exclude),
     })
 
 def tf_additional_lib_srcs(exclude = []):
     windows_srcs = native.glob([
-        "platform/default/*.cc",
-        "platform/windows/*.cc",
-        "platform/posix/error.cc",
+        "default/*.cc",
+        "windows/*.cc",
+        "posix/error.cc",
     ], exclude = exclude)
     return select({
         "//tensorflow:windows": windows_srcs,
         "//conditions:default": native.glob([
-            "platform/default/*.cc",
-            "platform/posix/*.cc",
+            "default/*.cc",
+            "posix/*.cc",
         ], exclude = exclude),
     })
 
@@ -525,28 +525,23 @@ def tf_additional_monitoring_hdrs():
 
 def tf_additional_monitoring_srcs():
     return [
-        "platform/default/monitoring.cc",
+        "default/monitoring.cc",
     ]
 
 def tf_additional_minimal_lib_srcs():
     return [
-        "platform/default/integral_types.h",
-        "platform/default/mutex.h",
-        "platform/default/mutex_data.h",
+        "default/integral_types.h",
+        "default/mutex.h",
+        "default/mutex_data.h",
     ]
 
 def tf_additional_proto_hdrs():
     return [
-        "platform/default/integral_types.h",
-        "platform/default/logging.h",
+        "default/integral_types.h",
+        "default/logging.h",
     ] + if_windows([
-        "platform/windows/integral_types.h",
+        "windows/integral_types.h",
     ])
-
-def tf_additional_proto_srcs():
-    return [
-        "platform/protobuf.cc",
-    ]
 
 def tf_additional_human_readable_json_deps():
     return []
@@ -596,7 +591,7 @@ def tf_additional_cupti_wrapper_deps():
     ]
 
 def tf_additional_device_tracer_srcs():
-    return ["platform/default/device_tracer.cc"]
+    return ["default/device_tracer.cc"]
 
 def tf_additional_device_tracer_cuda_deps():
     return []
@@ -627,20 +622,26 @@ def tf_additional_libdevice_deps():
     return ["@local_config_cuda//cuda:cuda_headers"]
 
 def tf_additional_libdevice_srcs():
-    return ["platform/default/cuda_libdevice_path.cc"]
+    return ["default/cuda_libdevice_path.cc"]
+
+def tf_additional_rocdl_deps():
+    return ["@local_config_rocm//rocm:rocm_headers"]
+
+def tf_additional_rocdl_srcs():
+    return ["default/rocm_rocdl_path.cc"]
 
 def tf_additional_test_deps():
     return []
 
 def tf_additional_test_srcs():
     return [
-        "platform/default/test_benchmark.cc",
+        "default/test_benchmark.cc",
     ] + select({
         "//tensorflow:windows": [
-            "platform/windows/test.cc",
+            "windows/test.cc",
         ],
         "//conditions:default": [
-            "platform/posix/test.cc",
+            "posix/test.cc",
         ],
     })
 
@@ -814,5 +815,24 @@ def tf_additional_numa_copts():
         "//conditions:default": [
             "-Ithird_party/hwloc/hwloc-master/include",
             "-DTENSORFLOW_USE_NUMA",
+        ],
+    })
+
+def tf_additional_rpc_deps():
+    return []
+
+def tf_logging_absl_deps():
+    return [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+    ]
+
+def tf_env_time_srcs():
+    return select({
+        "//tensorflow:windows": [
+            "windows/env_time.cc",
+        ],
+        "//conditions:default": [
+            "posix/env_time.cc",
         ],
     })

@@ -204,6 +204,15 @@ class CapturedFunction {
                      std::unique_ptr<InstantiatedCapturedFunction>*
                          instantiated_captured_function);
 
+  // Determines whether the captured function is stateful.
+  //
+  // TODO(jsimsa): Remove this method once all users of `CapturedFunction`
+  // migrate to `CheckExternalState`.
+  bool IsStateful() const;
+
+  // Determines whether the captured function is stateful.
+  Status CheckExternalState() const;
+
   // Returns the additional captured inputs that will be passed to the function.
   const std::vector<Tensor>& captured_inputs() const {
     return captured_inputs_;

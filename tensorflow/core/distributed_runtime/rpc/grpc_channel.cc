@@ -86,6 +86,10 @@ Status ValidateHostPortPair(const string& host_port) {
       LOG(ERROR) << "Invalid compression algorithm: "
                  << rpc_options->compression_algorithm();
     }
+    if (rpc_options->disable_session_connection_sharing()) {
+      VLOG(5) << "Disabling TCP connection sharing";
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
+    }
   }
   return args;
 }

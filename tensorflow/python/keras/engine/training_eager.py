@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
@@ -59,6 +57,14 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   # Invoke all(weighted and unweighted) metrics.
   metric_results = []
   if targets:
+    # Insert None values corresponding to the targets that need to be skipped
+    # on the model.
+    if len(model._targets) != len(targets):
+      new_targets = [
+          None if t is None else targets.pop(0) for t in model._targets
+      ]
+      targets = new_targets
+
     metric_results = model._handle_metrics(
         outputs,
         targets=targets,
@@ -120,6 +126,16 @@ def _model_loss(model,
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
+
+  if targets:
+    targets = training_utils.cast_if_floating_dtype_and_mismatch(targets, outs)
+  # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
+  if sample_weights:
+    sample_weights = [
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
+        if val is not None else None for val in sample_weights
+    ]
+
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
 
@@ -280,16 +296,7 @@ def train_on_batch(model,
   Returns:
       total loss and the loss associated with each output.
   """
-  if isinstance(inputs, collections.Sequence):
-    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
-    if targets:
-      targets = training_utils.cast_if_floating_dtype(targets)
-  if sample_weights:
-    sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
-        if val is not None else None for val in sample_weights
-    ]
-
+  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
   outs, total_loss, output_losses, masks = (
       _process_single_batch(
           model,
@@ -326,15 +333,8 @@ def test_on_batch(model,
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if isinstance(inputs, collections.Sequence):
-    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
-    if targets:
-      targets = training_utils.cast_if_floating_dtype(targets)
-  if sample_weights:
-    sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
-        if val is not None else None for val in sample_weights
-    ]
+  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+
   with backend.eager_learning_phase_scope(0):
     outs, total_loss, output_losses, masks = (
         _model_loss(

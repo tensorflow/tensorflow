@@ -128,8 +128,10 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_params",
         ":benchmark_utils",
         ":logging",
+        "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],

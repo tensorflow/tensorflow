@@ -1,0 +1,8 @@
+op {
+  name: "StackClose"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+}

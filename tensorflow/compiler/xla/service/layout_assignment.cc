@@ -619,8 +619,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
         ComputationLayout& branch_computation_layout =
             FindOrDie(computation_layouts_, instruction->branch_computation(k));
-        if (branch_computation_layout.result_layout() !=
-            best_branch_computation_layout.result_layout()) {
+        if (!branch_computation_layout.result_layout().MatchesLayoutInShape(
+                best_branch_computation_layout.result_layout().shape(),
+                /*minor_to_major_only=*/true)) {
           computation_layouts_.erase(instruction->branch_computation(k));
           InsertOrDie(&conditional_mismatch_,
                       instruction->branch_computation(k),
@@ -715,8 +716,10 @@ Status CheckConditionalLayout(
     absl::Span<const ComputationLayout> branch_computation_layouts) {
   for (int j = 0; j < instruction->branch_count(); ++j) {
     const HloInstruction* branch_operand = instruction->operand(j + 1);
-    TF_RET_CHECK(branch_computation_layouts[0].result_layout() ==
-                 branch_computation_layouts[j].result_layout());
+    TF_RET_CHECK(
+        branch_computation_layouts[0].result_layout().MatchesLayoutInShape(
+            branch_computation_layouts[j].result_layout().shape(),
+            /*minor_to_major_only=*/true));
     TF_RET_CHECK(
         branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
             instruction->shape(), /*minor_to_major_only=*/true));

@@ -32,6 +32,7 @@ limitations under the License.
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
+#undef CopyFile
 #endif
 
 namespace tensorflow {

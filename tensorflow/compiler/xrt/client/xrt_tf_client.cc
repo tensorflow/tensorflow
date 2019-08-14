@@ -440,6 +440,7 @@ XrtTensorHandle& XrtTensorHandle::operator=(XrtTensorHandle&& other) {
 void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_op_id(tensor_id_.first);
   proto->set_output_num(tensor_id_.second);
+  proto->set_device(context_->devices_.at(device_id_).name());
 }
 
 AttrValue MakeAttrValue(std::string s) {

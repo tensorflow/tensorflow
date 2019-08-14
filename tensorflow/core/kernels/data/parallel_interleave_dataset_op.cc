@@ -153,6 +153,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -562,7 +567,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                       int64 num_results, std::function<void()> done)
         LOCKS_EXCLUDED(*mu_) {
       RecordStart(ctx.get());
-      auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       bool end_of_input = false;
       for (int64 i = 0; i < num_results; ++i) {
         auto result = std::make_shared<Result>();
@@ -590,6 +594,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       done();
       cond_var_->notify_all();
+      RecordStop(ctx.get());
     }
 
     // Manages futures cycle elements, creating new iterators as needed and

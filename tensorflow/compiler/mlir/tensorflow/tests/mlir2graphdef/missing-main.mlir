@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[1]} -eq 0
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
 
 // CHECK: Graph export failed: Failed precondition: entry function `main` must be present
 

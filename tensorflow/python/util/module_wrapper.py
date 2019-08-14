@@ -39,9 +39,10 @@ def get_rename_v2(name):
 
 
 def _call_location():
-  # We want to get stack frame 2 frames up from current frame,
-  # i.e. above _getattr__ and _call_location calls.
-  stack = tf_stack.extract_stack_file_and_line(max_length=3)
+  # We want to get stack frame 3 frames up from current frame,
+  # i.e. above __getattr__, _tfmw_add_deprecation_warning,
+  # and _call_location calls.
+  stack = tf_stack.extract_stack_file_and_line(max_length=4)
   if not stack:  # should never happen as we're in a function
     return 'UNKNOWN'
   frame = stack[0]

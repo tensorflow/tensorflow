@@ -939,8 +939,6 @@ class LinearOperator(module.Module):
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
-    logging.warn("Using (possibly slow) default implementation of to_dense."
-                 "  Converts by self.matmul(identity).")
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:
