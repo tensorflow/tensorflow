@@ -26,6 +26,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -332,16 +333,28 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+  Stream& ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<tensorflow::bfloat16>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<tensorflow::bfloat16>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<tensorflow::bfloat16>* output,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
+
+  Stream& ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -470,17 +483,29 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenConvolveBackwardDataWithAlgorithm(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
+  Stream& ThenConvolveBackwardDataWithAlgorithm(
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<tensorflow::bfloat16>& filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<tensorflow::bfloat16> backward_output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
+      DeviceMemory<tensorflow::bfloat16>* backward_input_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
+
+  Stream& ThenConvolveBackwardDataWithAlgorithm(
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<Eigen::half> *backward_input_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& input_descriptor,
+      DeviceMemory<Eigen::half>* backward_input_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -506,17 +531,29 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
-  Stream &ThenConvolveBackwardFilterWithAlgorithm(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::BatchDescriptor &output_descriptor,
+  Stream& ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<tensorflow::bfloat16>& input_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<tensorflow::bfloat16> backward_output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemory<tensorflow::bfloat16>* backward_filter_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
+
+  Stream& ThenConvolveBackwardFilterWithAlgorithm(
+      const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half> backward_output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemory<Eigen::half>* backward_filter_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result);
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
                                    const DeviceMemory<double> &input_data,

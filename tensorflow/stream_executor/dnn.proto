@@ -10,6 +10,7 @@ enum DataType {
   kHalf = 2;
   kInt8 = 3;
   kInt32 = 4;
+  kBFloat16 = 5;
 }
 
 // Describes how a convolution input or output layer's data is formatted.
