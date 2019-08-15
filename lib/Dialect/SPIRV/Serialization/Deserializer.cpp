@@ -321,6 +321,15 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
         opBuilder.getIdentifier(attrName),
         opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
+  case spirv::Decoration::BuiltIn:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
+                              opBuilder.getStringAttr(stringifyBuiltIn(
+                                  static_cast<spirv::BuiltIn>(words[2]))));
+    break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
   }

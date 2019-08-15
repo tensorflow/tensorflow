@@ -349,6 +349,17 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
       break;
     }
     return emitError(loc, "expected integer attribute for ") << attrName;
+  case spirv::Decoration::BuiltIn:
+    if (auto strAttr = attr.second.dyn_cast<StringAttr>()) {
+      auto enumVal = spirv::symbolizeBuiltIn(strAttr.getValue());
+      if (enumVal) {
+        args.push_back(static_cast<uint32_t>(enumVal.getValue()));
+        break;
+      }
+      return emitError(loc, "invalid ")
+             << attrName << " attribute " << strAttr.getValue();
+    }
+    return emitError(loc, "expected string attribute for ") << attrName;
   default:
     return emitError(loc, "unhandled decoration ") << decorationName;
   }

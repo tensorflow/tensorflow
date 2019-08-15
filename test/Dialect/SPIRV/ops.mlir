@@ -985,6 +985,14 @@ func @variable_init_bind() -> () {
   return
 }
 
+func @variable_builtin() -> () {
+  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
+  %1 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
+  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
+  %2 = spv.Variable {built_in = "GlobalInvocationID"} : !spv.ptr<vector<3xi32>, Input>
+  return
+}
+
 // -----
 
 func @expect_ptr_result_type(%arg0: f32) -> () {
