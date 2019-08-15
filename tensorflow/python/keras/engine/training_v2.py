@@ -49,7 +49,8 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
-    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter
+    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter,
+    data_adapter.CompositeTensorDataAdapter
 ]
 
 
@@ -208,6 +209,7 @@ class Loop(training_utils.TrainingLoop):
           x,
           y,
           batch_size=batch_size,
+          epochs=epochs,
           sample_weights=sample_weight,
           class_weights=class_weight,
           validation_split=validation_split,
@@ -254,11 +256,8 @@ class Loop(training_utils.TrainingLoop):
           model, ModeKeys.TRAIN)
 
       training_data_iter = None
-      # Only recreate iterator when the data has a fixed length, which will be
-      # fully consumed every epoch, or has a unknown length (dataset, generator)
-      # and will be fully consumed (steps_per_epoch is None)
-      recreate_training_iterator = (training_data_adapter.get_size() is not None
-                                    or steps_per_epoch is None)
+      recreate_training_iterator = (
+          training_data_adapter.should_recreate_iterator(steps_per_epoch))
 
       if do_validation:
         if not validation_steps:
@@ -493,12 +492,21 @@ def _get_distribution_strategy(model):
   return strategy
 
 
-def _process_training_inputs(model, x, y, batch_size=None,
-                             sample_weights=None, class_weights=None,
-                             steps_per_epoch=None, validation_split=0.,
-                             validation_data=None, validation_steps=None,
-                             shuffle=True, distribution_strategy=None,
-                             max_queue_size=10, workers=1,
+def _process_training_inputs(model,
+                             x,
+                             y,
+                             batch_size=None,
+                             epochs=1,
+                             sample_weights=None,
+                             class_weights=None,
+                             steps_per_epoch=None,
+                             validation_split=0.,
+                             validation_data=None,
+                             validation_steps=None,
+                             shuffle=True,
+                             distribution_strategy=None,
+                             max_queue_size=10,
+                             workers=1,
                              use_multiprocessing=False):
   """Process the data input for fit() with respect to validation_split."""
   if validation_split and 0. < validation_split < 1. and validation_data:
@@ -529,22 +537,33 @@ def _process_training_inputs(model, x, y, batch_size=None,
      val_x, val_y,
      val_sample_weights) = training_utils.split_training_and_validation_data(
          x, y, sample_weights, validation_split)
-    train_adapter = adapter_cls(x, y, batch_size=batch_size,
-                                sample_weights=sample_weights, shuffle=shuffle,
-                                distribution_strategy=distribution_strategy)
+    train_adapter = adapter_cls(
+        x,
+        y,
+        batch_size=batch_size,
+        epochs=epochs,
+        sample_weights=sample_weights,
+        shuffle=shuffle,
+        distribution_strategy=distribution_strategy)
     val_adapter = adapter_cls(val_x, val_y,
                               sample_weights=val_sample_weights,
                               batch_size=batch_size,
                               distribution_strategy=distribution_strategy)
   else:
-    train_adapter = _process_inputs(model, x, y, sample_weights=sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    shuffle=shuffle, steps=steps_per_epoch,
-                                    distribution_strategy=distribution_strategy,
-                                    max_queue_size=max_queue_size,
-                                    workers=workers,
-                                    use_multiprocessing=use_multiprocessing)
+    train_adapter = _process_inputs(
+        model,
+        x,
+        y,
+        sample_weights=sample_weights,
+        batch_size=batch_size,
+        epochs=epochs,
+        class_weights=class_weights,
+        shuffle=shuffle,
+        steps=steps_per_epoch,
+        distribution_strategy=distribution_strategy,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
     val_adapter = None
     if validation_data:
       (val_x, val_y,
@@ -567,9 +586,18 @@ def _process_training_inputs(model, x, y, batch_size=None,
   return train_adapter, val_adapter
 
 
-def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
-                    class_weights=None, shuffle=False, steps=None,
-                    distribution_strategy=None, max_queue_size=10, workers=1,
+def _process_inputs(model,
+                    x,
+                    y,
+                    batch_size=None,
+                    epochs=1,
+                    sample_weights=None,
+                    class_weights=None,
+                    shuffle=False,
+                    steps=None,
+                    distribution_strategy=None,
+                    max_queue_size=10,
+                    workers=1,
                     use_multiprocessing=False):
   """Process the inputs for fit/eval/predict()."""
   adapter_cls = data_adapter.select_data_adapter(x, y)
@@ -582,11 +610,18 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
         batch_size=batch_size,
         check_steps=False,
         steps=steps)
-  adapter = adapter_cls(x, y, batch_size=batch_size, steps=steps,
-                        sample_weights=sample_weights, shuffle=shuffle,
-                        distribution_strategy=distribution_strategy,
-                        max_queue_size=max_queue_size, workers=workers,
-                        use_multiprocessing=use_multiprocessing)
+  adapter = adapter_cls(
+      x,
+      y,
+      batch_size=batch_size,
+      epochs=epochs,
+      steps=steps,
+      sample_weights=sample_weights,
+      shuffle=shuffle,
+      distribution_strategy=distribution_strategy,
+      max_queue_size=max_queue_size,
+      workers=workers,
+      use_multiprocessing=use_multiprocessing)
   # As a fallback for the data type that does not work with
   # _standardize_user_data, use the _prepare_model_with_inputs.
   if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
