@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,6 +81,7 @@ bool ConvolutionVisitor::Run(
   return visitor.changed_;
 }
 
+namespace {
 Shape SwapInputOutputFeatureDims(const Shape& shape, int64 input_feature_dim,
                            int64 output_feature_dim) {
   int64 num_dims = shape.dimensions_size();
@@ -92,6 +93,7 @@ Shape SwapInputOutputFeatureDims(const Shape& shape, int64 input_feature_dim,
                                    shape.dimensions(input_feature_dim));
   return transformed_shape;
 }
+}  // namespace
 
 // This function handles batch_group_counts which are relevant only for
 // depthwise backprop filter convolutions. 
@@ -107,10 +109,6 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
 
   VLOG(2) << "Dealing with batch_group_count " << batch_group_count
           << " for convolution " << convolution->ToString() << "\n";
-
-  auto add = [&](std::unique_ptr<HloInstruction> inst) {
-    return computation_->AddInstruction(std::move(inst));
-  };
 
   int64 output_batch_dimension = dim_numbers.output_batch_dimension();
   int64 output_feature_dimension = dim_numbers.output_feature_dimension();
@@ -136,6 +134,9 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
         << "Feature group count should be equal to number of input features "
            "for depthwise convolution";
 
+    auto add = [&](std::unique_ptr<HloInstruction> inst) {
+      return computation_->AddInstruction(std::move(inst));
+    };
     // Reshape batch_dim C -> [G, C/G] - Batch and feature dims have been
     // swapped in tf2xla bridge
     std::vector<int64> reshape_dims = lhs->shape().dimensions();
