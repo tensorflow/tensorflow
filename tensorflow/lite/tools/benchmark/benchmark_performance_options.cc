@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 #endif
@@ -271,7 +272,7 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // We first parse flags for single-option runs to get information like
   // parameters of the input model etc.
-  if (!single_option_run_->ParseFlags(&argc, argv)) return;
+  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
 
   // Now, we parse flags that are specified for this particular binary.
   if (!ParseFlags(&argc, argv)) return;

@@ -132,6 +132,7 @@ cc_library(
         ":benchmark_utils",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({
