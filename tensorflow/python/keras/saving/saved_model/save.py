@@ -86,7 +86,10 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None):
     orig_optimizer = model.optimizer
     model.optimizer = None
 
-  save_lib.save(model, filepath, signatures)
+  # Trace all functions and signatures with `training=0` instead of using the
+  # default learning phase placeholder.
+  with K.learning_phase_scope(0):
+    save_lib.save(model, filepath, signatures)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer
@@ -418,6 +421,14 @@ class LayerCallCollection(object):
     self._expects_training_arg = layer_uses_training_bool(layer)
     self._training_arg_index = utils.get_training_arg_index(layer.call)
 
+    # If the layer call function has kwargs, then the traced function cannot
+    # have an input signature.
+    arg_spec = tf_inspect.getfullargspec(layer.call)
+    self._has_kwargs = bool(self._expects_training_arg or
+                            arg_spec.defaults or
+                            arg_spec.kwonlyargs or
+                            arg_spec.varkw)
+
     self._input_signature = self._generate_input_signature(layer)
     self._functions = weakref.WeakValueDictionary()
     # Bool indicating whether this object is currently tracing the layer call
@@ -486,10 +497,9 @@ class LayerCallCollection(object):
   @property
   def fn_input_signature(self):
     """Returns input signature for the wrapped layer call function."""
-    if self._expects_training_arg:
-      # The training arg is left as a python boolean, so the call functions
-      # will not have an input signature (input signatures may only describe
-      # tensor arguments).
+    if self._has_kwargs:
+      # Input signatures may only describe tensor arguments and kwargs are not
+      # supported.
       return None
     if None in nest.flatten(self._input_signature):
       # TODO(b/134962016): If input signature cannot be partially defined.
@@ -556,8 +566,8 @@ class LayerCallCollection(object):
         input_signature=self.fn_input_signature)
 
     if (None not in nest.flatten(self._input_signature) and
-        self._expects_training_arg):
-      # Manually add traces for layers that expect a training argument and have
+        self._has_kwargs):
+      # Manually add traces for layers that have keyword arguments and have
       # a fully defined input signature.
       self.add_trace(*self._input_signature)
     return fn

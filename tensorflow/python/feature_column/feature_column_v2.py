@@ -273,6 +273,8 @@ class _StateManagerImpl(StateManager):
     """
     self._trainable = trainable
     self._layer = layer
+    if self._layer is not None:
+      self._layer._maybe_create_attribute('_resources', [])  # pylint: disable=protected-access
     self._cols_to_vars_map = collections.defaultdict(lambda: {})
     # TODO(vbardiovsky): Make sure the resources are tracked by moving them to
     # the layer (inheriting from AutoTrackable), e.g.:
@@ -311,6 +313,8 @@ class _StateManagerImpl(StateManager):
 
   def add_resource(self, feature_column, name, resource):
     self._cols_to_resources_map[feature_column][name] = resource
+    if self._layer is not None:
+      self._layer._resources.append(resource)  # pylint: disable=protected-access
 
   def get_resource(self, feature_column, name):
     if name in self._cols_to_resources_map[feature_column]:
@@ -3584,7 +3588,7 @@ class VocabularyFileCategoricalColumn(
   def _parse_example_spec(self):
     return self.parse_example_spec
 
-  def _transform_input_tensor(self, input_tensor):
+  def _transform_input_tensor(self, input_tensor, state_manager=None):
     """Creates a lookup table for the vocabulary."""
     if self.dtype.is_integer != input_tensor.dtype.is_integer:
       raise ValueError(
@@ -3602,20 +3606,23 @@ class VocabularyFileCategoricalColumn(
       key_dtype = dtypes.int64
       input_tensor = math_ops.cast(input_tensor, dtypes.int64)
 
-    # TODO(rohanj): Use state manager to manage the index table creation.
-    return lookup_ops.index_table_from_file(
+    name = '{}_lookup'.format(self.key)
+    table = lookup_ops.index_table_from_file(
         vocabulary_file=self.vocabulary_file,
         num_oov_buckets=self.num_oov_buckets,
         vocab_size=self.vocabulary_size,
         default_value=self.default_value,
         key_dtype=key_dtype,
-        name='{}_lookup'.format(self.key)).lookup(input_tensor)
+        name=name)
+    if state_manager is not None:
+      state_manager.add_resource(self, name, table)
+    return table.lookup(input_tensor)
 
   def transform_feature(self, transformation_cache, state_manager):
     """Creates a lookup table for the vocabulary."""
     input_tensor = _to_sparse_input_and_drop_ignore_values(
         transformation_cache.get(self.key, state_manager))
-    return self._transform_input_tensor(input_tensor)
+    return self._transform_input_tensor(input_tensor, state_manager)
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
@@ -3696,7 +3703,7 @@ class VocabularyListCategoricalColumn(
   def _parse_example_spec(self):
     return self.parse_example_spec
 
-  def _transform_input_tensor(self, input_tensor):
+  def _transform_input_tensor(self, input_tensor, state_manager=None):
     """Creates a lookup table for the vocabulary list."""
     if self.dtype.is_integer != input_tensor.dtype.is_integer:
       raise ValueError(
@@ -3714,19 +3721,22 @@ class VocabularyListCategoricalColumn(
       key_dtype = dtypes.int64
       input_tensor = math_ops.cast(input_tensor, dtypes.int64)
 
-    # TODO(rohanj): Use state manager to manage the index table creation.
-    return lookup_ops.index_table_from_tensor(
+    name = '{}_lookup'.format(self.key)
+    table = lookup_ops.index_table_from_tensor(
         vocabulary_list=tuple(self.vocabulary_list),
         default_value=self.default_value,
         num_oov_buckets=self.num_oov_buckets,
         dtype=key_dtype,
-        name='{}_lookup'.format(self.key)).lookup(input_tensor)
+        name=name)
+    if state_manager is not None:
+      state_manager.add_resource(self, name, table)
+    return table.lookup(input_tensor)
 
   def transform_feature(self, transformation_cache, state_manager):
     """Creates a lookup table for the vocabulary list."""
     input_tensor = _to_sparse_input_and_drop_ignore_values(
         transformation_cache.get(self.key, state_manager))
-    return self._transform_input_tensor(input_tensor)
+    return self._transform_input_tensor(input_tensor, state_manager)
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
