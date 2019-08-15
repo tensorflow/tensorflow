@@ -813,7 +813,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
-      if tensor not in self.external_captures:
+      if all(tensor is not capture for capture in self.external_captures):
         self.xla_intermediates.append(tensor)
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
@@ -846,7 +846,8 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         # already be wrapped.
         for consumer in tensor.consumers():
           if (consumer.type == "OptionalFromValue" and
-              consumer.outputs[0] in self._forward_graph.outputs):
+              any(consumer.outputs[0] is output
+                  for output in self._forward_graph.outputs)):
             optional = consumer.outputs[0]
             break
         else:

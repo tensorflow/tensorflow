@@ -980,7 +980,7 @@ class PForConfig(object):
     # Map from output placeholder to the unvectorized tensor.
     self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
     # Reverse map of `self._reduce_concat_map`.
-    self._reverse_reduce_concat_map = {}
+    self._reverse_reduce_concat_map = object_identity.ObjectIdentityDictionary()
 
   def _has_reductions(self):
     """True if some reductions where performed by loop body."""
@@ -1381,7 +1381,7 @@ class PFor(object):
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
-          if y == y_op:
+          if y is y_op:
             new_outputs = new_op
           else:
             new_outputs = [wrap(x, False) for x in new_op.outputs]
