@@ -585,6 +585,76 @@ FunctionDef MakeRangeDataset() {
          {"output_shapes", "$output_shapes"}}}});
 }
 
+FunctionDef MakeBatchDataset() {
+  return FDH::Define(
+      // Name
+      "MakeBatchDataset",
+      // Args
+      {"input_dataset: variant", "batch_size: int64", "drop_remainder: bool"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"parallel_copy: bool = false", "output_types: list(type) >= 1",
+       "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "BatchDatasetV2",
+        {"input_dataset", "batch_size", "drop_remainder"},
+        {{"parallel_copy", "$parallel_copy"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeMapDataset() {
+  return FDH::Define(
+      // Name
+      "MakeMapDataset",
+      // Args
+      {"input_dataset: variant", "other_arguments: Targuments"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"f: func", "Targuments: list(type) >= 0",
+       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
+       "use_inter_op_parallelism: bool = true",
+       "preserve_cardinality: bool = false"},
+      // Nodes
+      {{{"y"},
+        "MapDataset",
+        {"input_dataset", "other_arguments"},
+        {{"f", "$f"},
+         {"Targuments", "$Targuments"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"},
+         {"use_inter_op_parallelism", "$use_inter_op_parallelism"},
+         {"preserve_cardinality", "$preserve_cardinality"}}}});
+}
+
+FunctionDef MakeMapDatasetWithoutOtherArgs() {
+  return FDH::Define(
+      // Name
+      "MakeMapDataset",
+      // Args
+      {"input_dataset: variant"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"f: func", "Targuments: list(type) >= 0",
+       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
+       "use_inter_op_parallelism: bool = true",
+       "preserve_cardinality: bool = false"},
+      // Nodes
+      {{{"y"},
+        "MapDataset",
+        {"input_dataset"},
+        {{"f", "$f"},
+         {"Targuments", "$Targuments"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"},
+         {"use_inter_op_parallelism", "$use_inter_op_parallelism"},
+         {"preserve_cardinality", "$preserve_cardinality"}}}});
+}
+
 FunctionDef MakeTakeDataset() {
   return FDH::Define(
       // Name

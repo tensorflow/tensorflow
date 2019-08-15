@@ -138,6 +138,22 @@ FunctionDef RandomUniformLess();
 // start:int64, stop:int64, step:int64 -> y: RangeDatasetOp::Dataset
 FunctionDef MakeRangeDataset();
 
+// input_dataset: variant, batch_size: int64, drop_remainder: bool
+// -> y: BatchDatasetV2::Dataset
+FunctionDef MakeBatchDataset();
+
+// input_dataset: variant, other_arguments: Targuments, f: func,
+// Targuments: list(type), output_types: list(type), output_shapes: list(shape),
+// use_inter_op_parallelism: bool, preserve_cardinality: bool
+// -> y: MapDatasetOp::Dataset
+FunctionDef MakeMapDataset();
+
+// input_dataset: variant, f: func, Targuments: list(type),
+// output_types: list(type), output_shapes: list(shape),
+// use_inter_op_parallelism: bool, preserve_cardinality: bool
+// -> y: MapDatasetOp::Dataset
+FunctionDef MakeMapDatasetWithoutOtherArgs();
+
 // input_dataset:variant, count:int64 -> y: TakeDataset::Dataset
 FunctionDef MakeTakeDataset();
 
