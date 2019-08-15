@@ -702,6 +702,12 @@ XlaOp XlaBuilder::BroadcastInDim(
     // not necessarily the same as the dimension sizes of the output shape.
     auto output_shape =
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+    if (operand_shape.rank() != broadcast_dimensions.size()) {
+      return InvalidArgument(
+          "Size of broadcast_dimensions has to match operand's rank; operand "
+          "rank: %lld, size of broadcast_dimensions %u.",
+          operand_shape.rank(), broadcast_dimensions.size());
+    }
     for (int i = 0; i < broadcast_dimensions.size(); i++) {
       if (broadcast_dimensions[i] < 0 ||
           broadcast_dimensions[i] > out_dim_size.size()) {
