@@ -45,9 +45,10 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static Status SetupNewOp(EagerOperation* orig_op, const string mkl_op_name,
                            std::unique_ptr<EagerOperation>* new_mkl_op);
 
-  // Creates new MKL op for MatMul
-  static Status CreateMklMatMul(EagerOperation* orig_op,
-                                std::unique_ptr<EagerOperation>* mkl_matmul_op);
+  // Generic rewrite that can be used for any mkl op that doesn't need
+  // special processing.
+  static Status CreateGenericMklOp(EagerOperation* orig_op,
+                                   std::unique_ptr<EagerOperation>* mkl_op);
 
   // Creates new MKL op for Conv2D, Conv2DBackpropInput and
   // Conv2DBackpropFilter.
@@ -75,12 +76,15 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
+  mkl_eager_ops_.push_back({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
+  mkl_eager_ops_.push_back(
+      {"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   mkl_eager_ops_.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
   mkl_eager_ops_.push_back(
       {"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
   mkl_eager_ops_.push_back(
       {"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops_.push_back({"MatMul", AlwaysRewrite, CreateMklMatMul});
+  mkl_eager_ops_.push_back({"MatMul", AlwaysRewrite, CreateGenericMklOp});
 }
 
 Status MklEagerOpRewrite::Run(
@@ -133,10 +137,10 @@ Status MklEagerOpRewrite::SetupNewOp(
   return Status::OK();
 }
 
-Status MklEagerOpRewrite::CreateMklMatMul(
-    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_matmul_op) {
+Status MklEagerOpRewrite::CreateGenericMklOp(
+    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
   const string mkl_op_name = mkl_op_registry::GetMklOpName(orig_op->Name());
-  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_matmul_op));
+  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
   return Status::OK();
 }
 

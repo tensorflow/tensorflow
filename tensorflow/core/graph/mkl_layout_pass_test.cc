@@ -4307,6 +4307,39 @@ TEST_F(MklLayoutPassTest,
             "H->K:7;I->K:8;J->L:1;K->L");
 }
 
+TEST_F(MklLayoutPassTest, MatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'MatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMulV2'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMulV2)|A->C;B->C:1");
+}
+
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
   testing::StopTiming();
   string s;
