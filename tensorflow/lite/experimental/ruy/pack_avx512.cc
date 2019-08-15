@@ -74,7 +74,7 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
   RUY_DCHECK_EQ(Layout::kRows, 4);
   RUY_DCHECK_EQ(kHalfLayoutCols, 8);
 
-  std::int8_t in_data[kHalfLayoutCols][kHalfLayoutCols][Layout::kCols];
+  std::int8_t in_data[kHalfLayoutCols][kHalfLayoutCols][Layout::kRows];
 
   const std::int8_t* src_ptr0 = src_ptr;
   const std::int8_t* src_ptr1 = src_ptr0 + src_stride;
