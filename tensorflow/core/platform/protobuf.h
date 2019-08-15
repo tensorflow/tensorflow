@@ -84,7 +84,7 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
 #ifdef USE_TSTRING
   size_t size = proto.ByteSizeLong();
   output->resize_uninitialized(size);
-  return proto.SerializeToArray(output->data(), size);
+  return proto.SerializeToArray(output->data(), static_cast<int>(size));
 #else   // USE_TSTRING
   return proto.SerializeToString(output);
 #endif  // USE_TSTRING
