@@ -846,6 +846,9 @@ string TRT_TensorOrWeights::DebugString() const {
   return output;
 }
 
+// Perform 5 dimensional reorder of data on CPU
+// This is done once at convert time and does not affect GPU inference perf
+// Example: reorder NDHWC (Tensorflow) -> NCDHW (TensorRT)
 template <typename T>
 void Reorder5(const nvinfer1::Dims& shape, const T* idata,
               const nvinfer1::Dims& istrides, T* odata,
@@ -965,23 +968,18 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   }
 }
 
-nvinfer1::Dims InitDims5(const int a, const int b, const int c, const int d,
-                         const int e) {
-  const int kNUM_DIMS = 5;
+//Initialize a Dims object with arbitrary dimension
+nvinfer1::Dims InitDimsN(std::initializer_list<int> list) {
   nvinfer1::Dims dim;
-  dim.nbDims = kNUM_DIMS;
-  dim.d[0] = a;
-  dim.d[1] = b;
-  dim.d[2] = c;
-  dim.d[3] = d;
-  dim.d[4] = e;
+  dim.nbDims = list.size();
+  std::copy(list.begin(), list.end(), dim.d);
   return dim;
 }
 
 // Reorder 3D convolution weights from TF to TRT
 void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
                          TRT_ShapedWeights* oweights, const int num_groups) {
-  CHECK(iweights.TrtDType() == oweights->TrtDType());
+  DCHECK(iweights.TrtDType() == oweights->TrtDType());
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   // K indexes over output channels, C over input channels, and R, S, D over the
   // height, width, depth
@@ -1003,15 +1001,15 @@ void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
   oweights->shape_.d[4] = s;
 
   nvinfer1::Dims shape =
-      InitDims5(k, c, d, r, s);  // KCDRS shape (same as output)
+      InitDimsN({k, c, d, r, s});  // KCDRS shape (same as output)
 
   nvinfer1::Dims ostrides =
-      InitDims5(c * d * r * s, d * r * s, r * s, s,
-                1);  // Output = KCDRS = k*CDRS + c*DRS + d*RS + r*S + s
+      InitDimsN({c * d * r * s, d * r * s, r * s, s,
+                1});  // Output = KCDRS = k*CDRS + c*DRS + d*RS + r*S + s
 
   nvinfer1::Dims istrides =
-      InitDims5(1, k, r * s * c * k, s * c * k,
-                c * k);  // Input = DRSCK = k*1 + c*K + d*RSCK + r*SCK + s*CK
+      InitDimsN({1, k, r * s * c * k, s * c * k,
+                c * k});  // Input = DRSCK = k*1 + c*K + d*RSCK + r*SCK + s*CK
 
   switch (iweights.TrtDType()) {
     case nvinfer1::DataType::kFLOAT: {
@@ -1025,7 +1023,6 @@ void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
                ostrides);
       break;
     }
-
     default:
       LOG(FATAL) << "Unsupported type, expected fp32 or fp16 but got "
                  << DebugString(iweights.TrtDType());
@@ -2690,7 +2687,7 @@ Status ConvertConv2DBackpropInput(OpConverterParams* params) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertConv3DHelper(OpConverterParams* params, int group,
                            bool is_conv3d_backprop_input = false) {
-  const int kNUM_DIMS = 5;
+  const int kNumDims = 5;
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TRT_TensorOrWeights backprop_output_size;
@@ -2711,19 +2708,19 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const TRT_ShapedWeights weights_drsck = inputs.at(1).weights();
-  if (weights_drsck.shape_.nbDims != kNUM_DIMS) {
-    return errors::InvalidArgument("Conv3D expects kernel of dimension 5, at " +
+  if (weights_drsck.shape_.nbDims != kNumDims) {
+    return errors::InvalidArgument("Conv3D expects kernel of dimension 5, at ",
                                    node_def.name());
   }
   TFAttrs attrs(node_def);
   auto data_format = attrs.get<string>("data_format");
-  const bool isNDHWC = (data_format == "NDHWC");  // Or NCDHW 01234 - > 02341
-  const int d_index = isNDHWC ? 1 : 2;
-  const int h_index = isNDHWC ? 2 : 3;
-  const int w_index = isNDHWC ? 3 : 4;
-  const int c_index = isNDHWC ? 4 : 1;
+  const bool is_ndhwc = (data_format == "NDHWC");  // Or NCDHW 01234 - > 02341
+  const int d_index = is_ndhwc ? 1 : 2;
+  const int h_index = is_ndhwc ? 2 : 3;
+  const int w_index = is_ndhwc ? 3 : 4;
+  const int c_index = is_ndhwc ? 4 : 1;
   auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
-  if (tf_dilations.size() != kNUM_DIMS) {
+  if (tf_dilations.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 5 dimensions, at ",
         node_def.name());
@@ -2734,11 +2731,11 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
         node_def.name());
   }
 
-  const nvinfer1::Dims3 dilationDHW(
+  const nvinfer1::Dims3 dilation_dhw(
       tf_dilations[d_index], tf_dilations[h_index], tf_dilations[w_index]);
   if (is_conv3d_backprop_input &&
-      (dilationDHW.d[0] != 1 || dilationDHW.d[1] != 1 ||
-       dilationDHW.d[2] != 1)) {
+      (dilation_dhw.d[0] != 1 || dilation_dhw.d[1] != 1 ||
+       dilation_dhw.d[2] != 1)) {
     return errors::Unimplemented(
         "Dilation with Conv3DBackpropInputV2 (conv3d_transpose) is not "
         "supported",
@@ -2746,7 +2743,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   }
 
   const auto tf_stride = attrs.get<std::vector<int64>>("strides");
-  if (tf_stride.size() != kNUM_DIMS) {
+  if (tf_stride.size() != kNumDims) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 5 dimensions, at ",
         node_def.name());
@@ -2757,7 +2754,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
         node_def.name());
   }
 
-  const nvinfer1::Dims3 strideDHW(tf_stride[d_index], tf_stride[h_index],
+  const nvinfer1::Dims3 stride_dhw(tf_stride[d_index], tf_stride[h_index],
                                   tf_stride[w_index]);
   const auto tensor_dim = tensor->getDimensions();
 
@@ -2771,11 +2768,11 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
     nvinfer1::Dims3 effective_kernel_size(
         weights.shape_.d[0] +
-            (weights.shape_.d[0] - 1) * (dilationDHW.d[0] - 1),  // D
+            (weights.shape_.d[0] - 1) * (dilation_dhw.d[0] - 1),  // D
         weights.shape_.d[1] +
-            (weights.shape_.d[1] - 1) * (dilationDHW.d[1] - 1),  // R
+            (weights.shape_.d[1] - 1) * (dilation_dhw.d[1] - 1),  // R
         weights.shape_.d[2] +
-            (weights.shape_.d[2] - 1) * (dilationDHW.d[2] - 1)  // S
+            (weights.shape_.d[2] - 1) * (dilation_dhw.d[2] - 1)  // S
         );
 
     const auto output_size_weights =
@@ -2785,7 +2782,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
                                              output_size_weights[w_index]};
 
     const std::vector<std::pair<int, int>> padding =
-        CreateSamePadding(strideDHW, effective_kernel_size, input_dims);
+        CreateSamePadding(stride_dhw, effective_kernel_size, input_dims);
 
     if (padding[0].first != padding[0].second ||
         padding[1].first != padding[1].second ||
@@ -2801,7 +2798,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     return Status::OK();  // Finished validation checks
 
   // Transpose to NCDHW (NCDHW is required for IConvLayer).
-  const bool need_transpose = isNDHWC;
+  const bool need_transpose = is_ndhwc;
   if (need_transpose) {
     TF_RETURN_IF_ERROR(
         params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
@@ -2821,7 +2818,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   TRT_ShapedWeights biases(weights.TrtDType());
   const int output_axis = is_conv3d_backprop_input ? 1 : 0;
   const int noutput = weights.shape_.d[output_axis] * num_groups;
-  nvinfer1::Dims3 kernel_sizeDRS(weights.shape_.d[2],  // D
+  nvinfer1::Dims3 kernel_size_drs(weights.shape_.d[2],  // D
                                  weights.shape_.d[3],  // R
                                  weights.shape_.d[4]   // S
                                  );
@@ -2831,10 +2828,10 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   if (is_conv3d_backprop_input) {
     nvinfer1::IDeconvolutionLayer* layer =
         params->converter->network()->addDeconvolutionNd(
-            *tensor, noutput, kernel_sizeDRS, weights.GetTrtWeights(),
+            *tensor, noutput, kernel_size_drs, weights.GetTrtWeights(),
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    layer->setStrideNd(strideDHW);  // change to nd set stride
+    layer->setStrideNd(stride_dhw);  // change to nd set stride
 
     // TensorRT 5.1.3 added support for padding modes.
     if (attrs.get<string>("padding") == "SAME") {
@@ -2849,10 +2846,10 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   } else {
     nvinfer1::IConvolutionLayer* layer =
         params->converter->network()->addConvolutionNd(
-            *tensor, noutput, kernel_sizeDRS, weights.GetTrtWeights(),
+            *tensor, noutput, kernel_size_drs, weights.GetTrtWeights(),
             biases.GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    layer->setStrideNd(strideDHW);
+    layer->setStrideNd(stride_dhw);
 
     if (attrs.get<string>("padding") == "SAME") {
       VLOG(2) << "Using SAME padding";
@@ -2861,7 +2858,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
-    layer->setDilationNd(dilationDHW);
+    layer->setDilationNd(dilation_dhw);
     conv_layer = layer;
   }
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);

@@ -3977,14 +3977,6 @@ TEST_F(OpConverterTest, ConvertConv2D) {
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(OpConverterTest, ConvertConv3D) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_conv3d", "Conv3D", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Conv3D got 0 inputs but expected 2, at my_conv3d");
-  }
-
   // Get nodedef for Conv3D layer.
   auto get_conv3d_nodedef = [](
       std::vector<int> strides = {1, 1, 1, 1, 1}, string padding = "SAME",
@@ -4026,7 +4018,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
         node_def, error::UNIMPLEMENTED,
         "The input \"input\" for Conv3D must be a tensor, at my_conv3d");
   }
-
   {
     // Filter is tensor, should fail.
     Reset();
@@ -4037,7 +4028,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
         node_def, error::UNIMPLEMENTED,
         "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
   }
-
   {
     // Filter is not 5D, should fail.
     Reset();
@@ -4048,7 +4038,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
         node_def, error::INVALID_ARGUMENT,
         "Conv3D expects kernel of dimension 5, at my_conv3d");
   }
-
   {
     // Dilations is not 5D, should fail.
     Reset();
@@ -4062,7 +4051,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
         node_def, error::INVALID_ARGUMENT,
         "Convolution dilations field must specify 5 dimensions, at my_conv3d");
   }
-
   {
     // Dilation value is not 1 for channel, should fail.
     Reset();
@@ -4075,7 +4063,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
                                "Dilation rate must be 1 for batch and channel "
                                "dimensions, at my_conv3d");
   }
-
   {
     // Dilation value is not 1 for channel (NDHWC), should fail.
     Reset();
@@ -4088,7 +4075,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
                                "Dilation rate must be 1 for batch and channel "
                                "dimensions, at my_conv3d");
   }
-
   {
     // Dilation + Conv3DBackpropInputV2, should fail.
     Reset();
@@ -4103,7 +4089,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
                                "(conv3d_transpose) is not supported, "
                                "at my_conv3d");
   }
-
   {
     // Asymmetric+ Conv3DBackpropInputV2, should fail.
     Reset();
@@ -4117,7 +4102,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
                                "(conv3d_transpose) is not supported, at "
                                "my_conv3d");
   }
-
   {
     // Strides is not 5D, should fail.
     Reset();
@@ -4141,7 +4125,6 @@ TEST_F(OpConverterTest, ConvertConv3D) {
         node_def, error::UNIMPLEMENTED,
         "Stride must be 1 for batch and channel dimensions, at my_conv3d");
   }
-
   struct TestParams {
     std::vector<int> input_dims;
     std::vector<float> input;
