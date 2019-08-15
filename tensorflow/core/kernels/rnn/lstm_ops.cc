@@ -235,7 +235,9 @@ void LSTMBlockCellBpropWithEigen(
   template struct LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */,     \
                                      GATE_LAYOUT>;
 
-#define DECLARE_CPU_SPECS(T) DECLARE_CPU_FBPROP(T, ICFO);
+#define DECLARE_CPU_SPECS(T)   \
+  DECLARE_CPU_FBPROP(T, ICFO); \
+  DECLARE_CPU_FBPROP(T, IFCO);
 
 DECLARE_CPU_SPECS(Eigen::half);
 DECLARE_CPU_SPECS(float);
@@ -827,7 +829,12 @@ template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 class BlockLSTMOp : public OpKernel {
  public:
   explicit BlockLSTMOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
+    if (ctx->HasAttr("forget_bias")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
+    } else {
+      // V2 version does not have "forget_bias" attribute.
+      forget_bias_ = 0.0;
+    }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cell_clip", &cell_clip_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
   }
@@ -1010,10 +1017,13 @@ class BlockLSTMOp : public OpKernel {
   bool use_peephole_;
 };
 
-#define REGISTER_KERNEL(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("BlockLSTM").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      BlockLSTMOp<CPUDevice, T, false, ICFO>);
+#define REGISTER_KERNEL(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("BlockLSTM").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      BlockLSTMOp<CPUDevice, T, false, ICFO>);                       \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("BlockLSTMV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      BlockLSTMOp<CPUDevice, T, false, IFCO>);
 
 REGISTER_KERNEL(Eigen::half);
 REGISTER_KERNEL(float);
@@ -1039,12 +1049,17 @@ DECLARE_GPU_SPECS(float);
 #undef DECLARE_GPU_SPECS
 }  // end namespace functor
 
-#define REGISTER_GPU_KERNEL(T)                           \
-  REGISTER_KERNEL_BUILDER(Name("BlockLSTM")              \
-                              .Device(DEVICE_GPU)        \
-                              .HostMemory("seq_len_max") \
-                              .TypeConstraint<T>("T"),   \
-                          BlockLSTMOp<GPUDevice, T, true, ICFO>);
+#define REGISTER_GPU_KERNEL(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTM")                       \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("seq_len_max")          \
+                              .TypeConstraint<T>("T"),            \
+                          BlockLSTMOp<GPUDevice, T, true, ICFO>); \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTMV2")                     \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("seq_len_max")          \
+                              .TypeConstraint<T>("T"),            \
+                          BlockLSTMOp<GPUDevice, T, true, IFCO>);
 
 REGISTER_GPU_KERNEL(Eigen::half);
 REGISTER_GPU_KERNEL(float);
@@ -1284,10 +1299,13 @@ class BlockLSTMGradOp : public OpKernel {
   bool use_peephole_;
 };
 
-#define REGISTER_KERNEL(T)                                             \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("BlockLSTMGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      BlockLSTMGradOp<CPUDevice, T, false, ICFO>);
+#define REGISTER_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("BlockLSTMGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"),   \
+      BlockLSTMGradOp<CPUDevice, T, false, ICFO>);                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("BlockLSTMGradV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      BlockLSTMGradOp<CPUDevice, T, false, IFCO>);
 
 REGISTER_KERNEL(Eigen::half);
 REGISTER_KERNEL(float);
@@ -1345,7 +1363,8 @@ namespace functor {
   extern template struct TensorCopy<GPUDevice, T>;                             \
   extern template struct TensorAdd<GPUDevice, T>;                              \
                                                                                \
-  DECLARE_GPU_BPROP(T, ICFO);
+  DECLARE_GPU_BPROP(T, ICFO);                                                  \
+  DECLARE_GPU_BPROP(T, IFCO);
 
 DECLARE_GPU_SPECS(Eigen::half);
 DECLARE_GPU_SPECS(float);
@@ -1353,12 +1372,17 @@ DECLARE_GPU_SPECS(float);
 #undef DECLARE_GPU_BPROP
 }  // end namespace functor
 
-#define REGISTER_GPU_KERNEL(T)                           \
-  REGISTER_KERNEL_BUILDER(Name("BlockLSTMGrad")          \
-                              .Device(DEVICE_GPU)        \
-                              .HostMemory("seq_len_max") \
-                              .TypeConstraint<T>("T"),   \
-                          BlockLSTMGradOp<GPUDevice, T, true, ICFO>);
+#define REGISTER_GPU_KERNEL(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTMGrad")                       \
+                              .Device(DEVICE_GPU)                     \
+                              .HostMemory("seq_len_max")              \
+                              .TypeConstraint<T>("T"),                \
+                          BlockLSTMGradOp<GPUDevice, T, true, ICFO>); \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTMGradV2")                     \
+                              .Device(DEVICE_GPU)                     \
+                              .HostMemory("seq_len_max")              \
+                              .TypeConstraint<T>("T"),                \
+                          BlockLSTMGradOp<GPUDevice, T, true, IFCO>);
 
 REGISTER_GPU_KERNEL(Eigen::half);
 REGISTER_GPU_KERNEL(float);
