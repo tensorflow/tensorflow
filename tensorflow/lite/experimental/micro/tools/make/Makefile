@@ -259,12 +259,16 @@ $(BINDIR)%.bin: $(BINDIR)%
 	$(OBJCOPY) $< $@ -O binary
 
 # Generate standalone makefile projects for all of the test targets.
-$(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
+$(foreach TEST_TARGET,$(filter-out tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+$(foreach TEST_TARGET,$(filter tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
+$(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
+
+generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
 
 # Gets rid of all generated files.
 clean:
