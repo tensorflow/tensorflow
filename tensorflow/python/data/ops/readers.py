@@ -78,6 +78,9 @@ def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
 
   if num_parallel_reads is None:
     return filenames.flat_map(read_one_file)
+  elif num_parallel_reads == dataset_ops.AUTOTUNE:
+    return filenames.interleave(
+        read_one_file, num_parallel_calls=num_parallel_reads)
   else:
     return ParallelInterleaveDataset(
         filenames, read_one_file, cycle_length=num_parallel_reads,
