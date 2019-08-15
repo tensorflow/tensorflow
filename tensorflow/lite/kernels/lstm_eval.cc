@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/lstm_eval.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #ifdef GEMMLOWP_PROFILING
@@ -325,18 +326,15 @@ inline void LstmStepWithAuxInput(
                                  params->proj_clip, output_ptr_batch);
       }
     } else {
-      tensor_utils::CopyVector(output_gate_scratch, n_batch * n_output,
-                               output_ptr_batch);
+      std::copy_n(output_gate_scratch, n_batch * n_output, output_ptr_batch);
     }
-    tensor_utils::CopyVector(output_ptr_batch, n_batch * n_output,
-                             output_state_ptr);
+    std::copy_n(output_ptr_batch, n_batch * n_output, output_state_ptr);
   } else {
     if (use_projection_weight) {
       if (use_projection_bias) {
         for (int k = 0; k < n_batch; k++) {
-          tensor_utils::CopyVector(
-              projection_bias_ptr, n_output,
-              output_ptr_batch + k * output_batch_leading_dim);
+          std::copy_n(projection_bias_ptr, n_output,
+                      output_ptr_batch + k * output_batch_leading_dim);
         }
       } else {
         for (int k = 0; k < n_batch; k++) {
@@ -359,14 +357,13 @@ inline void LstmStepWithAuxInput(
       }
     } else {
       for (int k = 0; k < n_batch; k++) {
-        tensor_utils::CopyVector(
-            output_gate_scratch + k * n_output, n_output,
-            output_ptr_batch + k * output_batch_leading_dim);
+        std::copy_n(output_gate_scratch + k * n_output, n_output,
+                    output_ptr_batch + k * output_batch_leading_dim);
       }
     }
     for (int k = 0; k < n_batch; k++) {
-      tensor_utils::CopyVector(output_ptr_batch + k * output_batch_leading_dim,
-                               n_output, output_state_ptr + k * n_output);
+      std::copy_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
+                  output_state_ptr + k * n_output);
     }
   }
 }
@@ -828,18 +825,15 @@ inline void LstmStepWithAuxInput(
                                  params->proj_clip, output_ptr_batch);
       }
     } else {
-      tensor_utils::CopyVector(output_gate_scratch, n_batch * n_output,
-                               output_ptr_batch);
+      std::copy_n(output_gate_scratch, n_batch * n_output, output_ptr_batch);
     }
-    tensor_utils::CopyVector(output_ptr_batch, n_batch * n_output,
-                             output_state_ptr);
+    std::copy_n(output_ptr_batch, n_batch * n_output, output_state_ptr);
   } else {
     if (use_projection_weight) {
       if (use_projection_bias) {
         for (int k = 0; k < n_batch; k++) {
-          tensor_utils::CopyVector(
-              projection_bias_ptr, n_output,
-              output_ptr_batch + k * output_batch_leading_dim);
+          std::copy_n(projection_bias_ptr, n_output,
+                      output_ptr_batch + k * output_batch_leading_dim);
         }
       } else {
         for (int k = 0; k < n_batch; k++) {
@@ -880,14 +874,13 @@ inline void LstmStepWithAuxInput(
       }
     } else {
       for (int k = 0; k < n_batch; k++) {
-        tensor_utils::CopyVector(
-            output_gate_scratch + k * n_output, n_output,
-            output_ptr_batch + k * output_batch_leading_dim);
+        std::copy_n(output_gate_scratch + k * n_output, n_output,
+                    output_ptr_batch + k * output_batch_leading_dim);
       }
     }
     for (int k = 0; k < n_batch; k++) {
-      tensor_utils::CopyVector(output_ptr_batch + k * output_batch_leading_dim,
-                               n_output, output_state_ptr + k * n_output);
+      std::copy_n(output_ptr_batch + k * output_batch_leading_dim, n_output,
+                  output_state_ptr + k * n_output);
     }
   }
 }

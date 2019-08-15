@@ -168,9 +168,6 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result);
 void ApplyActivationToVector(const float* vector, int v_size,
                              TfLiteFusedActivation activation, float* result);
 
-// Copy vector to another vector.
-void CopyVector(const float* vector, int v_size, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
 

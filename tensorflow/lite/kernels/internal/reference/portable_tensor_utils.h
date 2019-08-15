@@ -127,10 +127,6 @@ void ApplyActivationToVector(const float* vector, int v_size,
   PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
-void CopyVector(const float* vector, int v_size, float* result) {
-  PortableCopyVector(vector, v_size, result);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   PortableSub1Vector(vector, v_size, result);
 }
