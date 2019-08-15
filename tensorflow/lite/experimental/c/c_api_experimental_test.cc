@@ -32,7 +32,7 @@ TfLiteRegistration* GetDummyRegistration() {
   return &registration;
 }
 
-TEST(CApiExperimentalSimple, Smoke) {
+TEST(CApiExperimentalTest, Smoke) {
   TFL_Model* model = TFL_NewModelFromFile(
       "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
@@ -48,6 +48,52 @@ TEST(CApiExperimentalSimple, Smoke) {
   EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
 
   TFL_DeleteInterpreter(interpreter);
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
+}
+
+TEST(CApiExperimentalTest, Delegate) {
+  TFL_Model* model =
+      TFL_NewModelFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.data_ = &delegate_prepared;
+  delegate.Prepare = [](TfLiteContext* context, TfLiteDelegate* delegate) {
+    *static_cast<bool*>(delegate->data_) = true;
+    return kTfLiteOk;
+  };
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+  TFL_InterpreterOptionsAddDelegate(options, &delegate);
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  // Subsequent exectuion should behave properly (the delegate is a no-op).
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
+  EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
+  TFL_DeleteInterpreter(interpreter);
+}
+
+TEST(CApiExperimentalTest, DelegateFails) {
+  TFL_Model* model =
+      TFL_NewModelFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.Prepare = [](TfLiteContext* context, TfLiteDelegate* delegate) {
+    return kTfLiteError;
+  };
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+  TFL_InterpreterOptionsAddDelegate(options, &delegate);
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
+
+  // Interpreter creation should fail as delegate preparation failed.
+  EXPECT_EQ(nullptr, interpreter);
+
   TFL_DeleteInterpreterOptions(options);
   TFL_DeleteModel(model);
 }

@@ -102,8 +102,10 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
-                                              : MTypeFromDType(type);
+    MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
+                        device_type == "XLA_GPU")
+                           ? MTypeFromDTypeIntsOnDevice(type)
+                           : MTypeFromDType(type);
     if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }
@@ -115,8 +117,10 @@ Status UpdateArgAndRetvalMetadata(
     TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
     AllocatorAttributes alloc_attr;
     DataType type = attr_value->type();
-    MemoryType mtype = (device_type == "TPU") ? MTypeFromDTypeIntsOnDevice(type)
-                                              : MTypeFromDType(type);
+    MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
+                        device_type == "XLA_GPU")
+                           ? MTypeFromDTypeIntsOnDevice(type)
+                           : MTypeFromDType(type);
     if (mtype == HOST_MEMORY) {
       alloc_attr.set_on_host(true);
     }

@@ -89,7 +89,8 @@ class HloFunctionImporter {
       xla::HloInstruction* instruction);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
-  mlir::ElementsAttr ConvertDimensions(llvm::ArrayRef<int64> op_dimensions);
+  mlir::ElementsAttr ConvertDimensions(
+      llvm::ArrayRef<tensorflow::int64> op_dimensions);
 
   // Converts Array ref to an ElementsAttr.
   mlir::ElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);

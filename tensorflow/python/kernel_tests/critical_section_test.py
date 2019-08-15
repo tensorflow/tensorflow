@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -63,10 +64,12 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ("Inner%sOuter%s" % (inner, outer), inner, outer)
       for (inner, outer) in itertools.product(*([(False, True)] * 2)))
-  @test_util.disable_control_flow_v2("b/135070612")
   @test_util.run_in_graph_and_eager_modes
   @test_util.xla_allow_fallback("b/128495870")
   def testCriticalSectionWithControlFlow(self, outer_cond, inner_cond):
+    if (not context.executing_eagerly() and
+        control_flow_v2_toggles.control_flow_v2_enabled()):
+      self.skipTest("b/135070612")
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
     num_concurrent = 100

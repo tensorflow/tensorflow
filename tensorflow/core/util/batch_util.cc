@@ -50,8 +50,8 @@ Status HandleElementToSlice(T* src, T* dest, int64 num_values,
 }
 
 template <>
-Status HandleElementToSlice<string>(string* src, string* dest, int64 num_values,
-                                    bool can_move) {
+Status HandleElementToSlice<tstring>(tstring* src, tstring* dest,
+                                     int64 num_values, bool can_move) {
   if (can_move) {
     for (int64 i = 0; i < num_values; ++i) {
       *dest++ = std::move(*src++);
@@ -107,8 +107,8 @@ void HandleSliceToElement(Tensor* parent, Tensor* element, int64 index,
 template <>
 void HandleSliceToElement<string>(Tensor* parent, Tensor* element, int64 index,
                                   bool can_move) {
-  auto parent_as_matrix = parent->flat_outer_dims<string>();
-  auto element_flat = element->flat<string>();
+  auto parent_as_matrix = parent->flat_outer_dims<tstring>();
+  auto element_flat = element->flat<tstring>();
   if (can_move) {
     for (int64 i = 0; i < element->NumElements(); ++i) {
       element_flat(i) = std::move(parent_as_matrix(index, i));

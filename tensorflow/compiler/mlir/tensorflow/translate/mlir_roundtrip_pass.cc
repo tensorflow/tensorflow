@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_graphdef.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph_constructor.h"

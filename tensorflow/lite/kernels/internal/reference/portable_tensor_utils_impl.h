@@ -113,9 +113,6 @@ void PortableApplyActivationToVector(const float* vector, int v_size,
                                      TfLiteFusedActivation activation,
                                      float* result);
 
-// Copy vector to another vector.
-void PortableCopyVector(const float* vector, int v_size, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
 

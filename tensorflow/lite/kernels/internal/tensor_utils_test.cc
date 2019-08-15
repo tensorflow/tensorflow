@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -717,15 +718,6 @@ TEST(uKernels, ApplyActivationToVectorTest) {
                           {0.0, -0.462117, 0.761594, -0.905148, 0.964028})));
 }
 
-TEST(uKernels, CopyVectorTest) {
-  constexpr int kVectorSize = 5;
-  static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
-  std::vector<float> output(kVectorSize);
-  CopyVector(input, kVectorSize, output.data());
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear({0.0, -0.5, 1.0, -1.5, 2.0})));
-}
-
 TEST(uKernels, Sub1VectorTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -874,7 +866,7 @@ TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
   std::vector<float> result(kVectorSize);
-  VectorShiftLeft(input, kVectorSize, 3.0);
+  VectorShiftLeft(input, kVectorSize, 3.0f);
   result.assign(input, input + kVectorSize);
   EXPECT_THAT(result,
               ElementsAreArray(ArrayFloatNear({-0.5, 1.0, -1.5, 2.0, 3.0})));

@@ -1277,7 +1277,9 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
-  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+  g = getattr(self, "graph", None)
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g._building_function)):  # pylint: disable=protected-access
     return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -1349,20 +1351,9 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    # In case dtype is not none, cast start, limit, and delta directly.
-    # Otherwise pass to convert_to_tensor. This is to handle
-    # the situation with:
-    #   tf.range(tf.constant(5), dtype=tf.float32)
-    # which is comparable with:
-    #   np.arange(np.int(5), dtype=np.float32)
-    if dtype is not None:
-      start = cast(start, dtype=dtype, name="start")
-      limit = cast(limit, dtype=dtype, name="limit")
-      delta = cast(delta, dtype=dtype, name="delta")
-    else:
-      start = ops.convert_to_tensor(start, name="start")
-      limit = ops.convert_to_tensor(limit, name="limit")
-      delta = ops.convert_to_tensor(delta, name="delta")
+    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
     if dtype is None:
@@ -3475,7 +3466,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3521,7 +3512,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3568,7 +3559,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3644,7 +3635,7 @@ def sparse_segment_sum_v2(data,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3713,7 +3704,7 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3759,7 +3750,7 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3835,7 +3826,7 @@ def sparse_segment_sqrt_n_v2(data,
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.sparse.segment_mean`, but instead of dividing by the size of the
@@ -4069,3 +4060,35 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.reciprocal_no_nan")
+def reciprocal_no_nan(x, name=None):
+  """Performs a safe reciprocal operation, element wise.
+
+  If a particular element is zero, the reciprocal for that element is
+  also set to zero.
+
+  For example:
+  ```python
+  x = tf.constant([2.0, 0.5, 0, 1], dtype=tf.float32)
+  tf.math.reciprocal_no_nan(x)  # [ 0.5, 2, 0.0, 1.0 ]
+  ```
+
+  Args:
+    x: A `Tensor` of type `float16`, `float32`, `float64` `complex64` or
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: x must be of a valid dtype.
+
+  """
+
+  with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
+    x = ops.convert_to_tensor(x, name="x")
+    one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
+    return gen_math_ops.div_no_nan(one, x, name=scope)

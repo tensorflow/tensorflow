@@ -209,10 +209,13 @@ class AutomaticControlDependencies(object):
         all usages of it.
     """
     inp = switch_op.inputs[0]
+    input_id = ops.tensor_id(inp)
     if inp.dtype == dtypes_module.resource and inp.op.type == "Switch":
       self._process_switch(inp.op, ops_which_must_run,
                            last_op_using_resource_tensor, merge_for_resource)
-    if switch_op.outputs[0] in merge_for_resource:
+    output = switch_op.outputs[0]
+    output_id = ops.tensor_id(output)
+    if output_id in merge_for_resource:
       return
     new_merge = control_flow_ops.merge(switch_op.outputs,
                                        name="artificial_merge")
@@ -220,16 +223,16 @@ class AutomaticControlDependencies(object):
         switch_op._control_flow_context.outer_context)  # pylint: disable=protected-access
     # Ensures the merge always runs
     ops_which_must_run.add(new_merge[0].op)
-    if inp in last_op_using_resource_tensor:
+    if input_id in last_op_using_resource_tensor:
       # Ensures the switch executes after the previous op using the resource.
-      switch_op._add_control_input(last_op_using_resource_tensor[inp])  # pylint: disable=protected-access
+      switch_op._add_control_input(last_op_using_resource_tensor[input_id])  # pylint: disable=protected-access
     # Ensure the next op outside the cond happens after the merge.
-    last_op_using_resource_tensor[inp] = new_merge[0].op
-    if inp in merge_for_resource:
-      merge_for_resource[inp]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
+    last_op_using_resource_tensor[input_id] = new_merge[0].op
+    if input_id in merge_for_resource:
+      merge_for_resource[input_id]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
     for o in switch_op.outputs:
       # Ensures the merge will execute after all ops inside the cond
-      merge_for_resource[o] = new_merge[0].op
+      merge_for_resource[ops.tensor_id(o)] = new_merge[0].op
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     if context.executing_eagerly():
@@ -301,8 +304,9 @@ class AutomaticControlDependencies(object):
         for o in ops_which_must_run:
           op._add_control_input(o)  # pylint: disable=protected-access
           for inp in o.inputs:
-            if inp in last_op_using_resource_tensor:
-              last_op_using_resource_tensor[inp] = op
+            input_id = ops.tensor_id(inp)
+            if input_id in last_op_using_resource_tensor:
+              last_op_using_resource_tensor[input_id] = op
         ops_which_must_run = set([op])
         continue
 
@@ -313,26 +317,28 @@ class AutomaticControlDependencies(object):
         if inp.dtype != dtypes_module.resource:
           continue
 
+        input_id = ops.tensor_id(inp)
+
         # If the op receives the same resource tensor twice as an input, we skip
         # to avoid the op getting a control dependency on itself.
-        if id(inp) in resource_inputs:
+        if input_id in resource_inputs:
           continue
 
-        resource_inputs.add(id(inp))
+        resource_inputs.add(input_id)
         # Deal with switches, finally.
         if inp.op.type == "Switch":
           self._process_switch(inp.op, ops_which_must_run,
                                last_op_using_resource_tensor,
                                merge_for_resource)
         # Ensure uses of resources are serialized
-        if inp in last_op_using_resource_tensor:
-          if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
+        if input_id in last_op_using_resource_tensor:
+          if (last_op_using_resource_tensor[input_id]._control_flow_context  # pylint: disable=protected-access
               is op._control_flow_context):  # pylint: disable=protected-access
-            control_inputs.add(last_op_using_resource_tensor[inp])
+            control_inputs.add(last_op_using_resource_tensor[input_id])
         # Ensure merges happen after the closing of a cond block
-        if inp in merge_for_resource:
-          merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
-        last_op_using_resource_tensor[inp] = op
+        if input_id in merge_for_resource:
+          merge_for_resource[input_id]._add_control_input(op)  # pylint: disable=protected-access
+        last_op_using_resource_tensor[input_id] = op
 
       if (op_is_stateful(op) and not resource_inputs
           and op._control_flow_context is None):  # pylint: disable=protected-access

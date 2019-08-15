@@ -47,6 +47,14 @@ class DistributeOptions(options.OptionsBase):
       "option does nothing. If None, defaults to True.",
       default_factory=lambda: True)
 
+  _make_stateless = options.create_option(
+      name="_make_stateless",
+      ty=bool,
+      docstring=
+      "Determines whether the input pipeline should be rewritten to not "
+      "contain stateful transformations (so that its graph can be moved "
+      "between devices).")
+
   num_devices = options.create_option(
       name="num_devices",
       ty=int,

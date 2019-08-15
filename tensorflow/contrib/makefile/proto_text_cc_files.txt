@@ -36,7 +36,6 @@ tensorflow/core/lib/strings/proto_text_util.cc
 tensorflow/core/lib/strings/scanner.cc
 tensorflow/core/lib/strings/str_util.cc
 tensorflow/core/lib/strings/strcat.cc
-tensorflow/core/lib/strings/stringprintf.cc
 tensorflow/core/lib/wav/wav_io.cc
 tensorflow/core/platform/cpu_info.cc
 tensorflow/core/platform/default/logging.cc
@@ -56,6 +55,7 @@ tensorflow/core/platform/posix/posix_file_system.cc
 tensorflow/core/platform/protobuf.cc
 tensorflow/core/platform/protobuf_util.cc
 tensorflow/core/platform/setround.cc
+tensorflow/core/platform/stringprintf.cc
 tensorflow/core/platform/tensor_coding.cc
 tensorflow/core/platform/tracing.cc
 tensorflow/tools/proto_text/gen_proto_text_functions.cc

@@ -26,10 +26,14 @@ struct CpuFlags {
 
 inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
                         CpuFlags* cpu_flags) {
+#if RUY_PLATFORM(ARM)
   ruy::Context* ruy_context = cpu_backend_context->ruy_context();
   cpu_flags->neon_dotprod =
       ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
                                  ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+#else
+  cpu_flags->neon_dotprod = false;
+#endif
 }
 
 }  // namespace tflite

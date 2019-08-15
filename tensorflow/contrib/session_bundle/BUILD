@@ -10,7 +10,7 @@ load(
     "py_test",
     "tf_cc_test",
 )
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
 
 package(

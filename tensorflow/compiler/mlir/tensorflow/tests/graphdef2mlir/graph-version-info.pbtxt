@@ -29,7 +29,6 @@ node {
             size: 2
           }
         }
-        tensor_content: "\350\251\242>\276\335r?"
       }
     }
   }

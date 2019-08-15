@@ -102,7 +102,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     result->allocation_type = kTfLiteMmapRo;
   } else {
     int data_size = 1;
-    for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+    for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
       data_size *= flatbuffer_tensor.shape()->Get(n);
     }
     size_t type_size;
@@ -131,7 +131,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   result->dims = reinterpret_cast<TfLiteIntArray*>(AllocateMemory(
       sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1), sizeof(int)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
-  for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
   const auto* src_quantization = flatbuffer_tensor.quantization();
@@ -140,10 +140,16 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
     result->params.scale = src_quantization->scale()->Get(0);
-    result->params.zero_point = src_quantization->zero_point()->Get(0);
+    for (unsigned int b = 0; b < sizeof(int64_t); ++b)
+      *(reinterpret_cast<char*>(&result->params.zero_point) + b) =
+          *(reinterpret_cast<const char*>(
+                src_quantization->zero_point()->Data()) +
+            b);
+    result->params.zero_point =
+        flatbuffers::EndianScalar(result->params.zero_point);
   }
   result->allocation = nullptr;
-  if (flatbuffer_tensor.name()) {
+  if (flatbuffer_tensor.name()->c_str() != nullptr) {
     result->name = flatbuffer_tensor.name()->c_str();
   } else {
     result->name = "<No name>";

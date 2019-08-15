@@ -224,6 +224,7 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/resource_variable:resource_variable",
     ] + select({
         ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",
@@ -327,6 +328,7 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],

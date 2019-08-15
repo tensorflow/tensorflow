@@ -142,7 +142,8 @@ def _gen_categorical_split_info(fc, feat_id, left_weight, right_weight):
 
 
 def _get_bias_update(grads, hess):
-  return array_ops.where(hess > 0, -grads / hess, array_ops.zeros_like(grads))
+  return array_ops.where_v2(hess > 0, -grads / hess,
+                            array_ops.zeros_like(grads))
 
 
 class CenterTreeEnsembleBiasOpTest(test_util.TensorFlowTestCase):

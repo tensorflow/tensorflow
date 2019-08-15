@@ -1128,7 +1128,7 @@ class GradientTape(object):
     See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
     definition of a Jacobian. This function is essentially an efficient
     implementation of the following:
-    
+
     `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
 
     Note that compared to `GradientTape.jacobian` which computes gradient of
@@ -1146,7 +1146,7 @@ class GradientTape(object):
       x = tf.constant([[1., 2.], [3., 4.]], dtype=tf.float32)
       g.watch(x)
       y = x * x
-    batch_jacobian = g.batch_jacobian(y, x) 
+    batch_jacobian = g.batch_jacobian(y, x)
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
     ```
 
@@ -1229,10 +1229,11 @@ class GradientTape(object):
             " with experimental_use_pfor set to False.")
       output = pfor_ops.for_loop(loop_fn, target.dtype, target_row_size,
                                  parallel_iterations=parallel_iterations)
-    if output is None:
-      return None
-    output = array_ops.reshape(output,
-                               [target_row_size, batch_size, -1])
-    output = array_ops.transpose(output, [1, 0, 2])
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
-    return array_ops.reshape(output, new_shape)
+    if output is None:
+      return array_ops.zeros(new_shape)
+    else:
+      output = array_ops.reshape(output,
+                                 [target_row_size, batch_size, -1])
+      output = array_ops.transpose(output, [1, 0, 2])
+      return array_ops.reshape(output, new_shape)

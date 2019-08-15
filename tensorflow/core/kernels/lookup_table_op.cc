@@ -299,7 +299,7 @@ inline uint64 HashScalar(const T& key) {
   return static_cast<uint64>(key);
 }
 
-inline uint64 HashScalar(const string& key) { return Hash64(key); }
+inline uint64 HashScalar(const tstring& key) { return Hash64(key); }
 
 // If the given shape is a scalar return {1} instead. Otherwise leave it alone.
 TensorShape MaybeVectorizeShape(const TensorShape& shape) {
@@ -982,18 +982,18 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
 REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int32, string);
+REGISTER_KERNEL(int32, tstring);
 REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, string);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(string, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
-REGISTER_KERNEL(string, int64);
-REGISTER_KERNEL(string, string);
+REGISTER_KERNEL(int64, tstring);
+REGISTER_KERNEL(tstring, bool);
+REGISTER_KERNEL(tstring, double);
+REGISTER_KERNEL(tstring, float);
+REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, tstring);
 
 #undef REGISTER_KERNEL
 
@@ -1021,13 +1021,13 @@ REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, string);
+REGISTER_KERNEL(int64, tstring);
 REGISTER_KERNEL(int64, Variant);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(string, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
-REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(tstring, bool);
+REGISTER_KERNEL(tstring, double);
+REGISTER_KERNEL(tstring, float);
+REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int64);
 
 #undef REGISTER_KERNEL
 
@@ -1055,12 +1055,12 @@ REGISTER_KERNEL(int64, double);
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, int64);
-REGISTER_KERNEL(int64, string);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(string, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
-REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(int64, tstring);
+REGISTER_KERNEL(tstring, bool);
+REGISTER_KERNEL(tstring, double);
+REGISTER_KERNEL(tstring, float);
+REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int64);
 
 #undef REGISTER_KERNEL
 
@@ -1090,11 +1090,11 @@ REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, int32);
 REGISTER_KERNEL(int64, int64);
 REGISTER_KERNEL(int64, Variant);
-REGISTER_KERNEL(string, bool);
-REGISTER_KERNEL(string, double);
-REGISTER_KERNEL(string, float);
-REGISTER_KERNEL(string, int32);
-REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(tstring, bool);
+REGISTER_KERNEL(tstring, double);
+REGISTER_KERNEL(tstring, float);
+REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int64);
 
 #undef REGISTER_KERNEL
 

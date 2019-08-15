@@ -31,8 +31,7 @@ class PrefetchDatasetSerializationTest(
 
   def testCore(self):
     num_outputs = 100
-    self.run_core_tests(lambda: self.build_dataset(10),
-                        lambda: self.build_dataset(20), num_outputs)
+    self.run_core_tests(lambda: self.build_dataset(10), num_outputs)
 
 
 if __name__ == "__main__":

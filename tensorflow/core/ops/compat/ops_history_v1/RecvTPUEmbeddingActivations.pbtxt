@@ -1,0 +1,19 @@
+op {
+  name: "RecvTPUEmbeddingActivations"
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_outputs"
+  }
+  attr {
+    name: "num_outputs"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

@@ -27,8 +27,11 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -152,24 +155,53 @@ class DataAdapter(object):
     """Whether the dataset has partial batch at the end."""
     raise NotImplementedError
 
+  @abc.abstractmethod
+  def partial_batch_size(self):
+    """The size of the final partial batch for dataset.
+
+    Will return None if has_partial_batch is False or batch_size is None.
+    """
+    raise NotImplementedError
+
 
 class TensorLikeDataAdapter(DataAdapter):
   """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
 
   @staticmethod
   def can_handle(x, y=None):
+    # TODO(kaftan): Check performance implications of using a flatten
+    #  here for other types of inputs.
     flat_inputs = nest.flatten(x)
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    return all(isinstance(v, (ops.Tensor, np.ndarray)) for v in flat_inputs)
+    def _is_tensor_or_composite(v):
+      if isinstance(v, (ops.Tensor, np.ndarray)):
+        return True
+      # Dataset inherits from CompositeTensor but shouldn't be handled here.
+      if (isinstance(v, composite_tensor.CompositeTensor) and
+          not isinstance(v, dataset_ops.DatasetV2)):
+        return True
+      return False
+
+    return all(_is_tensor_or_composite(v) for v in flat_inputs)
 
   def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               shuffle=False, **kwargs):
+               steps=None, shuffle=False, **kwargs):
     super(TensorLikeDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
+
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if (sample_weights is not None and
+        any([sw is None for sw in sample_weights])):
+      weight = next(s for s in sample_weights if s is not None)
+      sample_weights = training_utils.list_to_tuple([
+          array_ops.ones((weight.shape[0],)) if sw is None else sw
+          for sw in sample_weights
+      ])
+
     if y is not None and sample_weights is not None:
       inputs = (x, y, sample_weights)
     elif y is not None:
@@ -179,23 +211,30 @@ class TensorLikeDataAdapter(DataAdapter):
     else:
       inputs = (x,)
 
-    if not batch_size:
-      raise ValueError(
-          "`batch_size` is required for `Tensor` or `NumPy` input data.")
-
     dataset = dataset_ops.DatasetV2.from_tensor_slices(inputs)
     num_samples = int(nest.flatten(x)[0].shape[0])
     if shuffle:
       dataset = dataset.shuffle(num_samples)
-    if batch_size:
-      dataset = dataset.batch(batch_size)
-      self._size = int(math.ceil(num_samples / batch_size))
-      self._batch_size = batch_size
-      self._has_partial_batch = (self._size != (num_samples // batch_size))
-    else:
-      self._size = 1
-      self._batch_size = num_samples
-      self._has_partial_batch = False
+
+    # If batch_size is not passed but steps is, calculate from the input data.
+    if steps and not batch_size:
+      batch_size = int(math.ceil(num_samples/steps))
+
+    if not batch_size:
+      raise ValueError(
+          "`batch_size` or `steps` is required for `Tensor` or `NumPy`"
+          " input data.")
+
+    dataset = dataset.batch(batch_size)
+    self._size = int(math.ceil(num_samples / batch_size))
+    self._batch_size = batch_size
+    self._has_partial_batch = (self._size != (num_samples // batch_size))
+
+    self._partial_batch_size = None
+    if self._has_partial_batch:
+      self._partial_batch_size = (
+          num_samples - (self._size - 1) * self._batch_size)
+
     self._dataset = dataset
 
   def get_dataset(self):
@@ -209,6 +248,58 @@ class TensorLikeDataAdapter(DataAdapter):
 
   def has_partial_batch(self):
     return self._has_partial_batch
+
+  def partial_batch_size(self):
+    return self._partial_batch_size
+
+
+class ListsOfScalarsDataAdapter(DataAdapter):
+  """Adapter that handles lists of scalars and lists of lists of scalars."""
+
+  @staticmethod
+  def can_handle(x, y=None):
+    handles_x = ListsOfScalarsDataAdapter._is_list_of_scalars(x)
+    handles_y = True
+    if y is not None:
+      handles_y = ListsOfScalarsDataAdapter._is_list_of_scalars(y)
+    return handles_x and handles_y
+
+  @staticmethod
+  def _is_list_of_scalars(inp):
+    if isinstance(inp, (float, int, str)):
+      return True
+    if isinstance(inp, (list, tuple)):
+      return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
+    return False
+
+  def __init__(
+      self, x, y=None, sample_weights=None, batch_size=None,
+      shuffle=False, **kwargs):
+    super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
+    x = np.asarray(x)
+    if y is not None:
+      y = np.asarray(y)
+    if sample_weights is not None:
+      sample_weights = np.asarray(sample_weights)
+
+    self._internal_adapter = TensorLikeDataAdapter(
+        x, y=y, sample_weights=sample_weights,
+        batch_size=batch_size, shuffle=shuffle, **kwargs)
+
+  def get_dataset(self):
+    return self._internal_adapter.get_dataset()
+
+  def get_size(self):
+    return self._internal_adapter.get_size()
+
+  def batch_size(self):
+    return self._internal_adapter.batch_size()
+
+  def has_partial_batch(self):
+    return self._internal_adapter.has_partial_batch()
+
+  def partial_batch_size(self):
+    return self._internal_adapter.partial_batch_size()
 
 
 class DatasetAdapter(DataAdapter):
@@ -243,6 +334,9 @@ class DatasetAdapter(DataAdapter):
   def has_partial_batch(self):
     return False
 
+  def partial_batch_size(self):
+    return None
+
 
 class GeneratorDataAdapter(DataAdapter):
   """Adapter that handles python generator."""
@@ -251,7 +345,8 @@ class GeneratorDataAdapter(DataAdapter):
   def can_handle(x, y=None):
     return tf_inspect.isgenerator(x)
 
-  def __init__(self, x, y=None, sample_weights=None, **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
     super(GeneratorDataAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
@@ -269,12 +364,24 @@ class GeneratorDataAdapter(DataAdapter):
     nested_shape = nest.map_structure(lambda t: t.shape, peek)
     # Note that dataset API takes a callable that creates a generator object,
     # rather than generator itself, which is why we define a function here.
-    def reassemble():
-      return itertools.chain([peek], x)
+    if workers > 0:
+      if use_multiprocessing:
+        logging.warning(
+            UserWarning("Using a generator with `use_multiprocessing=True` "
+                        "and multiple workers may duplicate your data. "
+                        "Please consider using the `tf.data.Dataset`."))
+      def generator_fn():
+        enqueuer = data_utils.GeneratorEnqueuer(
+            itertools.chain([peek], x), use_multiprocessing=use_multiprocessing)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return enqueuer.get()
+    else:
+      def generator_fn():
+        return itertools.chain([peek], x)
 
     self._batch_size = int(nest.flatten(peek)[0].shape[0])
     self._dataset = dataset_ops.DatasetV2.from_generator(
-        reassemble, nested_dtypes, output_shapes=nested_shape)
+        generator_fn, nested_dtypes, output_shapes=nested_shape)
 
   def get_dataset(self):
     return self._dataset
@@ -288,6 +395,9 @@ class GeneratorDataAdapter(DataAdapter):
   def has_partial_batch(self):
     return False
 
+  def partial_batch_size(self):
+    return None
+
 
 class KerasSequenceAdapter(DataAdapter):
   """Adapter that handles `keras.utils.Sequence`."""
@@ -296,7 +406,8 @@ class KerasSequenceAdapter(DataAdapter):
   def can_handle(x, y=None):
     return isinstance(x, data_utils.Sequence)
 
-  def __init__(self, x, y=None, sample_weights=None, shuffle=False, **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, shuffle=False, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
     super(KerasSequenceAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
@@ -308,10 +419,17 @@ class KerasSequenceAdapter(DataAdapter):
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
     nested_shape = nest.map_structure(lambda t: t.shape, peek)
 
-    def generator():
-      for i in range(len(x)):
-        yield x[i]
-    dataset = dataset_ops.DatasetV2.from_generator(generator, nested_dtypes,
+    if workers > 0:
+      def generator_fn():
+        enqueuer = data_utils.OrderedEnqueuer(
+            x, use_multiprocessing=use_multiprocessing)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return enqueuer.get()
+    else:
+      def generator_fn():
+        for i in range(len(x)):
+          yield x[i]
+    dataset = dataset_ops.DatasetV2.from_generator(generator_fn, nested_dtypes,
                                                    output_shapes=nested_shape)
     if shuffle:
       dataset = dataset.shuffle(len(x))
@@ -331,8 +449,12 @@ class KerasSequenceAdapter(DataAdapter):
   def has_partial_batch(self):
     return False
 
+  def partial_batch_size(self):
+    return None
+
 
 ALL_ADAPTER_CLS = [
+    ListsOfScalarsDataAdapter,
     TensorLikeDataAdapter, DatasetAdapter, GeneratorDataAdapter,
     KerasSequenceAdapter
 ]

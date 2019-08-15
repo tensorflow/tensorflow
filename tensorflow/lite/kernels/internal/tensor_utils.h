@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 
 #if defined(_MSC_VER)
@@ -151,8 +153,13 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector);
 
 // Batch vector initialization with another vector.
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector);
+template <typename T>
+void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
+                             T* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(vector, v_size, batch_vector + b * v_size);
+  }
+}
 
 // Apply sigmoid to elements of a vector.
 void ApplySigmoidToVector(const float* vector, int v_size, float* result);
@@ -160,9 +167,6 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result);
 // Apply activation function to elements of a vector.
 void ApplyActivationToVector(const float* vector, int v_size,
                              TfLiteFusedActivation activation, float* result);
-
-// Copy vector to another vector.
-void CopyVector(const float* vector, int v_size, float* result);
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
@@ -179,7 +183,13 @@ void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result);
 
 // Shift left a vector in place with v_size size.
-void VectorShiftLeft(float* vector, int v_size, float shift_value);
+template <typename T>
+void VectorShiftLeft(T* vector, int v_size, const T& shift_value) {
+  // When copying overlapping ranges, std::copy is appropriate when beginning of
+  // the destination range is outside the source range.
+  std::copy(vector + 1, vector + v_size, vector);
+  vector[v_size - 1] = shift_value;
+}
 
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.

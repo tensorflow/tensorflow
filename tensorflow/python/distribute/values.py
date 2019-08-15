@@ -613,6 +613,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     # We need to make _keras_initialized a member of DistributedVariable because
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
+    self._id = ops.uid()
     self._keras_initialized = False
     # Typically, a `DistributedVariable`'s initializer is composed of the
     # initializers of the components variables. However, in some cases, such as
@@ -775,6 +776,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
+
+  def _clone_with_new_values(self, new_values):
+    raise NotImplementedError("Must be implemented in descendents.")
 
 
 ops.register_dense_tensor_like_type(DistributedVariable)
@@ -1069,6 +1073,10 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -1159,7 +1167,7 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class SyncOnReadVariable(DistributedVariable, PerReplica):
+class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
   def __init__(
@@ -1244,6 +1252,10 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
     """Converts a variable to a tensor."""
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
+
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to

@@ -266,8 +266,9 @@ int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(const float weight,
 
 void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
     const int32 tree_id, const int32 node_id, const int32 feature_id,
-    const int32 threshold, const float gain, const float left_contrib,
-    const float right_contrib, int32* left_node_id, int32* right_node_id) {
+    const int32 dimension_id, const int32 threshold, const float gain,
+    const float left_contrib, const float right_contrib, int32* left_node_id,
+    int32* right_node_id) {
   auto* tree = tree_ensemble_->mutable_trees(tree_id);
   auto* node = tree->mutable_nodes(node_id);
   DCHECK_EQ(node->node_case(), boosted_trees::Node::kLeaf);
@@ -285,6 +286,7 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
   auto* new_split = node->mutable_bucketized_split();
   new_split->set_feature_id(feature_id);
   new_split->set_threshold(threshold);
+  new_split->set_dimension_id(dimension_id);
   new_split->set_left_id(*left_node_id);
   new_split->set_right_id(*right_node_id);
   // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.

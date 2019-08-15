@@ -63,93 +63,218 @@ func @fusedBatchNorm(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8
   return %2, %2#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
 
 // CHECK-LABEL: fusedBatchNorm
-// CHECK:%cst = constant dense<1.000000e-03> : tensor<f32>
+// CHECK:  %[[CONSTANT:.*]] = constant dense<1.000000e-03>
 //              variance + epsilon
-// CHECK:  %0 = "tf.Add"(%arg4, %cst) : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
+// CHECK:  %[[ADD1:.*]] = "tf.Add"(%[[ARG4:.*]], %[[CONSTANT]])
 //              rsqrt(variance + epsilon)
-// CHECK:  %1 = "tf.Rsqrt"(%0) : (tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[ADD1]])
 //              scale * rsqrt(variance + epsilon)
-// CHECK:  %2 = "tf.Mul"(%arg1, %1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  %[[MUL1:.*]] = "tf.Mul"(%[[ARG1:.*]], %[[RSQRT]])
 //              x * scale * rsqrt(variance + epsilon)
-// CHECK:  %3 = "tf.Mul"(%arg0, %2) : (tensor<8x8x8x8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32>
+// CHECK:  %[[MUL2:.*]] = "tf.Mul"(%[[ARG0:.*]], %[[MUL1]])
 //              mean * scale * rsqrt(variance + epsilon)
-// CHECK:  %4 = "tf.Mul"(%arg3, %2) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  %[[MUL3:.*]] = "tf.Mul"(%[[ARG3:.*]], %[[MUL1]])
 //              offset - mean * scale * rsqrt(variance + epsilon)
-// CHECK:  %5 = "tf.Sub"(%arg2, %4) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  %[[SUB:.*]] = "tf.Sub"(%[[ARG2:.*]], %[[MUL3]])
 //              x * scale * rsqrt(variance + epsilon) +
 //              offset - mean * scale * rsqrt(variance + epsilon)
-// CHECK:  %6 = "tf.Add"(%3, %5) : (tensor<8x8x8x8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32>
+// CHECK:  %[[ADD2:.*]] = "tf.Add"(%[[MUL2]], %[[SUB]])
 
-// CHECK:  %7:5 = "tf.FusedBatchNorm"(%6, %arg1, %arg2, %arg3, %arg4)
-// CHECK:  %8:5 = "tf.FusedBatchNorm"(%7#0, %arg1, %arg2, %arg3, %arg4)
+// CHECK:  %[[BATCHNORM1:.*]]:5 = "tf.FusedBatchNorm"(%[[ADD2]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
+// CHECK:  {{.*}} = "tf.FusedBatchNorm"(%[[BATCHNORM1]]#0, %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
 }
 
-func @fakeQuantNotFollowedByQuant(tensor<8x8x8x8xf32>) -> (tensor<8x8x8x8xf32>) {
-^bb0(%arg0: tensor<8x8x8x8xf32>):
-  %arg1 = constant dense<-0.1> : tensor<f32>
-  %arg2 = constant dense<0.2> : tensor<f32>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
-  return %0 : tensor<8x8x8x8xf32>
+func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>) {
+^bb0(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>):
+  // OK
+  %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", U = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
+  // Unsupported training
+  %1:6 = "tf.FusedBatchNormV3"( %0#0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", U = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = true}  : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
+  // Use other output
+  %2:6 = "tf.FusedBatchNormV3"( %1#0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", U = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
 
-// CHECK-LABEL: fakeQuantNotFollowedByQuant
+  return %2, %2#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
+
+// CHECK-LABEL: fusedBatchNormV3
+// CHECK:  %[[CONSTANT:.*]] = constant dense<1.000000e-03>
+//              variance + epsilon
+// CHECK:  %[[ADD1:.*]] = "tf.Add"(%[[ARG4:.*]], %[[CONSTANT]])
+//              rsqrt(variance + epsilon)
+// CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[ADD1]])
+//              scale * rsqrt(variance + epsilon)
+// CHECK:  %[[MUL1:.*]] = "tf.Mul"(%[[ARG1:.*]], %[[RSQRT]])
+//              x * scale * rsqrt(variance + epsilon)
+// CHECK:  %[[MUL2:.*]] = "tf.Mul"(%[[ARG0:.*]], %[[MUL1]])
+//              mean * scale * rsqrt(variance + epsilon)
+// CHECK:  %[[MUL3:.*]] = "tf.Mul"(%[[ARG3:.*]], %[[MUL1]])
+//              offset - mean * scale * rsqrt(variance + epsilon)
+// CHECK:  %[[SUB:.*]] = "tf.Sub"(%[[ARG2:.*]], %[[MUL3]])
+//              x * scale * rsqrt(variance + epsilon) +
+//              offset - mean * scale * rsqrt(variance + epsilon)
+// CHECK:  %[[ADD2:.*]] = "tf.Add"(%[[MUL2]], %[[SUB]])
+
+// CHECK:  %[[BATCHNORM1:.*]]:6 = "tf.FusedBatchNormV3"(%[[ADD2]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
+// CHECK:  %[[BATCHNORM2:.*]]:6 = "tf.FusedBatchNormV3"(%[[BATCHNORM1]]#0, %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
+}
+
+// CHECK-LABEL: fakeQuantForActivation
+func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
+^bb0(%arg0: tensor<8xf32>):
+  %arg1 = constant dense<0.0> : tensor<f32>
+  %arg2 = constant dense<255.0> : tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %0 : tensor<8xf32>
+
+// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0)
+// CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK:  %2 = "tfl.dequantize"(%1)
+// CHECK:  return %2
+}
+
+// CHECK-LABEL: fakeQuantForActivationNoDuplication
+func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>) {
+^bb0(%arg0: tensor<8xf32>):
+  %arg1 = constant dense<0.0> : tensor<f32>
+  %arg2 = constant dense<255.0> : tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<8xf32>) -> tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>
+  return %1 : tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>
+
 // CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0) {narrow_range = false, num_bits = 3 : i64}
-// CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>}
-// CHECK:  %2 = "tfl.dequantize"(%1) : (tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>)
-// CHECK:  return %2 : tensor<8x8x8x8xf32>
+// CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK:  return %1
 }
 
-func @fakeQuantFollowedByQuant(tensor<8x8x8x8xf32>) -> (tensor<8x8x8x8xf32>) {
-^bb0(%arg0: tensor<8x8x8x8xf32>):
-  %arg1 = constant dense<-0.1> : tensor<f32>
-  %arg2 = constant dense<0.2> : tensor<f32>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
-  %1 = "tfl.quantize"(%0) {qtype = tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>
-  %2 = "tfl.dequantize"(%1) : (tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>) -> tensor<8x8x8x8xf32>
-  return %2 : tensor<8x8x8x8xf32>
+// CHECK-LABEL: fakeQuantFolded
+func @fakeQuantFolded() -> (tensor<8xf32>) {
+  %in = constant dense<0.0> : tensor<8xf32>
+  %min = constant dense<0.0> : tensor<f32>
+  %max = constant dense<255.0> : tensor<f32>
+  %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
+  %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
+  %rst = "tf.FakeQuantWithMinMaxVars"(%in, %mini, %maxi) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %rst : tensor<8xf32>
 
-// CHECK-LABEL: fakeQuantFollowedByQuant
-// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst, %cst_0) {narrow_range = false, num_bits = 3 : i64}
-// CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>}
-// CHECK:  %2 = "tfl.dequantize"(%1) : (tensor<8x8x8x8x!quant.uniform<u8:f32, 0.0011764706057660721:85>>)
-// CHECK:  return %2 : tensor<8x8x8x8xf32>
+// CHECK: %cst = constant dense<0.000000e+00> : tensor<8xf32>
+// CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %1 = "tfl.dequantize"(%0)
+// CHECK: return %1 : tensor<8xf32>
 }
 
-func @fakeQuantVarsNotConst(tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8x8x8x8xf32>) {
-^bb0(%arg0: tensor<8x8x8x8xf32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
-  %1 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg3, %arg4) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
-  return %1 : tensor<8x8x8x8xf32>
+// CHECK-LABEL: fakeQuantNotFolded
+func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>) {
+^bb0(%arg0: tensor<8xf32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
+  %1 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg3, %arg4) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %1 : tensor<8xf32>
 
-// CHECK-LABEL: fakeQuantVarsNotConst
-// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {narrow_range = false, num_bits = 3 : i64}
-// CHECK:  return %0 : tensor<8x8x8x8xf32>
+// CHECK: %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2)
+// CHECK: return %0 : tensor<8xf32>
 }
-
-func @fakeQuantFollowedByTranspose(tensor<3x3x3x16xf32>, tensor<f32>, tensor<f32>) -> (tensor<16x3x3x3xf32>) {
-^bb0(%arg0: tensor<3x3x3x16xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
-  %cst_0 = constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<3x3x3x16xf32>, tensor<f32>, tensor<f32>) -> tensor<3x3x3x16xf32>
-  %1 = "tf.Transpose"(%0, %cst_0): (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
-  return %1 : tensor<16x3x3x3xf32>
 
 // CHECK-LABEL: fakeQuantFollowedByTranspose
-// CHECK:  %cst = constant dense<[3, 0, 1, 2]> : tensor<4xi32>
-// CHECK:  %0 = "tf.Transpose"(%arg0, %cst) : (tensor<3x3x3x16xf32>, tensor<4xi32>) -> tensor<16x3x3x3xf32>
-// CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2) {narrow_range = false, num_bits = 3 : i64}
-// CHECK:  return %1 : tensor<16x3x3x3xf32>
+func @fakeQuantFollowedByTranspose(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
+  %cst_0 = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x2xf32>
+  %1 = "tf.Transpose"(%0, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  return %1 : tensor<2x1xf32>
+
+// CHECK:  %cst = constant
+// CHECK:  %0 = "tf.Transpose"(%arg0, %cst)
+// CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
+// CHECK:  return %1
 }
 
-func @fakeQuantFollowedByReshape(tensor<3x3x3x4xf32>, tensor<f32>, tensor<f32>) -> (tensor<1x3x3x12xf32>) {
-^bb0(%arg0: tensor<3x3x3x4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
-  %cst_0 = constant dense<[1, 3, 3, 12]> : tensor<4xi64>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<3x3x3x4xf32>, tensor<f32>, tensor<f32>) -> tensor<3x3x3x4xf32>
-  %1 = "tf.Reshape"(%0, %cst_0) : (tensor<3x3x3x4xf32>, tensor<4xi64>) -> tensor<1x3x3x12xf32>
-  return %1 : tensor<1x3x3x12xf32>
-
 // CHECK-LABEL: fakeQuantFollowedByReshape
-// CHECK:  %cst = constant dense<[1, 3, 3, 12]> : tensor<4xi64>
-// CHECK:  %0 = "tf.Reshape"(%arg0, %cst) : (tensor<3x3x3x4xf32>, tensor<4xi64>) -> tensor<1x3x3x12xf32>
-// CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2) {narrow_range = false, num_bits = 3 : i64}
-// CHECK:  return %1 : tensor<1x3x3x12xf32>
+func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
+  %cst_0 = constant dense<[2, 1]> : tensor<2xi64>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x2xf32>
+  %1 = "tf.Reshape"(%0, %cst_0) : (tensor<1x2xf32>, tensor<2xi64>) -> tensor<2x1xf32>
+  return %1 : tensor<2x1xf32>
+
+// CHECK:  %cst = constant
+// CHECK:  %0 = "tf.Reshape"(%arg0, %cst)
+// CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
+// CHECK:  return %1
+}
+
+// CHECK-LABEL: QDQsFollowedByTranspose
+func @QDQsFollowedByTranspose(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>):
+  %cst_0 = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
+  %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
+  %2 = "tf.Transpose"(%1, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  return %2 : tensor<2x1xf32>
+
+// CHECK: %cst = constant
+// CHECK: %0 = "tf.Transpose"
+// CHECK-SAME: -> tensor<2x1xf32>
+// CHECK: %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK-SAME: -> tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK: %2 = "tfl.dequantize"(%1)
+// CHECK-SAME: -> tensor<2x1xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: QDQFollowedByReshape
+func @QDQFollowedByReshape(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
+^bb0(%arg0: tensor<1x2xf32>):
+  %cst_0 = constant dense<[2, 1]> : tensor<2xi32>
+  %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
+  %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
+  %2 = "tf.Reshape"(%1, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  return %2 : tensor<2x1xf32>
+
+// CHECK: %cst = constant
+// CHECK: %0 = "tf.Reshape"
+// CHECK-SAME: -> tensor<2x1xf32>
+// CHECK: %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK-SAME: -> tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK: %2 = "tfl.dequantize"(%1)
+// CHECK-SAME: -> tensor<2x1xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: fakeQuantWithConv2D
+func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
+^bb0(%arg: tensor<256x32x32x3xf32>) :
+  %in = constant dense<0.0> : tensor<3x3x3x16xf32>
+  %min = constant dense<0.0> : tensor<f32>
+  %max = constant dense<255.0> : tensor<f32>
+  %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
+  %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
+  %fq = "tf.FakeQuantWithMinMaxVars"(%in, %mini, %maxi) {num_bits = 3, narrow_range = false} : (tensor<3x3x3x16xf32>, tensor<f32>, tensor<f32>) -> tensor<3x3x3x16xf32>
+  %rst = "tf.Conv2D"(%arg, %fq) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
+  return %rst : tensor<256x30x30x16xf32>
+
+// CHECK: %cst = constant dense<0.000000e+00> : tensor<16xf32>
+// CHECK: %cst_0 = constant dense<0.000000e+00> : tensor<16x3x3x3xf32>
+// CHECK: %0 = "tfl.quantize"(%cst_0) {qtype = tensor<16x3x3x3x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %1 = "tfl.dequantize"(%0)
+// CHECK: %2 = "tfl.conv_2d"(%arg0, %1, %cst)
+// CHECK: return %2
+}
+
+// CHECK-LABEL: fakeQuantWithDepthwiseConv2D
+func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
+^bb0(%arg: tensor<256x32x32x3xf32>) :
+  %in = constant dense<0.0> : tensor<3x3x3x16xf32>
+  %min = constant dense<0.0> : tensor<f32>
+  %max = constant dense<255.0> : tensor<f32>
+  %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
+  %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
+  %fq = "tf.FakeQuantWithMinMaxVars"(%in, %mini, %maxi) {num_bits = 3, narrow_range = false} : (tensor<3x3x3x16xf32>, tensor<f32>, tensor<f32>) -> tensor<3x3x3x16xf32>
+  %rst = "tf.DepthwiseConv2dNative"(%arg, %fq) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
+  return %rst : tensor<256x30x30x16xf32>
+
+// CHECK: %cst = constant dense<0.000000e+00> : tensor<48xf32>
+// CHECK: %cst_0 = constant dense<0.000000e+00> : tensor<1x3x3x48xf32>
+// CHECK: %0 = "tfl.quantize"(%cst_0) {qtype = tensor<1x3x3x48x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %1 = "tfl.dequantize"(%0)
+// CHECK: %2 = "tfl.depthwise_conv_2d"(%arg0, %1, %cst)
+// CHECK: return %2
 }
 
 func @identity(tensor<10xi32>) -> tensor<10xi32> {
@@ -194,4 +319,20 @@ func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>
   // CHECK: %6 = "tf.Sub"(%5, %cst_1) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   // CHECK: %7 = "tf.Transpose"(%arg1, %6) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
   // CHECK: %8 = "tf.MatMul"(%3, %7) {transpose_a = false, transpose_b = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
+}
+
+func @snapshot(%arg0: tensor<3xi32>) -> tensor<3xi32> {
+  %0 = "tf.Snapshot"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: snapshot
+  // CHECK:  return %arg0 : tensor<3xi32>
+}
+
+func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
+  %0 = "tf.StopGradient"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: stop_gradient
+  // CHECK:  return %arg0 : tensor<3xi32>
 }

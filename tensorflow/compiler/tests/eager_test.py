@@ -693,8 +693,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
         return x, y
 
       wholly_compiled_f = def_function.function(f)
-      op_by_op_f = function.defun_with_attributes(
-          f, attributes={'_XlaCompile': False})
+      op_by_op_f = def_function.function(f, experimental_compile=False)
 
       x = constant_op.constant([0.0, 2.0], name='data')
 

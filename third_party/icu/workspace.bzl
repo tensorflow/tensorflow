@@ -13,7 +13,7 @@ def repo():
         strip_prefix = "icu-release-62-1",
         sha256 = "e15ffd84606323cbad5515bf9ecdf8061cc3bf80fb883b9e6aa162e485aa9761",
         urls = [
-            "http://mirror.tensorflow.org/github.com/unicode-org/icu/archive/release-62-1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/unicode-org/icu/archive/release-62-1.tar.gz",
             "https://github.com/unicode-org/icu/archive/release-62-1.tar.gz",
         ],
         build_file = "//third_party/icu:BUILD.bazel",

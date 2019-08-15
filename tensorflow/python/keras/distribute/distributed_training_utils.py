@@ -32,6 +32,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
@@ -42,7 +43,10 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -131,6 +135,38 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
 
   # TODO(priyag): Return only non empty/None values
   return all_inputs, all_outputs, all_updates, all_session_args
+
+
+def unwrap_output_dict(strategy, grouped_outputs, mode):
+  """Unwrap the list of outputs contained in the PerReplica parameters."""
+  if mode == ModeKeys.PREDICT:
+    return flatten_per_replica_values(strategy, grouped_outputs)
+
+  # In the case of fit/eval, the grouped_outputs is a dict, whereas in predict,
+  # the output is as same structure as model output. They need to be treated
+  # differently
+  total_loss = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['total_loss'][0], axis=None)
+  output_losses = flatten_per_replica_values(strategy,
+                                             grouped_outputs['output_losses'])
+  metrics = flatten_per_replica_values(strategy,
+                                       grouped_outputs['metrics'])
+  batch_size = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['batch_size'], axis=None)
+  if (is_tpu_strategy(strategy) and
+      ops.executing_eagerly_outside_functions()):
+    # Choose 1 value per replica in the TPU case since all replicas produce the
+    # same output.
+    # We only do this in eager mode for now since this function is used in
+    # both graph and eager mode and in the graph case we currently don't use
+    # experimental_run so would need to be removed when we converge the graph
+    # code path as well.
+    output_losses = output_losses[::strategy.num_replicas_in_sync]
+    metrics = metrics[::strategy.num_replicas_in_sync]
+  return {'total_loss': [total_loss],
+          'output_losses': output_losses,
+          'metrics': metrics,
+          'batch_size': batch_size}
 
 
 def unwrap_outputs(distribution_strategy, grouped_outputs,
@@ -304,7 +340,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
 
   """
   # Convert the inputs and targets into a list of PerReplica objects.
-  per_replica_list = nest.flatten(x)
+  per_replica_list = nest.flatten(x, expand_composites=True)
   x_values_list = []
   for x in per_replica_list:
     if not tensor_util.is_tensor(x):
@@ -1009,14 +1045,15 @@ def _copy_weights_to_original_model(model, mode):
     model.set_weights(updated_weights)
 
 
-def _per_replica_aggregate_batch(batch_outs, model, mode):
+def _per_replica_aggregate_batch(strategy, batch_outs, model, mode):
   """Aggregates the per-replica batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
+  if strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
-      num_replicas = model._distribution_strategy.num_replicas_in_sync
+      num_replicas = strategy.num_replicas_in_sync
       nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
-      total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
+      total_batch_outs.append(
+          concat_along_batch_dimension(nest.flatten(nested_outs)))
     return total_batch_outs
   return batch_outs
 
@@ -1096,17 +1133,18 @@ def is_current_worker_chief():
   return dc_context.get_current_worker_context().is_chief
 
 
-def filter_distributed_callbacks(callbacks_list):
+def filter_distributed_callbacks(callbacks_list, model):
   """Filter Callbacks based on the worker context when running multi-worker.
 
   Arguments:
     callbacks_list: A list of `Callback` instances.
+    model: Keras model instance.
 
   Returns:
     The list of `Callback` instances that should be run on this worker.
   """
 
-  if not multi_worker_util.in_multi_worker_mode():
+  if not model._in_multi_worker_mode():
     raise ValueError(
         'filter_distributed_callbacks() should only be called when Keras '
         'is in multi worker mode.')
@@ -1148,3 +1186,12 @@ def _update_sample_weight_modes(model, mode, sample_weights):
       if sample_weights and None not in sample_weights:
         for m, sw in zip(distributed_models, sample_weights):
           m._update_sample_weight_modes(sample_weights=[sw])
+
+
+def concat_along_batch_dimension(outputs):
+  """Concats prediction outputs along the batch dimension."""
+  if isinstance(outputs[0], sparse_tensor.SparseTensor):
+    return sparse_ops.sparse_concat_v2(axis=0, sp_inputs=outputs)
+  if isinstance(outputs[0], ragged_tensor.RaggedTensor):
+    return ragged_concat_ops.concat(outputs, axis=0)
+  return np.concatenate(outputs)

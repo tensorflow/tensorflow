@@ -102,7 +102,7 @@ Example of grouping:
     Tensor values(DT_STRING, TensorShape({N});
     TensorShape shape({dim0,...});
     SparseTensor sp(indices, vals, shape);
-    sp.Reorder<string>({1, 2, 0, 3, ...}); // Must provide NDIMS dims.
+    sp.Reorder<tstring>({1, 2, 0, 3, ...}); // Must provide NDIMS dims.
     // group according to dims 1 and 2
     for (const auto& g : sp.group({1, 2})) {
       cout << "vals of ix[:, 1,2] for this group: "
@@ -111,7 +111,7 @@ Example of grouping:
       cout << "values of group:\n" << g.values();
 
       TTypes<int64>::UnalignedMatrix g_ix = g.indices();
-      TTypes<string>::UnalignedVec g_v = g.values();
+      TTypes<tstring>::UnalignedVec g_v = g.values();
       ASSERT(g_ix.dimension(0) == g_v.size());  // number of elements match.
     }
 
@@ -133,7 +133,7 @@ Shape checking is performed, as is boundary checking.
 
     Tensor dense(DT_STRING, shape);
     // initialize other indices to zero.  copy.
-    ASSERT(sp.ToDense<string>(&dense, true));
+    ASSERT(sp.ToDense<tstring>(&dense, true));
 
 
 Concat
@@ -215,7 +215,7 @@ Coding Example:
     EXPECT_EQ(conc.Order(), {-1, -1, -1});
 
     // Reorder st3 so all input tensors have the exact same orders.
-    st3.Reorder<string>({1, 0, 2});
+    st3.Reorder<tstring>({1, 0, 2});
     SparseTensor conc2 = SparseTensor::Concat<string>({st1, st2, st3});
     EXPECT_EQ(conc2.Order(), {1, 0, 2});
     // All indices' orders matched, so output is in order.

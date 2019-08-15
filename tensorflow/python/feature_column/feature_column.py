@@ -166,6 +166,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 def _internal_input_layer(features,
@@ -2287,7 +2288,7 @@ def _normalize_feature_columns(feature_columns):
   if isinstance(feature_columns, _FeatureColumn):
     feature_columns = [feature_columns]
 
-  if isinstance(feature_columns, collections.Iterator):
+  if isinstance(feature_columns, collections_abc.Iterator):
     feature_columns = list(feature_columns)
 
   if isinstance(feature_columns, dict):
@@ -2462,7 +2463,7 @@ class _EmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,
@@ -2573,7 +2574,7 @@ class _SharedEmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,

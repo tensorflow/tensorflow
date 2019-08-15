@@ -1166,10 +1166,10 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(fn(tensor_shape.unknown_shape()), -1)
     # Scalar shape -> [] with type int32.
     self.assertEqual(fn([]).dtype, dtypes.int32)
-    self.assertEqual(fn(tensor_shape.scalar()).dtype, dtypes.int32)
+    self.assertEqual(fn(tensor_shape.TensorShape([])).dtype, dtypes.int32)
     self.assertAllEqual(self.evaluate(fn([])), np.array([], np.int32))
     self.assertAllEqual(
-        self.evaluate(fn(tensor_shape.scalar())), np.array([], np.int32))
+        self.evaluate(fn(tensor_shape.TensorShape([]))), np.array([], np.int32))
     # Tensor -> Tensor
     shape = constant_op.constant(1)
     self.assertIs(fn(shape), shape)
@@ -1327,7 +1327,8 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testConcatListWithScalarElementShapeFails(self):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=tensor_shape.scalar())
+        element_dtype=dtypes.float32,
+        element_shape=tensor_shape.TensorShape([]))
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         "Concat requires elements to be at least vectors, "
@@ -1580,6 +1581,31 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     element = list_ops.tensor_list_get_item(
         tensor_list, 0, element_dtype=dtypes.float32)
     self.assertAllEqual(element.shape.as_list(), [])
+
+  @test_util.run_gpu_only
+  def testNestedListDevicetoDeviceCopy(self):
+    if context.num_gpus() < 2:
+      self.skipTest("Need at least 2 GPUs for this test, found %d" %
+                    context.num_gpus())
+    with ops.device("gpu:0"):
+      t = constant_op.constant([1.0, 2.0, 3.0])
+      inner_l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+      outer_l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.variant, element_shape=[])
+      outer_l = list_ops.tensor_list_push_back(outer_l, inner_l)
+
+    # Stress test.
+    for _ in range(1024):
+      with ops.device("gpu:1"):
+        outer_l = array_ops.identity(outer_l)
+      with ops.device("gpu:0"):
+        outer_l = array_ops.identity(outer_l)
+
+    with ops.device("gpu:1"):
+      _, inner_l = list_ops.tensor_list_pop_back(
+          outer_l, element_dtype=dtypes.variant)
+      t = list_ops.tensor_list_stack(inner_l, element_dtype=dtypes.float32)
+      self.assertAllEqual(t, [1.0, 2.0, 3.0])
 
 
 if __name__ == "__main__":

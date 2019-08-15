@@ -113,7 +113,9 @@ def _embedding_lookup_and_transform(params,
   Raises:
     ValueError: If `params` is empty.
   """
-  if params is None or params in ((), []):
+  if params is None:
+    raise ValueError("params must be specified")
+  if isinstance(params, (list, tuple)) and not params:
     raise ValueError("Need at least one param")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/dispatch.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 
 namespace ruy {

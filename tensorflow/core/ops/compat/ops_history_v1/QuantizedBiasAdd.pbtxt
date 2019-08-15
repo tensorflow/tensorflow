@@ -1,0 +1,156 @@
+op {
+  name: "QuantizedBiasAdd"
+  input_arg {
+    name: "input"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "bias"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_bias"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_bias"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_out"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+}
+op {
+  name: "QuantizedBiasAdd"
+  input_arg {
+    name: "input"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "bias"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_bias"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_bias"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "min_out"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+}

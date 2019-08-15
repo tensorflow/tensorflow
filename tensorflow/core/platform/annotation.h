@@ -68,10 +68,7 @@ class Annotation {
   Annotation(const Annotation&) = delete;  // Unconstructible.
 
   // Returns a reference to the annotation for the current thread.
-  static std::string* ThreadAnnotation() {
-    static thread_local std::string annotation;
-    return &annotation;
-  }
+  static std::string* ThreadAnnotation();
 };
 
 namespace tracing {
@@ -113,12 +110,6 @@ class ScopedAnnotation {
       old_length_ = Annotation::PushAnnotation(name_generator());
     }
   }
-
-  // Deprecated: use the lambda version if you want to concatenate strings as
-  // annotation on the fly.
-  ScopedAnnotation(absl::string_view name_part1, absl::string_view name_part2)
-      : ScopedAnnotation(
-            [&]() { return StrCat(name_part1, ":", name_part2); }) {}
 
   // Pops the name passed in the constructor from the current annotation.
   ~ScopedAnnotation() {

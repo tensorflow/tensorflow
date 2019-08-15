@@ -47,24 +47,24 @@ class SummaryScalarOp : public OpKernel {
         errors::InvalidArgument(
             "tags and values not the same shape: ", tags.shape().DebugString(),
             " != ", values.shape().DebugString(), SingleTag(tags)));
-    auto Ttags = tags.flat<string>();
+    auto Ttags = tags.flat<tstring>();
     auto Tvalues = values.flat<T>();
     Summary s;
     for (int i = 0; i < Ttags.size(); i++) {
       Summary::Value* v = s.add_value();
-      v->set_tag(Ttags(i));
+      v->set_tag(string(Ttags(i)));  // NOLINT
       v->set_simple_value(float(Tvalues(i)));
     }
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 
   // If there's only one tag, include it in the error message
   static string SingleTag(const Tensor& tags) {
     if (tags.NumElements() == 1) {
-      return strings::StrCat(" (tag '", tags.flat<string>()(0), "')");
+      return strings::StrCat(" (tag '", tags.flat<tstring>()(0), "')");
     } else {
       return "";
     }
@@ -102,12 +102,12 @@ class SummaryHistoOp : public OpKernel {
 
     Summary s;
     Summary::Value* v = s.add_value();
-    v->set_tag(tags.scalar<string>()());
+    v->set_tag(string(tags.scalar<tstring>()()));  // NOLINT
     histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 
@@ -138,7 +138,7 @@ class SummaryMergeOp : public OpKernel {
     std::unordered_set<string> tags;
     for (int input_num = 0; input_num < c->num_inputs(); input_num++) {
       const Tensor& in = c->input(input_num);
-      auto in_vec = in.flat<string>();
+      auto in_vec = in.flat<tstring>();
       for (int i = 0; i < in_vec.dimension(0); i++) {
         const string& s_in = in_vec(i);
         Summary summary_in;
@@ -164,7 +164,7 @@ class SummaryMergeOp : public OpKernel {
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 

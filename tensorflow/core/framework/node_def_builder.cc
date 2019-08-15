@@ -261,15 +261,29 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   }
 }
 
-NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+bool NodeDefBuilder::AttrValueAlreadyPresent(StringPiece name,
+                                             const AttrValue& value) {
   if (const AttrValue* found = AttrSlice(node_def_).Find(name)) {
     if (!AreAttrValuesEqual(*found, value)) {
       errors_.push_back(strings::StrCat("Inconsistent values for attr '", name,
                                         "' ", SummarizeAttrValue(*found),
                                         " vs. ", SummarizeAttrValue(value)));
     }
-  } else {
+    return true;
+  }
+  return false;
+}
+
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, const AttrValue& value) {
+  if (!AttrValueAlreadyPresent(name, value)) {
     AddNodeAttr(name, value, &node_def_);
+  }
+  return *this;
+}
+
+NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
+  if (!AttrValueAlreadyPresent(name, value)) {
+    AddNodeAttr(name, std::move(value), &node_def_);
   }
   return *this;
 }

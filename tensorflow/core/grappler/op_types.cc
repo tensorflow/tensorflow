@@ -317,6 +317,8 @@ bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
+
 bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }

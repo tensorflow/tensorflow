@@ -27,10 +27,15 @@ tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
 
 namespace tensorflow {
 
-// Converts value to a TFE_TensorHandle of a given dtype. Note that the
-// resulting handle is always allocated on CPU.
+// Converts a value to a TFE_TensorHandle of a given dtype. The handle is
+// first allocated on CPU and then copied to a device identified by
+// device_name, unless it is nullptr.
+//
+// Note that an DT_INT32 handle is always kept on CPU regardless of the
+// device_name argument.
 TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
-                                       DataType dtype);
+                                       DataType dtype,
+                                       const char* device_name = nullptr);
 
 }  // namespace tensorflow
 

@@ -171,7 +171,7 @@ class NormalizationTest(keras_parameterized.TestCase,
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
 

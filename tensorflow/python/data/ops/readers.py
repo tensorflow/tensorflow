@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -26,16 +25,12 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/64974358): Increase default buffer size to 256 MB.
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
-
-# If the user requests the degree of interleave parallelism to be autotuned,
-# cycle length controls the maximum level of parallelism. We set it to a small
-# constant as a tradeoff between effective parallelism and memory and CPU usage.
-DEFAULT_CYCLE_LENGTH = 10
 
 
 def _create_or_validate_filenames_dataset(filenames):
@@ -53,7 +48,7 @@ def _create_or_validate_filenames_dataset(filenames):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")
     if not dataset_ops.get_legacy_output_shapes(filenames).is_compatible_with(
-        tensor_shape.scalar()):
+        tensor_shape.TensorShape([])):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
@@ -84,13 +79,10 @@ def _create_dataset_reader(dataset_creator, filenames, num_parallel_reads=None):
   if num_parallel_reads is None:
     return filenames.flat_map(read_one_file)
   else:
-    cycle_length = num_parallel_reads
-    if num_parallel_reads == dataset_ops.AUTOTUNE:
-      cycle_length = DEFAULT_CYCLE_LENGTH
-    return filenames.interleave(
-        read_one_file,
-        cycle_length,
-        num_parallel_calls=num_parallel_reads)
+    return ParallelInterleaveDataset(
+        filenames, read_one_file, cycle_length=num_parallel_reads,
+        block_length=1, sloppy=False, buffer_output_elements=None,
+        prefetch_input_elements=None)
 
 
 class _TextLineDataset(dataset_ops.DatasetSource):
@@ -218,6 +210,56 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
   @property
   def element_spec(self):
     return tensor_spec.TensorSpec([], dtypes.string)
+
+
+class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that maps a function over its input and flattens the result."""
+
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               sloppy, buffer_output_elements, prefetch_input_elements):
+    """See `tf.data.experimental.parallel_interleave()` for details."""
+    self._input_dataset = input_dataset
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func, self._transformation_name(), dataset=input_dataset)
+    if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
+      raise TypeError("`map_func` must return a `Dataset` object.")
+    self._element_spec = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
+    self._sloppy = ops.convert_to_tensor(
+        sloppy, dtype=dtypes.bool, name="sloppy")
+    self._buffer_output_elements = convert.optional_param_to_tensor(
+        "buffer_output_elements",
+        buffer_output_elements,
+        argument_default=2 * block_length)
+    self._prefetch_input_elements = convert.optional_param_to_tensor(
+        "prefetch_input_elements",
+        prefetch_input_elements,
+        argument_default=2 * cycle_length)
+    variant_tensor = ged_ops.parallel_interleave_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        **self._flat_structure)
+    super(ParallelInterleaveDataset, self).__init__(input_dataset,
+                                                    variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+  def _transformation_name(self):
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.TFRecordDataset", v1=[])
@@ -352,15 +394,9 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-    if (self._compression_type is not None or
-        compat.forward_compatible(2018, 11, 30)):
-      variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
-          self._filenames, self._header_bytes, self._record_bytes,
-          self._footer_bytes, self._buffer_size, self._compression_type)
-    else:
-      variant_tensor = gen_dataset_ops.fixed_length_record_dataset(
-          self._filenames, self._header_bytes, self._record_bytes,
-          self._footer_bytes, self._buffer_size)
+    variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
+        self._filenames, self._header_bytes, self._record_bytes,
+        self._footer_bytes, self._buffer_size, self._compression_type)
     super(_FixedLengthRecordDataset, self).__init__(variant_tensor)
 
   @property

@@ -29,6 +29,11 @@ cc_library(
         "micro_mutable_op_resolver.h",
         "simple_tensor_allocator.h",
     ],
+    copts = [
+        "-Werror",
+        "-Wdouble-promotion",
+        "-Wsign-compare",
+    ],
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",

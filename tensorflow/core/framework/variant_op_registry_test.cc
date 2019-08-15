@@ -118,11 +118,28 @@ TEST(VariantOpDecodeRegistryTest, TestBasic) {
   v.Encode(&data);
   VariantTensorDataProto proto;
   data.ToProto(&proto);
-  Variant encoded = proto;
+  Variant encoded = std::move(proto);
   EXPECT_TRUE((*decode_fn)(&encoded));
   VariantValue* decoded = encoded.get<VariantValue>();
   EXPECT_NE(decoded, nullptr);
   EXPECT_EQ(decoded->early_exit, true);
+}
+
+TEST(VariantOpDecodeRegistryTest, TestEmpty) {
+  VariantTensorDataProto empty_proto;
+  Variant empty_encoded = std::move(empty_proto);
+  EXPECT_TRUE(DecodeUnaryVariant(&empty_encoded));
+  EXPECT_TRUE(empty_encoded.is_empty());
+
+  VariantTensorData data;
+  Variant number = 3.0f;
+  number.Encode(&data);
+  VariantTensorDataProto proto;
+  data.ToProto(&proto);
+  proto.set_type_name("");
+  Variant encoded = std::move(proto);
+  // Failure when type name is empty but there's data in the proto.
+  EXPECT_FALSE(DecodeUnaryVariant(&encoded));
 }
 
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {

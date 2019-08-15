@@ -1158,7 +1158,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
-      if (absl::ConsumePrefix(&node_name, kInputPHName)) {
+      if (absl::ConsumePrefix(&node_name, IONamePrefixes::kInputPHName)) {
         int port = -1;
         EXPECT_TRUE(absl::SimpleAtoi(node_name, &port)) << node.name();
         if (input_shapes.size() < port + 1) input_shapes.resize(port + 1);
@@ -1188,11 +1188,13 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
 
 TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
   Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName(StrCat(kInputPHName, 0)), DT_FLOAT,
-                                ops::Placeholder::Shape({1, 1}));
+  auto input =
+      ops::Placeholder(s.WithOpName(StrCat(IONamePrefixes::kInputPHName, 0)),
+                       DT_FLOAT, ops::Placeholder::Shape({1, 1}));
   auto output = ops::Identity(s.WithOpName("identity1"), input);
   output = ops::Identity(s.WithOpName("identity2"), output);
-  output = ops::Identity(s.WithOpName(StrCat(kOutputPHName, 0)), output);
+  output = ops::Identity(s.WithOpName(StrCat(IONamePrefixes::kOutputPHName, 0)),
+                         output);
   // If the converter marks the input tensor as output tensor, the conversion
   // below will fail with:
   // > TensorRTOutputPH_0 cannot be both input and output
@@ -1453,6 +1455,9 @@ class OpConverterTest : public ::testing::Test {
     return converter_->quantization_ranges_;
   }
 
+  void PropagateQuantizationRanges() {
+    converter_->PropagateQuantizationRanges();
+  }
   std::unique_ptr<Converter> converter_;
 
  protected:
@@ -5846,6 +5851,111 @@ TEST_F(OpConverterTest, ConvertResize) {
   TestConvertResize<ops::ResizeNearestNeighbor, DT_HALF>(this);
 }
 #endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
+
+NodeDef MakePadNodeDef(std::string name, DataType dtype) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto padding = ops::Placeholder(s.WithOpName("padding"), DT_INT32);
+  auto pad = ops::Pad(s.WithOpName(name), input, padding);
+  return pad.operation.node()->def();
+}
+
+template <typename CType>
+struct PadTestParams {
+  std::vector<int> input_dims;
+  std::vector<int> pad_dims;
+  std::vector<CType> input_values;
+  std::vector<int> expected_output_dims;
+  std::vector<CType> expected_output_values;
+};
+
+template <DataType dtype>
+void TestConvertPad(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  std::vector<PadTestParams<CType>> params{
+      {
+          /*input_dims=*/{1, 2, 1},  // H, W, C
+          /*pad_dims=*/{4, 2},       // #dims, {pad_before, pad_after}
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_output_values=*/
+          CastTestVector<float, CType>({0.0, 0.0, 0.0, 2.0f, -1.0f, 0.0}),
+      },
+  };
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+    // Create pad node.
+    NodeDef node_def = MakePadNodeDef("my_pad", dtype);
+    // Create input tensor
+    test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
+                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+    // Create output size.
+    test->AddTestWeights<int32>("padding", params[i].pad_dims,
+                                {0, 0, 1, 0, 0, 1, 0, 0});
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("padding", &output));
+
+    // Create input data for tensors.
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(params[i].input_values)}};
+    DataVec output_data{
+        {"my_pad",
+         ConstructTensor<CType>(params[i].expected_output_values.size())}};
+
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+    ExpectArrayAlmostEqual(params[i].expected_output_values,
+                           GetSpanForData<CType>(output_data[0]), CType(1e-5));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertPad) {
+  {
+    // First input is weight, should fail.
+    Reset();
+    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
+    AddTestWeights<float>("input", {1, 2}, {1, 2});
+    AddTestWeights<int>("padding", {1, 2}, {1, 2});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"tensor\" for Pad must be a "
+                               "tensor");
+  }
+  {
+    // padding is a tensor, should fail.
+    Reset();
+    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
+    AddTestTensor("input", {1, 2});
+    AddTestTensor("padding", {1, 2});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "The input \"paddings\" for Pad must be a "
+                               "constant");
+  }
+  TestConvertPad<DT_FLOAT>(this);
+  TestConvertPad<DT_HALF>(this);
+  {
+    // Make sure that ranges are inferred across a Pad.
+    Reset();
+    NodeDef node_def = MakePadNodeDef("my_pad", DT_FLOAT);
+    AddTestTensor("input", {1, 2, 1});
+    AddTestWeights<int>("padding", {4, 2}, {0, 0, 1, 0, 0, 1, 0, 0});
+    TRT_TensorOrWeights input;
+    TRT_TensorOrWeights output;
+    RunValidationAndConversion(node_def);
+    TF_EXPECT_OK(GetTensorOrWeights("input", &input));
+    TF_EXPECT_OK(GetTensorOrWeights("my_pad", &output));
+    converter_->ProvideQuantizationRange(input.tensor(), -5.0f, 5.0f);
+    // Input range should be inferred across pad.
+    PropagateQuantizationRanges();
+    auto ranges = quantization_ranges();
+    EXPECT_EQ(5.0f, ranges[input.tensor()]);
+    EXPECT_EQ(5.0f, ranges[output.tensor()]);
+  }
+}
 
 }  // namespace convert
 }  // namespace tensorrt

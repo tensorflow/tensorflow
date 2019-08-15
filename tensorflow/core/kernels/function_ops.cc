@@ -120,7 +120,7 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
-                            .TypeConstraint<string>("T"),
+                            .TypeConstraint<tstring>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(
@@ -148,7 +148,7 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp)
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<string>("T")
+                            .TypeConstraint<tstring>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER
@@ -318,7 +318,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   string target_device;
   OP_REQUIRES_OK_ASYNC(
       ctx,
-      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
+      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<tstring>()(),
                                               source_device, &target_device),
       done);
 

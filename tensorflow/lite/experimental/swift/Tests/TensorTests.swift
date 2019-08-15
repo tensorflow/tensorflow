@@ -39,6 +39,38 @@ class TensorTests: XCTestCase {
     XCTAssertEqual(inputTensor.quantizationParameters, quantizationParameters)
   }
 
+  func testTensor_Equatable() {
+    let name = "Tensor"
+    let dataType: TensorDataType = .uInt8
+    let shape = TensorShape(Constant.dimensions)
+    guard let data = name.data(using: .utf8) else { XCTFail("Data should not be nil."); return }
+    let quantizationParameters = QuantizationParameters(scale: 0.5, zeroPoint: 1)
+    let tensor1 = Tensor(
+      name: name,
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    var tensor2 = Tensor(
+      name: name,
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    XCTAssertEqual(tensor1, tensor2)
+
+    tensor2 = Tensor(
+      name: "Tensor2",
+      dataType: dataType,
+      shape: shape,
+      data: data,
+      quantizationParameters: quantizationParameters
+    )
+    XCTAssertNotEqual(tensor1, tensor2)
+  }
+
   // MARK: - TensorShape
 
   func testTensorShape_InitWithArray() {
@@ -58,6 +90,15 @@ class TensorTests: XCTestCase {
     XCTAssertEqual(shape.rank, Constant.dimensions.count)
     XCTAssertEqual(shape.dimensions, Constant.dimensions)
   }
+
+  func testTensorShape_Equatable() {
+    let shape1 = TensorShape(2, 2, 3)
+    var shape2: TensorShape = [2, 2, 3]
+    XCTAssertEqual(shape1, shape2)
+
+    shape2 = [2, 2, 4]
+    XCTAssertNotEqual(shape1, shape2)
+  }
 }
 
 // MARK: - Constants
@@ -65,19 +106,4 @@ class TensorTests: XCTestCase {
 private enum Constant {
   /// Array of 2 arrays of 2 arrays of 3 numbers: [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]].
   static let dimensions = [2, 2, 3]
-}
-
-// MARK: - Extensions
-
-extension TensorShape: Equatable {
-  public static func == (lhs: TensorShape, rhs: TensorShape) -> Bool {
-    return lhs.rank == rhs.rank && lhs.dimensions == rhs.dimensions
-  }
-}
-
-extension Tensor: Equatable {
-  public static func == (lhs: Tensor, rhs: Tensor) -> Bool {
-    return lhs.name == rhs.name && lhs.dataType == rhs.dataType && lhs.shape == rhs.shape &&
-           lhs.data == rhs.data && lhs.quantizationParameters == rhs.quantizationParameters
-  }
 }

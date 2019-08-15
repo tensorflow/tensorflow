@@ -101,7 +101,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
             "Values size: ",
             values.value_size(), " but output shape: ", shape.DebugString());
       }
-      auto out_p = out->flat<string>().data() + offset;
+      auto out_p = out->flat<tstring>().data() + offset;
       std::transform(values.value().data(),
                      values.value().data() + num_elements, out_p,
                      [](const string* s) { return *s; });
@@ -136,7 +136,7 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
       const BytesList& values = feature.bytes_list();
       const int64 num_elements = values.value_size();
       Tensor out(dtype, TensorShape({num_elements}));
-      auto out_p = out.flat<string>().data();
+      auto out_p = out.flat<tstring>().data();
       std::transform(values.value().data(),
                      values.value().data() + num_elements, out_p,
                      [](const string* s) { return *s; });
@@ -175,8 +175,8 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
       break;
     }
     case DT_STRING: {
-      std::copy_n(in.flat<string>().data(), num_elements,
-                  values->flat<string>().data() + offset);
+      std::copy_n(in.flat<tstring>().data(), num_elements,
+                  values->flat<tstring>().data() + offset);
       break;
     }
     default:
@@ -203,8 +203,9 @@ void RowDenseCopy(const std::size_t& out_index, const DataType& dtype,
       break;
     }
     case DT_STRING: {
-      std::copy_n(in.flat<string>().data(), num_elements,
-                  out->flat<string>().data() + offset);
+      // TODO(dero): verify.
+      std::copy_n(in.flat<tstring>().data(), num_elements,
+                  out->flat<tstring>().data() + offset);
       break;
     }
     default:

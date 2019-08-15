@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -31,7 +32,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class DataAdapterTestBase(test.TestCase):
+class DataAdapterTestBase(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(DataAdapterTestBase, self).setUp()
@@ -45,7 +46,8 @@ class DataAdapterTestBase(test.TestCase):
             self.batch_size)
 
     def generator():
-      yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
+      while True:
+        yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
     self.generator_input = generator()
     self.sequence_input = TestSequence(batch_size=self.batch_size,
                                        feature_shape=10)
@@ -83,7 +85,8 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
   def test_iterator_expect_batch_size_numpy(self):
-    with self.assertRaisesRegexp(ValueError, r'`batch_size` is required'):
+    with self.assertRaisesRegexp(
+        ValueError, r'`batch_size` or `steps` is required'):
       self.adapter_cls(self.numpy_input, self.numpy_target)
 
   def test_size_numpy(self):
@@ -102,6 +105,7 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
         self.numpy_input, self.numpy_target, batch_size=4)
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
+    self.assertEqual(adapter.partial_batch_size(), 2)
 
   def test_training_numpy(self):
     dataset = self.adapter_cls(
@@ -130,16 +134,33 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertEqual(adapter.get_size(), 10)
     self.assertFalse(adapter.has_partial_batch())
 
-  def test_batch_size(self):
+  @parameterized.named_parameters(
+      ('batch_size_5', 5, None, 5),
+      ('batch_size_50', 50, 4, 50),  # Sanity check: batch_size takes precedence
+      ('steps_1', None, 1, 50),
+      ('steps_4', None, 4, 13),
+      )
+  def test_batch_size(self, batch_size_in, steps, batch_size_out):
     adapter = self.adapter_cls(
-        self.tensor_input, self.tensor_target, batch_size=5)
-    self.assertEqual(adapter.batch_size(), 5)
+        self.tensor_input, self.tensor_target, batch_size=batch_size_in,
+        steps=steps)
+    self.assertEqual(adapter.batch_size(), batch_size_out)
 
-  def test_partial_batch(self):
+  @parameterized.named_parameters(
+      ('batch_size_5', 5, None, 10, 0),
+      ('batch_size_4', 4, None, 13, 2),
+      ('steps_1', None, 1, 1, 0),
+      ('steps_5', None, 5, 5, 0),
+      ('steps_4', None, 4, 4, 11),
+      )
+  def test_partial_batch(
+      self, batch_size_in, steps, size, partial_batch_size):
     adapter = self.adapter_cls(
-        self.tensor_input, self.tensor_target, batch_size=4)
-    self.assertEqual(adapter.get_size(), 13)   # 50/4
-    self.assertTrue(adapter.has_partial_batch())
+        self.tensor_input, self.tensor_target, batch_size=batch_size_in,
+        steps=steps)
+    self.assertEqual(adapter.get_size(), size)   # 50/steps
+    self.assertEqual(adapter.has_partial_batch(), bool(partial_batch_size))
+    self.assertEqual(adapter.partial_batch_size(), partial_batch_size or None)
 
 
 class DatasetAdapterTest(DataAdapterTestBase):
@@ -171,6 +192,7 @@ class DatasetAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.dataset_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class GeneratorDataAdapterTest(DataAdapterTestBase):
@@ -187,9 +209,18 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
   def test_training(self):
-    dataset = self.adapter_cls(self.generator_input).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.generator_input, steps_per_epoch=10)
+
+  @test_util.run_v2_only
+  def test_with_multiprocessing_training(self):
+    self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
+    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
+    # Fit twice to ensure there isn't any duplication that prevent the worker
+    # from starting.
+    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
 
   def test_size(self):
     adapter = self.adapter_cls(self.generator_input)
@@ -202,6 +233,7 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.generator_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
@@ -218,9 +250,18 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.assertTrue(self.adapter_cls.can_handle(self.sequence_input))
 
   def test_training(self):
-    dataset = self.adapter_cls(self.sequence_input).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.sequence_input)
+
+  @test_util.run_v2_only
+  def test_with_multiprocessing_training(self):
+    self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
+    self.model.fit(self.sequence_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
+    # Fit twice to ensure there isn't any duplication that prevent the worker
+    # from starting.
+    self.model.fit(self.sequence_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
 
   def test_size(self):
     adapter = self.adapter_cls(self.sequence_input)
@@ -233,6 +274,7 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.sequence_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 if __name__ == '__main__':

@@ -131,12 +131,17 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:
@@ -175,7 +180,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
                       std::vector<Tensor>* out_tensors) override {
         out_tensors->reserve(dataset()->columns_.size() + 1);
         Tensor row_key_tensor(ctx->allocator({}), DT_STRING, {});
-        row_key_tensor.scalar<string>()() = string(row.row_key());
+        row_key_tensor.scalar<tstring>()() = string(row.row_key());
         out_tensors->emplace_back(std::move(row_key_tensor));
 
         if (row.cells().size() > 2 * dataset()->columns_.size()) {

@@ -40,6 +40,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
+# pylint: disable=g-error-prone-assert-raises
+
+
 class AssertV2Asserts(test.TestCase):
 
   def test_passes_when_it_should(self):
@@ -307,6 +310,15 @@ First 2 elements of y:
     with ops.control_dependencies([check_ops.assert_equal(larry, curly)]):
       out = array_ops.identity(larry)
     self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_noop_when_both_identical(self):
+    larry = constant_op.constant([])
+    check_op = check_ops.assert_equal(larry, larry)
+    if context.executing_eagerly():
+      self.assertIs(check_op, None)
+    else:
+      self.assertEqual(check_op.type, "NoOp")
 
 
 class AssertNoneEqualTest(test.TestCase):
@@ -1593,7 +1605,7 @@ class AssertShapesTest(test.TestCase):
       for shape in shapes:
         regex = (r"Tensor .* must have rank %d.  Received rank %d" %
                  (correct_rank, actual_rank))
-        self.raises_static_error(shapes={x: shape}, regex=regex)
+        self.raises_static_error(shapes=[(x, shape)], regex=regex)
 
     raises_static_rank_error(
         rank_two_shapes, array_ops.ones([1]), correct_rank=2, actual_rank=1)
@@ -1719,18 +1731,18 @@ class AssertShapesTest(test.TestCase):
   def test_dim_size_specified_as_unknown(self):
     x = array_ops.ones([1, 2, 3], name="x")
     y = array_ops.ones([2, 1], name="y")
-    a1 = check_ops.assert_shapes({
+    a1 = check_ops.assert_shapes([
         (x, (None, 2, None)),
         (y, (None, 1)),
-    })
-    a2 = check_ops.assert_shapes({
+    ])
+    a2 = check_ops.assert_shapes([
         (x, (".", 2, ".")),
         (y, (".", 1)),
-    })
-    a3 = check_ops.assert_shapes({
+    ])
+    a3 = check_ops.assert_shapes([
         (x, ".2."),
         (y, ".1"),
-    })
+    ])
     with ops.control_dependencies([a1, a2, a3]):
       out = array_ops.identity(x)
     self.evaluate(out)

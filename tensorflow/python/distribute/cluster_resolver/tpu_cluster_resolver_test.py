@@ -255,6 +255,29 @@ class TPUClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
+  def testFailedMetadata(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'HEALTHY'
+        }
+    }
+
+    cluster_resolver = resolver.TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu='nonexistent-tpu',
+        coordinator_name='coordinator',
+        coordinator_address='10.128.1.5:10203',
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    with self.assertRaises(ValueError) as context:
+      cluster_resolver.cluster_spec()
+
+    self.assertIn('Could not lookup TPU metadata', str(context.exception))
+
   def testNewNetworkEndpointFormat(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
@@ -516,6 +539,20 @@ class TPUClusterResolverTest(test.TestCase):
     cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef')
     self.assertEqual(cluster_resolver.environment, 'google')
     self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNumericalPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:1234')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNamedPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:port')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu,
+                     compat.as_bytes('/bns/ab/cd/ef:port'))
 
   def testEnvironmentAndRpcDetectionForGrpcString(self):
     cluster_resolver = resolver.TPUClusterResolver(

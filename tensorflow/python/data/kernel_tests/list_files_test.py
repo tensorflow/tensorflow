@@ -79,8 +79,9 @@ class ListFilesTest(test_base.DatasetTestBase):
     filenames = ['a', 'b', 'c']
     self._touchTempFiles(filenames)
 
-    dataset = dataset_ops.Dataset.list_files(
-        path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
+    def dataset_fn():
+      return dataset_ops.Dataset.list_files(
+          path.join(self.tmp_dir, '*'), shuffle=True, seed=37)
 
     expected_filenames = [
         compat.as_bytes(path.join(self.tmp_dir, filename))
@@ -90,7 +91,7 @@ class ListFilesTest(test_base.DatasetTestBase):
     all_actual_filenames = []
     for _ in range(3):
       actual_filenames = []
-      next_element = self.getNext(dataset, requires_initialization=True)
+      next_element = self.getNext(dataset_fn(), requires_initialization=True)
       try:
         while True:
           actual_filenames.append(self.evaluate(next_element()))

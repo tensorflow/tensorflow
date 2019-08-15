@@ -105,11 +105,11 @@ TestCase TestCase1() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::ZLIB,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"111"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"222"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"333"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"aaa"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<string>(TensorShape({}), {"111"}),
+           CreateTensor<string>(TensorShape({}), {"222"}),
+           CreateTensor<string>(TensorShape({}), {"333"}),
+           CreateTensor<string>(TensorShape({}), {"aaa"}),
+           CreateTensor<string>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -129,11 +129,11 @@ TestCase TestCase2() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::GZIP,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"111"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"222"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"333"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"aaa"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<string>(TensorShape({}), {"111"}),
+           CreateTensor<string>(TensorShape({}), {"222"}),
+           CreateTensor<string>(TensorShape({}), {"333"}),
+           CreateTensor<string>(TensorShape({}), {"aaa"}),
+           CreateTensor<string>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -154,11 +154,11 @@ TestCase TestCase3() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::UNCOMPRESSED,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"111"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"222"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"333"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"aaa"}),
-           DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<string>(TensorShape({}), {"111"}),
+           CreateTensor<string>(TensorShape({}), {"222"}),
+           CreateTensor<string>(TensorShape({}), {"333"}),
+           CreateTensor<string>(TensorShape({}), {"aaa"}),
+           CreateTensor<string>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -450,56 +450,6 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(fixed_length_record_dataset);
   EXPECT_EQ(fixed_length_record_dataset->Cardinality(),
             test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> fixed_length_record_dataset_kernel;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetOpKernel(
-      &fixed_length_record_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor header_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
-  Tensor record_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.record_bytes});
-  Tensor footer_bytes =
-      CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  gtl::InlinedVector<TensorValue, 4> inputs{
-      TensorValue(&filenames),    TensorValue(&header_bytes),
-      TensorValue(&record_bytes), TensorValue(&footer_bytes),
-      TensorValue(&buffer_size),  TensorValue(&compression_type),
-  };
-  std::unique_ptr<OpKernelContext> fixed_length_record_dataset_context;
-  TF_ASSERT_OK(CreateFixedLengthRecordDatasetContext(
-      fixed_length_record_dataset_kernel.get(), &inputs,
-      &fixed_length_record_dataset_context));
-
-  DatasetBase* fixed_length_record_dataset;
-  TF_ASSERT_OK(CreateDataset(fixed_length_record_dataset_kernel.get(),
-                             fixed_length_record_dataset_context.get(),
-                             &fixed_length_record_dataset));
-  core::ScopedUnref scoped_unref(fixed_length_record_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      fixed_length_record_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputDtypes) {
