@@ -53,7 +53,7 @@ absl::flat_hash_map<string, string> GetXlaScopes(const Graph& graph) {
   absl::flat_hash_map<string, string> scopes;
   for (Node* node : graph.nodes()) {
     string scope;
-    if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
+    if (GetNodeAttr(node->attrs(), kXlaAutoJitScopeAttr, &scope).ok()) {
       scopes[node->name()] = scope;
     }
   }
@@ -85,11 +85,15 @@ TEST(XlaCompilationTest, StagePipelinePreserved) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {
     // Graph:
-    // a ->
-    // b -> add0 (ClusterX) -> relu0 (ClusterX) -> stage
+    //       b
+    //       |
+    //       v
+    // a -> add0 (ClusterX) -> relu0 (ClusterX) -> stage
     //
-    // unstage ->
-    // b       -> add1 (ClusterY) -> relu1 (ClusterY)
+    //             b
+    //             |
+    //             v
+    // unstage -> add1 (ClusterY) -> relu1 (ClusterY)
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
                                          .WithName("a")
@@ -125,11 +129,15 @@ TEST(XlaCompilationTest, StagePipelinePreservedAndInitialScopesRespected) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {
     // Graph:
-    // a ->
-    // b -> add0 (ClusterA) -> relu0 (ClusterB) -> stage
+    //       b
+    //       |
+    //       v
+    // a -> add0 (ClusterA) -> relu0 (ClusterB) -> stage
     //
-    // unstage ->
-    // b       -> add1 (ClusterC) -> relu1 (ClusterD)
+    //             b
+    //             |
+    //             v
+    // unstage -> add1 (ClusterC) -> relu1 (ClusterD)
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
     Node* a = ops::SourceOp("Const", builder.opts()
                                          .WithName("a")
@@ -145,17 +153,17 @@ TEST(XlaCompilationTest, StagePipelinePreservedAndInitialScopesRespected) {
 
     // Intentionally give add0 and add1 the same initial scope but they should
     // be separated by the ClusterScopingPass.
-    Node* add0 = ops::BinaryOp(
-        "Add", a, b,
-        builder.opts().WithName("add0").WithAttr(kXlaScopeAttr, "ClusterA"));
-    Node* add1 = ops::BinaryOp(
-        "Add", unstage, b,
-        builder.opts().WithName("add1").WithAttr(kXlaScopeAttr, "ClusterA"));
-    Node* relu0 = ops::UnaryOp(
-        "Relu", add0,
-        builder.opts().WithName("relu0").WithAttr(kXlaScopeAttr, "ClusterB"));
+    Node* add0 =
+        ops::BinaryOp("Add", a, b, builder.opts().WithName("add0").WithAttr(
+                                       kXlaAutoJitScopeAttr, "ClusterA"));
+    Node* add1 = ops::BinaryOp("Add", unstage, b,
+                               builder.opts().WithName("add1").WithAttr(
+                                   kXlaAutoJitScopeAttr, "ClusterA"));
+    Node* relu0 =
+        ops::UnaryOp("Relu", add0, builder.opts().WithName("relu0").WithAttr(
+                                       kXlaAutoJitScopeAttr, "ClusterB"));
     ops::UnaryOp("Relu", add1, builder.opts().WithName("relu1").WithAttr(
-                                   kXlaScopeAttr, "ClusterD"));
+                                   kXlaAutoJitScopeAttr, "ClusterD"));
     BuildStageNode(builder, "stage", {DT_FLOAT}, {relu0});
 
     TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));

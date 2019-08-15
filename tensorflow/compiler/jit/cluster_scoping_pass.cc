@@ -54,7 +54,7 @@ class ClusterScopingPassImpl {
 
 absl::optional<string> GetXlaScope(Node* node) {
   string scope;
-  if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
+  if (GetNodeAttr(node->attrs(), kXlaAutoJitScopeAttr, &scope).ok()) {
     return scope;
   }
 
@@ -62,7 +62,7 @@ absl::optional<string> GetXlaScope(Node* node) {
 }
 
 void SetXlaScope(Node* node, StringPiece scope) {
-  node->AddAttr(kXlaScopeAttr, scope);
+  node->AddAttr(kXlaAutoJitScopeAttr, scope);
 }
 
 // NB! We append new scope as suffix to the XlaScope attribute instead of
