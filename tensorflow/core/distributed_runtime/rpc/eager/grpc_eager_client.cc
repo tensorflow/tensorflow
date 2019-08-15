@@ -58,7 +58,6 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(RegisterFunction);
-  CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 

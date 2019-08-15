@@ -695,64 +695,6 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-// When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
-// devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
-// sender* (Rendezvous::RecvAsync() invoked by the _Recv kernel).
-//
-// However, in some configurations the node that has the tensor to be copied
-// isn't running a server (WorkerService RPC interface). For such cases,
-// this function enables sending tensors using the EagerService.SendTensor RPC
-// *on the receiver*.
-Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
-                             Device* recv_device, bool mirror,
-                             TensorHandle** result) {
-  eager::EagerClient* eager_client;
-  uint64 context_id = ctx->GetContextId();
-  TF_RETURN_IF_ERROR(ctx->GetClient(recv_device, &eager_client));
-
-  eager::SendTensorRequest request;
-  eager::SendTensorResponse response;
-
-  request.set_context_id(context_id);
-  request.set_op_id(ctx->RemoteMgr()->NextOpId());
-  request.set_device_name(recv_device->name());
-
-  // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
-  // copy it to the CPU before copying it out.
-  // TODO(b/110044833): this is currently slow, but can be fixed by making
-  // tensor handles aware of more than one device.
-  Tensor tensor;
-  TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &tensor));
-  tensor.AsProtoTensorContent(request.add_tensors());
-
-  const tensorflow::uint64 id = request.op_id();
-
-  // TODO(nareshmodi): support making this call async.
-  Notification n;
-  Status status;
-  eager_client->SendTensorAsync(&request, &response,
-                                [&n, &status](const Status& s) {
-                                  status = s;
-                                  n.Notify();
-                                });
-  n.WaitForNotification();
-  if (!status.ok()) return status;
-
-  auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      id, 0, tensor.shape(), eager_client, context_id, ctx);
-  if (mirror) {
-    status = h->AddRemoteMirror(std::move(tensor_handle_data), recv_device);
-    h->Ref();
-    *result = h;
-  } else {
-    status = TensorHandle::CreateRemoteHandle(std::move(tensor_handle_data),
-                                              tensor.dtype(), recv_device,
-                                              nullptr, ctx, result);
-  }
-
-  return status;
-}
-
 void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
 
@@ -1205,43 +1147,37 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         return Status::OK();
       }
     }
-
-    if (ctx->UseSendTensorRPC() && sender_is_local && !recver_is_local) {
-      return EagerRemoteSendTensor(ctx, h, device, mirror, result);
+    uint64 recv_op_id = 0;
+    if (recver_is_local) {
+      TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
+          /* d= */ device,
+          /* op_device= */ device, /*resource_device=*/nullptr, h->dtype, ctx,
+          result));
     } else {
-      uint64 recv_op_id = 0;
-      if (recver_is_local) {
-        TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-            /* d= */ device,
-            /* op_device= */ device, /*resource_device=*/nullptr, h->dtype, ctx,
-            result));
+      eager::EagerClient* eager_client;
+      uint64 context_id = ctx->GetContextId();
+      TF_RETURN_IF_ERROR(ctx->GetClient(device, &eager_client));
+      recv_op_id = ctx->RemoteMgr()->NextOpId();
+      auto tensor_handle_data =
+          absl::make_unique<UnshapedRemoteTensorHandleData>(
+              recv_op_id, 0, eager_client, context_id, ctx);
+      if (mirror) {
+        TF_RETURN_IF_ERROR(
+            h->AddUnshapedRemoteMirror(std::move(tensor_handle_data), device));
+        h->Ref();
+        *result = h;
       } else {
-        eager::EagerClient* eager_client;
-        uint64 context_id = ctx->GetContextId();
-        TF_RETURN_IF_ERROR(ctx->GetClient(device, &eager_client));
-        recv_op_id = ctx->RemoteMgr()->NextOpId();
-        auto tensor_handle_data =
-            absl::make_unique<UnshapedRemoteTensorHandleData>(
-                recv_op_id, 0, eager_client, context_id, ctx);
-        if (mirror) {
-          TF_RETURN_IF_ERROR(h->AddUnshapedRemoteMirror(
-              std::move(tensor_handle_data), device));
-          h->Ref();
-          *result = h;
-        } else {
-          TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-              std::move(tensor_handle_data), h->dtype, device, ctx, result));
-        }
+        TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
+            std::move(tensor_handle_data), h->dtype, device, ctx, result));
       }
-      auto node = absl::make_unique<eager::RemoteCopyNode>(
-          ctx, executor, h, result[0], device, recv_op_id);
-      Status s =
-          executor->Async() ? executor->Add(std::move(node)) : node->Run();
-      if (!s.ok()) {
-        result[0]->Unref();
-      }
-      return s;
     }
+    auto node = absl::make_unique<eager::RemoteCopyNode>(
+        ctx, executor, h, result[0], device, recv_op_id);
+    Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
+    if (!s.ok()) {
+      result[0]->Unref();
+    }
+    return s;
 #endif  // !IS_MOBILE_PLATFORM
   }
 }

@@ -43,6 +43,8 @@ namespace eager {
 //   successfully. At this point, the tensor to be sent is in the local
 //   Rendezvous, hence, remote _Recv op will not deadlock waiting for the tensor
 //   to appear.
+//   When ctx->UseSendTensorRPC() is true, we use EagerService::Enqueue
+//   SendTensor instead of _Send/_Recv.
 //
 // - Remote -> Remote:
 //   We could issue both remote ops asynchronously, but if remote _Send (or some
@@ -100,6 +102,16 @@ class RemoteCopyNode : public EagerNode {
   // returns its status.
   Status RunRemoteRecv(EagerOperation* op);
 
+  // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
+  // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
+  // sender* (Rendezvous::RecvAsync() invoked by the _Recv kernel).
+  //
+  // However, in some configurations the node that has the tensor to be copied
+  // isn't running a server (WorkerService RPC interface). For such cases,
+  // this function enables sending tensors using the EagerService.Enqueue
+  // SendTensor RPC *on the receiver*.
+  Status StartRemoteSendTensor();
+
   // State that is captured by Send and/or Recv callbacks (depending on which
   // one(s) is remote) and outlives this node in the case of remote->remote
   // copy.
@@ -118,6 +130,11 @@ class RemoteCopyNode : public EagerNode {
       return send_status_;
     }
 
+    // src_shape_ is not thread-safe. It should only be set in one thread.
+    void SetSrcShape(const TensorShape& shape) { src_shape_ = shape; }
+
+    const TensorShape& GetSrcShape() { return src_shape_; }
+
     TensorHandle* dst() { return dst_; }
     CancellationManager* recv_cancellation() { return &recv_cancellation_; }
 
@@ -128,6 +145,7 @@ class RemoteCopyNode : public EagerNode {
     // has returned.
     Status send_status_;
     Notification send_done_;
+    TensorShape src_shape_;
   };
 
   TensorHandle* const src_;
