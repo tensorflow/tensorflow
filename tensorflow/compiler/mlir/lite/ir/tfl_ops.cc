@@ -534,7 +534,7 @@ static void BuildTopKOp(Builder *builder, OperationState *result, Value *input,
   if (matchPattern(k, m_Constant(&cst)))
     // These casts should all be valid due to how Tensor constants are stored.
     // TODO(jpienaar): This should use a helper function.
-    const_k = cst.getValue({}).cast<IntegerAttr>().getValue().getSExtValue();
+    const_k = cst.getValue<IntegerAttr>({}).getValue().getSExtValue();
 
   auto val_type = input->getType().cast<TensorType>();
   // If value is unranked, then so is results.
@@ -858,17 +858,17 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
     if (elem_type.isa<IntegerType>()) {
-      auto start_attr = start_tensor.getValue({}).cast<IntegerAttr>();
-      auto limit_attr = limit_tensor.getValue({}).cast<IntegerAttr>();
-      auto delta_attr = delta_tensor.getValue({}).cast<IntegerAttr>();
+      auto start_attr = start_tensor.getValue<IntegerAttr>({});
+      auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
+      auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
       const int num_elements = GetLengthOfRange(
           start_attr.getInt(), limit_attr.getInt(), delta_attr.getInt());
       return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                    delta_attr);
     } else if (elem_type.isa<FloatType>()) {
-      auto start_attr = start_tensor.getValue({}).cast<FloatAttr>();
-      auto limit_attr = limit_tensor.getValue({}).cast<FloatAttr>();
-      auto delta_attr = delta_tensor.getValue({}).cast<FloatAttr>();
+      auto start_attr = start_tensor.getValue<FloatAttr>({});
+      auto limit_attr = limit_tensor.getValue<FloatAttr>({});
+      auto delta_attr = delta_tensor.getValue<FloatAttr>({});
       const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
                                                 limit_attr.getValueAsDouble(),
                                                 delta_attr.getValueAsDouble());
@@ -936,9 +936,8 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   SmallVector<int32_t, 4> perm;
   SmallVector<int64_t, 4> output_shape;
   for (int i = 0; i < num_dimensions; ++i) {
-    perm.push_back(perm_tensor.getValue({static_cast<uint64_t>(i)})
-                       .cast<IntegerAttr>()
-                       .getInt());
+    perm.push_back(
+        perm_tensor.getValue<IntegerAttr>({static_cast<uint64_t>(i)}).getInt());
     output_shape.push_back(input_shape[perm[i]]);
 
     // Check that the derived output shape matches the static shape.

@@ -217,7 +217,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 #if RUY_PLATFORM(NEON)
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx512)
 #endif
 

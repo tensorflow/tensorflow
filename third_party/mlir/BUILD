@@ -1432,9 +1432,6 @@ cc_binary(
         ":tools/libcuda-runtime-wrappers.so",
     ],
     includes = ["include"],
-    # cl/262981524 introduced a regression to test/mlir-cuda-runner:gpu-to-cubin.mlir.test.
-    # TODO(timshen): Remove the following workaround.
-    linkopts = ["-Wl,-rpath,/var/google/persistent/kibbles/libcuda_running"],
     deps = [
         ":GPUDialect",
         ":GPUDialectRegistration",

@@ -944,6 +944,46 @@ TEST_F(DynamicDimensionInferenceTest, SortTest) {
   EXPECT_EQ(inference_->GetDynamicSize(sort, {}, 0), size_param);
 }
 
+TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto shape = ShapeUtil::MakeShape(F32, {5, 7});
+
+  auto data_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  auto compare_builder = HloComputation::Builder("condition");
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param1"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {}), "param2"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F32, {}), "param3"));
+  compare_builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(F32, {}), "param4"));
+  compare_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  HloComputation* compare =
+      module_->AddEmbeddedComputation(compare_builder.Build());
+
+  auto* sort = builder.AddInstruction(
+      HloInstruction::CreateSort(ShapeUtil::MakeTupleShape({shape, shape}), 1,
+                                 {data_param, data_param}, compare,
+                                 /*is_stable=*/false));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(sort, {0}, 0), size_param);
+  EXPECT_EQ(inference_->GetDynamicSize(sort, {1}, 0), size_param);
+}
+
 TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   // Slicing out a single element from a dynamic dimension terminates the
   // dynamic dimension.

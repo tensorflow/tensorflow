@@ -86,7 +86,8 @@ class _TPUPollingThread(threading.Thread):
       response = self._cluster._fetch_cloud_tpu_metadata()  # pylint: disable=protected-access
       logging.warning(
           'TPUPollingThread found TPU %s in state %s, and health %s.',
-          self._cluster._tpu, response['state'], response['health'])  # pylint: disable=protected-access
+          self._cluster._tpu, response['state'],  # pylint: disable=protected-access
+          response.get('health', 'UNKNOWN'))
 
       if 'state' in response and response['state'] in [
           'TERMINATED', 'PREEMPTED'

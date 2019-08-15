@@ -172,15 +172,7 @@ bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
       return false;
     }
 #ifdef USE_TSTRING
-    // TODO(dero): Consider adding resize_uninitialized() to tstring once the
-    // tstring placeholder is replaced with the actual implementation.
-    //
-    // Currently, in the case of USE_TSTRING, the placeholder tstring class
-    // encapsulates a single std::string.  We avoid using
-    // gtl::STLStringResizeUninitialized (and its associated header-include) in
-    // tstring.h as we have no intention in using it in the actual
-    // implementation. Thus, in the interim, we resort to resize().
-    data->resize(size);
+    data->resize_uninitialized(size);
     reader.ReadN(size, data->data());
 #else   // USE_TSTRING
     gtl::STLStringResizeUninitialized(data, size);

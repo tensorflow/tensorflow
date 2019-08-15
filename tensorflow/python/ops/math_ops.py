@@ -3466,7 +3466,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3512,7 +3512,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3559,7 +3559,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3635,7 +3635,7 @@ def sparse_segment_sum_v2(data,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3704,7 +3704,7 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3750,7 +3750,7 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3826,7 +3826,7 @@ def sparse_segment_sqrt_n_v2(data,
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.sparse.segment_mean`, but instead of dividing by the size of the

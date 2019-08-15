@@ -1221,6 +1221,7 @@ def tf_cc_test_mkl(
             size = size,
             args = args,
             features = disable_header_modules,
+            nocopts = "-fno-exceptions",
         )
 
 def tf_cc_tests_gpu(
@@ -1508,7 +1509,8 @@ def tf_mkl_kernel_library(
         hdrs = None,
         deps = None,
         alwayslink = 1,
-        copts = tf_copts()):
+        copts = tf_copts(),
+        nocopts = "-fno-exceptions"):
     """A rule to build MKL-based TensorFlow kernel libraries."""
 
     if not bool(srcs):
@@ -1536,6 +1538,7 @@ def tf_mkl_kernel_library(
         deps = deps,
         alwayslink = alwayslink,
         copts = copts,
+        nocopts = nocopts,
         features = disable_header_modules,
     )
 

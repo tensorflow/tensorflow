@@ -36,7 +36,6 @@ TEST(Port, AlignedMalloc) {
 }
 
 TEST(Port, GetCurrentCPU) {
-  GTEST_SKIP() << "Currently not stable.";  // b/132640908
   const int cpu = GetCurrentCPU();
 #if !defined(__APPLE__)
   // GetCurrentCPU does not currently work on MacOS.

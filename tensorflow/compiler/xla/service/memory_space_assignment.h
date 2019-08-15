@@ -111,7 +111,7 @@ class MemorySpaceAssignment {
     virtual ~Allocation() = default;
 
     // Adds a use to this allocation.
-    void AddUse(HloUse use) { uses_.push_back(use); }
+    void AddUse(HloUse use);
 
     // Extends the end time of this allocation.
     void Extend(int64 end_time) { end_time_ = end_time; }
@@ -136,9 +136,15 @@ class MemorySpaceAssignment {
     int64 end_time() const { return end_time_; }
 
    protected:
+    // Bitcasts are treated specially because they do not define buffers.  This
+    // method propagates the memory space for the bitcasts of this allocation.
+    Status PropagateMemorySpaceToBitcasts(
+        const MemorySpaceAssignment& memory_space_assignment);
+
     HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
+    std::vector<HloInstruction*> bitcasts_;
     MemorySpace memory_space_;
     Chunk chunk_;
     int64 start_time_;
@@ -278,8 +284,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // prefetches or evictions.
   void FindAllocation(int64 start_time, int64 end_time,
                       HloPosition defining_position, HloUse use,
-                      const BufferInterval& interval,
+                      const HloValue* buffer, int64 size,
                       MemorySpaceAssignment::AllocationSequence* allocations);
+
+  // Try allocating in alternate memory without any copies. Returns true if
+  // successful.
+  bool TryAllocatingInAlternateMemoryNoCopy(
+      int64 start_time, int64 end_time, HloPosition defining_position,
+      HloUse use, BufferInterval alternate_mem_interval,
+      HloInstruction* non_bitcast_operand,
+      MemorySpaceAssignment::AllocationSequence* allocations);
 
   // Returns the instruction at a particular time in the flattened instruction
   // schedule.

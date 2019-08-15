@@ -978,7 +978,7 @@ class PForConfig(object):
     # This may be set to the number of iterations.
     self._maybe_iters = None
     # Map from output placeholder to the unvectorized tensor.
-    self._reduce_concat_map = {}
+    self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
     # Reverse map of `self._reduce_concat_map`.
     self._reverse_reduce_concat_map = {}
 
@@ -1532,7 +1532,7 @@ def _channel_flatten_input(x, data_format):
   """
 
   graph = ops.get_default_graph()
-  cache_key = (graph, x, data_format)
+  cache_key = (graph, x.experimental_ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
     if data_format == b"NCHW":

@@ -63,6 +63,7 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* sesson_metadata,
     ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an

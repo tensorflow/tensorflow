@@ -523,22 +523,25 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
               kComparisonPrecision);
 }
 
-TEST(AsyncKnownRatioGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
+class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
+
+TEST_P(AsyncKnownRatioGradientTest, Model) {
+  const string parameter_name = GetParam();
+  const int64 parameter_value = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {0, "async_known_many", nullptr}, num_inputs_per_output,
       {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+          parameter_name,
+          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
+          parameter_value)});
   std::shared_ptr<Node> source1 = model::MakeAsyncKnownRatioNode(
       {0, "source1", nullptr}, num_inputs_per_output,
       {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+          parameter_name,
+          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
+          parameter_value)});
   async_known_many->add_input(source1);
   std::shared_ptr<Node> source2 =
       model::MakeSourceNode({2, "source2", async_known_many});
@@ -572,6 +575,9 @@ TEST(AsyncKnownRatioGradientTest, Model) {
               (new_output_time - output_time) / kParameterStep,
               kComparisonPrecision);
 }
+
+INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioGradientTest,
+                         ::testing::Values("parallelism", "buffer_size"));
 
 TEST(InterleaveManyGradientTest, Model) {
   const int64 parallelism = model::kAutotune;

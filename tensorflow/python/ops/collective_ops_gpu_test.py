@@ -22,6 +22,7 @@ import os
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -71,6 +72,28 @@ class CollectiveOpGPUTest(test.TestCase):
       results = sess.run(collectives)
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testInt32Error(self):
+    inputs = [[0, 1], [2, 3]]
+    group_size = len(inputs)
+    group_key = 1
+    instance_key = 50
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          t = constant_op.constant(inputs[i], dtype=dtypes.int32)
+          collectives.append(collective_ops.all_reduce(
+              t, group_size, group_key, instance_key, 'Add', 'Div'))
+      with self.assertRaisesRegexp(
+          errors.InternalError,
+          'does not support datatype DT_INT32 on DEVICE_GPU'):
+        sess.run(collectives)
 
   @test_util.run_deprecated_v1
   def testNcclHintAllReduce(self):

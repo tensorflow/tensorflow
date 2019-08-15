@@ -618,15 +618,15 @@ LogicalResult Serializer::prepareBoolVectorConstant(
 
   // For splat cases, we don't need to loop over all elements, especially when
   // the splat value is zero.
-  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
+  if (elementsAttr.isSplat()) {
     // We can use OpConstantNull if this bool ElementsAttr is splatting false.
-    if (!isSpec && !splatAttr.cast<BoolAttr>().getValue()) {
+    if (!isSpec && !elementsAttr.getSplatValue<bool>()) {
       opcode = spirv::Opcode::OpConstantNull;
       return success();
     }
 
-    if (auto id =
-            prepareConstantBool(loc, splatAttr.cast<BoolAttr>(), isSpec)) {
+    if (auto id = prepareConstantBool(
+            loc, elementsAttr.getSplatValue<BoolAttr>(), isSpec)) {
       opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                       : spirv::Opcode::OpConstantComposite;
       operands.append(count, id);
@@ -640,11 +640,10 @@ LogicalResult Serializer::prepareBoolVectorConstant(
   // OpConstantComposite.
   opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                   : spirv::Opcode::OpConstantComposite;
-  for (APInt intValue : elementsAttr) {
-    // We are constructing an BoolAttr for each APInt here. But given that
+  for (auto boolAttr : elementsAttr.getValues<BoolAttr>()) {
+    // We are constructing an BoolAttr for each value here. But given that
     // we only use ElementsAttr for vectors with no more than 4 elements, it
     // should be fine here.
-    auto boolAttr = mlirBuilder.getBoolAttr(intValue.isOneValue());
     if (auto elementID = prepareConstantBool(loc, boolAttr, isSpec)) {
       operands.push_back(elementID);
     } else {
@@ -661,8 +660,8 @@ LogicalResult Serializer::prepareIntVectorConstant(
   assert(type.hasRank() && type.getRank() == 1 &&
          "spv.constant should have verified only vector literal uses "
          "ElementsAttr");
-  auto elementType = type.getElementType();
-  assert(!elementType.isInteger(1) && "must be non-bool ElementsAttr");
+  assert(!type.getElementType().isInteger(1) &&
+         "must be non-bool ElementsAttr");
   auto count = type.getNumElements();
 
   // Operands for constructing the SPIR-V OpConstant* instruction
@@ -670,15 +669,16 @@ LogicalResult Serializer::prepareIntVectorConstant(
 
   // For splat cases, we don't need to loop over all elements, especially when
   // the splat value is zero.
-  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
+  if (elementsAttr.isSplat()) {
+    auto splatAttr = elementsAttr.getSplatValue<IntegerAttr>();
+
     // We can use OpConstantNull if this int ElementsAttr is splatting 0.
-    if (!isSpec && splatAttr.cast<IntegerAttr>().getValue().isNullValue()) {
+    if (!isSpec && splatAttr.getValue().isNullValue()) {
       opcode = spirv::Opcode::OpConstantNull;
       return success();
     }
 
-    if (auto id =
-            prepareConstantInt(loc, splatAttr.cast<IntegerAttr>(), isSpec)) {
+    if (auto id = prepareConstantInt(loc, splatAttr, isSpec)) {
       opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                       : spirv::Opcode::OpConstantComposite;
       operands.append(count, id);
@@ -691,13 +691,12 @@ LogicalResult Serializer::prepareIntVectorConstant(
   // OpConstantComposite.
   opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                   : spirv::Opcode::OpConstantComposite;
-  for (APInt intValue : elementsAttr) {
-    // We are constructing an IntegerAttr for each APInt here. But given that
+  for (auto intAttr : elementsAttr.getValues<IntegerAttr>()) {
+    // We are constructing an IntegerAttr for each value here. But given that
     // we only use ElementsAttr for vectors with no more than 4 elements, it
     // should be fine here.
     // TODO(antiagainst): revisit this if special extensions enabling large
     // vectors are supported.
-    auto intAttr = mlirBuilder.getIntegerAttr(elementType, intValue);
     if (auto elementID = prepareConstantInt(loc, intAttr, isSpec)) {
       operands.push_back(elementID);
     } else {
@@ -715,17 +714,17 @@ LogicalResult Serializer::prepareFloatVectorConstant(
          "spv.constant should have verified only vector literal uses "
          "ElementsAttr");
   auto count = type.getNumElements();
-  auto elementType = type.getElementType();
 
   operands.reserve(count + 2);
 
-  if (Attribute splatAttr = elementsAttr.getSplatValue()) {
-    if (!isSpec && splatAttr.cast<FloatAttr>().getValue().isZero()) {
+  if (elementsAttr.isSplat()) {
+    FloatAttr splatAttr = elementsAttr.getSplatValue<FloatAttr>();
+    if (!isSpec && splatAttr.getValue().isZero()) {
       opcode = spirv::Opcode::OpConstantNull;
       return success();
     }
 
-    if (auto id = prepareConstantFp(loc, splatAttr.cast<FloatAttr>(), isSpec)) {
+    if (auto id = prepareConstantFp(loc, splatAttr, isSpec)) {
       opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                       : spirv::Opcode::OpConstantComposite;
       operands.append(count, id);
@@ -737,8 +736,7 @@ LogicalResult Serializer::prepareFloatVectorConstant(
 
   opcode = isSpec ? spirv::Opcode::OpSpecConstantComposite
                   : spirv::Opcode::OpConstantComposite;
-  for (APFloat floatValue : elementsAttr) {
-    auto fpAttr = mlirBuilder.getFloatAttr(elementType, floatValue);
+  for (auto fpAttr : elementsAttr.getValues<FloatAttr>()) {
     if (auto elementID = prepareConstantFp(loc, fpAttr, isSpec)) {
       operands.push_back(elementID);
     } else {
