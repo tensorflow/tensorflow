@@ -235,8 +235,8 @@ class WrapFunctionTest(test.TestCase):
     self.assertIs(g_var_collection[0], v3_holder[0])
 
     # Both have only one value, and their values aren't equal. So no sharing.
-    self.assertNotEqual(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES),
-                        f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES))
+    self.assertIsNot(g_wrapped.graph.get_collection(ops.GraphKeys.LOSSES[0]),
+                     f_wrapped.graph.get_collection(ops.GraphKeys.LOSSES)[0])
 
   def testGradientsOfPrune(self):
 
