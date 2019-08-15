@@ -523,8 +523,7 @@ def _IsZero(tensor):
     True if tensor contains only zeros and False otherwise
   """
   if context.executing_eagerly():
-    # TODO(apassos) add an efficient way to detect eager zeros here.
-    return False
+    return getattr(tensor, "_is_zeros_tensor", False)
   if tensor.op.type in ("ZerosLike", "Zeros"):
     return True
   const_fill_value = tensor_util.constant_value(tensor)

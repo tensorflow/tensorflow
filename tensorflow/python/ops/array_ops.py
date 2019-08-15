@@ -2300,6 +2300,12 @@ def _constant_if_small(value, shape, dtype, name):
   return None
 
 
+def _eager_mark_zeros_tensor(tensor):
+  if context.executing_eagerly():
+    setattr(tensor, "_is_zeros_tensor", True)
+  return tensor
+
+
 @tf_export("zeros")
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
@@ -2337,7 +2343,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
         # to prevent serialized GraphDefs from becoming too large.
         output = _constant_if_small(zero, shape, dtype, name)
         if output is not None:
-          return output
+          return _eager_mark_zeros_tensor(output)
 
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
@@ -2349,7 +2355,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       shape = reshape(shape, [-1])  # Ensure it's a vector
     output = fill(shape, constant(zero, dtype=dtype), name=name)
   assert output.dtype.base_dtype == dtype
-  return output
+  return _eager_mark_zeros_tensor(output)
 
 
 @tf_export(v1=["zeros_like"])
@@ -2431,8 +2437,8 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 
     if context.executing_eagerly():
       if dtype is not None and dtype != tensor.dtype:
-        return zeros(
-            shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
+        return _eager_mark_zeros_tensor(zeros(
+            shape_internal(tensor, optimize=optimize), dtype=dtype, name=name))
       with ops.device(tensor.device):
         return gen_array_ops.zeros_like(tensor, name=name)
 
@@ -2446,10 +2452,10 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
 
     if dtype is not None and dtype != tensor.dtype and dtype != dtypes.variant:
-      return zeros(
-          shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
+      return _eager_mark_zeros_tensor(zeros(
+          shape_internal(tensor, optimize=optimize), dtype=dtype, name=name))
     else:
-      return gen_array_ops.zeros_like(tensor, name=name)
+      return _eager_mark_zeros_tensor(gen_array_ops.zeros_like(tensor, name=name))
 
 
 @tf_export(v1=["ones_like"])
