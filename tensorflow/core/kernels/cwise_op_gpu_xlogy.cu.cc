@@ -22,7 +22,7 @@ namespace functor {
 #if GOOGLE_CUDA
 DEFINE_BINARY5(xlogy, Eigen::half, float, double, complex64, complex128);
 #elif TENSORFLOW_USE_ROCM
-// ROCM TODO: enable complex64 / complex128 after compiler fix.
+// TODO(ROCm): enable complex64 / complex128 after compiler fix.
 DEFINE_BINARY3(xlogy, Eigen::half, float, double);
 #endif
 }  // namespace functor
