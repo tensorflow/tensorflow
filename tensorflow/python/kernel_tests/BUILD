@@ -3133,7 +3133,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
+    shard_count = 15,
     xla_enable_strict_auto_jit = True,
 )
 
