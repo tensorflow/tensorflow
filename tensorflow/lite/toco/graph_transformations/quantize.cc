@@ -78,7 +78,7 @@ bool SupportsQuantization(Model* model, const Operator& op) {
          type == OperatorType::kMatrixSetDiag ||
          type == OperatorType::kMatrixDiag ||
          type == OperatorType::kSparseToDense ||
-         type == OperatorType::kHardSwish;
+         type == OperatorType::kMirrorPad || type == OperatorType::kHardSwish;
 }
 
 // The quantized op allows output arrays of type float using
