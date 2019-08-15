@@ -60,6 +60,7 @@ class _TPUPollingThread(threading.Thread):
   def __init__(self, cluster, session):
     super(_TPUPollingThread, self).__init__()
 
+    self.daemon = True
     self._running = True
     self._session_closed = False
     self._cluster = cluster
