@@ -2381,6 +2381,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   TfLiteIntArray* subgraph = TfLiteIntArrayCreate(execution_plan->size);
   subgraph->size = 0;
   std::set<std::string> errors;
+  std::set<int> unsupported_outputs;
   for (int i = 0; i < execution_plan->size; ++i) {
     const int node_id = execution_plan->data[i];
     TfLiteNode* node;
@@ -2397,10 +2398,31 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
         IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) subgraph->data[subgraph->size++] = node_id;
+      if (errors.empty()) {
+        subgraph->data[subgraph->size++] = node_id;
+      } else {
+        // If all inputs are in the subgraph, we can still add ourselves.
+        bool has_unsupported_input = false;
+        for (int i = 0; i < node->inputs->size; i++) {
+          if (unsupported_outputs.count(node->inputs->data[i]) > 0) {
+            has_unsupported_input = true;
+          }
+        }
+
+        if (!has_unsupported_input) {
+          subgraph->data[subgraph->size++] = node_id;
+        } else {
+          for (int output_idx = 0; output_idx < node->outputs->size; output_idx++) {
+            unsupported_outputs.insert(node->outputs->data[output_idx]);
+          }
+        }
+      }
     } else {
       errors.insert(absl::StrCat(GetOpNameByRegistration(registration), ": ",
-                                 status.error_message()));
+                                status.error_message()));
+      for (int output_idx = 0; output_idx < node->outputs->size; output_idx++) {
+        unsupported_outputs.insert(node->outputs->data[output_idx]);
+      }
     }
   }
   if (!errors.empty()) {
