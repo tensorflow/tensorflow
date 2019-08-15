@@ -392,9 +392,8 @@ Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
   return Status::OK();
 }
 
-Status TRTEngineOp::GetEngineInputShapes(
-    const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
-    std::vector<TensorShape>* engine_input_shapes) {
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes) {
   auto match_shape = [](const TensorShape& actual_shape,
                         const TensorShape& cached_shape) {
     // Match the rank.
@@ -407,16 +406,17 @@ Status TRTEngineOp::GetEngineInputShapes(
     }
     return true;
   };
-  auto match_shapes = [&](const std::vector<TensorShape>& actual_shapes,
-                          const std::vector<TensorShape>& cached_shapes) {
-    for (int i = 0; i < actual_shapes.size(); ++i) {
-      if (!match_shape(actual_shapes[i], cached_shapes[i])) {
-        return false;
-      }
+  for (int i = 0; i < actual_shapes.size(); ++i) {
+    if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+      return false;
     }
-    return true;
-  };
+  }
+  return true;
+}
 
+Status TRTEngineOp::GetEngineInputShapes(
+    const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
+    std::vector<TensorShape>* engine_input_shapes) {
   // VerifyInputShapes() already ensured that all input shapes have same
   // batch size, and are not scalars.
   *engine_input_shapes = actual_input_shapes;
@@ -430,7 +430,7 @@ Status TRTEngineOp::GetEngineInputShapes(
           ", cached size: ", cached_input_shapes.size(),
           " vs. actual size: ", actual_input_shapes.size());
     }
-    if (match_shapes(actual_input_shapes, cached_input_shapes)) {
+    if (AreShapesCompatible(actual_input_shapes, cached_input_shapes)) {
       const int cached_batch_size = cached_input_shapes[0].dim_size(0);
       if (min_matched_batch_size > cached_batch_size) {
         min_matched_batch_size = cached_batch_size;
@@ -668,7 +668,8 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   static EngineContext empty_context;
 
   mutex_lock lock(engine_mutex_);
-  // TODO(tmorris): using first input to get batch size - is this reliable?
+  // Using first input to get batch size is reliable - VerifyInputShapes() has
+  // verified that.
   const int batch_size = input_shapes[0].dim_size(0);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
@@ -678,14 +679,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
 
   // Handle the static engine case. For static engines, the cache will have a
   // single element containing the only engine.
-  //
-  // TODO(laigd): This is legacy mode for TF v1.x, need to remove when all known
-  // users switch to 2.0.
   if (static_engine_) {
     if (cache.size()) {
-      // Batch size of engine must be >= the input batch size
-      // TODO(tmorris): use match compatible function?
-      if (cache.begin()->first[0].dim_size(0) >= batch_size) {
+      if (AreShapesCompatible(input_shapes, cache.begin()->first)) {
         return cache.begin()->second.get();
       }
       return &empty_context;
@@ -724,9 +720,7 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
     return cache.at(engine_input_shapes).get();
   }  // static_engine_
 
-  // Handle the dynamic engine case.
-  // See if there is a compatible engine cached. The batch size should be <= the
-  // cached batch size.
+  // Handle the dynamic engine case. See if there is a compatible engine cached.
   std::vector<TensorShape> engine_input_shapes;
   TF_RETURN_IF_ERROR(
       GetEngineInputShapes(cache, input_shapes, &engine_input_shapes));

@@ -310,18 +310,20 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       self,
       input_saved_model_dir,
       input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
-      precision_mode=trt_convert.TrtPrecisionMode.FP32):
+      precision_mode=trt_convert.TrtPrecisionMode.FP32,
+      max_batch_size=None):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
         conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
             max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
             precision_mode=precision_mode,
-            is_dynamic_op=True,
-            maximum_cached_engines=2))
+            is_dynamic_op=False if max_batch_size else True,
+            maximum_cached_engines=2,
+            max_batch_size=max_batch_size if max_batch_size else 1))
 
   @test_util.run_v2_only
-  def testTrtGraphConverter_BasicConversion_v2(self):
+  def testTrtGraphConverter_DynamicConversion_v2(self):
     """Test case for trt_convert.TrtGraphConverter()."""
     if not is_tensorrt_enabled():
       return
@@ -339,7 +341,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     converter = self._CreateConverterV2(input_saved_model_dir)
     converted_func = converter.convert()
 
-    def _check_trt_ops(graph_def):
+    def _CheckTrtOps(graph_def):
       trt_op_names = [
           node.name for node in graph_def.node if node.op == "TRTEngineOp"
       ]
@@ -354,7 +356,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(converted_func, def_function.Function)
     converted_concrete_func = converted_func.get_concrete_function(
         tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32))
-    _check_trt_ops(converted_concrete_func.graph.as_graph_def())
+    _CheckTrtOps(converted_concrete_func.graph.as_graph_def())
 
     # Save the converted model without any TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -388,10 +390,64 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     root_with_trt = load.load(output_saved_model_dir)
     # TODO(laigd): `root_with_trt.run` is still using the original graph without
     # trt. Consider changing that.
-    # _check_trt_ops(
+    # _CheckTrtOps(
     #     root_with_trt.run.get_concrete_function().graph.as_graph_def())
     converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    _check_trt_ops(converted_signature.graph.as_graph_def())
+    _CheckTrtOps(converted_signature.graph.as_graph_def())
+    output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
+    # The output of running the converted signature is a dict due to
+    # compatibility reasons with V1 SavedModel signature mechanism.
+    output_with_trt = output_with_trt.values()[0]
+    self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_StaticConversion_v2(self):
+    """Test case for trt_convert.TrtGraphConverter() using static mode."""
+    if not is_tensorrt_enabled():
+      return
+
+    np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    expected_output = root.run(np_input)
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    # Run TRT conversion.
+    converter = self._CreateConverterV2(input_saved_model_dir, max_batch_size=4)
+    converted_func = converter.convert()
+
+    def _CheckTrtOps(graph_def):
+      trt_op_names = [
+          node.name for node in graph_def.node if node.op == "TRTEngineOp"
+      ]
+      for func in graph_def.library.function:
+        for node in func.node_def:
+          if node.op == "TRTEngineOp":
+            trt_op_names.append(node.name)
+            self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
+      self.assertEqual(1, len(trt_op_names))
+      self.assertIn("TRTEngineOp_0", trt_op_names[0])
+
+    # Verify the converted GraphDef and ConcreteFunction.
+    self.assertIsInstance(converted_func, def_function.Function)
+    converted_concrete_func = converted_func.get_concrete_function(
+        tensor_spec.TensorSpec(shape=[None, 1, 1], dtype=dtypes.float32))
+    _CheckTrtOps(converted_concrete_func.graph.as_graph_def())
+
+    # Save the converted model with the statically-built engine inlined.
+    output_saved_model_dir = self.mkdtemp()
+    converter.save(output_saved_model_dir)
+    unexpected_asset_file = os.path.join(
+        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
+    self.assertFalse(os.path.exists(unexpected_asset_file))
+
+    # Load and verify the converted model.
+    root_with_trt = load.load(output_saved_model_dir)
+    converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
+    _CheckTrtOps(converted_signature.graph.as_graph_def())
     output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
@@ -472,7 +528,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
 
-    def _destroy_cache():
+    def _DestroyCache():
       with ops.device("GPU:0"):
         handle = gen_trt_ops.create_trt_resource_handle(
             resource_name="TRTEngineOp_0")
@@ -481,15 +537,15 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  r"Resource .* does not exist."):
-      _destroy_cache()
+      _DestroyCache()
 
     # Load the converted model and make sure the engine cache is populated by
     # default.
     root = load.load(output_saved_model_dir)
-    _destroy_cache()
+    _DestroyCache()
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  r"Resource .* does not exist."):
-      _destroy_cache()
+      _DestroyCache()
 
     # Load the converted model again and make sure the engine cache is destroyed
     # when the model goes out of scope.
@@ -498,7 +554,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     gc.collect()  # Force GC to destroy the TRT engine cache.
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  r"Resource .* does not exist."):
-      _destroy_cache()
+      _DestroyCache()
 
   def _CompareSavedModel(self, model_class):
     signature_key = "serving_default"
