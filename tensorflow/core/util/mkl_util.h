@@ -666,57 +666,63 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
 }
 
 template <typename T>
-inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
-                             const MklDnnShape& mkl_shape) {
-  Tensor output_tensor;
+inline Status ConvertMklToTF(OpKernelContext* context,
+                             const Tensor& input_mkl_tensor,
+                             const MklDnnShape& input_mkl_shape,
+                             Tensor& output_tf_tensor) {
   try {
-    if (!mkl_shape.IsMklTensor())
-      return mkl_tensor;  // return input since it is already TF tensor
-
-    TensorShape output_shape = mkl_shape.GetTfShape();
+    if (!input_mkl_shape.IsMklTensor()) {
+      // Return input as is since it is already a TF tensor
+      output_tf_tensor = input_mkl_tensor;
+      return Status::OK();
+    }
 
     // Allocate output tensor.
-    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
-                                       &output_tensor));
+    TensorShape output_tf_shape = input_mkl_shape.GetTfShape();
+    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<T>::v(), output_tf_shape,
+                                       &output_tf_tensor));
 
     engine cpu_engine(ENGINE_CPU, 0);
     MklDnnData<T> input(&cpu_engine);
 
     // Get MKL layout of input tensor.
-    auto input_mkl_md = mkl_shape.GetMklLayout();
-    auto output_tf_md = mkl_shape.GetTfLayout();
+    auto input_mkl_md = input_mkl_shape.GetMklLayout();
+    auto output_tf_md = input_mkl_shape.GetTfLayout();
 #ifndef ENABLE_MKLDNN_V1
     // Memory primitive descriptor is deprecated in MKL-DNN v1.x.
     auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
 #endif  // !ENABLE_MKLDNN_V1
-    input.SetUsrMem(input_mkl_md, &mkl_tensor);
+    input.SetUsrMem(input_mkl_md, &input_mkl_tensor);
+
     if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
       std::vector<primitive> net;
       std::vector<MemoryArgsMap> net_args;
-      auto status = input.CheckReorderToOpMem(GET_CHECK_REORDER_TO_OP_MEM_ARGS(
-          OUTPUT_TF_MD, output_tensor, net, net_args, cpu_engine));
+      bool status = input.CheckReorderToOpMem(GET_CHECK_REORDER_TO_OP_MEM_ARGS(
+          OUTPUT_TF_MD, output_tf_tensor, net, net_args, cpu_engine));
       if (!status) {
-        TF_CHECK_OK(
-            Status(error::Code::INTERNAL,
-                   "ConvertMklToTF(): Failed to create reorder for input"));
+        return Status(error::Code::INTERNAL,
+                      "ConvertMklToTF(): Failed to create reorder for input");
       }
       ExecutePrimitive(net, NET_ARGS_PTR, cpu_engine);
     } else {
       // If not, just forward input tensor to output tensor.
-      auto status = output_tensor.CopyFrom(mkl_tensor, output_shape);
+      bool status =
+          output_tf_tensor.CopyFrom(input_mkl_tensor, output_tf_shape);
       if (!status) {
-        TF_CHECK_OK(Status(
+        return Status(
             error::Code::INTERNAL,
-            "ConvertMklToTF(): Failed to forward input tensor to output"));
+            "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
+
+    return Status::OK();
+
   } catch (mkldnn::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                        string(e.message) + ", in file " + string(__FILE__) +
                        ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
-  return output_tensor;
 }
 
 // Get the MKL shape from the second string tensor
