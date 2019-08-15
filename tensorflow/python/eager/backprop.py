@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
@@ -636,7 +637,12 @@ def _zeros(shape, dtype):
     return array_ops.zeros(shape, dtype)
 
   device = ctx.device_name
-  cache_key = shape, dtype, device
+
+  if tensor_util.is_tensor(shape):
+    shape_key = shape.experimental_ref()
+  else:
+    shape_key = shape
+  cache_key = shape_key, dtype, device
   cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
     if dtypes.as_dtype(dtype).is_bool:
