@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import os
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -248,6 +250,9 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(self.generator_input, steps_per_epoch=10)
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   @test_util.run_v2_only
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
@@ -289,6 +294,9 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(self.sequence_input)
 
+  @unittest.skipIf(
+      os.name == 'nt',
+      'use_multiprocessing=True does not work on windows properly.')
   @test_util.run_v2_only
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
