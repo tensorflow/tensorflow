@@ -38,6 +38,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -710,7 +711,7 @@ class _FuncGraph(ops.Graph):
     # _FuncGraph.
     self.outputs = []
     # Maps external tensor -> internal tensor (e.g. input placeholder).
-    self._captured = {}
+    self._captured = object_identity.ObjectIdentityDictionary()
     # The external tensors that have been captured as inputs and must be passed
     # to this function (empty if capturing by value, otherwise these are the
     # keys of _captured).
