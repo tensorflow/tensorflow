@@ -50,8 +50,8 @@ Status HandleElementToSlice(T* src, T* dest, int64 num_values,
 }
 
 template <>
-Status HandleElementToSlice<string>(string* src, string* dest, int64 num_values,
-                                    bool can_move) {
+Status HandleElementToSlice<tstring>(tstring* src, tstring* dest,
+                                     int64 num_values, bool can_move) {
   if (can_move) {
     for (int64 i = 0; i < num_values; ++i) {
       *dest++ = std::move(*src++);

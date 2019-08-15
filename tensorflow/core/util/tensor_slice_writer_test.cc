@@ -342,7 +342,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
   {
     TensorShape shape({256, 1024});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
-    const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
+    const std::vector<tstring> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(s.error_message(),

@@ -465,7 +465,7 @@ enum class Type { Sparse, Dense };
 struct SparseBuffer {
   // Features are in one of the 3 vectors below depending on config's dtype.
   // Other 2 vectors remain empty.
-  SmallVector<string> bytes_list;
+  SmallVector<tstring> bytes_list;
   SmallVector<float> float_list;
   SmallVector<int64> int64_list;
 
@@ -666,8 +666,8 @@ Status FastParseSerializedExample(
             break;
           }
           case DT_STRING: {
-            auto out_p = out.flat<string>().data() + offset;
-            LimitedArraySlice<string> slice(out_p, num_elements);
+            auto out_p = out.flat<tstring>().data() + offset;
+            LimitedArraySlice<tstring> slice(out_p, num_elements);
             if (!feature.ParseBytesList(&slice)) return parse_error();
             if (slice.EndDistance() != 0) {
               return shape_error(num_elements - slice.EndDistance(), "bytes");
@@ -907,7 +907,7 @@ const SmallVector<float>& GetListFromBuffer<float>(const SparseBuffer& buffer) {
   return buffer.float_list;
 }
 template <>
-const SmallVector<string>& GetListFromBuffer<string>(
+const SmallVector<tstring>& GetListFromBuffer<tstring>(
     const SparseBuffer& buffer) {
   return buffer.bytes_list;
 }
@@ -917,7 +917,7 @@ void CopyOrMoveBlock(const T* b, const T* e, T* t) {
   std::copy(b, e, t);
 }
 template <>
-void CopyOrMoveBlock(const string* b, const string* e, string* t) {
+void CopyOrMoveBlock(const tstring* b, const tstring* e, tstring* t) {
   std::move(b, e, t);
 }
 
@@ -1002,8 +1002,8 @@ class TensorVector {
 }  // namespace
 
 Status FastParseExample(const Config& config,
-                        gtl::ArraySlice<string> serialized,
-                        gtl::ArraySlice<string> example_names,
+                        gtl::ArraySlice<tstring> serialized,
+                        gtl::ArraySlice<tstring> example_names,
                         thread::ThreadPool* thread_pool, Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
@@ -1253,8 +1253,8 @@ Status FastParseExample(const Config& config,
         break;
       }
       case DT_STRING: {
-        FillAndCopyVarLen<string>(d, num_elements, num_elements_per_minibatch,
-                                  config, varlen_dense_buffers, &values);
+        FillAndCopyVarLen<tstring>(d, num_elements, num_elements_per_minibatch,
+                                   config, varlen_dense_buffers, &values);
         break;
       }
       default:
@@ -1440,8 +1440,8 @@ Status FastParseSingleExample(const Config& config,
           break;
         }
         case DT_STRING: {
-          auto out_p = out->flat<string>().data();
-          LimitedArraySlice<string> slice(out_p, num_elements);
+          auto out_p = out->flat<tstring>().data();
+          LimitedArraySlice<tstring> slice(out_p, num_elements);
           if (!feature.ParseBytesList(&slice)) return parse_error();
           if (slice.EndDistance() != 0) {
             return parse_error();
@@ -1453,7 +1453,7 @@ Status FastParseSingleExample(const Config& config,
       }
 
     } else {  // if variable length
-      SmallVector<string> bytes_list;
+      SmallVector<tstring> bytes_list;
       TensorVector<float> float_list;
       SmallVector<int64> int64_list;
 
@@ -1627,7 +1627,7 @@ Status FastParseSingleExample(const Config& config,
 // Return the number of bytes elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
 inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
-                             string* out) {
+                             tstring* out) {
   int num_elements = 0;
   uint32 length;
   if (!stream->ExpectTag(kDelimitedTag(1)) || !stream->ReadVarint32(&length)) {
@@ -1638,12 +1638,23 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
     while (!stream->ExpectAtEnd()) {
       uint32 bytes_length;
       if (!stream->ExpectTag(kDelimitedTag(1)) ||
-          !stream->ReadVarint32(&bytes_length) ||
-          (out != nullptr && !stream->ReadString(out++, bytes_length))) {
+          !stream->ReadVarint32(&bytes_length)) {
         return -1;
       }
       if (out == nullptr) {
         stream->Skip(bytes_length);
+      } else {
+#ifdef USE_TSTRING
+        out->resize_uninitialized(bytes_length);
+        if (!stream->ReadRaw(out->data(), bytes_length)) {
+          return -1;
+        }
+#else   // USE_TSTRING
+        if (!stream->ReadString(out, bytes_length)) {
+          return -1;
+        }
+#endif  // USE_TSTRING
+        out++;
       }
       num_elements++;
     }
@@ -1809,7 +1820,7 @@ inline bool SkipEmptyFeature(protobuf::io::CodedInputStream* stream,
 Status FastParseSequenceExample(
     const FastParseExampleConfig& context_config,
     const FastParseExampleConfig& feature_list_config,
-    gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
+    gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
     thread::ThreadPool* thread_pool, Result* context_result,
     Result* feature_list_result, std::vector<Tensor>* dense_feature_lengths) {
   int num_examples = serialized.size();
@@ -1878,10 +1889,10 @@ Status FastParseSequenceExample(
       all_context_features(num_examples);
   std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
       all_sequence_features(num_examples);
-  const string kUnknown = "<unknown>";
+  const tstring kUnknown = "<unknown>";
   for (int d = 0; d < num_examples; d++) {
-    const string& example = serialized[d];
-    const string& example_name =
+    const tstring& example = serialized[d];
+    const tstring& example_name =
         example_names.empty() ? kUnknown : example_names[d];
     auto* context_features = &all_context_features[d];
     auto* sequence_features = &all_sequence_features[d];
@@ -2074,7 +2085,7 @@ Status FastParseSequenceExample(
 
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
@@ -2097,7 +2108,7 @@ Status FastParseSequenceExample(
     for (int e = 0; e < num_examples; e++) {
       size_t num_elements = 0;
       const auto feature_iter = all_context_features[e].find(c.feature_name);
-      const string& example_name =
+      const tstring& example_name =
           example_names.empty() ? kUnknown : example_names[e];
       if (feature_iter == all_context_features[e].end()) {
         // Copy the default value, if present. If not, return an error.
@@ -2107,7 +2118,7 @@ Status FastParseSequenceExample(
               " (data type: ", DataTypeString(c.dtype), ")",
               " is required but could not be found.");
         }
-        const string* in_bytes = nullptr;
+        const tstring* in_bytes = nullptr;
         const float* in_float = nullptr;
         const int64* in_int64 = nullptr;
         size_t num = 0;
@@ -2185,7 +2196,7 @@ Status FastParseSequenceExample(
         Tensor(allocator, DT_INT64, TensorShape({2}));
     // TODO(sundberg): Refactor to reduce code duplication, and add bounds
     // checking for the outputs.
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
@@ -2211,7 +2222,7 @@ Status FastParseSequenceExample(
     size_t max_num_cols = 0;
     for (int e = 0; e < num_examples; e++) {
       const auto& feature = all_context_features[e][c.feature_name];
-      const string& example_name =
+      const tstring& example_name =
           example_names.empty() ? kUnknown : example_names[e];
       if (!feature.empty()) {
         protobuf::io::CodedInputStream stream(
@@ -2276,7 +2287,7 @@ Status FastParseSequenceExample(
         Tensor(allocator, DT_INT64, dense_length_shape);
     int64* out_lengths = (*dense_feature_lengths)[t].flat<int64>().data();
 
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
@@ -2299,7 +2310,7 @@ Status FastParseSequenceExample(
     for (int e = 0; e < num_examples; e++) {
       size_t num_elements = 0, num_rows = 0;
       const auto feature_iter = all_sequence_features[e].find(c.feature_name);
-      const string& example_name =
+      const tstring& example_name =
           example_names.empty() ? kUnknown : example_names[e];
       if (feature_iter == all_sequence_features[e].end()) {
         // Return an error if this feature was not allowed to be missing.
@@ -2387,7 +2398,7 @@ Status FastParseSequenceExample(
     feature_list_result->sparse_shapes[t] =
         Tensor(allocator, DT_INT64, TensorShape({3}));
 
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
@@ -2416,7 +2427,7 @@ Status FastParseSequenceExample(
     size_t max_num_cols = 0;
     for (int e = 0; e < num_examples; e++) {
       const auto& feature = all_sequence_features[e][c.feature_name];
-      const string& example_name =
+      const tstring& example_name =
           example_names.empty() ? kUnknown : example_names[e];
       if (!feature.empty()) {
         protobuf::io::CodedInputStream stream(

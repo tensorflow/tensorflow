@@ -178,7 +178,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64 num_elements,
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
+Status TensorSliceWriter::SaveData(const tstring* data, int64 num_elements,
                                    SavedSlice* ss);
 
 // Create a table builder that will write to "filename" in
