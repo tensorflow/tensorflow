@@ -145,18 +145,20 @@ Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   return LLVM::LLVMType::getStructTy(llvmDialect, types);
 }
 
-// Convert a 1D vector type to an LLVM vector type.
+// Convert an n-D vector type to an LLVM vector type via (n-1)-D array type when
+// n > 1.
+// For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
+// `vector<4 x 8 x 16 f32>` converts to `!llvm<"[4 x [8 x <16 x float>]]">`.
 Type LLVMTypeConverter::convertVectorType(VectorType type) {
-  if (type.getRank() != 1) {
-    auto *mlirContext = llvmDialect->getContext();
-    emitError(UnknownLoc::get(mlirContext), "only 1D vectors are supported");
+  auto elementType = unwrap(convertType(type.getElementType()));
+  if (!elementType)
     return {};
-  }
-
-  LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
-  return elementType
-             ? LLVM::LLVMType::getVectorTy(elementType, type.getShape().front())
-             : Type();
+  auto vectorType =
+      LLVM::LLVMType::getVectorTy(elementType, type.getShape().back());
+  auto shape = type.getShape();
+  for (int i = shape.size() - 2; i >= 0; --i)
+    vectorType = LLVM::LLVMType::getArrayTy(vectorType, shape[i]);
+  return vectorType;
 }
 
 // Dispatch based on the actual type.  Return null type on error.
@@ -1130,14 +1132,15 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-ModulePassBase *mlir::createConvertToLLVMIRPass() {
-  return new LLVMLoweringPass;
+std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
+  return llvm::make_unique<LLVMLoweringPass>();
 }
 
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
                                 LLVMTypeConverterMaker typeConverterMaker) {
-  return new LLVMLoweringPass(patternListFiller, typeConverterMaker);
+  return llvm::make_unique<LLVMLoweringPass>(patternListFiller,
+                                             typeConverterMaker);
 }
 
 static PassRegistration<LLVMLoweringPass>

@@ -148,8 +148,7 @@ llvm::SmallVector<Output, 8> GetNewIslandResultsAndForwardOutputs(
     llvm::SmallVector<Type, 8>* result_types) {
   llvm::SmallVector<Output, 8> results;
 
-  Operation& last_op = parent.GetBody().back();
-  auto yield_op = cast<YieldOp>(last_op);
+  YieldOp yield_op = parent.GetYield();
   Block& child_body = child.GetBody();
   for (auto& ret_and_idx : llvm::enumerate(parent.outputs())) {
     bool output_captured = false;
@@ -209,7 +208,7 @@ YieldOp CreateNewIslandYieldOp(IslandOp new_island,
     // Find YieldOp in original island, grab the associated operand (inner op
     // output) and add it as a operand to the YieldOp of the merged island.
     yield_operands.push_back(
-        output_island.GetBody().back().getOperand(output.result_index));
+        output_island.GetYield().getOperand(output.result_index));
   }
 
   // Create YieldOp for the new island.
@@ -319,8 +318,8 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
 }  // namespace
 
-FunctionPassBase* CreateTFExecutorIslandCoarseningPass() {
-  return new ExecutorIslandCoarsening();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass() {
+  return llvm::make_unique<ExecutorIslandCoarsening>();
 }
 
 static PassRegistration<ExecutorIslandCoarsening> pass(

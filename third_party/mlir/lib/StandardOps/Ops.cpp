@@ -1626,7 +1626,8 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
   }
 
   // If this is an elements attribute, query the value at the given indices.
-  if (auto elementsAttr = aggregate.dyn_cast<ElementsAttr>())
+  auto elementsAttr = aggregate.dyn_cast<ElementsAttr>();
+  if (elementsAttr && elementsAttr.isValidIndex(indices))
     return elementsAttr.getValue(indices);
   return {};
 }

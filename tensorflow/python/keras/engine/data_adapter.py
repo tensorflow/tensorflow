@@ -31,6 +31,7 @@ from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -193,7 +194,8 @@ class TensorLikeDataAdapter(DataAdapter):
     sample_weights = _process_numpy_inputs(sample_weights)
 
     # If sample_weights are not specified for an output use 1.0 as weights.
-    if sample_weights is not None and None in sample_weights:
+    if (sample_weights is not None and
+        any([sw is None for sw in sample_weights])):
       weight = next(s for s in sample_weights if s is not None)
       sample_weights = training_utils.list_to_tuple([
           array_ops.ones((weight.shape[0],)) if sw is None else sw
@@ -343,7 +345,8 @@ class GeneratorDataAdapter(DataAdapter):
   def can_handle(x, y=None):
     return tf_inspect.isgenerator(x)
 
-  def __init__(self, x, y=None, sample_weights=None, **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
     super(GeneratorDataAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
@@ -361,12 +364,24 @@ class GeneratorDataAdapter(DataAdapter):
     nested_shape = nest.map_structure(lambda t: t.shape, peek)
     # Note that dataset API takes a callable that creates a generator object,
     # rather than generator itself, which is why we define a function here.
-    def reassemble():
-      return itertools.chain([peek], x)
+    if workers > 0:
+      if use_multiprocessing:
+        logging.warning(
+            UserWarning("Using a generator with `use_multiprocessing=True` "
+                        "and multiple workers may duplicate your data. "
+                        "Please consider using the `tf.data.Dataset`."))
+      def generator_fn():
+        enqueuer = data_utils.GeneratorEnqueuer(
+            itertools.chain([peek], x), use_multiprocessing=use_multiprocessing)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return enqueuer.get()
+    else:
+      def generator_fn():
+        return itertools.chain([peek], x)
 
     self._batch_size = int(nest.flatten(peek)[0].shape[0])
     self._dataset = dataset_ops.DatasetV2.from_generator(
-        reassemble, nested_dtypes, output_shapes=nested_shape)
+        generator_fn, nested_dtypes, output_shapes=nested_shape)
 
   def get_dataset(self):
     return self._dataset
@@ -391,7 +406,8 @@ class KerasSequenceAdapter(DataAdapter):
   def can_handle(x, y=None):
     return isinstance(x, data_utils.Sequence)
 
-  def __init__(self, x, y=None, sample_weights=None, shuffle=False, **kwargs):
+  def __init__(self, x, y=None, sample_weights=None, shuffle=False, workers=1,
+               use_multiprocessing=False, max_queue_size=10, **kwargs):
     super(KerasSequenceAdapter, self).__init__(x, y, **kwargs)
     if not is_none_or_empty(y):
       raise ValueError("`y` argument is not supported when using "
@@ -403,10 +419,17 @@ class KerasSequenceAdapter(DataAdapter):
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
     nested_shape = nest.map_structure(lambda t: t.shape, peek)
 
-    def generator():
-      for i in range(len(x)):
-        yield x[i]
-    dataset = dataset_ops.DatasetV2.from_generator(generator, nested_dtypes,
+    if workers > 0:
+      def generator_fn():
+        enqueuer = data_utils.OrderedEnqueuer(
+            x, use_multiprocessing=use_multiprocessing)
+        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return enqueuer.get()
+    else:
+      def generator_fn():
+        for i in range(len(x)):
+          yield x[i]
+    dataset = dataset_ops.DatasetV2.from_generator(generator_fn, nested_dtypes,
                                                    output_shapes=nested_shape)
     if shuffle:
       dataset = dataset.shuffle(len(x))

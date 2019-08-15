@@ -24,7 +24,6 @@ import time
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,7 +36,9 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import app
 from tensorflow.python.platform import test
@@ -191,7 +192,7 @@ class SparseXentTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session(use_gpu=True):
       l = constant_op.constant([3, 0, 1], name="l")
       f = constant_op.constant(
           [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
@@ -201,48 +202,26 @@ class SparseXentTest(test.TestCase):
       x = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=l, logits=f, name="xent")
       err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
-
-      # Check that no extra computation performed. When only first derivative is
-      # requested, second derivative must not be computed. So when there is no
-      # second derivative, there is no `BatchMatMul` op in the graph.
-      op_names = [
-          op.op_def.name for op in sess.graph.get_operations() if op.op_def
-      ]
-      self.assertNotIn("BatchMatMul", op_names)
-      self.assertNotIn("BatchMatMulV2", op_names)
-
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
   @test_util.run_deprecated_v1
   def testSecondGradient(self):
-    with self.session() as sess:
-      l = constant_op.constant([3, 0, 1], name="l")
-      f = constant_op.constant(
-          [0.3, 0.4, 0.1, 1.2, 0.1, 1.9, 0.1, 0.7, 0.8, 0.2, 1.3, 1.3],
-          shape=[3, 4],
-          dtype=dtypes.float64,
-          name="f")
-      x = nn_ops.sparse_softmax_cross_entropy_with_logits(
-          labels=l, logits=f, name="xent")
+    images_placeholder = array_ops.placeholder(dtypes.float32, shape=(3, 2))
+    labels_placeholder = array_ops.placeholder(dtypes.int32, shape=(3))
+    weights = variables.Variable(random_ops.truncated_normal([2], stddev=1.0))
+    weights_with_zeros = array_ops.stack([array_ops.zeros([2]), weights],
+                                         axis=1)
+    logits = math_ops.matmul(images_placeholder, weights_with_zeros)
+    cross_entropy = nn_ops.sparse_softmax_cross_entropy_with_logits(
+        labels=labels_placeholder, logits=logits)
+    loss = math_ops.reduce_mean(cross_entropy)
 
-      gradients = gradients_impl.gradients(x, [f])[0]
-      err = gradient_checker.compute_gradient_error(f, [3, 4], gradients,
-                                                    [3, 4])
-
-      # Check that second derivative is calculated.
-      # (it is equivalent to being `BatchMatMul` op in the graph because of
-      # implementation of xentropy grad)
-      op_names = [
-          op.op_def.name for op in sess.graph.get_operations() if op.op_def
-      ]
-      if compat.forward_compatible(2019, 4, 25):
-        self.assertIn("BatchMatMulV2", op_names)
-      else:
-        self.assertIn("BatchMatMul", op_names)
-
-    print("cross entropy hessian err = ", err)
-    self.assertLess(err, 5e-8)
+    # Taking ths second gradient should fail, since it is not
+    # yet supported.
+    with self.assertRaisesRegexp(LookupError,
+                                 "explicitly disabled"):
+      _ = gradients_impl.hessians(loss, [weights])
 
   def _testHighDim(self, features, labels):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))

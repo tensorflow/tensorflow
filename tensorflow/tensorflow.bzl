@@ -970,7 +970,6 @@ def tf_cc_test(
         extra_copts = [],
         suffix = "",
         linkopts = [],
-        nocopts = None,
         kernels = [],
         **kwargs):
     native.cc_test(
@@ -1009,7 +1008,6 @@ def tf_cc_test(
             clean_dep("//tensorflow:macos"): 1,
             "//conditions:default": 0,
         }),
-        nocopts = nocopts,
         **kwargs
     )
 
@@ -1173,8 +1171,7 @@ def tf_cc_tests(
         size = "medium",
         args = None,
         linkopts = [],
-        kernels = [],
-        nocopts = None):
+        kernels = []):
     for src in srcs:
         tf_cc_test(
             name = src_to_test_name(src),
@@ -1184,7 +1181,6 @@ def tf_cc_tests(
             kernels = kernels,
             linkopts = linkopts,
             linkstatic = linkstatic,
-            nocopts = nocopts,
             tags = tags,
             deps = deps,
         )
@@ -2401,7 +2397,6 @@ def pybind_extension(
         srcs_version = "PY2AND3",
         data = [],
         copts = None,
-        nocopts = None,
         linkopts = [],
         deps = [],
         visibility = None,
@@ -2448,7 +2443,6 @@ def pybind_extension(
         srcs = srcs + hdrs,
         data = data,
         copts = copts,
-        nocopts = nocopts,
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,

@@ -38,6 +38,7 @@ y = tf.unravel_index(indices=[2, 5, 7], dims=[3, 3])
 # 5 ==> (1, 2)
 # 7 ==> (2, 1)
 y ==> [[0, 1, 2], [2, 2, 1]]
+```
 
 @compatibility(numpy)
 Equivalent to np.unravel_index

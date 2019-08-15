@@ -249,13 +249,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   }
 }
 
-void PortableVectorBatchVectorAssign(const float* vector, int v_size,
-                                     int n_batch, float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    memcpy(batch_vector + b * v_size, vector, v_size * sizeof(float));
-  }
-}
-
 void PortableApplySigmoidToVector(const float* vector, int v_size,
                                   float* result) {
   auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);

@@ -162,12 +162,14 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
+        # TODO(fengliuai): move this file into ./quantization dir
         "ir/quantization_traits.h",
         "ir/tfl_ops.h",
         "ir/tfl_traits.h",
-        "quantization/quantization_utils.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
+        # TODO(fengliuai): remove this dependence.
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_utils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
@@ -187,27 +189,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflow_lite_quantization_utils",
-    srcs = [
-        "quantization/quantization_driver.cc",
-        "quantization/quantization_utils.cc",
-    ],
-    hdrs = [
-        "quantization/quantization_utils.h",
-    ],
-    deps = [
-        ":tensorflow_lite",
-        "//tensorflow/core:lib_proto_parsing",
-        "@com_google_absl//absl/memory",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:QuantOps",
-        "@local_config_mlir//:StandardOps",
-        "@local_config_mlir//:Support",
-    ],
-)
-
-cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/generated_legalize_tf.inc",
@@ -223,8 +204,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        ":tensorflow_lite_quantization_utils",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/memory",
         "@llvm//:support",
@@ -275,8 +256,8 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        ":tensorflow_lite_quantization_utils",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "@com_google_absl//absl/memory",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",

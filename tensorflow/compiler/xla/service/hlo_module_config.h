@@ -34,6 +34,26 @@ namespace xla {
 // executable.
 class HloModuleConfig {
  public:
+  // Represents a pair of input and output of the entry computation that can be
+  // considered as the original and updated values of a variable maintained by
+  // the caller, and that can be transparently sharded by XLA as an internal
+  // optimization. If sharded, XLA will create separate sharding/unsharding
+  // programs, and the caller is responsible to call the XLA-generated
+  // sharding/unsharding programs before and after the sharded main program.
+  //
+  // The sharding/unsharding programs will include all the input/output pairs in
+  // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
+  // sorted by (input_parameter_number, parameter_shape_index).
+  //
+  // A typical usage pattern is to shard the variables first, then repeatedly
+  // invoke the main program, and finally invoke the unsharding program before
+  // they are used in full-shape.
+  struct ShardableValueUpdatePair {
+    int64 input_parameter_number;
+    ShapeIndex parameter_shape_index;
+    ShapeIndex output_shape_index;
+  };
+
   // A configuration can be created either with, or without an entry
   // ComputationLayout. The default ctor creates it without -- in this case
   // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
@@ -118,6 +138,15 @@ class HloModuleConfig {
     static_device_assignment_ = device_assignment;
   }
 
+  const std::vector<ShardableValueUpdatePair> shardable_value_update_pairs()
+      const {
+    return shardable_value_update_pairs_;
+  }
+  void set_shardable_value_update_pairs(
+      std::vector<ShardableValueUpdatePair> pairs) {
+    shardable_value_update_pairs_ = std::move(pairs);
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -137,6 +166,8 @@ class HloModuleConfig {
 
   // Compile-time known device assignment.
   absl::optional<DeviceAssignment> static_device_assignment_;
+
+  std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 };
 
 }  // namespace xla

@@ -439,7 +439,7 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  uint64 context_id_;
+  uint64 context_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);

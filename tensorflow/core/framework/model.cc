@@ -28,6 +28,8 @@ namespace {
 // Key of the derivative w.r.t. the last input time in the gradient of
 // `OutputTime`.
 constexpr char kInputTimeDerivativeKey[] = "last_input_time";
+constexpr char kParallelism[] = "parallelism";
+constexpr char kBufferSize[] = "buffer_size";
 
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
@@ -250,7 +252,7 @@ class AsyncInterleaveMany : public Node {
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
     double parallelism = num_inputs() - 1;  // default to cycle length
-    auto* parameter = gtl::FindOrNull(parameters_, "parallelism");
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
     if (parameter) {
       parallelism = std::min(parallelism, (*parameter)->value);
     }
@@ -417,15 +419,22 @@ class AsyncKnownRatio : public Node {
   // The output time is estimated using `ComputeWaitTime(output_time,
   // input_time, parallelism, ...)`, where `output_time` is the sum of the self
   // processing time and the product of `ratio_` and the sum of output times of
-  // inputs, `input_time` is specified through `input_times` and `buffer_size`
-  // is derived from parallelism.
+  // inputs, `input_time` is specified through `input_times` and if the node
+  // has parallelism parameter, then `buffer_size` is derived from parallelism.
+  //
+  // Current implementation assumes that there is at most 1 parameter per node.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     double parallelism = 1.0;
-    auto* parameter = gtl::FindOrNull(parameters_, "parallelism");
-    if (parameter) {
-      parallelism = (*parameter)->value;
+    double buffer_size = 0.0;
+    auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
+    auto* buffer_size_parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (parallelism_parameter) {
+      parallelism = (*parallelism_parameter)->value;
+      buffer_size = parallelism;
+    } else if (buffer_size_parameter) {
+      buffer_size = (*buffer_size_parameter)->value;
     }
     double self_processing_time = SelfProcessingTimeLocked();
     if (ratio_ == 0.0) {
@@ -435,21 +444,24 @@ class AsyncKnownRatio : public Node {
         double input_time_der = 0.0L;
         double buffer_size_der = 0.0L;
         double result = ComputeWaitTime(output_time, input_times->back(),
-                                        parallelism, &output_time_der,
+                                        buffer_size, &output_time_der,
                                         &input_time_der, &buffer_size_der);
         auto last_input_time_der =
             gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
         (*gradient)[kInputTimeDerivativeKey] =
             last_input_time_der + input_time_der;
-        // Add derivative w.r.t. own parallelism parameter.
-        if (parameter && (*parameter)->state->tunable) {
+        // Add derivative w.r.t. own parameter if it's tunable.
+        if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
           (*gradient)[long_name()] =
               -output_time_der * self_processing_time / Square(parallelism) +
               buffer_size_der;
+        } else if (buffer_size_parameter &&
+                   (*buffer_size_parameter)->state->tunable) {
+          (*gradient)[long_name()] = buffer_size_der;
         }
         return result;
       }
-      return ComputeWaitTime(output_time, input_times->back(), parallelism,
+      return ComputeWaitTime(output_time, input_times->back(), buffer_size,
                              /*output_time_derivative=*/nullptr,
                              /*input_time_derivative=*/nullptr,
                              /*buffer_size_derivative=*/nullptr);
@@ -468,7 +480,7 @@ class AsyncKnownRatio : public Node {
           self_processing_time / parallelism +
           ratio_ * OutputTimeForInputs(input_times, &inputs_gradient);
       double result =
-          ComputeWaitTime(output_time, old_input_time, parallelism,
+          ComputeWaitTime(output_time, old_input_time, buffer_size,
                           &output_time_der, &input_time_der, &buffer_size_der);
       auto last_input_time_der =
           gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
@@ -479,20 +491,23 @@ class AsyncKnownRatio : public Node {
           (*gradient)[pair.first] = pair.second * ratio_ * output_time_der;
         }
       }
-      // Add derivative w.r.t. own parallelism parameter.
-      if (parameter && (*parameter)->state->tunable) {
+      // Add derivative w.r.t. own parameter if it's tunable.
+      if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
         (*gradient)[long_name()] =
             -output_time_der * self_processing_time / Square(parallelism) +
             buffer_size_der -
             output_time_der * inputs_gradient[kInputTimeDerivativeKey] *
                 self_processing_time / Square(parallelism);
+      } else if (buffer_size_parameter &&
+                 (*buffer_size_parameter)->state->tunable) {
+        (*gradient)[long_name()] = buffer_size_der;
       }
       return result;
     }
     double output_time =
         self_processing_time / parallelism +
         ratio_ * OutputTimeForInputs(input_times, /*gradient=*/nullptr);
-    return ComputeWaitTime(output_time, old_input_time, parallelism,
+    return ComputeWaitTime(output_time, old_input_time, buffer_size,
                            /*output_time_derivative=*/nullptr,
                            /*input_time_derivative=*/nullptr,
                            /*buffer_size_derivative=*/nullptr);
@@ -785,7 +800,8 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectEssentialParallelism(
       processing_time / static_cast<double>(processing_times.size());
   std::map<string, std::shared_ptr<Parameter>> essential_parameters;
   for (auto& pair : parameters) {
-    if (processing_times[pair.first] > kEssentialRate * uniform_share) {
+    if (pair.second->name == kParallelism &&
+        processing_times[pair.first] > kEssentialRate * uniform_share) {
       essential_parameters.insert(pair);
     }
   }
@@ -872,8 +888,12 @@ void Model::OptimizeHillClimb(int64 cpu_budget) {
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  // Buffer size parameter will only be incremented if the output latency
+  // improvement is greater than this constant.
+  constexpr double kBufferSizeMinDelta = 1.0L;
+
   for (auto& pair : parameters) {
-    pair.second->value = 1;
+    pair.second->value = pair.second->min;
   }
   while (true) {
     const double output_time = OutputTime(snapshot, /*gradient=*/nullptr);
@@ -896,17 +916,18 @@ void Model::OptimizeHillClimb(int64 cpu_budget) {
       pair.second->value++;
       double new_output_time = OutputTime(snapshot, /*gradient=*/nullptr);
       double delta = output_time - new_output_time;
-      if (delta > best_delta) {
+      if (delta > best_delta &&
+          (delta > kBufferSizeMinDelta || pair.second->name != kBufferSize)) {
         best_delta = delta;
         best_parameter = pair.second.get();
       }
       pair.second->value--;
     }
     if (!best_parameter) {
-      LOG(WARNING) << "Failed to find a tunable parameter that would "
-                      "decrease the output time. This means that the "
-                      "autotuning optimization got stuck in a local maximum. "
-                      "The optimization attempt will be aborted.";
+      VLOG(2) << "Failed to find a tunable parameter that would decrease the "
+                 "output time. This means that the autotuning optimization got "
+                 "stuck in a local maximum. The optimization attempt will be "
+                 "aborted.";
       return;
     }
     best_parameter->value++;

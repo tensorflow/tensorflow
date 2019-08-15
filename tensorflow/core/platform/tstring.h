@@ -48,6 +48,19 @@ namespace tensorflow {
 class tstring {
   std::string str_;
 
+  template <typename T, typename = void>
+  struct ResizeUninitialized {
+    static void Resize(T& s, size_t new_size) { s.resize(new_size); }
+  };
+
+  template <typename T>
+  struct ResizeUninitialized<
+      T, decltype(std::declval<T>().__resize_default_init(0))> {
+    static void Resize(T& s, size_t new_size) {
+      s.__resize_default_init(new_size);
+    }
+  };
+
  public:
   tstring() = default;
 
@@ -59,8 +72,9 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   explicit tstring(const T& str) : str_(str.data(), str.size()) {}
 
   tstring(tstring&&) noexcept = default;
@@ -75,8 +89,9 @@ class tstring {
     return *this;
   }
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   tstring& operator=(const T& str) {
     str_.assign(str.data(), str.size());
 
@@ -105,8 +120,9 @@ class tstring {
 
   operator std::string() const { return str_; }
 
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, absl::string_view>::value, T>>
+  template <typename T,
+            typename std::enable_if<std::is_same<T, absl::string_view>::value,
+                                    T>::type* = nullptr>
   operator T() const {
     return T(str_.data(), str_.size());
   }
@@ -128,6 +144,10 @@ class tstring {
   char& operator[](size_t i) { return str_[i]; }
 
   void resize(size_t new_size) { str_.resize(new_size); }
+
+  void resize_uninitialized(size_t new_size) {
+    ResizeUninitialized<decltype(str_)>::Resize(str_, new_size);
+  }
 
   tstring& assign(const char* str, size_t len) {
     str_.assign(str, len);

@@ -42,7 +42,7 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
 
   // Null all inputs so we can later perform a null check to avoid re-allocating
   // registered pre-allocated inputs.
-  for (int i = 0; i < subgraph_->inputs()->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->inputs()->size(); ++i) {
     const int tensor_index = subgraph_->inputs()->Get(i);
     context_->tensors[tensor_index].data.raw = nullptr;
   }
@@ -74,7 +74,7 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
       sizeof(int) * tensors_->size(), sizeof(int)));
   int* last_used = reinterpret_cast<int*>(tensor_allocator_.AllocateMemory(
       sizeof(int) * tensors_->size(), sizeof(int)));
-  for (int i = 0; i < tensors_->size(); ++i) {
+  for (size_t i = 0; i < tensors_->size(); ++i) {
     first_created[i] = -1;
     last_used[i] = -1;
   }
@@ -83,7 +83,7 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
   // re-allocating later.  Since inputs are not created by a particular node, we
   // make up an index which does not overlap with any node.
   const int kInputIndex = subgraph_->inputs()->size();
-  for (int i = 0; i < subgraph_->inputs()->size(); ++i) {
+  for (size_t i = 0; i < subgraph_->inputs()->size(); ++i) {
     const int tensor_index = subgraph_->inputs()->Get(i);
     const auto* tensor = tensors_->Get(tensor_index);
     // Check for and skip pre-allocated inputs.
@@ -98,13 +98,13 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
 
   for (int i = (operators_->size() - 1); i >= 0; --i) {
     const auto* op = operators_->Get(i);
-    for (int n = 0; n < op->inputs()->size(); ++n) {
+    for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       if ((last_used[tensor_index] == -1) || (last_used[tensor_index] < i)) {
         last_used[tensor_index] = i;
       }
     }
-    for (int n = 0; n < op->outputs()->size(); ++n) {
+    for (size_t n = 0; n < op->outputs()->size(); ++n) {
       const int tensor_index = op->outputs()->Get(n);
       const int create_before = i;
       int destroy_after = last_used[tensor_index];
@@ -124,7 +124,7 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     }
   }
 
-  for (int i = 0; i < tensors_->size(); ++i) {
+  for (size_t i = 0; i < tensors_->size(); ++i) {
     const auto* tensor = tensors_->Get(i);
     const bool is_read_only = (first_created[i] == -1) && (last_used[i] != -1);
     if (tensor->is_variable() || is_read_only) {

@@ -89,6 +89,9 @@ private:
   ModuleOp mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
 
+  // Mappings between llvm.global definitions and corresponding globals.
+  llvm::DenseMap<Operation *, llvm::GlobalValue *> globalsMapping;
+
 protected:
   // Mappings between original and translated values, used for lookups.
   llvm::StringMap<llvm::Function *> functionMapping;

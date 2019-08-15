@@ -89,7 +89,7 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
     if (i < num_int32) {
       test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
     } else {
-      test::ExpectTensorEqual<string>(tensors[i], tensors_expected[i]);
+      test::ExpectTensorEqual<tstring>(tensors[i], tensors_expected[i]);
     }
   }
 

@@ -99,7 +99,9 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     absl::Span<const ShapedBuffer* const> arguments) {
   StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStreamWrapper(run_options, arguments);
-  TF_RETURN_IF_ERROR(run_options->stream()->BlockHostUntilDone());
+  Status block_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
   return result;
 }
 

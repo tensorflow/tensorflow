@@ -82,8 +82,9 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
 };
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
-  return new LoopUnrollAndJam(
+std::unique_ptr<FunctionPassBase>
+mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
+  return llvm::make_unique<LoopUnrollAndJam>(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 

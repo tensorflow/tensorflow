@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 
+#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 
@@ -29,20 +30,24 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
                                     int index) {
-  return &context->tensors[node->inputs->data[index]];
+  return &context
+              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
 }
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
                                       int index) {
-  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  TfLiteTensor* tensor =
+      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
-  return &context->tensors[node->outputs->data[index]];
+  return &context
+              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
 }
 inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
                                   int index) {
-  return &context->tensors[node->temporaries->data[index]];
+  return &context->tensors[flatbuffers::EndianScalar(
+      node->temporaries->data[index])];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             TfLiteNode* node, int index) {
@@ -71,7 +76,8 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   int index) {
   const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
   if (use_tensor) {
-    return &context->tensors[node->inputs->data[index]];
+    return &context
+                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
   }
   return nullptr;
 }

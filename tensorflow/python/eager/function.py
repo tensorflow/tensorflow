@@ -85,9 +85,14 @@ class CacheKey(
 
   def __hash__(self):
     """Provide a hash even if the input signature objects aren't hashable."""
-    return hash((self._hash_fix(self.input_signature), self.parent_graph,
-                 self.device_functions, self.colocation_stack,
-                 self.in_cross_replica_context))
+    return hash(self._fields_safe)
+
+  @property
+  def _fields_safe(self):
+    """Hash & equality-safe version of all the namedtuple fields."""
+    return (self._hash_fix(self.input_signature), self.parent_graph,
+            self.device_functions, self.colocation_stack,
+            self.in_cross_replica_context)
 
   def _hash_fix(self, elem):
     """Ensure elem is hashable even if a Variable is nested in it."""
@@ -107,6 +112,9 @@ class CacheKey(
       return (v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype))
 
     return elem
+
+  def __eq__(self, other):
+    return self._fields_safe == other._fields_safe  # pylint: disable=protected-access
 
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access

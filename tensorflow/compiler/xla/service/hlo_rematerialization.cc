@@ -1281,11 +1281,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
       module->result_shape(),
       [&module_output_size, module, this](const Shape& subshape,
                                           const ShapeIndex& output_index) {
-        if (!module->input_output_alias_config().OutputHasAlias(output_index)) {
-          // Only account for non-aliased outputs to avoid double counting a
-          // parameter buffer twice.
-          module_output_size += size_function_(subshape);
-        }
+        module_output_size += size_function_(subshape);
       });
 
   const int64 adjusted_memory_limit_bytes =

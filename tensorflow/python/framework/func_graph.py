@@ -454,8 +454,8 @@ class FuncGraph(ops.Graph):
       op_def=None,
       compute_device=True):
     # When capturing by value, do the read outside
-    reverse_captures = dict((v, k) for k, v in self.captures)
-    uncaptured_inputs = [reverse_captures.get(t, t) for t in inputs]
+    reverse_captures = dict((id(v), k) for k, v in self.captures)
+    uncaptured_inputs = [reverse_captures.get(id(t), t) for t in inputs]
     with ops.init_scope():
       if context.executing_eagerly():
         attr_list = ("dtype", int(attrs["dtype"].type))

@@ -51,7 +51,8 @@ class HloRematerialization : public HloModulePass {
   //     buffer of the given shape.
   //
   //   memory_limit_bytes: The threshold number of bytes to reduce memory use to
-  //     via rematerialization.
+  //     via rematerialization. Size of aliased outputs should be subtracted
+  //     from this.
   //
   //   sizes: Pointer to data structure which records the peak memory usage of
   //     the HLO module before/after rematerialization. Value are set during

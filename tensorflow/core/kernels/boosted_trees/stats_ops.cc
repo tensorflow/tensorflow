@@ -891,6 +891,7 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesMakeStatsSummary").Device(DEVICE_CPU),
                         BoostedTreesMakeStatsSummaryOp);
 
+// TODO(tanzheny): Add an option of default value into the API interface.
 class BoostedTreesAggregateStatsOp : public OpKernel {
  public:
   explicit BoostedTreesAggregateStatsOp(OpKernelConstruction* const context)
@@ -928,18 +929,22 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     const int64 feature_dims = feature_t->dim_size(1);
 
     // Allocate temporary stats tensor (Rank 4), upcasting to double.
+    // A default bucket is added to the end for missing/default values.
     Tensor temp_stats_double_t;
-    OP_REQUIRES_OK(context, context->allocate_temp(DT_DOUBLE,
-                                                   {max_splits_, feature_dims,
-                                                    num_buckets_, stats_dims},
-                                                   &temp_stats_double_t));
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(
+                     DT_DOUBLE,
+                     {max_splits_, feature_dims, num_buckets_ + 1, stats_dims},
+                     &temp_stats_double_t));
     auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
     temp_stats_double.setZero();
 
     for (int i = 0; i < batch_size; ++i) {
       const int32 node = node_ids(i);
       for (int feature_dim = 0; feature_dim < feature_dims; ++feature_dim) {
-        const int32 bucket = feature(i, feature_dim);
+        const int32 feature_value = feature(i, feature_dim);
+        const int32 bucket =
+            (feature_value == -1) ? num_buckets_ : feature_value;
         for (int stat_dim = 0; stat_dim < logits_dims; ++stat_dim) {
           temp_stats_double(node, feature_dim, bucket, stat_dim) +=
               gradients(i, stat_dim);

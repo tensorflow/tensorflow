@@ -17,6 +17,8 @@
 #ifndef MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_
 #define MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_
 
+#include <memory>
+
 namespace mlir {
 class FunctionPassBase;
 
@@ -28,8 +30,8 @@ class FunctionPassBase;
 /// parallelization is performed, it is under the responsibility of the caller
 /// to strip-mine the loops and to perform the dependence analysis before
 /// calling the conversion.
-FunctionPassBase *createSimpleLoopsToGPUPass(unsigned numBlockDims,
-                                             unsigned numThreadDims);
+std::unique_ptr<FunctionPassBase>
+createSimpleLoopsToGPUPass(unsigned numBlockDims, unsigned numThreadDims);
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_LOOPSTOGPU_LOOPSTOGPUPASS_H_

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -144,9 +145,9 @@ class BenchmarkModel {
   BenchmarkModel();
   BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  virtual void Init() = 0;
-  void Run(int argc, char** argv);
-  virtual void Run();
+  virtual TfLiteStatus Init() = 0;
+  TfLiteStatus Run(int argc, char** argv);
+  virtual TfLiteStatus Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
@@ -155,24 +156,27 @@ class BenchmarkModel {
 
   // Unparsable flags will remain in 'argv' in the original order and 'argc'
   // will be updated accordingly.
-  bool ParseFlags(int* argc, char** argv);
+  TfLiteStatus ParseFlags(int* argc, char** argv);
 
  protected:
   virtual void LogParams();
-  virtual bool ValidateParams();
+  virtual TfLiteStatus ValidateParams();
 
-  bool ParseFlags(int argc, char** argv) { return ParseFlags(&argc, argv); }
+  TfLiteStatus ParseFlags(int argc, char** argv) {
+    return ParseFlags(&argc, argv);
+  }
   virtual std::vector<Flag> GetFlags();
 
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        float max_secs, RunType run_type);
+                                        float max_secs, RunType run_type,
+                                        TfLiteStatus* invoke_status);
   // Prepares input data for benchmark. This can be used to initialize input
   // data that has non-trivial cost.
-  virtual void PrepareInputData();
+  virtual TfLiteStatus PrepareInputData();
 
-  virtual void ResetInputsAndOutputs();
-  virtual void RunImpl() = 0;
+  virtual TfLiteStatus ResetInputsAndOutputs();
+  virtual TfLiteStatus RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;
 };

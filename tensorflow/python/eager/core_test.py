@@ -1029,10 +1029,10 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
   def testCacheSkipsTensorsTooLarge(self):
     cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
     cache.put('1', array_ops.zeros((2, 2)))
-    self.assertEqual(cache.get('1'), None)
+    self.assertIsNone(cache.get('1'))
 
     cache.put('2', array_ops.zeros((2)))
-    self.assertNotEqual(cache.get('2'), None)
+    self.assertIsNotNone(cache.get('2'))
 
 
 if __name__ == '__main__':

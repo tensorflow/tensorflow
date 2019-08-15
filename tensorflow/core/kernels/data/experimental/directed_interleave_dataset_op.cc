@@ -176,7 +176,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
           }
 
           int64 selected_input = selector_result[0].scalar<int64>()();
-          if (selected_input < 0 || selected_input > data_input_impls_.size()) {
+          if (selected_input < 0 ||
+              selected_input >= data_input_impls_.size()) {
             return errors::InvalidArgument(
                 "Selector index out of range: ", selected_input,
                 " >= ", data_input_impls_.size());

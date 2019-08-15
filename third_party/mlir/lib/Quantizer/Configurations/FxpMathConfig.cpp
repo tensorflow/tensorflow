@@ -174,9 +174,9 @@ struct FxpMathTargetConfigImpl : public FxpMathTargetConfig {
     auto statsOp = cast<quant::StatisticsOp>(op);
     auto layerStatsAttr = statsOp.layerStats();
     layerStats.minValue =
-        layerStatsAttr.getValue({0}).cast<FloatAttr>().getValueAsDouble();
+        layerStatsAttr.getValue<FloatAttr>(0).getValueAsDouble();
     layerStats.maxValue =
-        layerStatsAttr.getValue({1}).cast<FloatAttr>().getValueAsDouble();
+        layerStatsAttr.getValue<FloatAttr>(1).getValueAsDouble();
     UniformConstraintsBuilder(cag).applyStats(resultNode, layerStats);
   }
 
