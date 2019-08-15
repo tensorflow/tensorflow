@@ -30,6 +30,7 @@ VALID_LIBS = [
     "jpeg",
     "jsoncpp_git",
     "keras_applications_archive",
+    "llvm",
     "lmdb",
     "nasm",
     "nsync",
