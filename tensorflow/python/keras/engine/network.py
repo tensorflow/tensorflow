@@ -827,7 +827,10 @@ class Network(base_layer.Layer):
           if 'training' in argspec:
             kwargs.setdefault('training', training)
             if (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
-                kwargs['training'] in backend._GRAPH_LEARNING_PHASES.values()):
+                [
+                    kwargs['training'] is t
+                    for t in backend._GRAPH_LEARNING_PHASES.values()
+                ]):
               kwargs['training'] = training  # Materialize placeholder.
 
           # Map Keras tensors in kwargs to their computed value.
