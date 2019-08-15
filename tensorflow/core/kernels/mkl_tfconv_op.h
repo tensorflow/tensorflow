@@ -40,11 +40,9 @@ namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
-#define NET_ARGS_PTR &net_args
 #define OUTPUT_TF_MD output_tf_md
 #else
 #define ENGINE_CPU engine::cpu
-#define NET_ARGS_PTR nullptr
 #define OUTPUT_TF_MD output_tf_pd
 #endif  // ENABLE_MKLDNN_V1
 
@@ -164,7 +162,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 #undef ENGINE_CPU
-#undef NET_ARGS_PTR
 #undef OUTPUT_TF_MD
 
 }  // namespace tensorflow
