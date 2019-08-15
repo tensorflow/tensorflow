@@ -30,7 +30,6 @@ limitations under the License.
 #include <unistd.h>
 #include <string>
 
-#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 #endif  // defined(TF_GENERATE_STACKTRACE)

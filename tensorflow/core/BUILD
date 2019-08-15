@@ -804,7 +804,6 @@ cc_library(
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
     deps = [
         "//tensorflow/core/platform",
-        "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:stacktrace",
     ],
 )
