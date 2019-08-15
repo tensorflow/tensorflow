@@ -1360,6 +1360,27 @@ class LSTMOperationParser : public TFLiteOperationParser {
   }
 };
 
+class MeanOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::MEAN);
+
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+
+    return reader->AddOutputs(node);
+  }
+};
+
 class MulOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -2143,6 +2164,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<LSTMOperationParser>();
     case kTfLiteBuiltinMaxPool2d:
       return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
+    case kTfLiteBuiltinMean:
+      return absl::make_unique<MeanOperationParser>();
     case kTfLiteBuiltinMul:
       return absl::make_unique<MulOperationParser>();
     case kTfLiteBuiltinPad:

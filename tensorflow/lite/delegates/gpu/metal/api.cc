@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/hard_swish.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
@@ -175,6 +176,9 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           node_id, inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
       break;
+    case OperationType::MEAN:
+      *tasks = Mean(node_id, inputs[0], outputs[0], options);
+      break;
     case OperationType::MULTIPLY_SCALAR:
       *tasks = Multiply(
           node_id, inputs[0], outputs[0],
@@ -277,8 +281,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
         return UnimplementedError(
             absl::Substitute("Unsupported op type: $0; custom registry error: "
                              "$1; primary registry error: $2;",
-                             node->operation.type, custom_status.message(),
-                             primary_status.message()));
+                             node->operation.type, custom_status.error_message(),
+                             primary_status.error_message()));
       }
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());

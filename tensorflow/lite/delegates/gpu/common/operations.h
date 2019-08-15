@@ -50,6 +50,7 @@ enum class OperationType {
   LOG,
   LSTM,
   MAX_UNPOOLING_2D,
+  MEAN,
   MUL,
   MULTIPLY_SCALAR,
   PAD,

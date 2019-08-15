@@ -17,6 +17,7 @@ cc_library(
         ":fully_connected",
         ":hard_swish",
         ":max_unpooling",
+        ":mean",
         ":mul",
         ":padding",
         ":pooling",
@@ -318,6 +319,23 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":max_unpooling_test_lib"],
+)
+
+cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+    ],
 )
 
 cc_library(
