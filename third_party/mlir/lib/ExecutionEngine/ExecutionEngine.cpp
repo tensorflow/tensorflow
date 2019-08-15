@@ -91,7 +91,7 @@ public:
   // `llvm::sys::DynamicLibrary::AddSymbol`.
   Expected<llvm::orc::SymbolNameSet>
   operator()(llvm::orc::JITDylib &JD, const llvm::orc::SymbolNameSet &Names) {
-    auto res = defaultGenerator(JD, Names);
+    auto res = defaultGenerator->tryToGenerate(JD, Names);
     if (!res)
       return res;
     llvm::orc::SymbolMap newSymbols;
@@ -114,7 +114,7 @@ public:
   }
 
 private:
-  llvm::orc::DynamicLibrarySearchGenerator defaultGenerator;
+  std::unique_ptr<llvm::orc::DynamicLibrarySearchGenerator> defaultGenerator;
 };
 
 // Simple layered Orc JIT compilation engine.
@@ -139,8 +139,9 @@ public:
         transformLayer(session, compileLayer, makeIRTransformFunction()),
         dataLayout(layout), mangler(session, this->dataLayout),
         threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
-    session.getMainJITDylib().setGenerator(
-        SearchGenerator(layout.getGlobalPrefix()));
+    session.getMainJITDylib().addGenerator(
+        cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            layout.getGlobalPrefix())));
     loadLibraries(sharedLibPaths);
   }
 
@@ -223,7 +224,7 @@ void mlir::impl::OrcJIT::loadLibraries(ArrayRef<StringRef> sharedLibPaths) {
                    << "\n";
       continue;
     }
-    JD.setGenerator(loaded.get());
+    JD.addGenerator(std::move(*loaded));
     auto res = objectLayer.add(JD, std::move(mb.get()));
     if (res)
       llvm::errs() << "Could not add: " << libPath << " " << res << "\n";
