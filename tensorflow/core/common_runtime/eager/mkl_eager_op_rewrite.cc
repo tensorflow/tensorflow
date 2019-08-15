@@ -76,10 +76,9 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
-  mkl_eager_ops_.push_back({"BatchMatMulV2", AlwaysRewrite,
-                            CreateGenericMklOp});  // No need to check for V1 as
-                                                   // it has been obsoleted
-                                                   // already
+  mkl_eager_ops_.push_back({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
+  mkl_eager_ops_.push_back(
+      {"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   mkl_eager_ops_.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
   mkl_eager_ops_.push_back(
       {"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
