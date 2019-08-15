@@ -23,168 +23,15 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
-class OperationFolder;
-
 namespace linalg {
-
-/// A linalg.LoadOp is the counterpart of load but operating on ViewType
-/// instead of MemRefType.
-///
-/// ```{.mlir}
-///    %0 = linalg.load %V[%c0] : !linalg.view<?xf32>
-/// ```
-class LoadOp
-    : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.load"; }
-  static void build(Builder *b, OperationState *result, Value *view,
-                    ArrayRef<Value *> indices = {});
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  unsigned getRank() { return getViewType().getRank(); }
-  ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
-  Value *getView() { return getOperand(0); }
-  Operation::operand_range getIndices() {
-    return {operand_begin() + 1, operand_end()};
-  }
-};
-
-/// The "linalg.range" op creates a linalg.range from 3 values of type `index`
-/// that represent the min, max and step values of the range.
-///
-/// ```{.mlir}
-///    %3 = linalg.range %0:%1:%2 : !linalg.range
-/// ```
-class RangeOp : public Op<RangeOp, OpTrait::NOperands<3>::Impl,
-                          OpTrait::OneResult, OpTrait::HasNoSideEffect> {
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.range"; }
-  static void build(Builder *b, OperationState *result, Value *min, Value *max,
-                    Value *step);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  Value *min() { return getOperand(0); }
-  Value *max() { return getOperand(1); }
-  Value *step() { return getOperand(2); }
-};
-
-/// The "linalg.slice" op produces a linalg.view which is a subview of a given
-/// base view. This allows defining a subregion within the underlying buffer to
-/// operate on only a subset of the buffer.
-///
-/// A "linalg.slice" op takes a base view and a variadic number of indexings and
-/// produces a linalg.view of the same elemental type as the buffer. An indexing
-/// is either:
-///   1. a linalg.range, in which case it does not reduce the rank of the parent
-///      view.
-///   2. an index, in which case it reduces the rank of the parent view by one.
-///
-/// The parent view must be a base view (i.e. either a function argument or has
-/// been produced by a linalg.view op). In other words, chains of
-/// linalg.slice operations cannot be constructed in the IR. This defines away
-/// problems related to keeping track of which dimensions of the base view have
-/// been rank-reduced.
-///
-/// Examples:
-///   1. rank-preserving slice:
-///
-/// ```{.mlir}
-///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, !linalg.range,
-///    !linalg.range, !linalg.view<?x?xf32>
-/// ```
-///
-///   2. rank-reducing slice (from 2-D to 1-D):
-///
-/// ```{.mlir}
-///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index,
-///    !linalg.range, !linalg.view<?xf32>
-/// ```
-///
-///   3. rank-reducing slice (from 2-D to 0-D):
-///
-/// ```{.mlir}
-///    %4 = linalg.slice %0[%1, %2] : !linalg.view<?x?xf32>, index, index,
-///    !linalg.view<f32>
-/// ```
-class ViewOp;
-class SliceOp : public Op<SliceOp, OpTrait::VariadicOperands,
-                          OpTrait::OneResult, OpTrait::HasNoSideEffect> {
-  enum { FirstIndexingOperand = 1 };
-
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.slice"; }
-  static void build(Builder *b, OperationState *result, Value *base,
-                    llvm::ArrayRef<Value *> indexings);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  unsigned getRank() { return getViewType().getRank(); }
-  Type getElementType() { return getViewType().getElementType(); }
-  ViewType getViewType() { return getType().cast<ViewType>(); }
-  Value *getBaseView() { return getOperand(0); }
-  ViewOp getBaseViewOp();
-  ViewType getBaseViewType();
-  unsigned getBaseViewRank() { return getBaseViewType().getRank(); }
-  // Get the underlying indexing at a given rank.
-  Value *getIndexing(unsigned rank) { return *(getIndexings().begin() + rank); }
-  // Get all the indexings in this view.
-  Operation::operand_range getIndexings() {
-    return {operand_begin() + SliceOp::FirstIndexingOperand, operand_end()};
-  }
-  // Get the subset of indexings that are of RangeType.
-  SmallVector<Value *, 8> getRanges();
-};
-
-/// A linalg.StoreOp is the counterpart of affine.store but operating on
-/// ViewType instead of MemRefType.
-///
-/// ```{.mlir}
-///    linalg.store %f, %V[%c0] : !linalg.view<?xf32>
-/// ```
-class StoreOp
-    : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.store"; }
-  static void build(Builder *b, OperationState *result, Value *valueToStore,
-                    Value *view, ArrayRef<Value *> indices = {});
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  unsigned getRank() { return getViewType().getRank(); }
-  ViewType getViewType() { return getView()->getType().cast<ViewType>(); }
-  Value *getValueToStore() { return getOperand(0); }
-  Value *getView() { return getOperand(1); }
-  Operation::operand_range getIndices() {
-    return {operand_begin() + 2, operand_end()};
-  }
-};
 
 /// Returns the name mangled library call name to disambiguate between different
 /// overloads at the C level. The name mangling scheme is basic and uses MLIR
@@ -214,8 +61,6 @@ std::string generateLibraryCallName(Operation *op);
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgLibraryOps.h.inc"
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
-
 /// Returns the list of maps that map loops to operands of a Linalg op.
 /// The i-th affine map identifies loop indices to subscripts that are used when
 /// accessing the i-th operand.
@@ -233,6 +78,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 ///
 /// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 
 /// A LinalgOp behaves like a base class for the Linalg operations that are
 /// defined in LinalgLibraryOps.td. The implementation does not use inheritance

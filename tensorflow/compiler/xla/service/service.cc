@@ -166,8 +166,9 @@ Service::Service(const ServiceOptions& options,
           << "Requested more replicas than there are devices.";
     }
     LOG(INFO) << StrFormat(
-        "XLA service %p executing computations on platform %s. Devices:", this,
-        execute_backend_->platform()->Name());
+        "XLA service %p initialized for platform %s (this does not guarantee "
+        "that XLA will be used). Devices:",
+        this, execute_backend_->platform()->Name());
     auto stream_executors = execute_backend_->stream_executors();
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
       se::StreamExecutor* executor = stream_executors.at(i);

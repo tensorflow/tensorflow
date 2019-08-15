@@ -39,7 +39,7 @@ class StringJoinOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list("inputs", &input_list));
     TensorShape input_shape;
     std::vector<bool> is_scalar;
-    std::vector<TTypes<string>::ConstFlat> inputs;
+    std::vector<TTypes<tstring>::ConstFlat> inputs;
 
     for (const auto& input : input_list) {
       inputs.push_back(input.flat<tstring>());

@@ -203,6 +203,7 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/profiler",
+        "@six_archive//:six",
     ],
 )
 

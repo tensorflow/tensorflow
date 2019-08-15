@@ -132,7 +132,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
                                      PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
-      if (cst.getValue({}).cast<BoolAttr>().getValue()) {
+      if (cst.getValue<BoolAttr>({}).getValue()) {
         rewriter.replaceOp(op, llvm::None);
         return matchSuccess();
       }
@@ -579,7 +579,7 @@ static LogicalResult Verify(ReshapeOp op) {
   unsigned numByShape = 1;
   unsigned unknownDimCount = 0;
   for (int i = 0, e = rankByShape; i != e; ++i) {
-    auto num = shapeCstAttr.getValue(i).cast<IntegerAttr>().getInt();
+    auto num = shapeCstAttr.getValue<IntegerAttr>(i).getInt();
     // The dimension size value can be -1, and that the real size needs to
     // be computed so that the total size remains constant. At most one
     // component of shape can be -1.

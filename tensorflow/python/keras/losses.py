@@ -164,7 +164,7 @@ class Loss(object):
           '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
           'size like:\n```\nwith strategy.scope():\n'
           '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
-          'reduction=tf.keras.losses.reduction.NONE)\n....\n'
+          'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
           'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'

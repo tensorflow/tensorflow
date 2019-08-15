@@ -60,6 +60,18 @@ class Backend(object):
     """Returns the number of devices known to the backend."""
 
   @abc.abstractmethod
+  def local_device_count(self):
+    """Returns the number of devices local to this host."""
+
+  @abc.abstractmethod
+  def devices(self):
+    """Returns a list of `device_count()` Device subclasses."""
+
+  @abc.abstractmethod
+  def host_id(self):
+    """Returns the integer ID of this host."""
+
+  @abc.abstractmethod
   def buffer_from_pyval(self, pyval, device=0):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
@@ -93,7 +105,16 @@ class LocalBackend(Backend):
     self.client = client
 
   def device_count(self):
-    return self.client.DeviceCount()
+    return self.client.device_count()
+
+  def local_device_count(self):
+    return self.client.local_device_count()
+
+  def devices(self):
+    return self.client.devices()
+
+  def host_id(self):
+    return self.client.host_id()
 
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
@@ -459,6 +480,9 @@ def replica_count():
 def computation_count():
   '''Returns the number of computations per replica.'''
 """
+
+
+Device = _xla.Device
 
 
 class CompileOptions(object):

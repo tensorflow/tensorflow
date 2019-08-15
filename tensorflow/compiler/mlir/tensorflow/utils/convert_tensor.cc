@@ -165,7 +165,7 @@ Status ConvertFloatElementsAttr(const ElementsAttr attr,
                                 TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
     if (elts.isSplat()) {
-      output_tensor->add_float_val(*elts.getValues<float>().begin());
+      output_tensor->add_float_val(elts.getSplatValue<float>());
     } else {
       for (auto value : elts.getValues<float>())
         output_tensor->add_float_val(value);

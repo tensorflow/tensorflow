@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_
 
 #include <memory>
 #include <vector>
@@ -29,8 +29,9 @@ limitations under the License.
 namespace xla {
 
 // Class that encapsulates state relating to a device (e.g., a GPU) on which we
-// can perform computation and transfers.
-class Device {
+// can perform computation and transfers. DeviceState objects only exist for
+// devices local to this host.
+class DeviceState {
  public:
   // If synchronous_deallocation is true, the host must not free buffers until
   // compute/transfers that use those buffers have completed. For example, this
@@ -39,9 +40,9 @@ class Device {
   //
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
-  Device(se::StreamExecutor* executor, bool synchronous_deallocation,
-         bool asynchronous, bool allow_event_reuse);
-  virtual ~Device();
+  DeviceState(se::StreamExecutor* executor, bool synchronous_deallocation,
+              bool asynchronous, bool allow_event_reuse);
+  virtual ~DeviceState();
 
   bool synchronous_deallocation() const { return synchronous_deallocation_; }
 
@@ -131,4 +132,4 @@ class Device {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_DEVICE_STATE_H_

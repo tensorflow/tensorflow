@@ -527,21 +527,21 @@ class RMSpropOptimizerTest(test.TestCase):
       opt = rmsprop.RMSprop(1., momentum=0., centered=False)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and one unique slot variable for v1 and v2.
-      self.assertEqual(3, len(set(opt.variables())))
+      self.assertEqual(3, len(set({id(v) for v in opt.variables()})))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
       opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=False)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len(set(opt.variables())))
+      self.assertEqual(5, len(set({id(v) for v in opt.variables()})))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
       opt = rmsprop.RMSprop(learning_rate=1., momentum=0.2, centered=True)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and three unique slot variables for v1 and v2
-      self.assertEqual(7, len(set(opt.variables())))
+      self.assertEqual(7, len(set({id(v) for v in opt.variables()})))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 

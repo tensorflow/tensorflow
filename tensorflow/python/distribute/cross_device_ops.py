@@ -804,14 +804,14 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "NCCL all-reduce requires num_packs > 0, but {} is specified".format(
+          "NCCL all-reduce requires num_packs >= 0, but {} is specified".format(
               num_packs))
     super(NcclAllReduce, self).__init__(
         all_reduce_alg="nccl", num_packs=num_packs)
@@ -835,15 +835,15 @@ class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "HierarchicalCopy requires num_packs > 0, but {} is specified".format(
-              num_packs))
+          "HierarchicalCopy requires num_packs >= 0, but {} is specified"
+          .format(num_packs))
     super(HierarchicalCopyAllReduce, self).__init__(
         all_reduce_alg="hierarchical_copy",
         num_packs=num_packs)

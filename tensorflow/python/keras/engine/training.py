@@ -480,7 +480,7 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _select_training_loop(self, inputs, callbacks):
+  def _select_training_loop(self, inputs):
     """Select training loop for fit/eval/predict based on the inputs."""
     # TODO(kaftan) or TODO(scottzhu): This check should eventually be nicely
     #  integrated into the data adapters in the v2 loop. We can't do this yet
@@ -498,9 +498,7 @@ class Model(network.Network):
     if (context.executing_eagerly()
         and self._experimental_run_tf_function
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)
-        and not training_v2_utils.should_fallback_to_v1_for_callback(
-            inputs, callbacks)):
+            self._distribution_strategy)):
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:
@@ -710,7 +708,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('fit')
 
-    func = self._select_training_loop(x, callbacks)
+    func = self._select_training_loop(x)
     return func.fit(
         self,
         x=x,
@@ -823,7 +821,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
-    func = self._select_training_loop(x, callbacks)
+    func = self._select_training_loop(x)
     return func.evaluate(
         self,
         x=x,
@@ -901,7 +899,7 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
-    func = self._select_training_loop(x, callbacks)
+    func = self._select_training_loop(x)
     return func.predict(
         self,
         x=x,
@@ -976,6 +974,8 @@ class Model(network.Network):
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           class_weight=class_weight, reset_metrics=reset_metrics)
+      outputs = (outputs['total_loss'] + outputs['output_losses'] +
+                 outputs['metrics'])
       outputs = [
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
       if len(outputs) == 1:
@@ -999,12 +999,14 @@ class Model(network.Network):
     # for each replica by `self._distribution_strategy` and the same code path
     # as Eager is expected to be taken.
     if self.run_eagerly or self._distribution_strategy:
-      outputs = training_eager.train_on_batch(
+      output_dict = training_eager.train_on_batch(
           self,
           x,
           y,
           sample_weights=sample_weights,
           output_loss_metrics=self._output_loss_metrics)
+      outputs = (output_dict['total_loss'] + output_dict['output_losses']
+                 + output_dict['metrics'])
       outputs = [
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
@@ -1069,6 +1071,8 @@ class Model(network.Network):
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           reset_metrics=reset_metrics)
+      outputs = (outputs['total_loss'] + outputs['output_losses'] +
+                 outputs['metrics'])
       outputs = [
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
       if len(outputs) == 1:
@@ -1086,12 +1090,14 @@ class Model(network.Network):
     # If `self._distribution_strategy` is True, then we are in a replica context
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
-      outputs = training_eager.test_on_batch(
+      output_dict = training_eager.test_on_batch(
           self,
           x,
           y,
           sample_weights=sample_weights,
           output_loss_metrics=self._output_loss_metrics)
+      outputs = (output_dict['total_loss'] + output_dict['output_losses']
+                 + output_dict['metrics'])
       outputs = [
           training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
@@ -1801,9 +1807,16 @@ class Model(network.Network):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
-    if batch_size is not None and isinstance(x, dataset_ops.DatasetV2):
-      raise ValueError('The `batch_size` argument must not be specified when'
-                       ' using dataset as an input.')
+    if (isinstance(x, (dataset_ops.DatasetV1,
+                       dataset_ops.DatasetV2,
+                       data_utils.Sequence)) or
+        tf_inspect.isgenerator(x)):
+      if batch_size is not None:
+        raise ValueError(
+            'The `batch_size` argument must not be specified for the given '
+            'input type. Received input: {}, batch_size: {}'.format(
+                x, batch_size))
+      return
 
     layers = super(Model, self).layers  # Avoids the override in Sequential.
     if layers:
@@ -1857,13 +1870,7 @@ class Model(network.Network):
         if steps is None:
           batch_size = static_batch_size
 
-    if (batch_size is None
-        and steps is None
-        and not isinstance(x, (dataset_ops.DatasetV2,
-                               iterator_ops.Iterator,
-                               iterator_ops.IteratorV2,
-                               data_utils.Sequence))
-        and not tf_inspect.isgenerator(x)):
+    if batch_size is None and steps is None:
       # Backwards compatibility
       batch_size = 32
     return batch_size

@@ -1282,9 +1282,14 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version = graphs.begin()->second->versions().producer();
 
+  const auto* session_metadata =
+      options_.config.experimental().has_session_metadata()
+          ? &options_.config.experimental().session_metadata()
+          : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
-      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
+      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
+      nullptr, nullptr, session_metadata));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1304,10 +1309,7 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
-    params.session_metadata =
-        options_.config.experimental().has_session_metadata()
-            ? &options_.config.experimental().session_metadata()
-            : nullptr;
+    params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,

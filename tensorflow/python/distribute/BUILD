@@ -1194,6 +1194,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/139307796
     ],
 )
 

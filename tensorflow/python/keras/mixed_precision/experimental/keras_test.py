@@ -435,7 +435,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'infer',
           'strategy_fn': create_mirrored_strategy,
-          'policy_name': 'infer_with_float32_vars'
+          'policy_name': 'mixed_float16'
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
@@ -446,13 +446,15 @@ class KerasModelTest(keras_parameterized.TestCase):
                  strategy_fn,
                  use_operator=False,
                  use_regularizer=False,
-                 policy_name='float16_with_float32_vars',
+                 policy_name='mixed_float16',
                  experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn, check_model_type=True):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
-      with policy.policy_scope(policy_name):
+      # Pass loss_scale=None, as this test will fail if the DynamicLossScale
+      # skips applying gradients for a step
+      with policy.policy_scope(policy.Policy(policy_name, loss_scale=None)):
         layer_list = []
         if testing_utils.get_model_type() == 'subclass':
           # Subclassed models do not have an Input layer, so the model does not
@@ -580,10 +582,13 @@ class KerasModelTest(keras_parameterized.TestCase):
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
+    else:
+      loss_scale = None
     learning_rate = 2**-14
 
     with strategy.scope():
-      with policy.policy_scope(policy.Policy('float16_with_float32_vars')):
+      with policy.policy_scope(policy.Policy('mixed_float16',
+                                             loss_scale=loss_scale)):
         x = layers.Input(shape=(1,), batch_size=2)
         layer1 = AddLayer(
             assert_type=dtypes.float16,
@@ -619,8 +624,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           return math_ops.reduce_mean(y_pred)
 
         opt = gradient_descent.SGD(learning_rate)
-        if use_loss_scaling:
-          opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
         model.compile(
             opt,
             loss=loss_fn,

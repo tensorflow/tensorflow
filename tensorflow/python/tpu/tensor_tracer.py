@@ -23,6 +23,7 @@ import os.path
 import sys
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
@@ -1394,7 +1395,7 @@ class TensorTracer(object):
           # Collecting multiple statistics are only supported in the summary
           # mode that uses compact format(self._use_tensor_values_cache = true).
           # Non-compact mode currently allows single stat per tensor.
-          processed_out_tensor = processed_tensors.values()[0]
+          processed_out_tensor = six.next(six.itervalues(processed_tensors))
 
           if self._parameters.is_conditional_trace:
             trace_op = conditional_trace_fn(processed_out_tensor, out_tensor,

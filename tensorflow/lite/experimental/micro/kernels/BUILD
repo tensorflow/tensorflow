@@ -24,12 +24,15 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "pack.cc",
         "pooling.cc",
         "prelu.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
+        "split.cc",
         "strided_slice.cc",
+        "unpack.cc",
     ],
     hdrs = [
     ],
@@ -75,13 +78,16 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "pack.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
         "reshape.cc",
         "round.cc",
         "softmax.cc",
+        "split.cc",
         "strided_slice.cc",
+        "unpack.cc",
     ],
     hdrs = [
     ],
@@ -314,6 +320,45 @@ tflite_micro_cc_test(
     name = "strided_slice_test",
     srcs = [
         "strided_slice_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "pack_test",
+    srcs = [
+        "pack_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "unpack_test",
+    srcs = [
+        "unpack_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "split_test",
+    srcs = [
+        "split_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

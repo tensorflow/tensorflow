@@ -1,25 +1,9 @@
-# XLA Overview
+# XLA Architecture
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:50%" src="./images/xlalogo.png">
 </div>
 
-> Note: XLA is still under development.  Some use cases will not
-> see improvements in speed or decreased memory usage.
-
-XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
-algebra that optimizes TensorFlow computations. The results are improvements in
-speed, memory usage, and portability on server and mobile platforms. Initially,
-most users will not see large benefits from XLA, but are welcome to experiment
-by using XLA via [just-in-time (JIT) compilation](./jit.md) or
-[ahead-of-time (AOT) compilation](./tfcompile.md). Developers targeting new
-hardware accelerators are especially encouraged to try out XLA.
-
-The XLA framework is experimental and in active development. In particular,
-while it is unlikely that the semantics of existing operations will change, it
-is expected that more operations will be added to cover important use cases. The
-team welcomes feedback from the community about missing functionality and
-community contributions via GitHub.
 
 ## Why did we build XLA?
 
@@ -91,8 +75,3 @@ code from this LLVM IR.
 
 The GPU backend currently supports NVIDIA GPUs via the LLVM NVPTX backend; the
 CPU backend supports multiple CPU ISAs.
-
-## Supported Platforms
-
-XLA currently supports [JIT compilation](./jit.md) on x86-64 and NVIDIA GPUs; and
-[AOT compilation](./tfcompile.md) for x86-64 and ARM.

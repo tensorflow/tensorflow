@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/device.h"
+#include "tensorflow/compiler/xla/python/device_state.h"
 
 #include <memory>
 #include <vector>
@@ -24,8 +24,9 @@ limitations under the License.
 
 namespace xla {
 
-Device::Device(se::StreamExecutor* executor, bool synchronous_deallocation,
-               bool asynchronous, bool allow_event_reuse)
+DeviceState::DeviceState(se::StreamExecutor* executor,
+                         bool synchronous_deallocation, bool asynchronous,
+                         bool allow_event_reuse)
     : synchronous_deallocation_(synchronous_deallocation),
       event_pool_(allow_event_reuse),
       compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
@@ -49,14 +50,14 @@ Device::Device(se::StreamExecutor* executor, bool synchronous_deallocation,
                                                      "py_xla_callback");
 }
 
-Device::~Device() {
+DeviceState::~DeviceState() {
   Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 }
 
-Status Device::SynchronizeAllActivity() {
+Status DeviceState::SynchronizeAllActivity() {
   Status status;
   // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
   // suffice. However on the Host platform SynchronizeAllActivity is a dummy
@@ -72,10 +73,10 @@ Status Device::SynchronizeAllActivity() {
   return status;
 }
 
-Status Device::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
-                                        se::Stream* dst_stream,
-                                        se::DeviceMemoryBase src_buffer,
-                                        se::DeviceMemoryBase dst_buffer) {
+Status DeviceState::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
+                                             se::Stream* dst_stream,
+                                             se::DeviceMemoryBase src_buffer,
+                                             se::DeviceMemoryBase dst_buffer) {
   // The default implementation simply calls ThenMemcpyD2D, and assumes that
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
@@ -83,14 +84,14 @@ Status Device::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
   return Status::OK();
 }
 
-void Device::ThenExecuteOnCallbackThread(se::Stream* stream,
-                                         std::function<void()> callback) const {
+void DeviceState::ThenExecuteOnCallbackThread(
+    se::Stream* stream, std::function<void()> callback) const {
   stream->ThenDoHostCallback([this, callback]() mutable {
     callback_thread_->Schedule(std::move(callback));
   });
 }
 
-se::Stream* Device::GetDeviceToDeviceStream() {
+se::Stream* DeviceState::GetDeviceToDeviceStream() {
   absl::MutexLock lock(&mu_);
   int i = next_device_to_device_stream_;
   next_device_to_device_stream_ =

@@ -59,7 +59,7 @@ void SaveTensors(
                               std::numeric_limits<int>::max()),
               errors::InvalidArgument("Too many inputs to SaveTensors"));
   const int N = static_cast<int>(tensor_names_t.NumElements());
-  const string* tensor_shapes_and_slices_ptr = nullptr;
+  const tstring* tensor_shapes_and_slices_ptr = nullptr;
   if (save_slices) {
     const Tensor& tensor_shapes_and_slices_t = context->input(2);
     OP_REQUIRES(
@@ -103,7 +103,7 @@ void SaveTensors(
     TensorShape shape(input.shape());
     TensorSlice slice(input.dims());
     if (save_slices && !tensor_shapes_and_slices_ptr[i].empty()) {
-      const string& shape_spec = tensor_shapes_and_slices_ptr[i];
+      const tstring& shape_spec = tensor_shapes_and_slices_ptr[i];
       TensorShape slice_shape;
       OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(
                                   shape_spec, &shape, &slice, &slice_shape));
@@ -192,7 +192,8 @@ void RestoreTensor(OpKernelContext* context,
   TensorShape output_shape(saved_shape);
   TensorSlice slice_to_load(saved_shape.dims());
   if (restore_slice) {
-    const string& shape_spec = context->input(2).flat<tstring>()(restore_index);
+    const tstring& shape_spec =
+        context->input(2).flat<tstring>()(restore_index);
     if (!shape_spec.empty()) {
       TensorShape parsed_shape;
       OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(

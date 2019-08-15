@@ -35,6 +35,8 @@ class MakeStateless : public TFDataOptimizerBase {
 
   string name() const override { return "make_stateless"; }
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

@@ -139,7 +139,9 @@ class CuDNNTest(keras_parameterized.TestCase):
       output = layer(inputs, initial_state=initial_state[0])
     else:
       output = layer(inputs, initial_state=initial_state)
-    self.assertIn(initial_state[0], layer._inbound_nodes[0].input_tensors)
+    self.assertTrue(
+        any(initial_state[0] is t
+            for t in layer._inbound_nodes[0].input_tensors))
 
     model = keras.models.Model([inputs] + initial_state, output)
     model.compile(

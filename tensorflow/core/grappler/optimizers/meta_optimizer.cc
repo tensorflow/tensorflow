@@ -87,6 +87,23 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "loop_optimizer" || name == "auto_mixed_precision";
 }
 
+// Creates a function library stub from a real function library: copy only
+// signatures and attributes of all the function defined in fdef_lib. This stub
+// can be swapped with real function library in a graph, before passing it to
+// optimizer, if optimizer doesn't instantiate functions.
+FunctionDefLibrary GetFunctionDefLibraryStub(
+    const FunctionDefLibrary& fdef_lib) {
+  FunctionDefLibrary stub;
+  for (const FunctionDef& fn : fdef_lib.function()) {
+    FunctionDef* fn_stub = stub.mutable_function()->Add();
+    *(fn_stub->mutable_signature()) = fn.signature();
+    *(fn_stub->mutable_attr()) = fn.attr();
+    *(fn_stub->mutable_arg_attr()) = fn.arg_attr();
+  }
+  *stub.mutable_gradient() = fdef_lib.gradient();
+  return stub;
+}
+
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
   const uint64 kFiveMinutesInUsec = 5 * 60 * 1000 * 1000;
   if (cfg.meta_optimizer_timeout_ms() < 0) {
@@ -472,7 +489,21 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
-  uint64 start_us = Env::Default()->NowMicros();
+  const uint64 start_us = Env::Default()->NowMicros();
+
+  // If optimizer doesn't need a function library, we will replace it with a
+  // stub before running optimization, and will put it back at the end.
+  FunctionDefLibrary optimized_graph_function_library;
+  const bool is_function_library_aware = optimizer->UsesFunctionLibrary();
+
+  // Replace function library in optimized graph with a stub.
+  if (!is_function_library_aware) {
+    VLOG(3) << "Replace function library with a stub for " << optimizer->name();
+    optimized_graph_function_library.Swap(optimized_graph->mutable_library());
+    *optimized_graph->mutable_library() =
+        GetFunctionDefLibraryStub(optimized_graph_function_library);
+  }
+
   // This swaps the current optimized_graph into optimized item and
   // resets optimized_graph to an empty graph.
   optimized_graph->Swap(&optimized_item->graph);
@@ -480,8 +511,8 @@ Status MetaOptimizer::RunOptimizer(
   optimizer->set_deadline_usec(this->deadline_usec());
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
-  uint64 end_us = Env::Default()->NowMicros();
-  float duration_ms = (end_us - start_us) / 1000.0f;
+  const uint64 end_us = Env::Default()->NowMicros();
+  const float duration_ms = (end_us - start_us) / 1000.0f;
 
   string message;
   if (!status.ok()) {
@@ -506,6 +537,11 @@ Status MetaOptimizer::RunOptimizer(
         PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
         ", time = ", duration_ms, "ms.");
     VLOG(1) << optimizer->name() << ": " << message;
+  }
+
+  // Swap function library back into the main graph.
+  if (!is_function_library_aware) {
+    optimized_graph->mutable_library()->Swap(&optimized_graph_function_library);
   }
 
   OptimizerResult optimizer_result{optimizer->name(), message, status};
@@ -585,6 +621,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   while (optimize_function_library) {
     optimize_function_library = false;
 
+    int function_idx = 0;
     for (const FunctionDef& func : optimized_graph->library().function()) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
@@ -602,7 +639,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
-      VLOG(3) << "Optimize function: function=" << func_name;
+      VLOG(3) << "Optimize function: function=" << func_name << " ["
+              << function_idx++ << " of "
+              << optimized_graph->library().function_size() << "]";
 
       // Function optimization might specialize nested function calls, so we
       // have to reset the flag and do at least one more pass over the library.
@@ -668,6 +707,14 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         // implementation selector what is required to swap in some TPU specific
         // lowering code and is verified the work correctly on TPUs.
         ImplementationSelector implementation_selector;
+
+        // Implementation selector needs to have access to valid function
+        // signature and attributes, and it doesn't need actual function body.
+        FunctionDefLibrary func_item_function_library;
+        func_item_function_library.Swap(func_item.graph.mutable_library());
+        *func_item.graph.mutable_library() =
+            GetFunctionDefLibraryStub(func_item_function_library);
+
         TF_RETURN_IF_ERROR(implementation_selector.Optimize(
             cluster, func_item, &optimized_func_graph));
       } else {
