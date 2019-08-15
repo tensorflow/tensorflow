@@ -2584,7 +2584,7 @@ class TensorFlowOpLayer(Layer):
         value = tensor_util.constant_value(constant)
         if value is not None:
           constant = constant_op.constant(value, name=node_def.input[index])
-        inputs.insert(int(index), constant)
+        inputs.insert(index, constant)
       # Check for case where first input should be a list of Tensors.
       if 'N' in node_def.attr:
         num_tensors = node_def.attr['N'].i
