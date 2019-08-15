@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 
-
 namespace tensorflow {
 namespace data {
 namespace experimental {
@@ -28,192 +27,223 @@ constexpr char kIteratorPrefix[] = "Iterator";
 // Number of random samples generated per test
 constexpr int kCount = 10;
 
-// Generate the sequence of numbers that the kernel should produce for a given
-// seed. 
+// Generate the first `count` random numbers that the kernel should produce
+// for a given seed/seed2 combo.
 // For compatibility with the test harness, return value is a vector of scalar
 // Tensors.
 std::vector<Tensor> GenerateExpectedData(int64 seed, int64 seed2, int count) {
   std::vector<Tensor> ret;
   auto parent_generator = random::PhiloxRandom(seed, seed2);
-  auto generator = random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator);
+  auto generator =
+      random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator);
 
   for (int i = 0; i < count; ++i) {
-    ret.push_back(CreateTensor<int64>(TensorShape({}), { generator() }));
+    ret.push_back(CreateTensor<int64>(TensorShape({}), {generator()}));
   }
-
   return ret;
 }
 
-// Main test harness class for all tests in this file
-class RandomDatasetOpTest : public DatasetOpsTestBase {
-protected:
+class RandomDatasetParams : public DatasetParams {
+ public:
+  RandomDatasetParams(int64 seed, int64 seed2, DataTypeVector output_dtypes,
+                      std::vector<PartialTensorShape> output_shapes,
+                      string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        seed(CreateTensor<int64>(TensorShape({}), {seed})),
+        seed2(CreateTensor<int64>(TensorShape({}), {seed2})) {}
+
+  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
+    *inputs = {TensorValue(&seed), TensorValue(&seed2)};
+    return Status::OK();
+  }
+
+ private:
+  Tensor seed;
+  Tensor seed2;
+};
+
+class RandomDatasetOpTest : public DatasetOpsTestBaseV2<RandomDatasetParams> {
+ public:
+  Status Initialize(RandomDatasetParams* dataset_params) override {
+    // Step 1: Set up enough of a TF runtime to be able to invoke a kernel.
+    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
+    TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
+
+    // Step 2: Box up the four inputs to the kernel inside TensorValue objects
+    // inside a vector.
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    TF_RETURN_IF_ERROR(dataset_params->MakeInputs(&inputs));
+
+    // Step 3: Create a dataset kernel to test, passing in attributes of the
+    // kernel.
+    TF_RETURN_IF_ERROR(
+        CreateRandomDatasetOpKernel(*dataset_params, &dataset_kernel_));
+
+    // Step 4: Create a context in which the kernel will operate. This is where
+    // the kernel gets initialized with its inputs
+    TF_RETURN_IF_ERROR(
+        CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
+
+    // Step 5: Unbox the DatasetBase object inside the variant tensor backing
+    // the kernel.
+    TF_RETURN_IF_ERROR(
+        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
+
+    // Step 6: Create an iterator in case the test needs to read the output of
+    // the dataset.
+    TF_RETURN_IF_ERROR(
+        CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
+                                              kIteratorPrefix, &iterator_));
+
+    return Status::OK();
+  }
+
+ protected:
   // Creates a new `RandomDataset` op kernel.
-  // Doesn't initialize the random seeds because they are inputs, not attributes.
-  Status CreateRandomDatasetOpKernel(
-      const DataTypeVector& output_types,
-      const std::vector<PartialTensorShape>& output_shapes,
-      std::unique_ptr<OpKernel>* random_dataset_op_kernel) {
+  // Doesn't initialize the random seeds because they are inputs, not
+  // attributes.
+  Status CreateRandomDatasetOpKernel(const RandomDatasetParams& dataset_params,
+                                     std::unique_ptr<OpKernel>* op_kernel) {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(RandomDatasetOp::kDatasetType),
         // Inputs
         {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2},
         // Attributes
-        {{RandomDatasetOp::kOutputTypes, output_types},
-         {RandomDatasetOp::kOutputShapes, output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, random_dataset_op_kernel));
-    return Status::OK();
-  }
-
-  // Creates an OpKernel context suitable for running a `RandomDataset`
-  // kernel.
-  Status CreateRandomDatasetContext(
-      OpKernel* const op_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
-      std::unique_ptr<OpKernelContext>* context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+        {{RandomDatasetOp::kOutputTypes, dataset_params.output_dtypes},
+         {RandomDatasetOp::kOutputShapes, dataset_params.output_shapes}});
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
 };
-
-
-class RandomDatasetParams : public DatasetParams {
-  public:
-    RandomDatasetParams(int64 seed, int64 seed2,
-                        DataTypeVector output_dtypes,
-                        std::vector<PartialTensorShape> output_shapes,
-                        string node_name)
-      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name)),
-                      seed(CreateTensor<int64>(TensorShape({}), {seed})),
-                      seed2(CreateTensor<int64>(TensorShape({}), {seed2})) {}
-
-  
-    Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-      *inputs = {TensorValue(&seed), TensorValue(&seed2)}; return Status::OK();
-    }
-
-    Tensor seed;
-    Tensor seed2;
-};
-
 
 RandomDatasetParams FortyTwo() {
-  return {/*seed*/ 42,
-          /*seed2*/ 42,
-          /*output_dtypes*/ {DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})},
+  return {/*seed=*/42,
+          /*seed2=*/42,
+          /*output_dtypes=*/{DT_INT64},
+          /*output_shapes=*/{PartialTensorShape({})},
           /*node_name=*/kNodeName};
 }
 
 // Change just first seed relative to FortyTwo
 RandomDatasetParams ChangeSeed() {
-  return {/*seed*/ 1000,
-          /*seed2*/ 42,
-          /*output_dtypes*/ {DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})},
+  return {/*seed=*/1000,
+          /*seed2=*/42,
+          /*output_dtypes=*/{DT_INT64},
+          /*output_shapes=*/{PartialTensorShape({})},
           /*node_name=*/kNodeName};
 }
 
 // Change just second seed relative to FortyTwo
 RandomDatasetParams ChangeSeed2() {
-  return {/*seed*/ 42,
-          /*seed2*/ 1000,
-          /*output_dtypes*/ {DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})},
+  return {/*seed=*/42,
+          /*seed2=*/1000,
+          /*output_dtypes=*/{DT_INT64},
+          /*output_shapes=*/{PartialTensorShape({})},
           /*node_name=*/kNodeName};
 }
 
-class ParameterizedGetNextRandomDatasetOpTest
-    : public RandomDatasetOpTest,
-      public ::testing::WithParamInterface<
-          GetNextTestCase<RandomDatasetParams>> {};
+class ParameterizedGetNextTest : public RandomDatasetOpTest,
+                                 public ::testing::WithParamInterface<
+                                     GetNextTestCase<RandomDatasetParams>> {};
 
-
-GetNextTestCase<RandomDatasetParams> GetNextFortyTwo() {
-  return {/*dataset_params=*/FortyTwo(),
-          /*expected_outputs=*/GenerateExpectedData(42, 42, kCount)};
+std::vector<GetNextTestCase<RandomDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_outputs=*/GenerateExpectedData(42, 42, kCount)},
+          {/*dataset_params=*/ChangeSeed(),
+           /*expected_outputs=*/GenerateExpectedData(1000, 42, kCount)},
+          {/*dataset_params=*/ChangeSeed2(),
+           /*expected_outputs=*/GenerateExpectedData(42, 1000, kCount)}};
 }
 
-GetNextTestCase<RandomDatasetParams> GetNextChangeSeed() {
-  return {/*dataset_params=*/ChangeSeed(),
-          /*expected_outputs=*/GenerateExpectedData(1000, 42, kCount)};
-}
-
-GetNextTestCase<RandomDatasetParams> GetNextChangeSeed2() {
-  return {/*dataset_params=*/ChangeSeed2(),
-          /*expected_outputs=*/GenerateExpectedData(42, 1000, kCount)};
-}
-
-
-TEST_P(ParameterizedGetNextRandomDatasetOpTest, GetNext) {
-  // BEGIN INITIALIZATION CODE
-  // Step 1: Set up enough of a TF runtime to be able to invoke a kernel.
-  const int thread_num = 2, cpu_num = 2;
+TEST_P(ParameterizedGetNextTest, GetNext) {
   auto test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
 
-  // Step 2: Box up the four inputs to the kernel inside TensorValue objects
-  // inside a vector.
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  // Step 3: Create a RandomDataset kernel to test, passing in static
-  // attributes of the kernel.
-  std::unique_ptr<OpKernel> random_dataset_kernel;
-  TF_ASSERT_OK(CreateRandomDatasetOpKernel(
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &random_dataset_kernel));
-
-  // Step 4: Create a context in which the kernel will operate. This is where
-  // the kernel gets initialized with its inputs.
-  std::unique_ptr<OpKernelContext> random_dataset_context;
-  TF_ASSERT_OK(CreateRandomDatasetContext(
-      random_dataset_kernel.get(), &inputs, &random_dataset_context));
-
-  // Step 6: Unbox the DatasetBase inside the variant tensor backing the
-  // kernel.
-  DatasetBase* random_dataset;
-  TF_ASSERT_OK(CreateDataset(random_dataset_kernel.get(),
-                             random_dataset_context.get(),
-                             &random_dataset));
-  core::ScopedUnref scoped_unref(random_dataset);
-
-  // Step 7: Create an iterator to read the output of the dataset.
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(random_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(random_dataset->MakeIterator(iterator_context.get(),
-                                            kIteratorPrefix, &iterator));
-
-  // END INITIALIZATION CODE
-
+  // Can't use DatasetOpsTestBase::CheckIteratorGetNext because the kernel
+  // under test produces unbounded input.
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  for (int i = 0; i < kCount; i++) {
+  while (out_tensors.size() < test_case.expected_outputs.size()) {
     std::vector<Tensor> next;
-    TF_EXPECT_OK(
-        iterator->GetNext(iterator_context.get(), &next, &end_of_sequence));
+    TF_ASSERT_OK(
+        iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
+
+    ASSERT_FALSE(end_of_sequence);  // Dataset should never stop
+
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-    EXPECT_FALSE(end_of_sequence); // RandomDataset output never ends
   }
 
-  TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
-
+  TF_ASSERT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
+                           /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    RandomDatasetOpTest, ParameterizedGetNextRandomDatasetOpTest,
-    ::testing::ValuesIn(std::vector<GetNextTestCase<RandomDatasetParams>>(
-        {GetNextFortyTwo(), GetNextChangeSeed(), GetNextChangeSeed2()})));
+    RandomDatasetOpTest, ParameterizedGetNextTest,
+    ::testing::ValuesIn(
+        std::vector<GetNextTestCase<RandomDatasetParams>>(GetNextTestCases())));
 
+TEST_F(RandomDatasetOpTest, DatasetNodeName) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
+}
 
+TEST_F(RandomDatasetOpTest, DatasetTypeString) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetTypeString(
+      name_utils::OpName(RandomDatasetOp::kDatasetType)));
+}
+
+TEST_F(RandomDatasetOpTest, DatasetOutputDtypes) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
+}
+
+TEST_F(RandomDatasetOpTest, DatasetOutputShapes) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
+}
+
+TEST_F(RandomDatasetOpTest, Cardinality) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetCardinality(kInfiniteCardinality));
+}
+
+TEST_F(RandomDatasetOpTest, IteratorOutputDtypes) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
+}
+
+TEST_F(RandomDatasetOpTest, IteratorOutputShapes) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
+}
+
+TEST_F(RandomDatasetOpTest, IteratorOutputPrefix) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      RandomDatasetOp::kDatasetType, kIteratorPrefix)));
+}
+
+TEST_F(RandomDatasetOpTest, IteratorSaveAndRestore) {
+  auto dataset_params = FortyTwo();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorSaveAndRestore(
+      kIteratorPrefix,
+      /*expected_outputs=*/GenerateExpectedData(42, 42, kCount),
+      /*breakpoints=*/{2, 5, 8}));
+}
 
 }  // namespace
 }  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
-
