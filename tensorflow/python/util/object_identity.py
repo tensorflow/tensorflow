@@ -129,6 +129,9 @@ class ObjectIdentityDictionary(collections_abc.MutableMapping):
     for key in self._storage:
       yield key.unwrapped
 
+  def __repr__(self):
+    return "ObjectIdentityDictionary(%s)" % repr(self._storage)
+
 
 class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
   """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
