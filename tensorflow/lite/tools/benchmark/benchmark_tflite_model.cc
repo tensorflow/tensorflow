@@ -220,6 +220,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<int32_t>(TFLITE_GL_OBJECT_TYPE_FASTEST));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("require_full_delegation",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam(
       "enable_op_profiling",
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
@@ -268,6 +270,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                         "GPU. By default, it's TFLITE_GL_OBJECT_TYPE_FASTEST"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
+    CreateFlag<bool>("require_full_delegation", &params_,
+                     "require delegate to run the entire graph"),
     CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
     CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
                         "max profiling buffer entries")
@@ -300,6 +304,8 @@ void BenchmarkTfLiteModel::LogParams() {
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
+  TFLITE_LOG(INFO) << "Require full delegation : ["
+                   << params_.Get<bool>("require_full_delegation") << "]";
   TFLITE_LOG(INFO) << "Enable op profiling: ["
                    << params_.Get<bool>("enable_op_profiling") << "]";
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
@@ -465,6 +471,25 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
       return kTfLiteError;
     } else {
+      if (params_.Get<bool>("require_full_delegation")) {
+        bool fully_delegated = true;
+        if (interpreter_->execution_plan().size() != 1) {
+          fully_delegated = false;
+        } else {
+          int first_node_id = interpreter_->execution_plan()[0];
+          const TfLiteNode first_node =
+              interpreter_->node_and_registration(first_node_id)->first;
+          if (delegate.second.get() != first_node.delegate) {
+            fully_delegated = false;
+          }
+        }
+
+        if (!fully_delegated) {
+          TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+          return kTfLiteError;
+        }
+      }
+
       TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }

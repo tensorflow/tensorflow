@@ -46,6 +46,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
   params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
+  params.AddParam("require_full_delegation",
+                  BenchmarkParam::Create<bool>(false));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
