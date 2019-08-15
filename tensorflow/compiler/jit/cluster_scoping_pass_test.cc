@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/cluster_scoping_pass.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -48,8 +49,8 @@ Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-std::unordered_map<string, string> GetXlaScopes(const Graph& graph) {
-  std::unordered_map<string, string> scopes;
+absl::flat_hash_map<string, string> GetXlaScopes(const Graph& graph) {
+  absl::flat_hash_map<string, string> scopes;
   for (Node* node : graph.nodes()) {
     string scope;
     if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {

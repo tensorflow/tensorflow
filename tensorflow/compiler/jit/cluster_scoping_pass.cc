@@ -33,14 +33,14 @@ class ClusterScopingPassImpl {
                          OptimizerOptions::GlobalJitLevel global_jit_level)
       : graph_(graph),
         global_jit_level_(global_jit_level),
-        unique_scope_id(0) {}
+        unique_scope_id_(0) {}
 
   Status Run();
 
  private:
   Status ScopingForPipelineStages();
 
-  size_t GetUniqueScopeId() { return unique_scope_id++; }
+  size_t GetUniqueScopeId() { return unique_scope_id_++; }
 
   void AddScopeToAllPredecessors(Node* start);
 
@@ -49,13 +49,13 @@ class ClusterScopingPassImpl {
  private:
   Graph* graph_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
-  size_t unique_scope_id;
+  size_t unique_scope_id_;
 };
 
 absl::optional<string> GetXlaScope(Node* node) {
   string scope;
   if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
-    return std::move(scope);
+    return scope;
   }
 
   return absl::nullopt;
@@ -135,18 +135,14 @@ Status ClusterScopingPassImpl::Run() {
   //
   // Unstage -> Node_Y
   //
-  TF_RETURN_IF_ERROR(ScopingForPipelineStages());
-
-  return Status::OK();
+  return ScopingForPipelineStages();
 }
 }  // namespace
 
 Status ClusterScopingPass::Run(const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
-  TF_RETURN_IF_ERROR(
-      ClusterScopingPassImpl{graph, GetGlobalJitLevelForGraph(options)}.Run());
-
-  return Status::OK();
+  return ClusterScopingPassImpl{graph, GetGlobalJitLevelForGraph(options)}
+      .Run();
 }
 }  // namespace tensorflow
