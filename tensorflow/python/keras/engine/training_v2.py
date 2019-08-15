@@ -224,6 +224,9 @@ class Loop(training_utils.TrainingLoop):
       use_sample = total_samples is not None
       do_validation = (validation_adapter is not None)
 
+      # TODO(psv): Add step inference for when steps/val_steps is None to
+      # prevent end of sequence warning message.
+
       if not steps_per_epoch:
         steps_per_epoch = training_data_adapter.get_size()
 
@@ -276,21 +279,28 @@ class Loop(training_utils.TrainingLoop):
             epochs=0)
         validation_dataset = strategy.experimental_distribute_dataset(
             validation_dataset)
+        val_total_samples = _get_total_number_of_samples(validation_adapter)
+      else:
+        val_total_samples = None
 
-      callbacks = cbks.configure_callbacks(
+      if verbose and (total_samples or steps_per_epoch):
+        _print_train_info(total_samples, steps_per_epoch, val_total_samples,
+                          validation_steps)
+
+      training_callbacks = cbks.configure_callbacks(
           callbacks,
           model,
           do_validation=do_validation,
           batch_size=batch_size,
           epochs=epochs,
           steps_per_epoch=steps_per_epoch,
-          samples=total_samples,
+          samples=total_samples or steps_per_epoch,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=ModeKeys.TRAIN)
 
-      with training_context.on_start(
-          model, callbacks, use_sample, verbose, ModeKeys.TRAIN):
+      with training_context.on_start(model, training_callbacks, use_sample,
+                                     verbose, ModeKeys.TRAIN):
         # TODO(scottzhu): Handle TPUStrategy training loop
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
@@ -325,7 +335,7 @@ class Loop(training_utils.TrainingLoop):
             # Evaluation
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
-                not callbacks.model.stop_training):
+                not training_callbacks.model.stop_training):
               if (eval_data_iter is not None and
                   distribution_strategy_context.has_strategy()):
                 # TODO(kaftan): remove this when MultiDeviceIterator is a
@@ -334,11 +344,24 @@ class Loop(training_utils.TrainingLoop):
               else:
                 eval_data_iter = iter(validation_dataset)
 
-              val_total_samples = _get_total_number_of_samples(
-                  validation_adapter)
+              validation_callbacks = cbks.configure_callbacks(
+                  training_callbacks,
+                  model,
+                  batch_size=batch_size,
+                  epochs=1,
+                  steps_per_epoch=validation_steps,
+                  samples=val_total_samples or validation_steps,
+                  count_mode='samples' if use_sample else 'steps',
+                  verbose=0,  # Handle ProgBarLogger separately in this loop.
+                  mode=ModeKeys.TEST)
+
               eval_context = TrainingContext()
               with eval_context.on_start(
-                  model, callbacks, use_sample, verbose=0, mode=ModeKeys.TEST):
+                  model,
+                  validation_callbacks,
+                  use_sample,
+                  verbose=0,
+                  mode=ModeKeys.TEST):
                 with eval_context.on_epoch(epoch, ModeKeys.TEST):
                   model.reset_metrics()
                   eval_result = run_one_epoch(
@@ -590,6 +613,18 @@ def _aggregate_predict_results(strategy, batch_outs, model):
     total_batch_outs.append(
         dist_utils.concat_along_batch_dimension(nest.flatten(nested_outs)))
   return total_batch_outs
+
+
+def _print_train_info(total_samples, steps, val_total_samples, val_steps):
+  increment = 'samples' if total_samples else 'steps'
+  conjunction = 'on' if total_samples else 'for'
+  msg = 'Train {} {} {}'.format(conjunction, total_samples or steps, increment)
+  if val_total_samples or val_steps:
+    increment = 'samples' if val_total_samples else 'steps'
+    conjunction = 'on' if val_total_samples else 'for'
+    msg += ', validate {} {} {}'.format(conjunction, val_total_samples or
+                                        val_steps, increment)
+  print(msg)
 
 
 class TrainingContext(object):

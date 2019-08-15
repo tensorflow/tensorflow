@@ -288,6 +288,21 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_validation_data(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    training_dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*5/5.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(training_dataset, epochs=2, validation_data=val_dataset)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
