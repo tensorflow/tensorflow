@@ -125,7 +125,7 @@ def uniquify(lst, equality_fn):
   unique_lst = []
   for elem in lst:
     key = equality_fn(elem)
-    if equality_fn(key) not in keys:
+    if key not in keys:
       unique_lst.append(elem)
       keys.add(key)
   return unique_lst
