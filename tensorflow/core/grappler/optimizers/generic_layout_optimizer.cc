@@ -353,7 +353,9 @@ Status EraseCancellableNodesAroundPad(TransposeContext* context) {
                                            permute_t.NumElements());
     auto paddings_s = absl::Span<int32>(paddings_t.flat<int32>().data(),
                                         paddings_t.NumElements());
-    TF_RETURN_IF_ERROR(PermuteDouble(permutation_s, &paddings_s));
+    TF_RETURN_IF_ERROR(
+        PermuteDouble(absl::StrCat("paddings in ", pad->GetName()),
+                      permutation_s, &paddings_s));
 
     // Update paddings constant value with a permuted tensor.
     AttrValue permuted_paddings_tensor;

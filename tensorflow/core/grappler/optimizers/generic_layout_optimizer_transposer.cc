@@ -279,7 +279,9 @@ Status Transposer::CreateTransposeNode(
   node.mutable_attr()->insert({"Tperm", attr_data_type_perm});
 
   if (!fanin_shape.unknown_rank()) {
-    TF_RETURN_IF_ERROR(PermuteSingle(permutation, fanin_shape.mutable_dim()));
+    TF_RETURN_IF_ERROR(
+        PermuteSingle(absl::StrCat("fanin shape in", node.name()), permutation,
+                      fanin_shape.mutable_dim()));
     AttrValue attr_output_shape;
     *attr_output_shape.mutable_list()->add_shape() = fanin_shape;
     node.mutable_attr()->insert({kAttrOutputShape, attr_output_shape});
@@ -334,6 +336,8 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
     shape_attr_copy = *output_shape_attr;
     for (int port : src_ports) {
       TF_RETURN_IF_ERROR(PermuteSingle(
+          absl::StrCat("output shape attribute at port ", port, " in",
+                       src_node->GetName()),
           context->src_to_dst,
           shape_attr_copy.mutable_list()->mutable_shape(port)->mutable_dim()));
     }
@@ -616,8 +620,9 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
     const auto* attr = node->GetAttr(attr_name);
     if (attr != nullptr) {
       AttrValue attr_copy(*attr);
-      TF_RETURN_IF_ERROR(PermuteSingle(context->src_to_dst,
-                                       attr_copy.mutable_list()->mutable_i()));
+      TF_RETURN_IF_ERROR(PermuteSingle(
+          absl::StrCat(attr_name, " attribute in", node->GetName()),
+          context->src_to_dst, attr_copy.mutable_list()->mutable_i()));
       mutation->AddOrUpdateNodeAttr(node, attr_name, attr_copy);
     }
     return Status::OK();
@@ -632,9 +637,10 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
   if (explicit_paddings_attr != nullptr && explicit_paddings_attr->has_list() &&
       explicit_paddings_attr->list().i_size() > 0) {
     AttrValue explicit_paddings_attr_copy(*explicit_paddings_attr);
-    TF_RETURN_IF_ERROR(
-        PermuteDouble(context->src_to_dst,
-                      explicit_paddings_attr_copy.mutable_list()->mutable_i()));
+    TF_RETURN_IF_ERROR(PermuteDouble(
+        absl::StrCat("explicit_paddings attribute in", node->GetName()),
+        context->src_to_dst,
+        explicit_paddings_attr_copy.mutable_list()->mutable_i()));
     mutation->AddOrUpdateNodeAttr(node, kAttrExplicitPaddings,
                                   explicit_paddings_attr_copy);
   }

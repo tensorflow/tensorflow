@@ -3640,7 +3640,7 @@ TEST_F(TransposerTest, ReduceTransposerValidAxisNode) {
 TEST(PermutationTest, PermutesVector) {
   std::vector<int64> input{32, 16, 8, 4};
   std::vector<int64> expected{4, 8, 16, 32};
-  TF_ASSERT_OK(PermuteSingle({3, 2, 1, 0}, &input));
+  TF_ASSERT_OK(PermuteSingle("test", {3, 2, 1, 0}, &input));
   ASSERT_EQ(input.size(), 4);
   for (int i = 0; i < input.size(); ++i) {
     EXPECT_EQ(input[i], expected[i]);
@@ -3651,7 +3651,7 @@ TEST(PermutationTest, PermutesRepeatedField) {
   TensorShapeProto input_shape = MakeTensorShapeFromDimensions({1, 2, 3, 4});
   TensorShapeProto expected_shape = MakeTensorShapeFromDimensions({1, 4, 2, 3});
 
-  TF_ASSERT_OK(PermuteSingle({0, 3, 1, 2}, input_shape.mutable_dim()));
+  TF_ASSERT_OK(PermuteSingle("test", {0, 3, 1, 2}, input_shape.mutable_dim()));
   EXPECT_EQ(input_shape.DebugString(), expected_shape.DebugString());
 }
 
@@ -3663,7 +3663,7 @@ TEST(PermutationTest, PermutesDoubleRepeatedField) {
     TensorShapeProto expected =
         MakeTensorShapeFromDimensions({1, 2, 7, 8, 3, 4, 5, 6});
 
-    TF_ASSERT_OK(PermuteDouble({0, 3, 1, 2}, input.mutable_dim()));
+    TF_ASSERT_OK(PermuteDouble("test", {0, 3, 1, 2}, input.mutable_dim()));
     EXPECT_EQ(input.DebugString(), expected.DebugString());
   }
   {
@@ -3672,7 +3672,7 @@ TEST(PermutationTest, PermutesDoubleRepeatedField) {
         MakeTensorShapeFromDimensions({1, 2, 3, 4, 5, 6, 7, 8});
     TensorShapeProto expected =
         MakeTensorShapeFromDimensions({1, 2, 5, 6, 7, 8, 3, 4});
-    TF_ASSERT_OK(PermuteDouble({0, 2, 3, 1}, input.mutable_dim()));
+    TF_ASSERT_OK(PermuteDouble("test", {0, 2, 3, 1}, input.mutable_dim()));
     EXPECT_EQ(input.DebugString(), expected.DebugString());
   }
 }
@@ -3680,14 +3680,14 @@ TEST(PermutationTest, PermutesDoubleRepeatedField) {
 TEST(PermutationTest, PermutesDataFormat) {
   string input = "NHWC";
   string expected = "NCHW";
-  TF_ASSERT_OK(PermuteSingle({0, 3, 1, 2}, &input));
+  TF_ASSERT_OK(PermuteSingle("test", {0, 3, 1, 2}, &input));
   EXPECT_EQ(input, expected);
 }
 
 TEST(PermutationTest, PermutesString) {
   string input = "ABCD";
   string expected = "ACBD";
-  TF_ASSERT_OK(PermuteSingle({0, 2, 1, 3}, &input));
+  TF_ASSERT_OK(PermuteSingle("test", {0, 2, 1, 3}, &input));
   EXPECT_EQ(input, expected);
 }
 
