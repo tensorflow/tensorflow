@@ -21,7 +21,7 @@ namespace data {
 namespace experimental {
 namespace {
 
-constexpr char kNodeName[] = "sampling_dataset";
+constexpr char kNodeName[] = "random_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
 
 // Number of random samples generated per test
