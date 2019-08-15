@@ -1443,8 +1443,8 @@ class TrainingTest(keras_parameterized.TestCase):
     else:
       expected_training_arg = keras.backend.symbolic_learning_phase()
 
-    self.assertEqual(model.training, expected_training_arg)
-    self.assertEqual(model.l1.training, expected_training_arg)
+    self.assertIs(model.training, expected_training_arg)
+    self.assertIs(model.l1.training, expected_training_arg)
 
   @keras_parameterized.run_all_keras_modes
   def test_error_when_model_is_not_compiled(self):
