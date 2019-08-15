@@ -76,9 +76,7 @@ cc_library(
 
 cc_library(
     name = "cpu_info",
-    srcs = ["cpu_info.cc"] + tf_platform_srcs([
-        "cpu_info.h",
-    ]),
+    srcs = ["cpu_info.cc"],
     hdrs = ["cpu_info.h"],
     copts = tf_copts(),
     deps = [
