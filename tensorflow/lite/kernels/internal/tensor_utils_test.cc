@@ -65,13 +65,6 @@ TEST(uKernels, IsZeroTest) {
   EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
 }
 
-TEST(uKernels, GeneratedIsZeroTest) {
-  constexpr int kVectorSize = 39;
-  std::vector<float> input(kVectorSize);
-  ZeroVector(input.data(), kVectorSize);
-  EXPECT_TRUE(IsZeroVector(input.data(), kVectorSize));
-}
-
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
@@ -725,14 +718,6 @@ TEST(uKernels, Sub1VectorTest) {
   Sub1Vector(input, kVectorSize, output.data());
   EXPECT_THAT(output,
               ElementsAreArray(ArrayFloatNear({1.0, 1.5, 0.0, 2.5, -1.0})));
-}
-
-TEST(uKernels, ZeroVectorTest) {
-  constexpr int kVectorSize = 5;
-  std::vector<float> output(kVectorSize);
-  ZeroVector(output.data(), kVectorSize);
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear({0.0, 0.0, 0.0, 0.0, 0.0})));
 }
 
 TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {

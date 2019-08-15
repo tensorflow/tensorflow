@@ -176,7 +176,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int output_size = lookup_size * embedding_size;
   TfLiteTensorRealloc(output_size * sizeof(float), output);
 
-  tensor_utils::ZeroVector(output->data.f, output_size);
+  std::fill_n(output->data.f, output_size, 0.0f);
 
   // Keep track of the current bucket for aggregation/combination.
   int current_output_offset = 0;

@@ -131,10 +131,6 @@ void Sub1Vector(const float* vector, int v_size, float* result) {
   PortableSub1Vector(vector, v_size, result);
 }
 
-void ZeroVector(float* vector, int v_size) {
-  PortableZeroVector(vector, v_size);
-}
-
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result) {

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -54,8 +56,7 @@ static inline void ApplyTimeWeightsBiasAndActivation(
                                           batch_size,
                                           GetTensorData<float>(output));
   } else {
-    tensor_utils::ZeroVector(GetTensorData<float>(output),
-                             batch_size * num_units);
+    std::fill_n(GetTensorData<float>(output), batch_size * num_units, 0.0f);
   }
 
   // Reduction sum.
