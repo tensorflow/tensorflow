@@ -613,6 +613,46 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     g = GetOptimizedGraph()
     self.assertLen([n for n in g.node if n.op == "TensorListPushBack"], 1)
 
+  def _assertNotAccumulated(self, while_op, index):
+    """Asserts that `while_op` input at `index` is not accumulated."""
+    body_graph = while_v2._get_graph(while_op, "body")
+    placeholder = body_graph.inputs[index]
+    self.assertNotIn("TensorListPushBack",
+                     [op.type for op in placeholder.consumers()])
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testDoNotOutputLoopCounterAsIntermediate(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    v = constant_op.constant(5.0, name="v")
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+    # Skip over Identity.
+    while_op = r.op.inputs[0].op
+    self._assertNotAccumulated(while_op, 0)
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testDoNotOutputLoopInvariantAsIntermediate(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+
+    def GetInputIndex(op, tensor):
+      for index, inp in enumerate(op.inputs):
+        if inp is tensor:
+          return index
+
+    v = constant_op.constant(5.0, name="v")
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+    # Skip over Identity.
+    while_op = r.op.inputs[0].op
+    # We can't directly use while_op.inputs.index() because Tensors are not
+    # hashshable.
+    index = GetInputIndex(while_op, v)
+    self._assertNotAccumulated(while_op, index)
+
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
     x = constant_op.constant(2.)
