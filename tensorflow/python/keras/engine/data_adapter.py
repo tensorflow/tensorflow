@@ -354,7 +354,8 @@ class CompositeTensorDataAdapter(DataAdapter):
     sample_weights = _process_numpy_inputs(sample_weights)
 
     # If sample_weights are not specified for an output use 1.0 as weights.
-    if sample_weights is not None and None in sample_weights:
+    if (sample_weights is not None and
+        any([sw is None for sw in sample_weights])):
       weight = next(s for s in sample_weights if s is not None)
       sample_weights = training_utils.list_to_tuple([
           array_ops.ones((weight.shape[0],)) if sw is None else sw
