@@ -84,7 +84,58 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.impl_ = static_cast<void*>(this);
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
+
+  // If the system is big endian then convert weights from the flatbuffer from
+  // little to big endian on startup so that it does not need to be done during
+  // inference.
+  // NOTE: This requires that the flatbuffer is held in memory which can be
+  // modified by this process.
+  if (!FLATBUFFERS_LITTLEENDIAN) {
+    for (int t = 0; t < tensors_size(); ++t) {
+      TfLiteTensor* thisTensor = &context_.tensors[t];
+      if (thisTensor->allocation_type == kTfLiteMmapRo)
+        CorrectTensorEndianness(thisTensor);
+    }
+  }
+
   initialization_status_ = kTfLiteOk;
+}
+
+void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
+  int32_t tensorSize = 1;
+  for (int d = 0; d < tensorCorr->dims->size; ++d)
+    tensorSize *= reinterpret_cast<const int32_t*>(tensorCorr->dims->data)[d];
+
+  switch (tensorCorr->type) {
+    case TfLiteType::kTfLiteFloat32:
+      CorrectTensorDataEndianness(tensorCorr->data.f, tensorSize);
+      break;
+    case TfLiteType::kTfLiteFloat16:
+      CorrectTensorDataEndianness(tensorCorr->data.f16, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt64:
+      CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt32:
+      CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize);
+      break;
+    case TfLiteType::kTfLiteInt16:
+      CorrectTensorDataEndianness(tensorCorr->data.i16, tensorSize);
+      break;
+    case TfLiteType::kTfLiteComplex64:
+      CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
+      break;
+    default:
+      // Do nothing for other data types.
+      break;
+  }
+}
+
+template <class T>
+void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
+  for (int32_t i = 0; i < size; ++i) {
+    data[i] = flatbuffers::EndianScalar(data[i]);
+  }
 }
 
 TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
@@ -236,6 +287,16 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
     return nullptr;
   }
   return &(context_.tensors[outputs->Get(index)]);
+}
+
+TfLiteTensor* MicroInterpreter::tensor(size_t index) {
+  const size_t length = tensors_size();
+  if ((index < 0) || (index >= tensors_size())) {
+    error_reporter_->Report("Tensor index %d out of range (length is %d)",
+                            index, length);
+    return nullptr;
+  }
+  return &context_.tensors[index];
 }
 
 }  // namespace tflite

@@ -70,6 +70,10 @@ class MicroInterpreter {
   ErrorReporter* error_reporter() { return error_reporter_; }
 
  private:
+  void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
+
+  template <class T>
+  void CorrectTensorDataEndianness(T* data, int32_t size);
 
   const Model* model_;
   const OpResolver& op_resolver_;
