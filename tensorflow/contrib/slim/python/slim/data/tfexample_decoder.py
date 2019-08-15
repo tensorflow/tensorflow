@@ -443,11 +443,9 @@ class Image(ItemHandler):
       """Decodes a raw image."""
       return parsing_ops.decode_raw(image_buffer, out_type=self._dtype)
 
-    pred_fn_pairs = {
-        math_ops.logical_or(
-            math_ops.equal(image_format, 'raw'),
-            math_ops.equal(image_format, 'RAW')): decode_raw,
-    }
+    pred_fn_pairs = [(math_ops.logical_or(
+        math_ops.equal(image_format, 'raw'),
+        math_ops.equal(image_format, 'RAW')), decode_raw)]
     image = control_flow_ops.case(
         pred_fn_pairs, default=check_jpeg, exclusive=True)
 
