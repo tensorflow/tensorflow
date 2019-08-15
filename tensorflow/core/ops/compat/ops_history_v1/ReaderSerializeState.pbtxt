@@ -1,0 +1,12 @@
+op {
+  name: "ReaderSerializeState"
+  input_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "state"
+    type: DT_STRING
+  }
+}

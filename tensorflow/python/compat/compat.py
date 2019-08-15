@@ -23,11 +23,27 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+import os
 
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2019, 3, 20)
+# This value changes every day with an automatic CL. It can be modified in code
+# via `forward_compatibility_horizon()` or with the environment variable
+# TF_FORWARD_COMPATIBILITY_DELTA_DAYS, which is added to the compatibility date.
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2019, 8, 14)
+
+_FORWARD_COMPATIBILITY_HORIZON_OVERRIDDEN = False
+_FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME = "TF_FORWARD_COMPATIBILITY_DELTA_DAYS"
+
+
+def _get_forward_compatibility_date():
+  date = _FORWARD_COMPATIBILITY_HORIZON
+  delta_days = os.getenv(_FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME)
+  if delta_days is not None and not _FORWARD_COMPATIBILITY_HORIZON_OVERRIDDEN:
+    return date + datetime.timedelta(days=int(delta_days))
+  else:
+    return date
 
 
 @tf_export("compat.forward_compatible")
@@ -76,16 +92,17 @@ def forward_compatible(year, month, day):
   the code that adds the new operation is committed.
 
   Args:
-    year:  A year (e.g., 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+      `int`.
 
   Returns:
     True if the caller can expect that serialized TensorFlow graphs produced
     can be consumed by programs that are compiled with the TensorFlow library
     source code after (year, month, day).
   """
-  return _FORWARD_COMPATIBILITY_HORIZON > datetime.date(year, month, day)
+  return _get_forward_compatibility_date() > datetime.date(year, month, day)
 
 
 @tf_export("compat.forward_compatibility_horizon")
@@ -118,18 +135,22 @@ def forward_compatibility_horizon(year, month, day):
        # Test that generate_graph_with_new_features() has an effect
   ```
 
-  Args :
-    year:  A year (e.g. 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+  Args:
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+      `int`.
 
   Yields:
     Nothing.
   """
   global _FORWARD_COMPATIBILITY_HORIZON
+  global _FORWARD_COMPATIBILITY_HORIZON_OVERRIDDEN
   try:
     old_compat_date = _FORWARD_COMPATIBILITY_HORIZON
+    _FORWARD_COMPATIBILITY_HORIZON_OVERRIDDEN = True
     _FORWARD_COMPATIBILITY_HORIZON = datetime.date(year, month, day)
     yield
   finally:
+    _FORWARD_COMPATIBILITY_HORIZON_OVERRIDDEN = False
     _FORWARD_COMPATIBILITY_HORIZON = old_compat_date

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/framework/allocator.h"
 
 namespace tensorflow {
 
@@ -122,7 +123,7 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
         } else {
           TensorResponse tr;
           tr.InitAlloc(dst_device, recv_args.alloc_attrs);
-          tr.InitPartial(mpi_response.response());
+          tr.InitPartial(mpi_response.response(), AllocationAttributes());
           const size_t nBytes = tr.tensor().TotalBytes();
           void* data = const_cast<void*>(DMAHelper::base(&tr.tensor()));
           MPI_Status status;

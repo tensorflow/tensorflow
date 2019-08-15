@@ -308,6 +308,28 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
   return true;
 }
 
+namespace {
+
+// Returns whether we should avoid changing the precision of inst regardless of
+// the producers and users.
+bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kFusion &&
+      inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+    return ShouldKeepPrecisionUnchanged(
+        inst->fused_instructions_computation()->root_instruction());
+  }
+  // Do not change precision for side-effecting instructions, control flow, and
+  // bitcast-convert, because this pass might break the interfaces or
+  // assumptions for them.
+  return inst->opcode() == HloOpcode::kCustomCall ||      //
+         inst->opcode() == HloOpcode::kCall ||            //
+         inst->opcode() == HloOpcode::kConditional ||     //
+         inst->opcode() == HloOpcode::kBitcastConvert ||  //
+         inst->HasSideEffectNoRecurse();
+}
+
+}  // namespace
+
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
                                                         bool skip_parameters) {
   // We handle any fusion computation or while body/condition after the
@@ -354,13 +376,7 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  // Do not change precision for instructions related to entry and exit of a
-  // computation, side-effecting instructions, and control flow, because this
-  // pass might break the interfaces or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      hlo->HasSideEffectNoRecurse() ||             //
+  if (ShouldKeepPrecisionUnchanged(hlo) ||
       (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
@@ -674,11 +690,13 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
       }
-      if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
+      if (!Shape::Equal().MinorToMajorOnlyInLayout()(hlo->literal().shape(),
+                                                     hlo->shape())) {
         TF_ASSIGN_OR_RETURN(auto converted_literal,
                             hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
+        UpdateLayout(new_constant->mutable_shape());
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));
       }
     }
@@ -793,10 +811,44 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
 
   // Apply the changes in changes_to_bf16_.
   for (auto& change : changes_to_bf16_) {
+    auto inst = change.first;
+    // It is possible that we marked inst to change precision even if it is an
+    // unsupported change, when inst is the root of a fusion computation and it
+    // has to match the fusion node's output precision. We do a convert instead
+    // of in-place change for such cases.
+    if (ShouldKeepPrecisionUnchanged(inst)) {
+      auto users = inst->users();
+      bool is_root = inst == inst->parent()->root_instruction();
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * copy,
+          inst->parent()->DeepCopyInstructionWithCustomCopier(
+              inst, [&](HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* comp) {
+                if (!ContainsKey(change.second,
+                                 ShapeUtil::GetMutableSubshape(
+                                     inst->mutable_shape(), leaf_index))) {
+                  return leaf;
+                }
+                auto converted_shape =
+                    ShapeUtil::ChangeElementType(leaf->shape(), BF16);
+                UpdateLayout(&converted_shape);
+                return comp->AddInstruction(
+                    HloInstruction::CreateConvert(converted_shape, leaf));
+              }));
+      for (auto user : users) {
+        TF_RETURN_IF_ERROR(inst->ReplaceUseWithDifferentShape(user, copy));
+      }
+      if (is_root) {
+        inst->parent()->set_root_instruction(copy,
+                                             /*accept_different_shape=*/true);
+      }
+      continue;
+    }
     for (const auto& entry : change.second) {
       auto subshape = entry.first;
       CHECK_EQ(subshape->element_type(), F32);
       subshape->set_element_type(BF16);
+      UpdateLayout(subshape);
       changed_ = true;
     }
   }

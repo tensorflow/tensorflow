@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
@@ -57,7 +58,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  matrix = tf.random_normal(shape=[2, 3, 4, 4])
+  matrix = tf.random.normal(shape=[2, 3, 4, 4])
   operator = LinearOperatorFullMatrix(matrix)
   ```
 
@@ -134,7 +135,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[matrix]):
-      self._matrix = ops.convert_to_tensor(matrix, name="matrix")
+      self._matrix = linear_operator_util.convert_nonref_to_tensor(
+          matrix, name="matrix")
       self._check_matrix(self._matrix)
 
       super(LinearOperatorFullMatrix, self).__init__(
@@ -176,7 +178,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     return array_ops.shape(self._matrix)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    return linear_operator_util.matmul_with_broadcast(
+    return math_ops.matmul(
         self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _to_dense(self):

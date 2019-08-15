@@ -59,7 +59,7 @@ struct NodeStats {
             const GradientStats& grad_stats)
       : gradient_stats(grad_stats), gain(0) {
     switch (strategy) {
-      case LearnerConfig_MultiClassStrategy_TREE_PER_CLASS: {
+      case LearnerConfig::TREE_PER_CLASS: {
         float g;
         float h;
         // Initialize now in case of early return.
@@ -97,7 +97,7 @@ struct NodeStats {
         gain = (weight_contribution[0] * -g);
         break;
       }
-      case LearnerConfig_MultiClassStrategy_FULL_HESSIAN: {
+      case LearnerConfig::FULL_HESSIAN: {
         weight_contribution.clear();
 
         if (grad_stats.first.t.NumElements() == 0 ||
@@ -147,7 +147,7 @@ struct NodeStats {
         CalculateWeightAndGain(hessian_and_reg, g);
         break;
       }
-      case LearnerConfig_MultiClassStrategy_DIAGONAL_HESSIAN: {
+      case LearnerConfig::DIAGONAL_HESSIAN: {
         weight_contribution.clear();
         if (grad_stats.first.t.NumElements() == 0 ||
             grad_stats.second.t.NumElements() == 0) {

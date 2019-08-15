@@ -37,7 +37,8 @@ For more specifics, please refer to:
 The formulation used by both of the SwapRegretOptimizers can be found in
 Definition 2, and is discussed in Section 4. The
 `MultiplicativeSwapRegretOptimizer` is most similar to Algorithm 2 in Section 4,
-with the difference being that it uses `tf.train.Optimizer`s, instead of SGD,
+with the difference being that it uses `tf.compat.v1.train.Optimizer`s, instead
+of SGD,
 for the "inner" updates. The `AdditiveSwapRegretOptimizer` differs further in
 that it performs additive (instead of multiplicative) updates of the stochastic
 matrix.
@@ -74,9 +75,7 @@ def _maximal_eigenvector_power_method(matrix,
       L2 norm) by no more than epsilon, we will terminate.
     maximum_iterations: nonnegative int, if we perform this many iterations, we
       will terminate.
-
-  Result:
-    The maximal right-eigenvector of `matrix`.
+  Result: The maximal right-eigenvector of `matrix`.
 
   Raises:
     ValueError: If the `matrix` tensor is not floating-point, or if the
@@ -255,12 +254,12 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     is provided, then `optimizer` is used for both.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the objective and
-        proxy_constraints portion of ConstrainedMinimizationProblem. If
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the objective
+        and proxy_constraints portion of ConstrainedMinimizationProblem. If
         constraint_optimizer is not provided, this will also be used to optimize
         the Lagrange multiplier analogues.
-      constraint_optimizer: optional tf.train.Optimizer, used to optimize the
-        Lagrange multiplier analogues.
+      constraint_optimizer: optional tf.compat.v1.train.Optimizer, used to
+        optimize the Lagrange multiplier analogues.
 
     Returns:
       A new `_SwapRegretOptimizer`.
@@ -270,7 +269,7 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
 
   @property
   def constraint_optimizer(self):
-    """Returns the `tf.train.Optimizer` used for the matrix."""
+    """Returns the `tf.compat.v1.train.Optimizer` used for the matrix."""
     return self._constraint_optimizer
 
   @abc.abstractmethod
@@ -316,14 +315,15 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     Args:
       minimization_problem: ConstrainedMinimizationProblem, the problem to
         optimize.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Raises:
       ValueError: If the minimization_problem tensors have different dtypes.
@@ -359,9 +359,9 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
         trainable=False,
         name="swap_regret_optimizer_state")
 
-    zero_and_constraints = standard_ops.concat(
-        (standard_ops.zeros((1,), dtype=constraints.dtype), constraints),
-        axis=0)
+    zero_and_constraints = standard_ops.concat((standard_ops.zeros(
+        (1,), dtype=constraints.dtype), constraints),
+                                               axis=0)
     objective_and_proxy_constraints = standard_ops.concat(
         (standard_ops.expand_dims(objective, 0), proxy_constraints), axis=0)
 
@@ -433,7 +433,8 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
 class AdditiveSwapRegretOptimizer(_SwapRegretOptimizer):
   """A `ConstrainedOptimizer` based on swap-regret minimization.
 
-  This `ConstrainedOptimizer` uses the given `tf.train.Optimizer`s to jointly
+  This `ConstrainedOptimizer` uses the given `tf.compat.v1.train.Optimizer`s to
+  jointly
   minimize over the model parameters, and maximize over constraint/objective
   weight matrix (the analogue of Lagrange multipliers), with the latter
   maximization using additive updates and an algorithm that minimizes swap
@@ -447,7 +448,8 @@ class AdditiveSwapRegretOptimizer(_SwapRegretOptimizer):
 
   The formulation used by this optimizer can be found in Definition 2, and is
   discussed in Section 4. It is most similar to Algorithm 2 in Section 4, with
-  the differences being that it uses `tf.train.Optimizer`s, instead of SGD, for
+  the differences being that it uses `tf.compat.v1.train.Optimizer`s, instead of
+  SGD, for
   the "inner" updates, and performs additive (instead of multiplicative) updates
   of the stochastic matrix.
   """
@@ -456,12 +458,12 @@ class AdditiveSwapRegretOptimizer(_SwapRegretOptimizer):
     """Constructs a new `AdditiveSwapRegretOptimizer`.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the objective and
-        proxy_constraints portion of ConstrainedMinimizationProblem. If
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the objective
+        and proxy_constraints portion of ConstrainedMinimizationProblem. If
         constraint_optimizer is not provided, this will also be used to optimize
         the Lagrange multiplier analogues.
-      constraint_optimizer: optional tf.train.Optimizer, used to optimize the
-        Lagrange multiplier analogues.
+      constraint_optimizer: optional tf.compat.v1.train.Optimizer, used to
+        optimize the Lagrange multiplier analogues.
 
     Returns:
       A new `AdditiveSwapRegretOptimizer`.
@@ -479,16 +481,16 @@ class AdditiveSwapRegretOptimizer(_SwapRegretOptimizer):
     dimension = num_constraints + 1
     # Initialize by putting all weight on the objective, and none on the
     # constraints.
-    return standard_ops.concat(
-        (standard_ops.ones(
-            (1, dimension)), standard_ops.zeros((dimension - 1, dimension))),
-        axis=0)
+    return standard_ops.concat((standard_ops.ones(
+        (1, dimension)), standard_ops.zeros((dimension - 1, dimension))),
+                               axis=0)
 
   def _stochastic_matrix(self, state):
     return state
 
   def _constraint_grad_and_var(self, state, gradient):
-    # TODO(acotter): tf.colocate_with(), if colocate_gradients_with_ops is True?
+    # TODO(acotter): tf.compat.v1.colocate_with(),
+    # if colocate_gradients_with_ops is True?
     return (-gradient, state)
 
   def _projection_op(self, state, name=None):
@@ -502,7 +504,8 @@ class AdditiveSwapRegretOptimizer(_SwapRegretOptimizer):
 class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
   """A `ConstrainedOptimizer` based on swap-regret minimization.
 
-  This `ConstrainedOptimizer` uses the given `tf.train.Optimizer`s to jointly
+  This `ConstrainedOptimizer` uses the given `tf.compat.v1.train.Optimizer`s to
+  jointly
   minimize over the model parameters, and maximize over constraint/objective
   weight matrix (the analogue of Lagrange multipliers), with the latter
   maximization using multiplicative updates and an algorithm that minimizes swap
@@ -516,7 +519,8 @@ class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
 
   The formulation used by this optimizer can be found in Definition 2, and is
   discussed in Section 4. It is most similar to Algorithm 2 in Section 4, with
-  the difference being that it uses `tf.train.Optimizer`s, instead of SGD, for
+  the difference being that it uses `tf.compat.v1.train.Optimizer`s, instead of
+  SGD, for
   the "inner" updates.
   """
 
@@ -528,12 +532,12 @@ class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
     """Constructs a new `MultiplicativeSwapRegretOptimizer`.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the objective and
-        proxy_constraints portion of ConstrainedMinimizationProblem. If
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the objective
+        and proxy_constraints portion of ConstrainedMinimizationProblem. If
         constraint_optimizer is not provided, this will also be used to optimize
         the Lagrange multiplier analogues.
-      constraint_optimizer: optional tf.train.Optimizer, used to optimize the
-        Lagrange multiplier analogues.
+      constraint_optimizer: optional tf.compat.v1.train.Optimizer, used to
+        optimize the Lagrange multiplier analogues.
       minimum_multiplier_radius: float, each element of the matrix will be lower
         bounded by `minimum_multiplier_radius` divided by one plus the number of
         constraints.
@@ -575,20 +579,20 @@ class MultiplicativeSwapRegretOptimizer(_SwapRegretOptimizer):
                                       (dimension - 1) / (dimension)))
     log_initial_zero = math.log(self._initial_multiplier_radius / dimension)
     # FUTURE WORK: make the dtype a parameter.
-    return standard_ops.concat(
-        (standard_ops.constant(
-            log_initial_one, dtype=dtypes.float32, shape=(1, dimension)),
-         standard_ops.constant(
-             log_initial_zero,
-             dtype=dtypes.float32,
-             shape=(dimension - 1, dimension))),
-        axis=0)
+    return standard_ops.concat((standard_ops.constant(
+        log_initial_one, dtype=dtypes.float32, shape=(1, dimension)),
+                                standard_ops.constant(
+                                    log_initial_zero,
+                                    dtype=dtypes.float32,
+                                    shape=(dimension - 1, dimension))),
+                               axis=0)
 
   def _stochastic_matrix(self, state):
     return standard_ops.exp(state)
 
   def _constraint_grad_and_var(self, state, gradient):
-    # TODO(acotter): tf.colocate_with(), if colocate_gradients_with_ops is True?
+    # TODO(acotter): tf.compat.v1.colocate_with(),
+    # if colocate_gradients_with_ops is True?
     return (-gradient, state)
 
   def _projection_op(self, state, name=None):

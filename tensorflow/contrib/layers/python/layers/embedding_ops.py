@@ -58,7 +58,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
   The partitioned embedding in `embedding_weights` must all be the same shape
   except for the first dimension. The first dimension is allowed to vary as the
   vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
-  may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+  may be a `PartitionedVariable` as returned by using
+  `tf.compat.v1.get_variable()` with a
   partitioner.
 
   Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
@@ -70,25 +71,24 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   Args:
     embedding_weights:  A list of `P` float tensors or values representing
-        partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
-        created by partitioning along dimension 0.  The total unpartitioned
-        shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
-        vocab size and `e_1, ..., e_m` are the embedding dimensions.
+      partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+      created by partitioning along dimension 0.  The total unpartitioned shape
+      should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size
+      and `e_1, ..., e_m` are the embedding dimensions.
     sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
-        ids. `d_0` is typically batch size.
+      ids. `d_0` is typically batch size.
     sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
-        float weights corresponding to `sparse_ids`, or `None` if all weights
-        are be assumed to be 1.0.
+      float weights corresponding to `sparse_ids`, or `None` if all weights are
+      be assumed to be 1.0.
     combiner: A string specifying how to combine embedding results for each
-        entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
-        the default.
+      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
+      default.
     default_id: The id to use for an entry with no features.
     name: A name for this operation (optional).
-    partition_strategy: A string specifying the partitioning strategy.
-        Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+    partition_strategy: A string specifying the partitioning strategy. Currently
+      `"div"` and `"mod"` are supported. Default is `"div"`.
     max_norm: If not None, all embeddings are l2-normalized to max_norm before
-        combining.
-
+      combining.
 
   Returns:
     Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
@@ -119,25 +119,24 @@ def safe_embedding_lookup_sparse(embedding_weights,
   contrib_tensor_util.assert_same_float_dtype(embedding_weights +
                                               [sparse_weights])
 
-  with ops.name_scope(name, "embedding_lookup",
-                      embedding_weights + [sparse_ids,
-                                           sparse_weights]) as scope:
+  with ops.name_scope(name, "embedding_lookup", embedding_weights +
+                      [sparse_ids, sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.dense_shape
-    original_rank_dim = tensor_shape.Dimension(tensor_shape.dimension_value(
-        sparse_ids.dense_shape.get_shape()[0]))
+    original_rank_dim = tensor_shape.Dimension(
+        tensor_shape.dimension_value(sparse_ids.dense_shape.get_shape()[0]))
     original_rank = (
         array_ops.size(original_shape)
-        if original_rank_dim.value is None
-        else original_rank_dim.value)
+        if original_rank_dim.value is None else original_rank_dim.value)
     sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
         math_ops.reduce_prod(
             array_ops.slice(original_shape, [0], [original_rank - 1])),
-        array_ops.gather(original_shape, original_rank - 1)])
+        array_ops.gather(original_shape, original_rank - 1)
+    ])
     if sparse_weights is not None:
-      sparse_weights = sparse_tensor.SparseTensor(
-          sparse_ids.indices,
-          sparse_weights.values, sparse_ids.dense_shape)
+      sparse_weights = sparse_tensor.SparseTensor(sparse_ids.indices,
+                                                  sparse_weights.values,
+                                                  sparse_ids.dense_shape)
 
     # Prune invalid ids and weights.
     sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
@@ -146,9 +145,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
           sparse_ids, sparse_weights)
 
     # Fill in dummy values for empty features, if necessary.
-    sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(sparse_ids,
-                                                                 default_id or
-                                                                 0)
+    sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(
+        sparse_ids, default_id or 0)
     if sparse_weights is not None:
       sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(sparse_weights, 1.0)
 
@@ -168,10 +166,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
           array_ops.reshape(is_row_empty, [-1, 1]),
           array_ops.stack([1, array_ops.shape(result)[1]]))
 
-      result = array_ops.where(is_row_empty,
-                               array_ops.zeros_like(result),
-                               result,
-                               name=scope)
+      result = array_ops.where(
+          is_row_empty, array_ops.zeros_like(result), result, name=scope)
 
     # Reshape back from linear ids back into higher-dimensional dense result.
     final_result = array_ops.reshape(
@@ -182,8 +178,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
                 [original_rank - 1]),
             array_ops.slice(array_ops.shape(result), [1], [-1])
         ], 0))
-    final_result.set_shape(tensor_shape.unknown_shape(
-        (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
+    final_result.set_shape(
+        tensor_shape.unknown_shape(
+            (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
     return final_result
 
 
@@ -238,8 +235,8 @@ def scattered_embedding_lookup(params,
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
-      Each tensor must be of rank 1 with fully-defined shape.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`. Each
+      tensor must be of rank 1 with fully-defined shape.
     values: `Tensor` of values to be embedded with shape `[d0, ..., dn]`.
     dimension: Embedding dimension.
     name: An optional name for this op.
@@ -256,13 +253,20 @@ def scattered_embedding_lookup(params,
   if dimension is None:
     raise ValueError("You must specify dimension.")
   return _sampled_scattered_embedding_lookup(
-      params, values, dimension=dimension, sampled_candidates=None,
-      hash_key=hash_key, name=name)
+      params,
+      values,
+      dimension=dimension,
+      sampled_candidates=None,
+      hash_key=hash_key,
+      name=name)
 
 
-def _sampled_scattered_embedding_lookup(
-    params, values, dimension=None, sampled_candidates=None, hash_key=None,
-    name=None):
+def _sampled_scattered_embedding_lookup(params,
+                                        values,
+                                        dimension=None,
+                                        sampled_candidates=None,
+                                        hash_key=None,
+                                        name=None):
   """Looks up embeddings using parameter hashing for each value in `values`.
 
   This method looks up selected embedding dimensions if `sampled_candidates` is
@@ -290,8 +294,8 @@ def _sampled_scattered_embedding_lookup(
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
-      Each tensor must be of rank 1 with fully-defined shape.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`. Each
+      tensor must be of rank 1 with fully-defined shape.
     values: `Tensor` of values to be embedded with shape `[d0, ..., dn]`.
     dimension: Embedding dimension. The user must specify either `dimension` or
       `sampled_candidates`.
@@ -327,19 +331,27 @@ def _sampled_scattered_embedding_lookup(
             "You must specify either dimension or sampled_candidates.")
       if dimension <= 0:
         raise ValueError("Dimension must be >0. Given is %d" % dimension)
-      sampled_candidates = array_ops.tile(array_ops.expand_dims(
-          math_ops.range(0, dimension), 0), array_ops.shape(values))
+      sampled_candidates = array_ops.tile(
+          array_ops.expand_dims(math_ops.range(0, dimension), 0),
+          array_ops.shape(values))
     else:
-      dimension = array_ops.shape(sampled_candidates)[
-          math_ops.subtract(array_ops.rank(sampled_candidates), 1)]
+      dimension = array_ops.shape(sampled_candidates)[math_ops.subtract(
+          array_ops.rank(sampled_candidates), 1)]
       sampled_candidates_shape = array_ops.shape(sampled_candidates)
-      dimension_tensor = array_ops.reshape(dimension, shape=[1,])
+      dimension_tensor = array_ops.reshape(
+          dimension, shape=[
+              1,
+          ])
       expected_shape = array_ops.concat([values_shape, dimension_tensor], 0)
-      with ops.control_dependencies([control_flow_ops.Assert(
-          math_ops.reduce_all(math_ops.equal(sampled_candidates_shape,
-                                             expected_shape)),
-          ["The shape of sampled_candidates: ", sampled_candidates_shape,
-           " does not match the shape of values: ", values_shape])]):
+      with ops.control_dependencies([
+          control_flow_ops.Assert(
+              math_ops.reduce_all(
+                  math_ops.equal(sampled_candidates_shape, expected_shape)),
+              [
+                  "The shape of sampled_candidates: ", sampled_candidates_shape,
+                  " does not match the shape of values: ", values_shape
+              ])
+      ]):
         # Flatten sampled_candidates, same way as values are flattened.
         sampled_candidates = array_ops.reshape(sampled_candidates,
                                                [-1, dimension])
@@ -364,7 +376,9 @@ def _sampled_scattered_embedding_lookup(
     # [[0, 1, 2], [0, 1, 2]] with [[v1], [v2]].
     tensors_to_cross = [sampled_candidates, values]
     ids = sparse_feature_cross_op.sparse_feature_cross(
-        tensors_to_cross, hashed_output=True, num_buckets=num_params,
+        tensors_to_cross,
+        hashed_output=True,
+        num_buckets=num_params,
         hash_key=hash_key)
     ids = sparse_ops.sparse_tensor_to_dense(ids)
 
@@ -389,14 +403,14 @@ def scattered_embedding_lookup_sparse(params,
   See `tf.contrib.layers.scattered_embedding_lookup` for embedding with hashing.
 
   Args:
-    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
-      Each tensor must be of rank 1 with fully-defined shape.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`. Each
+      tensor must be of rank 1 with fully-defined shape.
     sparse_values: A 2-D `SparseTensor` containing the values to be embedded.
       Some rows may be empty.
     dimension: Embedding dimension
     combiner: A string specifying how to combine embedding results for each
-        entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
-        the default.
+      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean" the
+      default.
     default_value: The value to use for an entry with no features.
     name: An optional name for this op.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
@@ -445,14 +459,14 @@ def scattered_embedding_lookup_sparse(params,
         params, values, dimension, hash_key=hash_key)
 
     if combiner == "sum":
-      embeddings = math_ops.sparse_segment_sum(embeddings, idx, segment_ids,
-                                               name=scope)
+      embeddings = math_ops.sparse_segment_sum(
+          embeddings, idx, segment_ids, name=scope)
     elif combiner == "mean":
-      embeddings = math_ops.sparse_segment_mean(embeddings, idx, segment_ids,
-                                                name=scope)
+      embeddings = math_ops.sparse_segment_mean(
+          embeddings, idx, segment_ids, name=scope)
     elif combiner == "sqrtn":
-      embeddings = math_ops.sparse_segment_sqrt_n(embeddings, idx, segment_ids,
-                                                  name=scope)
+      embeddings = math_ops.sparse_segment_sqrt_n(
+          embeddings, idx, segment_ids, name=scope)
     else:
       raise ValueError("Combiner must be one of 'mean', 'sqrtn' or 'sum'.")
 
@@ -469,8 +483,8 @@ def embedding_lookup_unique(params, ids, partition_strategy="mod", name=None):
   Args:
     params: A list of tensors with the same shape and type, or a
       `PartitionedVariable`. Shape `[index, d1, d2, ...]`.
-    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing
-      the ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
+    ids: A one-dimensional `Tensor` with type `int32` or `int64` containing the
+      ids to be looked up in `params`. Shape `[ids1, ids2, ...]`.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
@@ -486,8 +500,8 @@ def embedding_lookup_unique(params, ids, partition_strategy="mod", name=None):
   with ops.name_scope(name, "EmbeddingLookupUnique", [params, ids]):
     ids = ops.convert_to_tensor(ids)
     shape = array_ops.shape(ids)
-    ids_flat = array_ops.reshape(
-        ids, math_ops.reduce_prod(shape, keepdims=True))
+    ids_flat = array_ops.reshape(ids,
+                                 math_ops.reduce_prod(shape, keepdims=True))
     unique_ids, idx = array_ops.unique(ids_flat)
     unique_embeddings = embedding_ops.embedding_lookup(params, unique_ids,
                                                        partition_strategy)
@@ -528,15 +542,15 @@ def _sampled_scattered_embedding_lookup_sparse(params,
     sp_values: A 2D `SparseTensor` to be embedded with shape `[d0, d1]`.
     dimension: An int `Tensor` of the final dimension. The user needs to provide
       either `dimension` or `sampled_candidates`.
-    sampled_candidates: An optional `Tensor` of column indices to keep along
-      the final dimension with shape `[d0, N]`. If given, `dimension` is
-      ignored. If `None`, looks up all candidates.
+    sampled_candidates: An optional `Tensor` of column indices to keep along the
+      final dimension with shape `[d0, N]`. If given, `dimension` is ignored. If
+      `None`, looks up all candidates.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
       function to combine the crosses fingerprints on SparseFeatureCrossOp
       (optional).
     with_sign_hash:  A `bool` indicating whether `h(i, j)` should be multiplied
-      by `+1` or `-1`, where the value selected is determined by hashing
-      `(i, j)`. This is often necessary to remove bias resulting from hash
+      by `+1` or `-1`, where the value selected is determined by hashing `(i,
+      j)`. This is often necessary to remove bias resulting from hash
       collisions.
     name: An optional name for this op.
 
@@ -562,13 +576,19 @@ def _sampled_scattered_embedding_lookup_sparse(params,
       sampled_candidates = array_ops.gather(sampled_candidates, segment_ids)
 
     embeddings = _sampled_scattered_embedding_lookup(
-        params, sp_values.values, dimension=dimension,
+        params,
+        sp_values.values,
+        dimension=dimension,
         sampled_candidates=sampled_candidates,
-        hash_key=hash_key, name="values_lookup")
+        hash_key=hash_key,
+        name="values_lookup")
     if with_sign_hash:
       signs = _sampled_scattered_embedding_lookup(
-          array_ops.constant([-1., 1.]), sp_values.values, dimension=dimension,
-          sampled_candidates=sampled_candidates, hash_key=hash_key,
+          array_ops.constant([-1., 1.]),
+          sp_values.values,
+          dimension=dimension,
+          sampled_candidates=sampled_candidates,
+          hash_key=hash_key,
           name="signs_lookup")
       embeddings = math_ops.multiply(signs, embeddings, name="signs_hash")
 
@@ -576,9 +596,8 @@ def _sampled_scattered_embedding_lookup_sparse(params,
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)
     num_segments = array_ops.shape(sp_values)[0]
 
-    return math_ops.unsorted_segment_sum(embeddings, segment_ids,
-                                         num_segments=num_segments,
-                                         name=name_scope)
+    return math_ops.unsorted_segment_sum(
+        embeddings, segment_ids, num_segments=num_segments, name=name_scope)
 
 
 def embedding_lookup_sparse_with_distributed_aggregation(
@@ -596,8 +615,8 @@ def embedding_lookup_sparse_with_distributed_aggregation(
   `tf.nn.embedding_lookup_sparse` for the functionality and example of this op.
 
   Args:
-    params: A single tensor representing the complete embedding tensor,
-      or a list of P tensors all of same shape except for the first dimension,
+    params: A single tensor representing the complete embedding tensor, or a
+      list of P tensors all of same shape except for the first dimension,
       representing sharded embedding tensors.  Alternatively, a
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
@@ -611,13 +630,12 @@ def embedding_lookup_sparse_with_distributed_aggregation(
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: Optional name for the op.
     combiner: A string specifying the reduction op. Currently "mean", "sqrtn"
-      and "sum" are supported.
-      "sum" computes the weighted sum of the embedding results for each row.
-      "mean" is the weighted sum divided by the total weight.
-      "sqrtn" is the weighted sum divided by the square root of the sum of the
-      squares of the weights.
-    max_norm: If not None, each embedding is normalized to have l2 norm equal
-      to max_norm before combining.
+      and "sum" are supported. "sum" computes the weighted sum of the embedding
+      results for each row. "mean" is the weighted sum divided by the total
+      weight. "sqrtn" is the weighted sum divided by the square root of the sum
+      of the squares of the weights.
+    max_norm: If not None, each embedding is normalized to have l2 norm equal to
+      max_norm before combining.
 
   Returns:
     A dense tensor representing the combined embeddings for the
@@ -798,16 +816,18 @@ def _embedding_lookup_with_distributed_aggregation(params,
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 
-        p_assignments = math_ops.maximum(flat_ids // (ids_per_partition + 1), (
-            flat_ids - extras) // ids_per_partition)
+        p_assignments = math_ops.maximum(flat_ids // (ids_per_partition + 1),
+                                         (flat_ids - extras) //
+                                         ids_per_partition)
 
         # Emulate a conditional using a boolean indicator tensor
         is_in_first_extras_partitions = math_ops.cast(p_assignments < extras,
                                                       flat_ids.dtype)
-        new_ids = (is_in_first_extras_partitions * (flat_ids %
-                                                    (ids_per_partition + 1)) +
-                   (1 - is_in_first_extras_partitions) * (
-                       (flat_ids - extras) % ids_per_partition))
+        new_ids = (
+            is_in_first_extras_partitions * (flat_ids %
+                                             (ids_per_partition + 1)) +
+            (1 - is_in_first_extras_partitions) *
+            ((flat_ids - extras) % ids_per_partition))
       else:
         raise ValueError("Unrecognized partition strategy: " +
                          partition_strategy)
@@ -851,8 +871,8 @@ def _embedding_lookup_with_distributed_aggregation(params,
             partitioned_result[p] = array_ops.reshape(
                 partitioned_result[p],
                 array_ops.concat([
-                    array_ops.shape(pindices[p]), array_ops.slice(
-                        params_shape, [1], [-1])
+                    array_ops.shape(pindices[p]),
+                    array_ops.slice(params_shape, [1], [-1])
                 ], 0))
       # Normalize each partition result.
       for p in xrange(np):
@@ -877,9 +897,8 @@ def _embedding_lookup_with_distributed_aggregation(params,
             if partitioned_result[p].get_shape().ndims is not None:
               partitioned_weight[p].set_shape(
                   orig_weights_shape.concatenate([
-                      1
-                      for _ in range(partitioned_result[p].get_shape().ndims -
-                                     1)
+                      1 for _ in range(partitioned_result[p].get_shape().ndims -
+                                       1)
                   ]))
             partitioned_result[p] *= partitioned_weight[p]
       partitioned_segment_ids = []

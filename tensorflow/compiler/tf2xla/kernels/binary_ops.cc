@@ -16,6 +16,8 @@ limitations under the License.
 // Native XLA implementations of simple binary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -54,6 +56,7 @@ namespace {
   REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(AddV2, xla::Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, xla::Sub(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mul, xla::Mul(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Div, xla::Div(lhs, rhs, extend_dimensions));
@@ -112,7 +115,17 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   if (DataTypeIsFloating(dtype)) {
-    return xla::Floor(xla::Div(x, y));
+    if (dtype == DataType::DT_BFLOAT16) {
+      // The result of a BF16 division may produce the Ceil of what was
+      // computed by F32 division, so avoid end user confusion by doing the
+      // intermediate divide in F32.
+      return xla::ConvertElementType(
+          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F32),
+                              xla::ConvertElementType(y, xla::F32))),
+          xla::BF16);
+    } else {
+      return xla::Floor(xla::Div(x, y));
+    }
   }
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
@@ -224,8 +237,6 @@ XLA_MAKE_BINARY(TanhGrad,
                                        xla::Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
-
-XLA_MAKE_BINARY(NextAfter, xla::NextAfter(lhs, rhs));
 
 #undef XLA_MAKE_BINARY
 

@@ -1,5 +1,4 @@
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -76,6 +75,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
   # Note that synchronization "ON_READ" implies trainable=False.
   return variable_scope.variable(
       lambda: array_ops.zeros(shape, dtype),
+      trainable=False,
       collections=[
           ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
       ],
@@ -635,7 +635,8 @@ def auc(labels,
         updates_collections=None,
         curve='ROC',
         name=None,
-        summation_method='trapezoidal'):
+        summation_method='trapezoidal',
+        thresholds=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `auc` function creates four local variables, `true_positives`,
@@ -657,7 +658,9 @@ def auc(labels,
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
   approximation may be poor if this is not the case. Setting `summation_method`
   to 'minoring' or 'majoring' can help quantify the error in the approximation
-  by providing lower or upper bound estimate of the AUC.
+  by providing lower or upper bound estimate of the AUC. The `thresholds`
+  parameter can be used to manually specify thresholds which split the
+  predictions more evenly.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -691,6 +694,12 @@ def auc(labels,
       Note that 'careful_interpolation' is strictly preferred to 'trapezoidal'
       (to be deprecated soon) as it applies the same method for ROC, and a
       better one (see Davis & Goadrich 2006 for details) for the PR curve.
+    thresholds: An optional list of floating point values to use as the
+      thresholds for discretizing the curve. If set, the `num_thresholds`
+      parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
+      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will be
+      automatically included with these to correctly handle predictions equal to
+       exactly 0 or 1.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -713,10 +722,20 @@ def auc(labels,
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
-    kepsilon = 1e-7  # to account for floating point imprecisions
-    thresholds = [
-        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
-    ]
+
+    kepsilon = 1e-7  # To account for floating point imprecisions.
+    if thresholds is not None:
+      # If specified, use the supplied thresholds.
+      thresholds = sorted(thresholds)
+      num_thresholds = len(thresholds) + 2
+    else:
+      # Otherwise, linearly interpolate (num_thresholds - 2) thresholds in
+      # (0, 1).
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+
+    # Add an endpoint "threshold" below zero and above one for either threshold
+    # method.
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
 
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -2962,12 +2981,14 @@ def _num_relevant(labels, k):
     if isinstance(labels, sparse_tensor.SparseTensor):
       return math_ops.minimum(sets.set_size(labels), k, name=scope)
 
-    # For dense Tensor, calculate scalar count based on last dimension, and
-    # tile across labels shape.
-    labels_shape = array_ops.shape(labels)
-    labels_size = labels_shape[-1]
-    num_relevant_scalar = math_ops.minimum(labels_size, k)
-    return array_ops.fill(labels_shape[0:-1], num_relevant_scalar, name=scope)
+    # The relevant values for each (d1, ... dN) is the minimum of k and the
+    # number of labels along the last dimension that are non-negative.
+    num_labels = math_ops.reduce_sum(
+        array_ops.where_v2(math_ops.greater_equal(labels, 0),
+                           array_ops.ones_like(labels),
+                           array_ops.zeros_like(labels)),
+        axis=-1)
+    return math_ops.minimum(num_labels, k, name=scope)
 
 
 def _sparse_average_precision_at_top_k(labels, predictions_idx):
@@ -2988,7 +3009,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension must be set and contains the top `k` predicted class indices.
@@ -3088,7 +3109,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension contains the top `k` predicted class indices. [D1, ... DN] must
@@ -3150,6 +3171,47 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       ops.add_to_collections(updates_collections, update)
 
     return mean_average_precision, update
+
+
+def _clean_out_of_range_indices(labels, num_classes):
+  """Replaces large out-of-range labels by small out-of-range labels.
+
+  Replaces any value in `labels` that is greater or equal to `num_classes` by
+  -1. Do this conditionally for efficiency in case there are no such values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor`.
+    num_classes: `int64` scalar `Tensor`.
+  Returns:
+    An `int64` `Tensor` or `SparseTensor` as `labels` with indices greater
+    or equal to num_classes replaced by -1.
+  """
+
+  def _labels_is_sparse():
+    """Returns true is `labels` is a sparse tensor."""
+    return isinstance(labels, (sparse_tensor.SparseTensor,
+                               sparse_tensor.SparseTensorValue))
+
+  def _clean_out_of_range(values):
+    """Replaces by -1 any large out-of-range `values`."""
+    return array_ops.where_v2(math_ops.greater_equal(values, num_classes),
+                              -1 * array_ops.ones_like(values), values)
+
+  def _clean_labels_out_of_range():
+    """Replaces by -1 ane large out-of-range values in `labels`."""
+    if _labels_is_sparse():
+      return type(labels)(indices=labels.indices,
+                          values=_clean_out_of_range(labels.values),
+                          dense_shape=labels.dense_shape)
+    else:
+      return _clean_out_of_range(labels)
+
+  max_labels = math_ops.reduce_max(
+      labels.values if _labels_is_sparse() else labels)
+  return control_flow_ops.cond(
+      math_ops.greater_equal(max_labels, num_classes),
+      _clean_labels_out_of_range,
+      lambda: labels)
 
 
 @tf_export(v1=['metrics.sparse_average_precision_at_k'])
@@ -3242,6 +3304,12 @@ def average_precision_at_k(labels,
                       (predictions, labels, weights)) as scope:
     # Calculate top k indices to produce [D1, ... DN, k] tensor.
     _, predictions_idx = nn.top_k(predictions, k)
+    # The documentation states that labels should be in [0, ..., num_classes),
+    # but num_classes is lost when predictions_idx replaces predictions.
+    # For conformity with the documentation, any label >= num_classes, which is
+    # ignored, is replaced by -1.
+    labels = _clean_out_of_range_indices(
+        labels, math_ops.cast(array_ops.shape(predictions)[-1], dtypes.int64))
     return _streaming_sparse_average_precision_at_top_k(
         labels=labels,
         predictions_idx=predictions_idx,
@@ -3598,7 +3666,7 @@ def specificity_at_sensitivity(labels,
 
   Returns:
     specificity: A scalar `Tensor` representing the specificity at the given
-      `specificity` value.
+      `sensitivity` value.
     update_op: An operation that increments the `true_positives`,
       `true_negatives`, `false_positives` and `false_negatives` variables
       appropriately and whose value matches `specificity`.

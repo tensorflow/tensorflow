@@ -31,24 +31,28 @@ namespace tensor {
 
 Tensor DeepCopy(const Tensor& other) {
   Tensor tmp = Tensor(other.dtype(), other.shape());
-  if (DataTypeCanUseMemcpy(other.dtype())) {
-    if (other.NumElements() > 0) {
-      StringPiece other_data = other.tensor_data();
+  DeepCopy(other, &tmp);
+  return tmp;
+}
+
+void DeepCopy(const Tensor& input, Tensor* output) {
+  if (DataTypeCanUseMemcpy(input.dtype())) {
+    if (input.NumElements() > 0) {
+      StringPiece input_data = input.tensor_data();
 
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece tmp_data = tmp.tensor_data();
-      memcpy(const_cast<char*>(tmp_data.data()), other_data.data(),
-             other_data.size());
+      StringPiece output_data = output->tensor_data();
+      memcpy(const_cast<char*>(output_data.data()), input_data.data(),
+             input_data.size());
     }
-  } else if (other.dtype() == DT_STRING) {
-    tmp.unaligned_flat<string>() = other.unaligned_flat<string>();
+  } else if (input.dtype() == DT_STRING) {
+    output->unaligned_flat<tstring>() = input.unaligned_flat<tstring>();
   } else {
-    CHECK_EQ(DT_VARIANT, other.dtype());
-    tmp.unaligned_flat<Variant>() = other.unaligned_flat<Variant>();
+    CHECK_EQ(DT_VARIANT, input.dtype());
+    output->unaligned_flat<Variant>() = input.unaligned_flat<Variant>();
   }
-  return tmp;
 }
 
 Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
@@ -94,12 +98,12 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     if (dtype != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    string* to_strings =
-        reinterpret_cast<string*>(const_cast<char*>(to_data.data()));
+    tstring* to_strings =
+        reinterpret_cast<tstring*>(const_cast<char*>(to_data.data()));
 
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
-      auto from_strings = tensor.flat<string>();
+      auto from_strings = tensor.flat<tstring>();
       CHECK_LE(offset + tensor.NumElements(), result->NumElements());
       for (int i = 0; i < tensor.NumElements(); ++i) {
         to_strings[offset + i] = from_strings(i);
@@ -151,7 +155,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
     if (tensor.dtype() != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    auto from_strings = tensor.flat<string>();
+    auto from_strings = tensor.flat<tstring>();
 
     int64 offset = 0;
     for (int64 size : sizes) {
@@ -159,7 +163,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
       shape.set_dim(0, size);
       result->emplace_back(tensor.dtype(), shape);
       Tensor& split = (*result)[result->size() - 1];
-      string* to_strings = reinterpret_cast<string*>(
+      tstring* to_strings = reinterpret_cast<tstring*>(
           const_cast<char*>(split.tensor_data().data()));
 
       CHECK_LE(offset + split.NumElements(), tensor.NumElements());

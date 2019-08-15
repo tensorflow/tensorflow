@@ -20,17 +20,17 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
@@ -164,7 +164,8 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(distribution, tpu_strategy.TPUStrategy):
+  if isinstance(distribution, (tpu_strategy.TPUStrategy,
+                               tpu_strategy.TPUStrategyV1)):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)
@@ -368,7 +369,12 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)
@@ -398,7 +404,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       input_a_np = np.asarray(np.random.random((64, 3)), dtype=np.float32)
       input_b_np = np.asarray(np.random.random((64, 5)), dtype=np.float32)
@@ -431,7 +441,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     model = get_model()
     optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
-    model.compile(optimizer, loss, distribute=distribution)
+    model.compile(
+        optimizer,
+        loss,
+        distribute=distribution,
+        experimental_run_tf_function=False)
 
     inputs = np.zeros((20, 3), np.float32)
     targets = np.zeros((20, 4), np.float32)
@@ -447,7 +461,11 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       # We take 6 input samples with each input having a dimension of 3 or 5.
       input_a_np = np.asarray(np.random.random((6, 3)), dtype=np.float32)
@@ -477,7 +495,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -496,7 +519,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           gradient_descent.GradientDescentOptimizer(0.001),
           loss='mse',
           metrics=['mae', keras.metrics.CategoricalAccuracy()],
-          distribute=distribution)
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       interleaved_model = get_model()
       interleaved_model.set_weights(user_controlled_model.get_weights())
@@ -504,7 +528,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           gradient_descent.GradientDescentOptimizer(0.001),
           loss='mse',
           metrics=['mae', keras.metrics.CategoricalAccuracy()],
-          distribute=distribution)
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -545,7 +570,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
       metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       input_a_np = np.random.random((10, 3))
       input_b_np = np.random.random((10, 5))
@@ -577,7 +607,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae', keras.metrics.CategoricalAccuracy()]
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -591,7 +626,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model = get_model()
 
       loss = 'mse'
-      model.compile(optimizer(), loss, distribute=distribution)
+      model.compile(
+          optimizer(),
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -604,7 +643,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     model = get_model()
     optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
-    model.compile(optimizer, loss, distribute=distribution)
+    model.compile(
+        optimizer,
+        loss,
+        distribute=distribution,
+        experimental_run_tf_function=False)
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -632,7 +675,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       # Wrong input shape
       inputs = np.zeros((10, 5), dtype=np.float32)
@@ -659,7 +706,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       # User forgets to batch the dataset
       inputs = np.zeros((10, 3), dtype=np.float32)
@@ -668,26 +719,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
 
       with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          mode=['graph']))
-  def test_dataset_input_shape_fully_defined(self, distribution):
-    with self.cached_session():
-      model = get_model()
-
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
-
-      dataset = get_dataset(distribution)
-      # Input shapes are not fully known. Batch dimension is unknown as we are
-      # not using the drop_remainder argument.
-      dataset = dataset.repeat(100).batch(10)
-
-      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -711,7 +742,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       optimizer = gradient_descent.GradientDescentOptimizer(0.005)
       loss = 'mse'
       metrics = ['acc']
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       batch_size = 8
       if isinstance(distribution, mirrored_strategy.CoreMirroredStrategy):
@@ -746,7 +782,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       optimizer = gradient_descent_keras.SGD(0.01)
       loss = 'mse'
-      model.compile(optimizer, loss, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -780,7 +820,12 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -835,7 +880,12 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      model.compile(
+          optimizer,
+          loss,
+          metrics=metrics,
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       dataset = get_dataset(distribution)
 
@@ -875,9 +925,11 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
       model.add(
           keras.layers.TimeDistributed(
               keras.layers.Dense(1, kernel_initializer='one')))
-      model.compile(loss='mse',
-                    optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                    distribute=distribution)
+      model.compile(
+          loss='mse',
+          optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+          distribute=distribution,
+          experimental_run_tf_function=False)
       y = np.array([[[1], [1]], [[1], [1]]])
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
@@ -896,9 +948,11 @@ class TestDistributionStrategyWithNormalizationLayer(
       model = keras.models.Sequential()
       norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
       model.add(norm)
-      model.compile(loss='mse',
-                    optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                    distribute=distribution)
+      model.compile(
+          loss='mse',
+          optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       # centered on 5.0, variance 10.0
       x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 10))
@@ -943,7 +997,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           loss=keras.losses.mean_squared_error,
           optimizer=gradient_descent.GradientDescentOptimizer(0.5),
           metrics=[keras.metrics.BinaryAccuracy()],
-          distribute=distribution)
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       batch_size = 64
       if not distributed_training_utils.global_batch_size_supported(
@@ -969,7 +1024,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           loss='mae',
           metrics=['accuracy', keras.metrics.BinaryAccuracy()],
           optimizer=gradient_descent.GradientDescentOptimizer(0.001),
-          distribute=distribution)
+          distribute=distribution,
+          experimental_run_tf_function=False)
 
       # verify correctness of stateful and stateless metrics.
       x = np.ones((100, 4)).astype('float32')
@@ -1045,7 +1101,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent_keras.SGD(0.5),
             metrics=['mse'],
-            distribute=with_distribution)
+            distribute=with_distribution,
+            experimental_run_tf_function=False)
 
         training_inputs, eval_inputs, predict_inputs = (
             get_correctness_test_inputs(use_numpy, use_validation_data,
@@ -1079,7 +1136,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       # are the same within some limits of tolerance.
       for key in results_with_ds:
         if (key.startswith('training_history') and
-            isinstance(distribution, tpu_strategy.TPUStrategy) and
+            isinstance(distribution, tpu_strategy.TPUStrategyV1) and
             distribution.extended.steps_per_run > 1):
           # TODO(b/119894254): Enable this test for all cases once the
           # underlying bug is fixed.

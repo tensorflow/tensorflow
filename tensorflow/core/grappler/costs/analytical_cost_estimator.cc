@@ -117,30 +117,56 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
     std::unique_ptr<ReadyNodeManager> node_manager, bool use_static_shapes,
     bool use_aggressive_shape_inference)
-    : cluster_(cluster),
-      node_estimator_(std::move(node_estimator)),
+    : node_estimator_(std::move(node_estimator)),
       node_manager_(std::move(node_manager)),
       use_static_shapes_(use_static_shapes),
       use_aggressive_shape_inference_(use_aggressive_shape_inference) {
   scheduler_ = absl::make_unique<VirtualScheduler>(
-      use_static_shapes_, use_aggressive_shape_inference_, cluster_,
-      node_manager_.get());
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(),
+      absl::make_unique<VirtualPlacer>(cluster->GetDevices()));
+}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager,
+    std::unique_ptr<VirtualPlacer> placer, bool use_static_shapes,
+    bool use_aggressive_shape_inference)
+    : node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)),
+      use_static_shapes_(use_static_shapes),
+      use_aggressive_shape_inference_(use_aggressive_shape_inference) {
+  scheduler_ = absl::make_unique<VirtualScheduler>(
+      use_static_shapes_, use_aggressive_shape_inference_, cluster,
+      node_manager_.get(), std::move(placer));
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
-  item_ = item;
+  item_ = &item;
   return Status::OK();
 }
 
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                                              RunMetadata* run_metadata,
                                              Costs* costs) const {
-  GrapplerItem item = item_;
-  item.graph = optimized_graph;
+  std::unique_ptr<GrapplerItem> item_storage;
+  const GrapplerItem* item;
+  // Many callers to PredictCosts() pass the same optimized_graph as was used
+  // to initialize the estimator.
+  if (&optimized_graph == &item_->graph) {
+    item = item_;
+  } else {
+    GraphDef graph_copy = optimized_graph;
+    item_storage = absl::make_unique<GrapplerItem>(
+        item_->WithGraph(std::move(graph_copy)));
+    item = item_storage.get();
+  }
 
-  auto status = scheduler_->Init(&item);
+  auto status = scheduler_->Init(item);
   if (!status.ok()) {
-    costs->execution_time = Costs::Duration::max();
+    if (costs) {
+      costs->execution_time = Costs::Duration::max();
+    }
     return status;
   }
 
@@ -189,7 +215,11 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   }
 
   // run_metadata gets step_stats and partition_graphs from Summary.
-  *costs = scheduler_->Summary(run_metadata);
+  if (costs) {
+    *costs = scheduler_->Summary(run_metadata);
+  } else if (run_metadata) {
+    scheduler_->GenerateRunMetadata(run_metadata);
+  }
 
   if (VLOG_IS_ON(1)) {
     bool verbose = VLOG_IS_ON(2);

@@ -126,7 +126,7 @@ class Head(object):
         scope=...)
     if mode == tf.contrib.learn.ModeKeys.TRAIN:
       optimizer = ...
-      sync = tf.train.SyncReplicasOptimizer(opt=optimizer, ...)
+      sync = tf.compat.v1.train.SyncReplicasOptimizer(opt=optimizer, ...)
       update_op = tf.contrib.layers.optimize_loss(optimizer=sync,
                                                   loss=model_fn_ops.loss, ...)
       hooks = [sync.make_session_run_hook(is_chief)]

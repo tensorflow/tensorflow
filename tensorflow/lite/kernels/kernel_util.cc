@@ -23,19 +23,6 @@ limitations under the License.
 
 namespace tflite {
 
-void GuardedQuantizeMultiplier(double effective_output_scale,
-                               int32_t* significand, int* shift) {
-  QuantizeMultiplier(effective_output_scale, significand, shift);
-  // Additional guard to make sure RoundingDivideByPOT does not fail.
-  if (*shift < -31) {
-    // If shift is less than -31, RoundingDivideByPOT fails. This happens when
-    // min and max are close and small. For this particular case, both
-    // significand and shift are set to zero.
-    *significand = 0;
-    *shift = 0;
-  }
-}
-
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
@@ -79,7 +66,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
                                           static_cast<double>(output_scale);
     int32_t significand;
     int shift;
-    GuardedQuantizeMultiplier(effective_output_scale, &significand, &shift);
+    QuantizeMultiplier(effective_output_scale, &significand, &shift);
     per_channel_multiplier[i] = significand;
     per_channel_shift[i] = shift;
   }
@@ -110,11 +97,14 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               TfLiteTensor* output,
                                               double* multiplier) {
   const double input_product_scale = input->params.scale * filter->params.scale;
-  const double bias_scale = bias->params.scale;
   // TODO(ahentz): The following conditions must be guaranteed by the training
   // pipeline.
-  TF_LITE_ENSURE(context, std::abs(input_product_scale - bias_scale) <=
-                              1e-6 * std::min(input_product_scale, bias_scale));
+  if (bias) {
+    const double bias_scale = bias->params.scale;
+    TF_LITE_ENSURE(context,
+                   std::abs(input_product_scale - bias_scale) <=
+                       1e-6 * std::min(input_product_scale, bias_scale));
+  }
   return GetQuantizedConvolutionMultipler(context, input, filter, output,
                                           multiplier);
 }

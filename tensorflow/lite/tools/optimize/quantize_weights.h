@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
 
+#include <cstdint>
 #include <memory>
+
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/model.h"
@@ -24,6 +26,9 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 
+// Supported resulting types from quantization process.
+enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
+
 // Quantizes input_model and populates the provided builder with the new model.
 // By default only weights tensors weight more than 1024 elements will be
 // quantized.
@@ -31,14 +36,30 @@ namespace optimize {
 // A tflite::Model can be obtained from the builder with:
 //   const uint8_t* buffer = builder->GetBufferPointer();
 //   tflite::Model* model = GetModel(buffer);
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const Model* input_model);
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    BufferType quant_type = BufferType::QUANTIZED_INT8);
 
 // Same as above, but only weights with greater than or equal
 // weights_min_num_elements elements will be quantized.
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements);
+
+// Stores information about how to quantize a user-specified custom operation.
+typedef struct {
+  std::vector<std::int32_t> quantizable_input_indices;
+  bool is_hybrid;
+} CustomOpInfo;
+
+// Map from custom op code to custom op quantization information.
+typedef std::unordered_map<string, CustomOpInfo> CustomOpMap;
+
+// Same as above, but with entry point of quantizing custom ops.
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             uint64_t weights_min_num_elements,
+                             const CustomOpMap& custom_op_map);
 
 namespace internal {
 // If use_hybrid_evaluation is false, will disable using hybrid eval for

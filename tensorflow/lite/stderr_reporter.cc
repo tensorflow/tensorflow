@@ -19,7 +19,7 @@ limitations under the License.
 namespace tflite {
 
 int StderrReporter::Report(const char* format, va_list args) {
-  logging_internal::MinimalLogger::VLog(TFLITE_LOG_ERROR, format, args);
+  logging_internal::MinimalLogger::LogFormatted(TFLITE_LOG_ERROR, format, args);
   return 0;
 }
 

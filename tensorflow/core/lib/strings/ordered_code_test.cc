@@ -129,7 +129,7 @@ void TestWriteAppends(T first, U second) {
   string encoded_first_only = encoded;
   OCWriteToString<U>(&encoded, second);
   EXPECT_NE(encoded, encoded_first_only);
-  EXPECT_TRUE(str_util::StartsWith(encoded, encoded_first_only));
+  EXPECT_TRUE(absl::StartsWith(encoded, encoded_first_only));
 }
 
 template <typename T>

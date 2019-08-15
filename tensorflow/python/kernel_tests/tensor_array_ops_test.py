@@ -22,13 +22,16 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -437,16 +440,22 @@ class TensorArrayTest(test.TestCase):
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
-      # Test writing the wrong datatype
-      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
-          not context.executing_eagerly()):
-        error_msg = ("Invalid data types; op elements string but list elements "
-                     "float")
-      else:
-        error_msg = (
-            "TensorArray dtype is (float|float32) but Op is trying to write "
-            "dtype string")
-      with self.assertRaisesOpError(error_msg):
+      # TODO(b/129870929): Remove the last 2 checks (runtime checks) after
+      # back back from preferred_dtype= to dtype= in convert_to_tensor.  Also
+      # restrict error check to only TypeError.
+      error_msg_regex = (
+          "("
+          "Expected float32, got 'wrong_type_scalar' of type 'str' instead."
+          "|"
+          "Cannot convert provided value to EagerTensor. Provided value: "
+          "wrong_type_scalar Requested dtype: float"
+          "|"
+          "TensorArray dtype is float.* but Op is trying to write dtype string"
+          "|"
+          "Invalid data types; op elements string but list elements float"
+          ")")
+      with self.assertRaisesRegexp(
+          (TypeError, errors.InvalidArgumentError), error_msg_regex):
         self.evaluate(ta.write(0, "wrong_type_scalar").flow)
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
@@ -1025,7 +1034,7 @@ class TensorArrayTest(test.TestCase):
             dtype=dtypes.float32,
             size=num_steps,
             clear_after_read=False,
-            element_shape=tensor_shape.scalar())
+            element_shape=tensor_shape.TensorShape([]))
         i = constant_op.constant(0, name="i")
 
         c = lambda i, acc: i < 5
@@ -1055,6 +1064,15 @@ class TensorArrayTest(test.TestCase):
       else:
         grad = gradients_impl.gradients(loop(x), [x])[0]
       self.assertAllClose(31.0, self.evaluate(grad))
+
+  def testShapeAfterWhileLoop(self):
+    size = 10
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+    _, ta = control_flow_ops.while_loop(
+        lambda i, _: i < size,
+        lambda i, ta: (i + 1, ta.write(i, [[0.]])), [0, ta],
+        parallel_iterations=1)
+    self.assertIsNotNone(ta.element_shape.dims)
 
   @test_util.deprecated_graph_mode_only
   def testSkipEagerSumOfTwoReadVariablesWithoutRepeatGrad(self):
@@ -1338,6 +1356,57 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), self.evaluate(r))
       grad = gradients_impl.gradients(ys=[r], xs=[x])
       self.assertAllEqual(np.array([1.0, 1.0, 1.0]), self.evaluate(grad)[0])
+
+  def testStackShape(self):
+
+    @def_function.function
+    def ta_stack():
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+      x = constant_op.constant([1.0, 2.0, 3.0])
+      ta = ta.write(0, x)
+      t = ta.stack()
+      self.assertEqual(t.shape.as_list(), [None, 3])
+      return t
+
+    ta_stack()
+
+  def testReadShape(self):
+
+    @def_function.function
+    def ta_read():
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+      x = constant_op.constant([1.0, 2.0, 3.0])
+      ta = ta.write(0, x)
+      t = ta.read(0)
+      self.assertEqual(t.shape.as_list(), [3])
+      return t
+
+    ta_read()
+
+  def testGatherShape(self):
+
+    def ta_gather(indices):
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
+      x = constant_op.constant([1.0, 2.0, 3.0])
+      ta = ta.write(0, x)
+      t = ta.gather(indices)
+      self.assertEqual(t.shape.as_list(), [first_dim, 3])
+      return t
+
+    # This propagates shape of `indices` when compiling ta_gather.
+    ta_gather_with_known_indices_shape = def_function.function(ta_gather)
+    first_dim = 1
+    ta_gather_with_known_indices_shape([0])
+
+    # Here were force the shape of `indices` to be [None] during ta_gather's
+    # compilation.
+    ta_gather_with_unknown_indices_shape = def_function.function(
+        ta_gather,
+        input_signature=[
+            tensor_spec.TensorSpec(dtype=dtypes.int32, shape=[None])
+        ])
+    first_dim = None
+    ta_gather_with_unknown_indices_shape([0])
 
   def _testTensorArrayEvalEmpty(self):
     with self.cached_session(use_gpu=True):
@@ -1624,10 +1693,10 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(dtypes.float32, ta0.dtype)
       self.assertEqual(dtypes.int32, ta1.dtype)
       if context.executing_eagerly():
-        self.assertEqual(tensor_shape.scalar(), read0.get_shape())
+        self.assertEqual(tensor_shape.TensorShape([]), read0.get_shape())
       else:
         self.assertEqual(tensor_shape.unknown_shape(), read0.get_shape())
-      self.assertEqual(tensor_shape.scalar(), read1.get_shape())
+      self.assertEqual(tensor_shape.TensorShape([]), read1.get_shape())
 
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
@@ -1677,6 +1746,74 @@ class TensorArrayTest(test.TestCase):
       v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
       self.assertAllEqual(v0, -3)
       self.assertAllEqual(v1, 100)
+
+  def testInferShapeFalseValid(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=3, infer_shape=False, element_shape=[None, 10, 20])
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+    ta = ta.write(1, array_ops.ones([50, 10, 20]))
+    ta = ta.write(2, array_ops.ones([1, 10, 20]))
+    ta = ta.concat()
+
+    correct = np.ones([101, 10, 20])
+
+    self.assertAllEqual(ta, correct)
+
+  def testInferShapeFalseInvalid(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=2, infer_shape=False, element_shape=[None, 10, 20])
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+
+    with self.assertRaises(ValueError):
+      ta = ta.write(1, array_ops.ones([1, 20, 20]))
+
+  def testInferShapeTrue(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=3, infer_shape=True, element_shape=[None, 10, 20])
+    self.assertAllEqual((None, 10, 20), ta.element_shape.as_list())
+    ta = ta.write(0, array_ops.ones([50, 10, 20]))
+    self.assertAllEqual((50, 10, 20), ta.element_shape.as_list())
+    ta = ta.write(1, array_ops.ones([50, 10, 20]))
+    with self.assertRaises(ValueError):
+      ta = ta.write(
+          2, array_ops.ones([1, 10, 20])
+      )  # Inconsistent shapes: saw (1, 10, 20) but expected (50, 10, 20)
+
+
+class TensorArrayBenchmark(test.Benchmark):
+
+  def _tensorArrayWriteInWhile(self):
+    size = 10000
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+    (_, ta) = control_flow_ops.while_loop(
+        lambda i, _: i < size,
+        lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
+        parallel_iterations=1)
+    return ta.stack()
+
+  def _benchmarkWriteInWhile(self):
+    ops.reset_default_graph()
+    op = self._tensorArrayWriteInWhile()
+    self.run_op_benchmark(session_lib.Session(), op)
+
+  def benchmarkWriteInWhile(self):
+    self._benchmarkWriteInWhile()
+
+  @test_util.enable_control_flow_v2
+  def benchmarkWriteInWhileWithControlFlowV2(self):
+    self._benchmarkWriteInWhile()
+
+  def benchmarkWriteInDatasetMapFn(self):
+    ds = dataset_ops.Dataset.from_tensors(array_ops.zeros([10])).repeat()
+    ds = ds.map(lambda _: self._tensorArrayWriteInWhile())
+    op = ds.make_one_shot_iterator().get_next()
+    self.run_op_benchmark(session_lib.Session(), op)
+
+  def benchmarkWriteInDatasetParallelMapFn(self):
+    ds = dataset_ops.Dataset.from_tensors(array_ops.zeros([10])).repeat()
+    ds = ds.map(lambda _: self._tensorArrayWriteInWhile(), num_parallel_calls=2)
+    op = ds.make_one_shot_iterator().get_next()
+    self.run_op_benchmark(session_lib.Session(), op)
 
 
 if __name__ == "__main__":

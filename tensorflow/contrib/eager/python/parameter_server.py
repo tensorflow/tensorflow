@@ -63,7 +63,7 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
-class SharedVariable(resource_variable_ops.ResourceVariable):
+class SharedVariable(resource_variable_ops.BaseResourceVariable):
   """Experimental Variable designed for parameter server training.
 
   A SharedVariable has a name and two instances of SharedVariable with the
@@ -144,7 +144,7 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         shared_name = handle_name
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
@@ -231,7 +231,7 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
           self._graph_element = None
           self._cached_value = None
 
-    self._handle_deleter = None
+    self._handle_deleter = object()
     self._cached_shape_as_list = None
 
 

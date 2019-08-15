@@ -56,10 +56,17 @@ class TestRunner {
   // guaranteed to be one of the ids returned by GetInputs().
   virtual void SetInput(int id, const string& values_as_string) = 0;
 
-  // Define what should be expected for an output tensor after Invoke() runs.
+  // Define what should be expected data for an output tensor after Invoke()
+  // runs.
   // The given 'id' is guaranteed to be one of the ids returned by
   // GetOutputs().
   virtual void SetExpectation(int id, const string& values_as_string) = 0;
+
+  // Define what should be expected shape for an output tensor after Invoke()
+  // runs.
+  // The given 'id' is guaranteed to be one of the ids returned by
+  // GetOutputs().
+  virtual void SetShapeExpectation(int id, const string& values_as_string) = 0;
 
   // Run the model.
   virtual void Invoke() = 0;

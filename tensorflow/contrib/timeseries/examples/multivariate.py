@@ -70,7 +70,7 @@ def multivariate_train_and_sample(
                                                  input_receiver_fn)
   with tf.Graph().as_default():
     numpy.random.seed(1)  # Make the example a bit more deterministic
-    with tf.Session() as session:
+    with tf.compat.v1.Session() as session:
       signatures = tf.saved_model.loader.load(
           session, [tf.saved_model.tag_constants.SERVING], export_location)
       for _ in range(100):
@@ -114,4 +114,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main=main)
+  tf.compat.v1.app.run(main=main)

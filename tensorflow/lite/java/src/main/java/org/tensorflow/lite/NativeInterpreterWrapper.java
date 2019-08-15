@@ -193,6 +193,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     delegates.add(delegate);
   }
 
+  void resetVariableTensors() {
+    resetVariableTensors(interpreterHandle, errorHandle);
+  }
+
   /** Gets index of an input given its name. */
   int getInputIndex(String name) {
     if (inputsIndexes == null) {
@@ -373,6 +377,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void applyDelegate(
       long interpreterHandle, long errorHandle, long delegateHandle);
+
+  private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

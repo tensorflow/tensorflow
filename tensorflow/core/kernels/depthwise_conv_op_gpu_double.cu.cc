@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
@@ -27,4 +27,4 @@ template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, double>;
 template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, double>;
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

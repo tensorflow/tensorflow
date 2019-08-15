@@ -306,26 +306,6 @@ dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
 einsum = gen_xla_ops.xla_einsum
 
-
-@ops.RegisterGradient('XlaEinsum')
-def _einsum_grad(op, grad):
-  equation = op.get_attr('equation')
-  inputs, output = equation.split('->')
-  left, right = inputs.split(',')
-
-  return [
-      gen_xla_ops.xla_einsum(
-          grad,
-          op.inputs[1],
-          equation='{},{}->{}'.format(output, right, left),
-          name=None),
-      gen_xla_ops.xla_einsum(
-          grad,
-          op.inputs[0],
-          equation='{},{}->{}'.format(output, left, right),
-          name=None)
-  ]
-
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
 pad = gen_xla_ops.xla_pad
@@ -390,6 +370,9 @@ def reduce_window(operand,
       padding=padding,
       computation=reducer,
       name=name)
+
+
+replica_id = gen_xla_ops.xla_replica_id
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):

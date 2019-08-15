@@ -16,16 +16,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
-#include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
@@ -72,12 +71,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     OpInputList dense_default_tensors;
     OP_REQUIRES_OK(ctx,
@@ -206,6 +206,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -265,9 +269,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void MapFunc(IteratorContext* ctx, const string& prefix,
                    std::vector<Tensor> input, std::vector<Tensor>* output,
                    StatusCallback callback) override {
-        (*ctx->runner())([this, ctx, input, output, callback]() {
+        (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+              ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (const Tensor& t : input) {
             auto serialized_t = t.flat<string>();
@@ -341,19 +345,22 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   example_result.feature_stats.size());
               for (example::PerExampleFeatureStats feature_stats :
                    example_result.feature_stats) {
-                stats_aggregator->AddToHistogram(
-                    stats_utils::FeatureHistogramName(dataset_->node_name()),
-                    {static_cast<double>(feature_stats.features_count)});
                 stats_aggregator->IncrementCounter(
                     stats_utils::kFeaturesCount, "trainer",
                     feature_stats.features_count);
                 stats_aggregator->IncrementCounter(
                     stats_utils::kFeatureValuesCount, "trainer",
                     feature_stats.feature_values_count);
+                int64 steps = ctx->model()->NumElements(prefix);
+                stats_aggregator->AddToHistogram(
+                    stats_utils::FeatureHistogramName(dataset_->node_name()),
+                    {static_cast<double>(feature_stats.features_count)}, steps);
+
                 stats_aggregator->AddToHistogram(
                     stats_utils::FeatureValueHistogramName(
                         dataset_->node_name()),
-                    {static_cast<double>(feature_stats.feature_values_count)});
+                    {static_cast<double>(feature_stats.feature_values_count)},
+                    steps);
               }
             }
           }
@@ -393,10 +400,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::size_t> elements_per_stride_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),
     ParseExampleDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

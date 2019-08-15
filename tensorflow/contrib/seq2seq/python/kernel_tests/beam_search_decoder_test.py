@@ -407,8 +407,8 @@ class TestLargeBeamStep(test.TestCase):
       log_prob_neg_inf = array_ops.ones(
           [self.batch_size, self.beam_width], dtype=dtypes.float32) * -np.Inf
 
-      log_probs = array_ops.where(log_prob_mask, log_prob_zeros,
-                                  log_prob_neg_inf)
+      log_probs = array_ops.where_v2(log_prob_mask, log_prob_zeros,
+                                     log_prob_neg_inf)
       return log_probs
 
     log_probs = get_probs()
@@ -472,7 +472,7 @@ class TestLargeBeamStep(test.TestCase):
     self.assertAllEqual(next_state_.lengths[:, -3:], [[0, 0, 0], [0, 0, 0]])
 
 
-@test_util.run_v1_only
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention,

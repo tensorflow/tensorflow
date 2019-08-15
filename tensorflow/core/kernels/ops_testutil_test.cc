@@ -29,7 +29,7 @@ TEST_F(OpsTestBase, ScopedStepContainer) {
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
-  AddInputFromArray<string>(TensorShape({}), {""});
+  AddInputFromArray<tstring>(TensorShape({}), {""});
   TF_EXPECT_OK(RunOpKernel());
   EXPECT_TRUE(step_container_ != nullptr);
 }

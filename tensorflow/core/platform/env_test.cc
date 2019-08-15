@@ -52,7 +52,7 @@ GraphDef CreateTestProto() {
 }
 
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(str_util::StrContains(s, expected))
+  EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
@@ -123,6 +123,11 @@ TEST_F(DefaultEnvTest, ReadWriteBinaryProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadBinaryProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, ReadWriteTextProto) {
@@ -138,6 +143,11 @@ TEST_F(DefaultEnvTest, ReadWriteTextProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadTextProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, FileToReadonlyMemoryRegion) {
@@ -393,7 +403,7 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
 
-  EXPECT_TRUE(str_util::StartsWith(filename, prefix));
+  EXPECT_TRUE(absl::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
 }
 

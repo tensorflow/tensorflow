@@ -128,7 +128,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               StatusCallback copy_ready = [response, done, copy,
                                            is_dead](const Status& s) {
                 // The value is now ready to be returned on the wire.
-                grpc::EncodeTensorToByteBuffer(is_dead, *copy, response);
+                grpc::EncodeTensorToByteBuffer(is_dead, *copy, false, response);
                 done(s);
                 delete copy;
               };
@@ -136,7 +136,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               send_dev_context->CopyDeviceTensorToCPU(
                   &val, request->rendezvous_key(), src_dev, copy, copy_ready);
             } else {
-              grpc::EncodeTensorToByteBuffer(is_dead, val, response);
+              grpc::EncodeTensorToByteBuffer(is_dead, val, false, response);
               done(Status::OK());
             }
           }
@@ -156,11 +156,13 @@ void GdrWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
     done(s);
     return;
   }
+
   CollectiveExecutor::Handle ce_handle(
       env_->collective_executor_mgr->FindOrCreate(request->step_id()), true);
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();
   rma->buf_rendezvous()->ConsumeBuf(
-      request->buf_rendezvous_key(),
+      request->buf_rendezvous_key(), request->src_device(),
+      request->src_incarnation(),
       [this, request, response, done](const Status& status,
                                       BufRendezvous::Hook* hook) {
         Status s = status;

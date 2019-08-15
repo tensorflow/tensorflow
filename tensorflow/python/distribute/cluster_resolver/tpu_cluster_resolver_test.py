@@ -25,8 +25,9 @@ from six.moves.urllib.error import URLError
 
 from tensorflow.python import eager
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -68,13 +69,11 @@ def mock_request_compute_metadata(cls, *args, **kwargs):
   return ''
 
 
-def mock_is_running_in_gce(cls, *args, **kwargs):
-  del cls, args, kwargs  # Unused.
+def mock_is_running_in_gce():
   return True
 
 
-def mock_is_not_running_in_gce(cls, *args, **kwargs):
-  del cls, args, kwargs  # Unused.
+def mock_is_not_running_in_gce():
   return False
 
 
@@ -131,28 +130,26 @@ class TPUClusterResolverTest(test.TestCase):
 
     return mock_client
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_isRunningInGCE',
+  @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_running_in_gce)
   def testCheckRunningInGceWithNoTpuName(self):
     with self.assertRaisesRegexp(RuntimeError, '.*Google Cloud.*'):
-      TPUClusterResolver(tpu='')
+      resolver.TPUClusterResolver(tpu='')
 
   @mock.patch.object(six.moves.urllib.request,
                      'urlopen',
                      mock_running_in_gce_urlopen)
   def testIsRunningInGce(self):
-    self.assertTrue(TPUClusterResolver._isRunningInGCE())
+    self.assertTrue(resolver.is_running_in_gce())
 
   @mock.patch.object(six.moves.urllib.request,
                      'urlopen',
                      mock_not_running_in_gce_urlopen)
   def testIsNotRunningInGce(self):
-    self.assertFalse(TPUClusterResolver._isRunningInGCE())
+    self.assertFalse(resolver.is_running_in_gce())
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
-                     mock_request_compute_metadata)
+  @mock.patch.object(resolver.TPUClusterResolver,
+                     '_request_compute_metadata', mock_request_compute_metadata)
   def testRetrieveProjectAndZoneFromMetadata(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
@@ -162,7 +159,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project=None,
         zone=None,
         tpu=['test-tpu-1'],
@@ -170,7 +167,7 @@ class TPUClusterResolverTest(test.TestCase):
         service=self.mock_service_client(tpu_map=tpu_map),
         coordinator_name='coordinator')
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job {
       name: 'coordinator'
@@ -180,13 +177,12 @@ class TPUClusterResolverTest(test.TestCase):
       name: 'worker'
       tasks { key: 0 value: '10.1.2.3:8470' }
     }
-    """ % resolver._coordinator_port
+    """ % cluster_resolver._coordinator_port
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
-    self.assertEqual(resolver.master(), 'grpc://10.1.2.3:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
-                     mock_request_compute_metadata)
+  @mock.patch.object(resolver.TPUClusterResolver,
+                     '_request_compute_metadata', mock_request_compute_metadata)
   def testRetrieveProjectAndZoneFromMetadataNoCoordinator(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
@@ -196,7 +192,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project=None,
         zone=None,
         tpu=['test-tpu-1'],
@@ -204,16 +200,15 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job { name: 'worker' tasks { key: 0 value: '10.1.2.3:8470' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    self.assertEqual(resolver.master(), 'grpc://10.1.2.3:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
-                     mock_request_compute_metadata)
+  @mock.patch.object(resolver.TPUClusterResolver,
+                     '_request_compute_metadata', mock_request_compute_metadata)
   def testNotReadyCloudTpu(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
@@ -223,7 +218,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project=None,
         zone=None,
         tpu='test-tpu-1',
@@ -232,7 +227,7 @@ class TPUClusterResolverTest(test.TestCase):
         service=self.mock_service_client(tpu_map=tpu_map))
 
     with self.assertRaises(RuntimeError):
-      resolver.cluster_spec()
+      cluster_resolver.cluster_spec()
 
   def testSimpleSuccessfulRetrieval(self):
     tpu_map = {
@@ -243,7 +238,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project='test-project',
         zone='us-central1-c',
         tpu=['test-tpu-1'],
@@ -252,13 +247,36 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job { name: 'coordinator' tasks { key: 0 value: '10.128.1.5:10203' } }
     job { name: 'worker' tasks { key: 0 value: '10.1.2.3:8470' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    self.assertEqual(resolver.master(), 'grpc://10.1.2.3:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
+
+  def testFailedMetadata(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'HEALTHY'
+        }
+    }
+
+    cluster_resolver = resolver.TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu='nonexistent-tpu',
+        coordinator_name='coordinator',
+        coordinator_address='10.128.1.5:10203',
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    with self.assertRaises(ValueError) as context:
+      cluster_resolver.cluster_spec()
+
+    self.assertIn('Could not lookup TPU metadata', str(context.exception))
 
   def testNewNetworkEndpointFormat(self):
     tpu_map = {
@@ -271,7 +289,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project='test-project',
         zone='us-central1-c',
         tpu='test-tpu-1',
@@ -280,17 +298,16 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job { name: 'coordinator' tasks { key: 0 value: '10.128.1.5:10203' } }
     job { name: 'worker' tasks { key: 0 value: '10.2.3.4:8470' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    self.assertEqual('grpc://10.2.3.4:8470', resolver.master())
+    self.assertEqual('grpc://10.2.3.4:8470', cluster_resolver.master())
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
-                     mock_request_compute_metadata)
+  @mock.patch.object(resolver.TPUClusterResolver,
+                     '_request_compute_metadata', mock_request_compute_metadata)
   def testPodResolution(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
@@ -317,13 +334,13 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         tpu='test-tpu-1',
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map),
         coordinator_name='coordinator')
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job {
       name: 'coordinator',
@@ -336,9 +353,9 @@ class TPUClusterResolverTest(test.TestCase):
       tasks { key: 2 value: '10.2.3.6:8470' }
       tasks { key: 3 value: '10.2.3.7:8470' }
     }
-    """ % resolver._coordinator_port
+    """ % cluster_resolver._coordinator_port
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
-    self.assertEqual(resolver.master(), 'grpc://10.2.3.4:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.2.3.4:8470')
 
   def testPodResolutionNoCoordinator(self):
     tpu_map = {
@@ -366,7 +383,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project='test-project',
         zone='us-central1-c',
         tpu='test-tpu-1',
@@ -374,7 +391,7 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    actual_cluster_spec = resolver.cluster_spec()
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job {
       name: 'worker'
@@ -385,13 +402,13 @@ class TPUClusterResolverTest(test.TestCase):
     }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    self.assertEqual(resolver.master(), 'grpc://10.2.3.4:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.2.3.4:8470')
 
   def testGetMasterNoEntries(self):
     tpu_map = {}
 
     with self.assertRaises(ValueError):
-      TPUClusterResolver(
+      resolver.TPUClusterResolver(
           project='test-project',
           zone='us-central1-c',
           tpu=[],
@@ -401,18 +418,17 @@ class TPUClusterResolverTest(test.TestCase):
 
   # TODO(saeta): Convert to parameterized test when included in OSS TF.
   def verifyShouldResolve(self, tpu, should_resolve):
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project='test-project',
         zone='us-central1-c',
         tpu=tpu,
         coordinator_name=None,
         credentials=None,
         service=self.mock_service_client(tpu_map={}))
-    self.assertEqual(should_resolve, resolver._shouldResolve(),
+    self.assertEqual(should_resolve, cluster_resolver._should_resolve(),
                      "TPU: '%s'" % tpu)
 
-  @mock.patch.object(TPUClusterResolver,
-                     '_isRunningInGCE',
+  @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_not_running_in_gce)
   def testShouldResolveNoName(self):
     self.verifyShouldResolve('', False)
@@ -439,29 +455,36 @@ class TPUClusterResolverTest(test.TestCase):
     self.verifyShouldResolve('grpctpu', True)
 
   def testNoCallComputeMetadata(self):
-    resolver = TPUClusterResolver(
-        tpu='/bns/foo/bar')
-    self.assertEqual('/bns/foo/bar', resolver.master())
-    self.assertEqual(None, resolver.cluster_spec())
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/foo/bar')
+    self.assertEqual('/bns/foo/bar', cluster_resolver.master())
+    if ops.executing_eagerly_outside_functions():
+      self.assertEqual(
+          server_lib.ClusterSpec({
+              'worker': ['/bns/foo/bar']
+          }).as_dict(),
+          cluster_resolver.cluster_spec().as_dict())
+    else:
+      self.assertEqual(None, cluster_resolver.cluster_spec())
 
   def testLocalhostMaster(self):
-    resolver = TPUClusterResolver(tpu='localhost:12345')
-    self.assertEqual('localhost:12345', resolver.master())
+    cluster_resolver = resolver.TPUClusterResolver(tpu='localhost:12345')
+    self.assertEqual('localhost:12345', cluster_resolver.master())
 
   def testGkeEnvironmentForDonut(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
 
     self.assertIn('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS', os.environ)
-    self.assertTrue(TPUClusterResolver._inGke())
+    self.assertTrue(resolver.TPUClusterResolver._in_gke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(TPUClusterResolver._gkeEndpoints()))
+        compat.as_bytes(
+            resolver.TPUClusterResolver._gke_endpoints()))
 
-    resolver = TPUClusterResolver()
+    cluster_resolver = resolver.TPUClusterResolver()
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(resolver.master()))
-    actual_cluster_spec = resolver.cluster_spec()
+        compat.as_bytes(cluster_resolver.master()))
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job {
       name: 'worker'
@@ -479,19 +502,20 @@ class TPUClusterResolverTest(test.TestCase):
                                                      'grpc://10.120.27.8:8470')
 
     self.assertIn('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS', os.environ)
-    self.assertTrue(TPUClusterResolver._inGke())
+    self.assertTrue(resolver.TPUClusterResolver._in_gke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470,'
                         'grpc://10.120.27.6:8470,'
                         'grpc://10.120.27.7:8470,'
                         'grpc://10.120.27.8:8470'),
-        compat.as_bytes(TPUClusterResolver._gkeEndpoints()))
+        compat.as_bytes(
+            resolver.TPUClusterResolver._gke_endpoints()))
 
-    resolver = TPUClusterResolver()
+    cluster_resolver = resolver.TPUClusterResolver()
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(resolver.master()))
-    actual_cluster_spec = resolver.cluster_spec()
+        compat.as_bytes(cluster_resolver.master()))
+    actual_cluster_spec = cluster_resolver.cluster_spec()
     expected_proto = """
     job {
       name: 'worker'
@@ -507,22 +531,35 @@ class TPUClusterResolverTest(test.TestCase):
 
   def testEnvironmentDiscoveryUrl(self):
     os.environ['TPU_API_DISCOVERY_URL'] = 'https://{api}.internal/{apiVersion}'
-    self.assertEqual('https://{api}.internal/{apiVersion}',
-                     (TPUClusterResolver.
-                      _environmentDiscoveryUrl()))
+    self.assertEqual(
+        'https://{api}.internal/{apiVersion}',
+        (resolver.TPUClusterResolver._environment_discovery_url()))
 
   def testEnvironmentAndRpcDetectionForGoogle(self):
-    resolver = TPUClusterResolver(
-        tpu='/bns/ab/cd/ef')
-    self.assertEqual(resolver.environment, 'google')
-    self.assertEqual(resolver.rpc_layer, None)
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNumericalPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:1234')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNamedPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:port')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu,
+                     compat.as_bytes('/bns/ab/cd/ef:port'))
 
   def testEnvironmentAndRpcDetectionForGrpcString(self):
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         tpu='grpc://10.1.2.3:8470')
-    self.assertEqual(resolver.environment, '')
-    self.assertEqual(resolver.rpc_layer, 'grpc')
-    self.assertEqual(resolver.master(), 'grpc://10.1.2.3:8470')
+    self.assertEqual(cluster_resolver.environment, '')
+    self.assertEqual(cluster_resolver.rpc_layer, 'grpc')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
 
   def testOverrideTaskTypeAndIndexAndGetMaster(self):
     tpu_map = {
@@ -550,7 +587,7 @@ class TPUClusterResolverTest(test.TestCase):
         }
     }
 
-    resolver = TPUClusterResolver(
+    cluster_resolver = resolver.TPUClusterResolver(
         project='test-project',
         zone='us-central1-c',
         tpu='test-tpu-1',
@@ -558,14 +595,14 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    self.assertEqual(resolver.master(), 'grpc://10.2.3.4:8470')
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.2.3.4:8470')
 
-    resolver.task_type = 'worker'
-    resolver.task_id = 3
-    self.assertEqual(resolver.master(), 'grpc://10.2.3.7:8470')
+    cluster_resolver.task_type = 'worker'
+    cluster_resolver.task_id = 3
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.2.3.7:8470')
 
     self.assertEqual(
-        resolver.master(
+        cluster_resolver.master(
             task_type='worker', task_id=2, rpc_layer='test'),
         'test://10.2.3.6:8470')
 
@@ -585,7 +622,7 @@ class TPUClusterResolverTest(test.TestCase):
             name, 'TPU', 1024, 0) for name in device_names
     ]
 
-    device_details = TPUClusterResolver._get_device_dict_and_cores(
+    device_details = resolver.TPUClusterResolver._get_device_dict_and_cores(
         device_list)
     self.assertEqual(device_details.total_cores, 8)
     self.assertEqual(device_details.device_map,
@@ -610,26 +647,31 @@ class TPUClusterResolverTest(test.TestCase):
             name, 'XLA', 1024, 0) for name in device_names
     ]
 
-    device_dict, num_cores = TPUClusterResolver._get_device_dict_and_cores(
-        device_list)
+    device_dict, num_cores =\
+        resolver.TPUClusterResolver._get_device_dict_and_cores(device_list)
     self.assertEqual(num_cores, 0)
     self.assertEqual(device_dict, {})
 
   def testVerifySameCoreCount(self):
     self.assertEqual(
-        TPUClusterResolver._verify_and_return_same_core_count(
-            {0: [0, 1, 2, 3, 4, 5, 6, 7]}), 8)
+        resolver.TPUClusterResolver
+        ._verify_and_return_same_core_count({0: [0, 1, 2, 3, 4, 5, 6, 7]}), 8)
     self.assertEqual(
-        TPUClusterResolver._verify_and_return_same_core_count(
-            {0: [0, 1], 1: [2, 3]}), 2)
+        resolver.TPUClusterResolver
+        ._verify_and_return_same_core_count({
+            0: [0, 1],
+            1: [2, 3]
+        }), 2)
     with self.assertRaises(RuntimeError):
-      TPUClusterResolver._verify_and_return_same_core_count(
-          {0: [0], 1: [1, 2]})
+      resolver.TPUClusterResolver._verify_and_return_same_core_count(
+          {
+              0: [0],
+              1: [1, 2]
+          })
 
   @mock.patch.object(eager.context, 'list_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
-  @mock.patch.object(TPUClusterResolver,
-                     '_isRunningInGCE',
+  @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_not_running_in_gce)
   def testNumAcceleratorsSuccess(self, mock_list_devices,
                                  mock_eager_list_devices):
@@ -650,23 +692,22 @@ class TPUClusterResolverTest(test.TestCase):
     mock_eager_list_devices.return_value = device_names
     mock_list_devices.return_value = device_list
 
-    resolver = TPUClusterResolver(tpu='')
-    self.assertEqual(resolver.num_accelerators(), {'TPU': 2})
+    cluster_resolver = resolver.TPUClusterResolver(tpu='')
+    self.assertEqual(cluster_resolver.num_accelerators(), {'TPU': 2})
 
   @mock.patch.object(eager.context, 'list_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
-  @mock.patch.object(TPUClusterResolver,
-                     '_isRunningInGCE',
+  @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_not_running_in_gce)
   def testNumAcceleratorsRetryFailure(self, mock_list_devices,
                                       mock_eager_list_devices):
-    resolver = TPUClusterResolver(tpu='')
+    cluster_resolver = resolver.TPUClusterResolver(tpu='')
     mock_list_devices.side_effect = errors.DeadlineExceededError(
         None, None, 'timeout')
     mock_eager_list_devices.side_effect = errors.DeadlineExceededError(
         None, None, 'timeout')
     with self.assertRaises(RuntimeError):
-      resolver.num_accelerators()
+      cluster_resolver.num_accelerators()
 
 
 if __name__ == '__main__':

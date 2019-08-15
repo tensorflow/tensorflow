@@ -29,6 +29,7 @@ from tensorflow.contrib.boosted_trees.python.utils import losses
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.feature_column import feature_column_lib as core_feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -170,6 +171,38 @@ class GbdtTest(test_util.TensorFlowTestCase):
                           features["sparse_float"].values.eval())
       self.assertAllEqual(sparse_float_shapes[0].eval(),
                           features["sparse_float"].dense_shape.eval())
+      self.assertAllEqual(sparse_int_indices[0].eval(),
+                          features["sparse_categorical"].indices.eval())
+      self.assertAllEqual(sparse_int_values[0].eval(), [397263, 397263])
+      self.assertAllEqual(sparse_int_shapes[0].eval(),
+                          features["sparse_categorical"].dense_shape.eval())
+
+  def testExtractFeaturesFromV2FeatureColumns(self):
+    """Tests feature extraction when using v2 columns."""
+    with self.cached_session():
+      features = {}
+      features["dense_float"] = array_ops.zeros([2, 1], dtypes.float32)
+      features["sparse_categorical"] = sparse_tensor.SparseTensor(
+          array_ops.zeros([2, 2], dtypes.int64),
+          array_ops.zeros([2], dtypes.string), array_ops.zeros([2],
+                                                               dtypes.int64))
+      feature_columns = set()
+      feature_columns.add(feature_column_v2.numeric_column("dense_float"))
+      feature_columns.add(
+          feature_column_v2.categorical_column_with_hash_bucket(
+              "sparse_categorical", hash_bucket_size=1000000))
+      (fc_names, dense_floats, _, _, _, sparse_int_indices, sparse_int_values,
+       sparse_int_shapes) = (
+           gbdt_batch.extract_features(
+               features, feature_columns, use_core_columns=True))
+      self.assertEqual(len(fc_names), 2)
+      self.assertAllEqual(fc_names, ["dense_float", "sparse_categorical"])
+      self.assertEqual(len(dense_floats), 1)
+      self.assertEqual(len(sparse_int_indices), 1)
+      self.assertEqual(len(sparse_int_values), 1)
+      self.assertEqual(len(sparse_int_shapes), 1)
+      self.assertAllEqual(dense_floats[0].eval(),
+                          features["dense_float"].eval())
       self.assertAllEqual(sparse_int_indices[0].eval(),
                           features["sparse_categorical"].indices.eval())
       self.assertAllEqual(sparse_int_values[0].eval(), [397263, 397263])
@@ -1149,9 +1182,9 @@ class GbdtTest(test_util.TensorFlowTestCase):
       expected_leaf_1 = [-3.4480, -3.4429, 13.8490, -3.45, -3.4508]
       expected_leaf_2 = [-1.2547, -1.3145, 1.52, 2.3875, -1.3264]
       self.assertArrayNear(expected_leaf_1,
-                           output.trees[0].nodes[1].leaf.vector.value, 3e-3)
+                           output.trees[0].nodes[1].leaf.vector.value, 7e-3)
       self.assertArrayNear(expected_leaf_2,
-                           output.trees[0].nodes[2].leaf.vector.value, 3e-3)
+                           output.trees[0].nodes[2].leaf.vector.value, 7e-3)
 
   def testTrainFnMulticlassDiagonalHessian(self):
     """Tests the GBDT train for multiclass diagonal hessian."""

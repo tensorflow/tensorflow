@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "nnapi_lib",
@@ -10,13 +11,25 @@ cc_library(
         "NeuralNetworksShim.h",
         "NeuralNetworksTypes.h",
     ],
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:emscripten": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
 )
 
 cc_library(
     name = "nnapi_implementation",
     srcs = select({
+        "//tensorflow:emscripten": [
+            "nnapi_implementation_disabled.cc",
+        ],
         "//tensorflow:ios": [
+            "nnapi_implementation_disabled.cc",
+        ],
+        "//tensorflow:macos": [
             "nnapi_implementation_disabled.cc",
         ],
         "//tensorflow:windows": [
@@ -29,10 +42,17 @@ cc_library(
     hdrs = [
         "nnapi_implementation.h",
     ],
-    linkopts = ["-ldl"] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:macos": [],
+    linkopts = select({
+        "//tensorflow:emscripten": [],
         "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:emscripten": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-lrt"],
     }),

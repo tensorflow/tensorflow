@@ -346,7 +346,7 @@ we can both ensure that each layer uses the same values and simplify the code:
   with slim.arg_scope([slim.conv2d], padding='SAME',
                       weights_initializer=tf.truncated_normal_initializer(stddev=0.01)
                       weights_regularizer=slim.l2_regularizer(0.0005)):
-    net = slim.conv2d(inputs, 64, [11, 11], scope='conv1')
+    net = slim.conv2d(inputs, 64, [11, 11], 4, scope='conv1')
     net = slim.conv2d(net, 128, [11, 11], padding='VALID', scope='conv2')
     net = slim.conv2d(net, 256, [11, 11], scope='conv3')
 ```
@@ -681,11 +681,11 @@ name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:
 
 ```python
-# Assuming than 'conv1/weights' should be restored from 'vgg16/conv1/weights'
+# Assuming that 'conv1/weights' should be restored from 'vgg16/conv1/weights'
 def name_in_checkpoint(var):
   return 'vgg16/' + var.op.name
 
-# Assuming than 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
+# Assuming that 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
 def name_in_checkpoint(var):
   if "weights" in var.op.name:
     return var.op.name.replace("weights", "params1")

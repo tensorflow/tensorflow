@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -86,7 +87,11 @@ extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
 extern const char* const kKeyValueSortSymbolName =
     "__xla_cpu_runtime_KeyValueSort";
+extern const char* const kTracingStartSymbolName =
+    "__xla_cpu_runtime_TracingStart";
+extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
+
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
@@ -103,6 +108,24 @@ tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
 }
 
 }  // namespace
+
+extern "C" {
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    const char* name) {
+  VLOG(3) << "TracingStart " << name;
+  return tensorflow::profiler::TraceMe::ActivityStart(name);
+}
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    xla::int64 id) {
+  VLOG(3) << "TracingEnd " << id;
+  tensorflow::profiler::TraceMe::ActivityEnd(id);
+}
+
+}  // extern "C"
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
 __xla_cpu_runtime_AcquireInfeedBufferForDequeue(

@@ -113,11 +113,12 @@ class TrainingGPUTest(test.TestCase):
 
         K.set_image_data_format(old_data_format)
 
-        np.testing.assert_allclose(loss_channels_first,
-                                   loss_channels_last,
-                                   err_msg='{}{}'.format(
-                                       'Computed different losses for ',
-                                       'channels_first and channels_last'))
+        np.testing.assert_allclose(
+            loss_channels_first,
+            loss_channels_last,
+            rtol=1e-06,
+            err_msg='{}{}'.format('Computed different losses for ',
+                                  'channels_first and channels_last'))
 
 
 if __name__ == '__main__':

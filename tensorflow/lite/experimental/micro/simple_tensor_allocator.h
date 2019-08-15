@@ -27,14 +27,15 @@ namespace tflite {
 // This makes it pretty wasteful, so we should use a more intelligent method.
 class SimpleTensorAllocator {
  public:
-  SimpleTensorAllocator(uint8_t* buffer, int buffer_size)
+  SimpleTensorAllocator(uint8_t* buffer, size_t buffer_size)
       : data_size_(0), data_size_max_(buffer_size), data_(buffer) {}
 
   TfLiteStatus AllocateTensor(
       const tflite::Tensor& flatbuffer_tensor, int create_before,
       int destroy_after,
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-      ErrorReporter* error_reporter, TfLiteTensor* result);
+      ErrorReporter* error_reporter, TfLiteTensor* result,
+      uint8_t* preallocated_memory = nullptr);
 
   uint8_t* AllocateMemory(size_t size, size_t alignment);
 
@@ -42,7 +43,7 @@ class SimpleTensorAllocator {
 
  private:
   int data_size_;
-  int data_size_max_;
+  size_t data_size_max_;
   uint8_t* data_;
 };
 

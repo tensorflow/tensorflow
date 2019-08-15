@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu
 
-_PINGING_MASTER_TIMEOUT_IN_MS = 60 * 1000  # 1 min
-_RETRY_TIMES = 120
+_PINGING_MASTER_TIMEOUT_IN_MS = 5 * 60 * 1000  # 10 min
+_RETRY_TIMES = 12 * 24  # 1 day
 _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS = 300 * 1000  # 5 mins
 
 _TPU_DEVICE_REG = re.compile(r'.*task:(\d+)/.*device:TPU:(\d+)$')

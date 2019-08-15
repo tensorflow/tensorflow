@@ -15,11 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/string.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/core/framework/allocation_description.pb.h"
-#include "tensorflow/core/framework/log_memory.h"
 
 namespace tflite {
 namespace flex {
@@ -99,23 +100,28 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 
   ~StringTfLiteTensorBuffer() override {
     LogDeallocation();
-    tensorflow::cpu_allocator()->Deallocate<string>(
-        static_cast<string*>(data()), num_strings_);
+    tensorflow::TypedAllocator::Deallocate<tensorflow::tstring>(
+        tensorflow::cpu_allocator(), static_cast<tensorflow::tstring*>(data()),
+        num_strings_);
   }
 
-  size_t size() const override { return num_strings_ * sizeof(string); }
+  size_t size() const override {
+    return num_strings_ * sizeof(tensorflow::tstring);
+  }
 
  private:
   StringTfLiteTensorBuffer(const TfLiteTensor* tensor, int num_strings)
       : BaseTfLiteTensorBuffer(
             num_strings != 0
-                ? tensorflow::cpu_allocator()->Allocate<string>(num_strings)
+                ? tensorflow::TypedAllocator::Allocate<tensorflow::tstring>(
+                      tensorflow::cpu_allocator(), num_strings,
+                      tensorflow::AllocationAttributes())
                 : nullptr),
         num_strings_(num_strings) {
     LogAllocation();
 
     if (data()) {
-      string* p = static_cast<string*>(data());
+      tensorflow::tstring* p = static_cast<tensorflow::tstring*>(data());
       for (size_t i = 0; i < num_strings_; ++p, ++i) {
         auto ref = GetString(tensor->data.raw, i);
         p->assign(ref.str, ref.len);

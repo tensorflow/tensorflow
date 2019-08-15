@@ -156,11 +156,11 @@ class Constant(Initializer):
     >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
     >>> # value = np.array(value)
     >>> # value = value.reshape([2, 4])
-    >>> init = tf.constant_initializer(value)
+    >>> init = tf.compat.v1.constant_initializer(value)
 
     >>> print('fitting shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
     >>>   x.initializer.run()
     >>>   print(x.eval())
 
@@ -169,8 +169,8 @@ class Constant(Initializer):
      [ 4.  5.  6.  7.]]
 
     >>> print('larger shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
     >>>   x.initializer.run()
     >>>   print(x.eval())
 
@@ -180,8 +180,8 @@ class Constant(Initializer):
      [ 7.  7.  7.  7.]]
 
     >>> print('smaller shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
+    >>> with tf.compat.v1.Session():
+    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
   ```
@@ -225,7 +225,7 @@ class RandomUniform(Initializer):
     maxval: A python scalar or a scalar tensor. Upper bound of the range
       of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -270,7 +270,7 @@ class RandomNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -317,7 +317,7 @@ class TruncatedNormal(Initializer):
     stddev: a python scalar or a scalar tensor. Standard deviation of the
       random values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
   """
 
@@ -371,7 +371,7 @@ class VarianceScaling(Initializer):
     distribution: Random distribution to use. One of "truncated_normal",
       "untruncated_normal" and  "uniform".
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
 
   Raises:
@@ -389,6 +389,9 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
+    # Compatibility with keras-team/keras.
+    if distribution == "normal":
+      distribution = "truncated_normal"
     if distribution not in {"uniform", "truncated_normal",
                             "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)
@@ -459,7 +462,7 @@ class Orthogonal(Initializer):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
     for behavior.
 
   References:
@@ -561,7 +564,7 @@ class GlorotUniform(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
+      `tf.compat.v1.set_random_seed`
       for behavior.
 
   References:
@@ -590,7 +593,7 @@ class GlorotNormal(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
@@ -633,10 +636,10 @@ def lecun_normal(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -659,10 +662,10 @@ def lecun_uniform(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       - Self-Normalizing Neural Networks,
@@ -683,10 +686,10 @@ def he_normal(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long
@@ -704,10 +707,10 @@ def he_uniform(seed=None):
   where `fan_in` is the number of input units in the weight tensor.
 
   Arguments:
-      seed: A Python integer. Used to seed the random generator.
+    seed: A Python integer. Used to seed the random generator.
 
   Returns:
-      An initializer.
+    An initializer.
 
   References:
       [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html) # pylint: disable=line-too-long

@@ -116,6 +116,9 @@ class XlaCompiler {
 
       // Argument is an XLA token.
       kToken,
+
+      // Argument is a TensorList.
+      kTensorList,
     };
 
     Kind kind = kInvalid;
@@ -162,6 +165,9 @@ class XlaCompiler {
     // dynamic dims to arg number map. Empty if no dynamic shapes.
     std::map<int32, int32> dynamic_dim_to_arg_num_map;
     bool is_pad_arg = false;
+
+    // Whether this argument will receive the same data across all replicas.
+    bool is_same_data_across_replicas = false;
 
     bool operator==(const Argument& other) const;
 
@@ -223,6 +229,9 @@ class XlaCompiler {
     // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
     // the index of the input that contains the resource.
     int input_index;
+
+    // Whether this output is a TensorList.
+    bool is_tensor_list = false;
   };
 
   // Describes a variable write side effect of the computation.
@@ -302,6 +311,12 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
+    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
+    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
+    // function accepting the input, min, max, num_bits, and narrow_range values
+    // as runtime arguments.
+    bool custom_fake_quant_op_calls = false;
+
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
@@ -324,7 +339,7 @@ class XlaCompiler {
     // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
-    xla::DeviceMemoryAllocator* device_allocator = nullptr;
+    se::DeviceMemoryAllocator* device_allocator = nullptr;
   };
 
   explicit XlaCompiler(Options options);
@@ -431,7 +446,7 @@ class XlaCompiler {
                         const std::vector<XlaCompiler::Argument>& args,
                         bool use_tuple_arg, xla::XlaBuilder* builder,
                         XlaContext* context,
-                        const std::map<int, int>& arg_cores,
+                        const std::map<int, xla::OpSharding>& arg_shardings,
                         std::vector<XlaExpression>* arg_expressions,
                         std::vector<int>* input_to_args,
                         std::vector<xla::Shape>* input_shapes,

@@ -26,6 +26,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+struct TfLiteDelegate;
+
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 namespace ops {
@@ -73,6 +75,9 @@ class InterpreterWrapper {
   PyObject* tensor(PyObject* base_object, int i);
 
   PyObject* SetNumThreads(int i);
+
+  // Adds a delegate to the interpreter.
+  PyObject* ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
  private:
   // Helper function to construct an `InterpreterWrapper` object.

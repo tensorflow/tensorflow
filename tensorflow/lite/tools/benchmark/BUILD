@@ -1,13 +1,13 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_copts = ["-Wall"] + tflite_copts()
 
@@ -31,6 +31,26 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
+        ":benchmark_tflite_model_lib",
+        ":logging",
+    ],
+)
+
+cc_binary(
+    name = "benchmark_model_performance_options",
+    srcs = [
+        "benchmark_tflite_performance_options_main.cc",
+    ],
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         ":logging",
     ],
@@ -70,31 +90,9 @@ cc_test(
     ],
     deps = [
         ":benchmark_tflite_model_lib",
-        ":command_line_flags",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "command_line_flags",
-    srcs = ["command_line_flags.cc"],
-    hdrs = ["command_line_flags.h"],
-    copts = common_copts,
-)
-
-cc_test(
-    name = "command_line_flags_test",
-    srcs = ["command_line_flags_test.cc"],
-    copts = common_copts,
-    tags = [
-        "tflite_not_portable_ios",  # TODO(b/117786830)
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":command_line_flags",
-        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -109,13 +107,39 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools/evaluation:utils",
         "@gemmlowp",
     ],
+)
+
+cc_library(
+    name = "benchmark_performance_options",
+    srcs = [
+        "benchmark_performance_options.cc",
+    ],
+    hdrs = ["benchmark_performance_options.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":benchmark_utils",
+        ":logging",
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:gl_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -137,11 +161,36 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_params",
-        ":command_line_flags",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "benchmark_utils",
+    srcs = [
+        "benchmark_utils.cc",
+    ],
+    hdrs = ["benchmark_utils.h"],
+    copts = common_copts,
+    deps = ["//tensorflow/lite/profiling:time"],
+)
+
+cc_test(
+    name = "benchmark_utils_test",
+    srcs = [
+        "benchmark_utils_test.cc",
+    ],
+    copts = common_copts,
+    deps = [
+        ":benchmark_utils",
+        "//tensorflow/lite/profiling:time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

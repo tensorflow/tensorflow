@@ -28,11 +28,13 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyMatMul(const NodeDef& node);
 bool IsAnyMax(const NodeDef& node);
 bool IsAnyMaxPool(const NodeDef& node);
 bool IsAnyMin(const NodeDef& node);
 bool IsAnyMul(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
+bool IsArg(const NodeDef& node);
 bool IsArgMax(const NodeDef& node);
 bool IsArgMin(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
@@ -65,6 +67,7 @@ bool IsDequeueOp(const NodeDef& node);
 bool IsDiv(const NodeDef& node);
 bool IsDivNoNan(const NodeDef& node);
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing);
+bool IsElu(const NodeDef& node);
 bool IsEluGrad(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
 bool IsEqual(const NodeDef& node);
@@ -75,6 +78,7 @@ bool IsFill(const NodeDef& node);
 bool IsFloorDiv(const NodeDef& node);
 bool IsFloorMod(const NodeDef& node);
 bool IsFusedBatchNorm(const NodeDef& node);
+bool IsFusedBatchNormEx(const NodeDef& node);
 bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
@@ -95,6 +99,7 @@ bool IsLog(const NodeDef& node);
 bool IsLogicalAnd(const NodeDef& node);
 bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
+bool IsLoopCond(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsMax(const NodeDef& node);
 bool IsMaxPoolGrad(const NodeDef& node);
@@ -133,10 +138,12 @@ bool IsReciprocalGrad(const NodeDef& node);
 bool IsRecv(const NodeDef& node);
 bool IsReduction(const NodeDef& node);
 bool IsRelu(const NodeDef& node);
+bool IsRelu6(const NodeDef& node);
 bool IsRelu6Grad(const NodeDef& node);
 bool IsReluGrad(const NodeDef& node);
 bool IsReshape(const NodeDef& node);
 bool IsRestore(const NodeDef& node);
+bool IsRetval(const NodeDef& node);
 bool IsReverse(const NodeDef& node);
 bool IsReverseV2(const NodeDef& node);
 bool IsRsqrt(const NodeDef& node);
@@ -210,9 +217,9 @@ bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);
 bool IsFreeOfSideEffect(const NodeDef& node);  // use OpRegistry::Global()
 
-// Returns true if the takes a tensor reference as input, or if looking up its
-// OpDef failed.
-bool MaybeHasRefInput(const NodeDef& node);
+// Returns true if the takes a tensor reference as input.
+// Returns false if the op type is unknown.
+bool HasRefInput(const NodeDef& node);
 
 bool ModifiesFrameInfo(const NodeDef& node);
 

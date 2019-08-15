@@ -27,6 +27,7 @@
 #include "tensorflow/core/kernels/boosted_trees/quantiles/weighted_quantiles_stream.h"
 #include "tensorflow/core/kernels/boosted_trees/quantiles/weighted_quantiles_summary.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -214,6 +215,66 @@ REGISTER_KERNEL_BUILDER(
     Name("BoostedTreesMakeQuantileSummaries").Device(DEVICE_CPU),
     BoostedTreesMakeQuantileSummariesOp);
 
+class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
+ public:
+  explicit BoostedTreesFlushQuantileSummariesOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
+  }
+
+  void Compute(OpKernelContext* const context) override {
+    ResourceHandle handle;
+    OP_REQUIRES_OK(context,
+                   HandleFromInput(context, kResourceHandleName, &handle));
+    core::RefCountPtr<QuantileStreamResource> stream_resource;
+    OP_REQUIRES_OK(context, LookupResource(context, handle, &stream_resource));
+    // Remove the reference at the end of this scope.
+    mutex_lock l(*stream_resource->mutex());
+
+    OpOutputList summaries_output_list;
+    OP_REQUIRES_OK(
+        context, context->output_list(kSummariesName, &summaries_output_list));
+
+    auto do_quantile_summary_gen = [&](const int64 begin, const int64 end) {
+      // Iterating features.
+      for (int64 index = begin; index < end; index++) {
+        QuantileStream* stream = stream_resource->stream(index);
+        stream->Finalize();
+
+        const auto summary_list = stream->GetFinalSummary().GetEntryList();
+        Tensor* output_t;
+        const int64 summary_list_size = static_cast<int64>(summary_list.size());
+        OP_REQUIRES_OK(context, summaries_output_list.allocate(
+                                    index, TensorShape({summary_list_size, 4}),
+                                    &output_t));
+        auto output = output_t->matrix<float>();
+        for (auto row = 0; row < summary_list_size; row++) {
+          const auto& entry = summary_list[row];
+          output(row, 0) = entry.value;
+          output(row, 1) = entry.weight;
+          output(row, 2) = entry.min_rank;
+          output(row, 3) = entry.max_rank;
+        }
+      }
+    };
+    // TODO(tanzheny): comment on the magic number.
+    const int64 kCostPerUnit = 500 * num_features_;
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *context->device()->tensorflow_cpu_worker_threads();
+    Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
+          kCostPerUnit, do_quantile_summary_gen);
+    stream_resource->ResetStreams();
+  }
+
+ private:
+  int64 num_features_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("BoostedTreesFlushQuantileSummaries").Device(DEVICE_CPU),
+    BoostedTreesFlushQuantileSummariesOp);
+
 class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
  public:
   explicit BoostedTreesQuantileStreamResourceAddSummariesOp(
@@ -224,12 +285,11 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(context,
                    HandleFromInput(context, kResourceHandleName, &handle));
-    QuantileStreamResource* stream_resource;
+    core::RefCountPtr<QuantileStreamResource> stream_resource;
     // Create a reference to the underlying resource using the handle.
     OP_REQUIRES_OK(context, LookupResource(context, handle, &stream_resource));
     // Remove the reference at the end of this scope.
     mutex_lock l(*stream_resource->mutex());
-    core::ScopedUnref unref_me(stream_resource);
 
     OpInputList summaries_list;
     OP_REQUIRES_OK(context,
@@ -240,6 +300,12 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     auto do_quantile_add_summary = [&](const int64 begin, const int64 end) {
       // Iterating all features.
       for (int64 feature_idx = begin; feature_idx < end; ++feature_idx) {
+        QuantileStream* stream = stream_resource->stream(feature_idx);
+        if (stream->IsFinalized()) {
+          VLOG(1) << "QuantileStream has already been finalized for feature"
+                  << feature_idx << ".";
+          continue;
+        }
         const Tensor& summaries = summaries_list[feature_idx];
         const auto summary_values = summaries.matrix<float>();
         const auto& tensor_shape = summaries.shape();
@@ -281,13 +347,12 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    QuantileStreamResource* streams_resource;
+    core::RefCountPtr<QuantileStreamResource> streams_resource;
     // Create a reference to the underlying resource using the handle.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &streams_resource));
     // Remove the reference at the end of this scope.
     mutex_lock l(*streams_resource->mutex());
-    core::ScopedUnref unref_me(streams_resource);
 
     OpInputList bucket_boundaries_list;
     OP_REQUIRES_OK(context, context->input_list(kBucketBoundariesName,
@@ -336,12 +401,11 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(context,
                    HandleFromInput(context, kResourceHandleName, &handle));
-    QuantileStreamResource* stream_resource;
+    core::RefCountPtr<QuantileStreamResource> stream_resource;
     // Create a reference to the underlying resource using the handle.
     OP_REQUIRES_OK(context, LookupResource(context, handle, &stream_resource));
     // Remove the reference at the end of this scope.
     mutex_lock l(*stream_resource->mutex());
-    core::ScopedUnref unref_me(stream_resource);
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
@@ -367,6 +431,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
           kCostPerUnit, do_quantile_flush);
 
+    stream_resource->ResetStreams();
     stream_resource->set_buckets_ready(true);
   }
 
@@ -391,12 +456,11 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
     ResourceHandle handle;
     OP_REQUIRES_OK(context,
                    HandleFromInput(context, kResourceHandleName, &handle));
-    QuantileStreamResource* stream_resource;
+    core::RefCountPtr<QuantileStreamResource> stream_resource;
     // Create a reference to the underlying resource using the handle.
     OP_REQUIRES_OK(context, LookupResource(context, handle, &stream_resource));
     // Remove the reference at the end of this scope.
     mutex_lock l(*stream_resource->mutex());
-    core::ScopedUnref unref_me(stream_resource);
 
     const int64 num_streams = stream_resource->num_streams();
     CHECK_EQ(num_features_, num_streams);

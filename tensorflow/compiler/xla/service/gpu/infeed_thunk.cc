@@ -27,12 +27,14 @@ InfeedThunk::InfeedThunk(
     const HloInstruction* hlo_instruction)
     : Thunk(Kind::kInfeed, hlo_instruction), infeed_slices_(infeed_slices) {}
 
-Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    se::Stream* stream,
-                                    HloExecutionProfiler* profiler) {
+Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   VLOG(2) << "Infeeding to GPU: " << hlo_instruction()->ToString();
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   ShapeTree<InfeedBuffer> infeed_buffers =
       GetOrCreateInfeedManager()->BlockingGetNextDestination();
 
@@ -68,8 +70,8 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
 
             InfeedBuffer* buffer =
                 infeed_buffers.mutable_element(ShapeIndexView(index, 1));
-            stream->ThenMemcpy(&tuple_element_address,
-                               *(buffer->device_memory()), buffer->length());
+            stream.ThenMemcpy(&tuple_element_address,
+                              *(buffer->device_memory()), buffer->length());
             tuple_element_addresses->push_back(tuple_element_address.opaque());
             return;
           }
@@ -89,8 +91,8 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           se::DeviceMemoryBase tuple_address =
               buffer_allocations.GetDeviceAddress(
                   infeed_slices_.element(index));
-          stream->ThenMemcpy(&tuple_address,
-                             inner_tuple_element_addresses.data(), host_size);
+          stream.ThenMemcpy(&tuple_address,
+                            inner_tuple_element_addresses.data(), host_size);
           tuple_element_addresses->push_back(tuple_address.opaque());
         };
 
@@ -106,12 +108,12 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   void* infeed_addresses[] = {data_address.opaque(), nullptr};
   se::DeviceMemoryBase top_level_address =
       buffer_allocations.GetDeviceAddress(infeed_slices_.element({}));
-  stream->ThenMemcpy(&top_level_address, infeed_addresses, 2 * sizeof(void*));
+  stream.ThenMemcpy(&top_level_address, infeed_addresses, 2 * sizeof(void*));
 
-  Status block_status = stream->BlockHostUntilDone();
+  Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream, block_status.error_message());
+                         &stream, block_status.error_message());
   }
 
   VLOG(2) << "Infeeding to GPU complete";

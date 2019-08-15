@@ -156,8 +156,7 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc)
-                                                                 : "";
+    return absl::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc) : "";
   }
 
   string GraphDebugString() const {

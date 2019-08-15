@@ -15,7 +15,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #endif
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -81,7 +82,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
         *v = t[0].scalar<bool>()();
         break;
       case DT_STRING:
-        *v = !t[0].scalar<string>()().empty();
+        *v = !t[0].scalar<tstring>()().empty();
         break;
       default:
         return errors::InvalidArgument(DataTypeString(t[0].dtype()),
@@ -114,7 +115,6 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
                    bool always_collect_stats) {
-  opts->step_id = ctx->step_id();
   opts->rendezvous = ctx->rendezvous();
   opts->cancellation_manager = ctx->cancellation_manager();
   if (always_collect_stats) {
@@ -183,6 +183,12 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("IfOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
@@ -276,6 +282,12 @@ class CaseOp : public AsyncOpKernel {
         branch = branch_handles_.size() - 1;
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("CaseOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate one of the branch.
           opts_, branch_handles_[branch], args_, &rets_,
@@ -384,6 +396,13 @@ class WhileOp : public AsyncOpKernel {
     TensorVec rets_;
 
     void EvalCond() {
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-EvalCond #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
@@ -405,7 +424,7 @@ class WhileOp : public AsyncOpKernel {
         return Finish(s);
       }
       Tensor cond_t;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       const DeviceBase::GpuDeviceInfo* gpu_device_info =
           ctx_->device()->tensorflow_gpu_device_info();
       const bool is_hostmem_dtype =
@@ -444,6 +463,13 @@ class WhileOp : public AsyncOpKernel {
         return Finish(Status::OK());
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-StartBody #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, args_, &rets_,
@@ -594,6 +620,12 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("ForOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(opts_, kernel_->body_handle_, args_, &rets_,
                 [this](const Status& s) {
                   if (s.ok()) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -28,6 +29,24 @@ auto* graph_runs = monitoring::Counter<0>::New(
 auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
+
+auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/core/graph_run_time_usecs_histogram",
+     "The wall-clock time spent on executing graphs in microseconds."},
+    // Power of 2 with bucket count 20 (> 17 minutes)
+    {monitoring::Buckets::Exponential(1000, 2, 20)});
+
+auto* graph_run_input_tensor_bytes = monitoring::Sampler<0>::New(
+    {"/tensorflow/core/graph_run_input_tensor_bytes",
+     "The size of input tensors in bytes."},
+    // Power of 2 with bucket count 14 (256G)
+    {monitoring::Buckets::Exponential(1, 4, 20)});
+
+auto* graph_run_output_tensor_bytes = monitoring::Sampler<0>::New(
+    {"/tensorflow/core/graph_run_output_tensor_bytes",
+     "The size of output tensors in bytes."},
+    // Power of 2 with bucket count 14 (256G)
+    {monitoring::Buckets::Exponential(1, 4, 14)});
 
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
@@ -59,6 +78,15 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
+auto* xla_compilations = monitoring::Counter<0>::New(
+    "/tensorflow/core/xla_compilations",
+    "The number of XLA compilations used to collect "
+    "/tensorflow/core/xla_compilation_time_usecs");
+
+auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/xla_compilation_time_usecs",
+    "The total time spent on compiling XLA graphs in microseconds.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -77,10 +105,19 @@ void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
+void RecordGraphInputTensors(const size_t size) {
+  graph_run_input_tensor_bytes->GetCell()->Add(size);
+}
+
+void RecordGraphOutputTensors(const size_t size) {
+  graph_run_output_tensor_bytes->GetCell()->Add(size);
+}
+
 void UpdateGraphExecTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     graph_runs->GetCell()->IncrementBy(1);
     graph_run_time_usecs->GetCell()->IncrementBy(running_time_usecs);
+    graph_run_time_usecs_histogram->GetCell()->Add(running_time_usecs);
   }
 }
 
@@ -88,6 +125,13 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     build_graph_calls->GetCell()->IncrementBy(1);
     build_graph_time_usecs->GetCell()->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
+  if (compilation_time_usecs > 0) {
+    xla_compilations->GetCell()->IncrementBy(1);
+    xla_compilation_time_usecs->GetCell()->IncrementBy(compilation_time_usecs);
   }
 }
 

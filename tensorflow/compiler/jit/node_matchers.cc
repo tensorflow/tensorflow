@@ -77,6 +77,8 @@ bool MatchAndExplainTensor(const Tensor& tensor, const Tensor& expected_tensor,
   }
 
   switch (tensor.dtype()) {
+    case DT_HALF:
+      return CompareTensor<Eigen::half>(tensor, expected_tensor, listener);
     case DT_FLOAT:
       return CompareTensor<float>(tensor, expected_tensor, listener);
     case DT_DOUBLE:
@@ -133,7 +135,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
 
     if (constant_value) {
       const TensorProto* proto = nullptr;
-      if (!GetNodeAttr(node->def(), "value", &proto).ok()) {
+      if (!TryGetNodeAttr(node->def(), "value", &proto)) {
         if (listener->IsInterested()) {
           *listener << "\ncould not find \"value\" attribute in node";
         }

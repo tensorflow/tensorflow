@@ -90,7 +90,7 @@ def sgdr_decay(learning_rate, global_step, initial_period_steps,
                              initial_period_steps=10000, t_mul=2, m_mul=0.5)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.train.GradientDescentOptimizer(learning_rate)
+      tf.compat.v1.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
 

@@ -20,17 +20,18 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/allocate_transient_arrays.h"
 #include "tensorflow/lite/toco/dump_graphviz.h"
 #include "tensorflow/lite/toco/export_tensorflow.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
+#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tflite/export.h"
 #include "tensorflow/lite/toco/tflite/import.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 namespace {
@@ -53,6 +54,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertMatrixDiagV2ToV1);
+  transformations->Add(new ConvertMatrixSetDiagV2ToV1);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialPackToReshape);
@@ -64,6 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
+  transformations->Add(new RemoveSuccesiveTranspose);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
@@ -101,6 +105,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyHardSwish);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -449,8 +454,15 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       params.enable_select_tf_ops =
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
-      params.quantize_weights = toco_flags.post_training_quantize();
+      params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
 
+      if (toco_flags.post_training_quantize()) {
+        if (toco_flags.quantize_to_float16()) {
+          params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;
+        } else {
+          params.quantize_weights = tflite::QuantizedBufferType::INT8;
+        }
+      }
       auto status = toco::tflite::Export(model, output_file_contents, params);
       if (!status.ok()) {
         LOG(ERROR) << status.error_message();

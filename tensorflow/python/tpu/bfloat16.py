@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _get_custom_getter():
@@ -33,7 +34,8 @@ def _get_custom_getter():
 
   ```python
   network = ConvNetBuilder(...)
-  with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
+  with tf.compat.v1.variable_scope('cg',
+                                   custom_getter=network.get_custom_getter()):
     network.conv(...)
     # Call more methods of network here
   ```
@@ -66,6 +68,7 @@ def _get_custom_getter():
   return inner_custom_getter
 
 
+@tf_export(v1=['tpu.bfloat16_scope'])
 @tf_contextlib.contextmanager
 def bfloat16_scope():
   """Scope class for bfloat16 variables so that the model uses custom getter.

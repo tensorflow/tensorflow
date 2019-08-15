@@ -2682,7 +2682,7 @@ class InputLayerTest(test.TestCase):
       # additional variables
       _ = input_layer(features)
       self.assertEqual(1, len(variables))
-      self.assertEqual(variables[0], input_layer.variables[0])
+      self.assertIs(variables[0], input_layer.variables[0])
 
   def test_feature_column_input_layer_gradient(self):
     with context.eager_mode():
@@ -4394,8 +4394,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_greater_or_equal_0'):
+      with self.assertRaisesRegexp(errors.OpError, 'assert'):
         id_weight_pair.id_tensor.eval()
 
   @test_util.run_deprecated_v1
@@ -4408,8 +4407,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_less_than_num_buckets'):
+      with self.assertRaisesRegexp(errors.OpError, 'assert'):
         id_weight_pair.id_tensor.eval()
 
   @test_util.run_deprecated_v1

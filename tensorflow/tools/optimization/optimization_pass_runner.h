@@ -30,28 +30,25 @@ namespace tensorflow {
 // to test individual Tensorflow Optimization passes.
 class OptimizationPassRunner {
  public:
-  explicit OptimizationPassRunner()
-      : jit_level_(OptimizerOptions::GlobalJitLevel::
-                       OptimizerOptions_GlobalJitLevel_DEFAULT) {}
-
-  // Add a fake device to the (initially empty) DeviceSet used for optimization.
-  // Names are of the form: "/job:localhost/replica:0/task:0/device:CPU:0"
-  Status AddDevice(const string& name, const string& type);
+  explicit OptimizationPassRunner() : jit_level_(OptimizerOptions::DEFAULT) {}
 
   // Increasing the Jit level will cause XLA to compile parts of the tensorflow
   // graph that it is able to.
   Status SetJitLevel(OptimizerOptions::GlobalJitLevel jit_level);
 
-  // This can be called after adding devices and setting the jit level to parse
-  // command line flags and run the specified job. All 3 flags are required:
-  // input_file_path, output_file_path, optimization_pass.
-  //
-  // If this library becomes heavily used, the caller should be responsible for
-  // parsing any command line flags desired rather than this Method handling the
-  // work of a main() function.
-  Status RunMain(int argc, char** argv);
+  Status Run(absl::string_view pass_to_run, GraphDef input, GraphDef* result);
+
+  Status AddCpus(int count) {
+    return AddDevices(tensorflow::DEVICE_CPU, count);
+  }
+
+  Status AddGpus(int count) {
+    return AddDevices(tensorflow::DEVICE_GPU, count);
+  }
 
  private:
+  Status AddDevices(absl::string_view type, int count);
+
   OptimizerOptions::GlobalJitLevel jit_level_;
   std::vector<std::unique_ptr<Device>> devices_;
 };

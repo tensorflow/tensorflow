@@ -18,46 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
+#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
+
 namespace {
-string NcclCollectiveKey(const string& exec_key, int step_id) {
-  return strings::StrCat(exec_key, ":", step_id);
-}
-}  // namespace
-
-NcclReducer::NcclReducer() : col_ctx_(nullptr), col_params_(nullptr) {}
-
-Status NcclReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
-  if (col_params->instance.type != REDUCTION_COLLECTIVE ||
-      col_params->instance.impl_details.collective_name != "NcclReduce") {
-    return errors::Internal("Unexpected collective type ",
-                            col_params->instance.type, " expected ",
-                            REDUCTION_COLLECTIVE, "; or collective name ",
-                            col_params->instance.impl_details.collective_name,
-                            " expected NcclReduce");
-  } else {
-    return Status::OK();
-  }
-}
-
-Status NcclReducer::InitializeCollectiveContext(CollectiveContext* col_ctx) {
-  col_ctx_ = col_ctx;
-  col_params_ = &col_ctx->col_params;
-  return collective_util::InitializeDeviceAndLocality(
-      col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
-      &col_ctx->device_locality);
-}
-
-Status NcclReducer::InitializeInstanceBeforeGroupDiscovery(
-    CollectiveParams* col_params) {
-  if (col_params->default_rank == 0 && col_params->group.num_tasks > 1) {
-    col_params->instance.communicator_key =
-        NcclManager::instance()->GenerateCommunicatorKey();
-  }
-  return Status::OK();
-}
-
 Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   if (merge_op == "Add") {
     *reduction_op = ncclSum;
@@ -70,6 +36,7 @@ Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
                             merge_op);
   }
 }
+}  // namespace
 
 void NcclReducer::Run(StatusCallback done) {
   ncclRedOp_t reduction_op;
@@ -155,7 +122,7 @@ void NcclReducer::Run(StatusCallback done) {
   NcclManager::instance()->AddToAllReduce(
       std::move(participant),
       {nccl_collective_key, num_local_devices, num_global_devices,
-       col_params_->instance.communicator_key},
+       col_params_->group.runtime_details.communicator_key, /*source_rank=*/-1},
       reduction_op);
 
   // NOTE(ayushd): We need to synchronize NCCL launches across nodes to prevent
@@ -174,21 +141,33 @@ void NcclReducer::Run(StatusCallback done) {
   // concurrent collective instances, and the static ordering assigns c1 -> c2
   // -> c3.  In practice, it could turn out that c3 is always ready to execute
   // before c1 or c2.
-  //
-  // `WaitForDependencies` may block if the collective instances on which this
-  // op depends have not yet launched.  When this function returns, this op is
-  // ready to go.
-  col_ctx_->col_exec->WaitForDependencies(*col_params_);
-  NcclManager::instance()->SignalMultiNodeReady(nccl_collective_key);
-  // When all devices at this worker have called `SignalMultiNodeReady`, the
-  // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
-  // implementation of `Launched` keeps track of the number of devices that have
-  // launched.
-  col_ctx_->col_exec->Launched(*col_params_);
+  {
+    // `WaitForDependencies` may block if the collective instances on which this
+    // op depends have not yet launched.  When this function returns, this op is
+    // ready to go.
+    profiler::TraceMe activity("WaitForDependencies",
+                               profiler::TraceMeLevel::kInfo);
+    col_ctx_->col_exec->WaitForDependencies(*col_params_);
+    NcclManager::instance()->SignalMultiNodeReady(nccl_collective_key);
+  }
+  {
+    // When all devices at this worker have called `SignalMultiNodeReady`, the
+    // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
+    // implementation of `Launched` keeps track of the number of devices that
+    // have launched.
+    profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
+    col_ctx_->col_exec->Launched(*col_params_);
+  }
 
   // Wait for nccl op and group_size copy to succeed, then do final_op.
-  group_size_ready.WaitForNotification();
-  nccl_done.WaitForNotification();
+  {
+    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
+    group_size_ready.WaitForNotification();
+  }
+  {
+    profiler::TraceMe activity("Nccl", profiler::TraceMeLevel::kInfo);
+    nccl_done.WaitForNotification();
+  }
   Status final_status =
       group_size_status.ok() ? nccl_status : group_size_status;
   if (final_status.ok() && col_params_->final_op) {

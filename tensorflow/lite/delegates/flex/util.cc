@@ -60,6 +60,8 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_FLOAT;
     case kTfLiteFloat32:
       return TF_FLOAT;
+    case kTfLiteFloat16:
+      return TF_HALF;
     case kTfLiteInt16:
       return TF_INT16;
     case kTfLiteInt32:
@@ -83,6 +85,8 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
   switch (type) {
     case TF_FLOAT:
       return kTfLiteFloat32;
+    case TF_HALF:
+      return kTfLiteFloat16;
     case TF_INT16:
       return kTfLiteInt16;
     case TF_INT32:

@@ -366,7 +366,8 @@ class AdamOptimizerTest(test.TestCase):
       opt.minimize(lambda: v1 + v2)
       # There should be two non-slot variables, and two unique slot variables
       # for v1 and v2 respectively.
-      self.assertEqual(6, len(set(opt.variables())))
+      self.assertEqual(6, len({id(v) for v in opt.variables()}))
+
 
 if __name__ == "__main__":
   test.main()

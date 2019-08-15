@@ -27,7 +27,8 @@ CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype) {
   return nullptr;
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype) {
   if (dst_dtype == DT_FLOAT) {
     return [](OpKernelContext* ctx, const Tensor& inp, Tensor* out,

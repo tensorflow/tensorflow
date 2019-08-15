@@ -246,7 +246,7 @@ bool TensorResponse::ParseFast(Source* source) {
       case RecvTensorResponse::kIsDeadFieldNumber: {
         uint32 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
-        meta_.set_is_dead((v != 0) ? true : false);
+        meta_.set_is_dead(v != 0);
         break;
       }
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
@@ -259,6 +259,12 @@ bool TensorResponse::ParseFast(Source* source) {
         if ((wt != WIRETYPE_LENGTH_DELIMITED) ||
             !ReadNestedMessage(&input, meta_.mutable_transport_options()))
           return false;
+        break;
+      }
+      case RecvTensorResponse::kRequireAckFieldNumber: {
+        uint32 v;
+        if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
+        meta_.set_require_ack(v != 0);
         break;
       }
       default: {

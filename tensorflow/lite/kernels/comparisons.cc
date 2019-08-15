@@ -16,8 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {
@@ -37,9 +35,8 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // Don't support string and bool.
-  TF_LITE_ENSURE(context,
-                 input1->type != kTfLiteString || input1->type != kTfLiteBool);
+  // Don't support string.
+  TF_LITE_ENSURE(context, input1->type != kTfLiteString);
   // Currently only support tensors have the same type.
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = kTfLiteBool;

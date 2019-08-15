@@ -45,8 +45,8 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
 
-    self.assertIsInstance(node.body[0].value.left.id, str)
-    source = compiler.ast_to_source(node)
+    self.assertIsInstance(node.value.left.id, str)
+    source = compiler.ast_to_source(node, include_encoding_marker=False)
     self.assertEqual(source.strip(), 'renamed_a + b')
 
   def test_rename_symbols_attributes(self):
@@ -56,7 +56,7 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.from_str('b.c'): qual_names.QN('renamed_b_c')})
 
-    source = compiler.ast_to_source(node)
+    source = compiler.ast_to_source(node, include_encoding_marker=False)
     self.assertEqual(source.strip(), 'renamed_b_c = renamed_b_c.d')
 
   def test_rename_symbols_annotations(self):
@@ -76,11 +76,10 @@ class AstUtilTest(test.TestCase):
       def f(a):
         return a + 1
     """))
-    setattr(node.body[0], '__foo', 'bar')
+    setattr(node, '__foo', 'bar')
     new_node = ast_util.copy_clean(node)
     self.assertIsNot(new_node, node)
-    self.assertIsNot(new_node.body[0], node.body[0])
-    self.assertFalse(hasattr(new_node.body[0], '__foo'))
+    self.assertFalse(hasattr(new_node, '__foo'))
 
   def test_copy_clean_preserves_annotations(self):
     node = parser.parse_str(
@@ -88,20 +87,20 @@ class AstUtilTest(test.TestCase):
       def f(a):
         return a + 1
     """))
-    anno.setanno(node.body[0], 'foo', 'bar')
-    anno.setanno(node.body[0], 'baz', 1)
+    anno.setanno(node, 'foo', 'bar')
+    anno.setanno(node, 'baz', 1)
     new_node = ast_util.copy_clean(node, preserve_annos={'foo'})
-    self.assertEqual(anno.getanno(new_node.body[0], 'foo'), 'bar')
-    self.assertFalse(anno.hasanno(new_node.body[0], 'baz'))
+    self.assertEqual(anno.getanno(new_node, 'foo'), 'bar')
+    self.assertFalse(anno.hasanno(new_node, 'baz'))
 
   def test_keywords_to_dict(self):
     keywords = parser.parse_expression('f(a=b, c=1, d=\'e\')').keywords
     d = ast_util.keywords_to_dict(keywords)
     # Make sure we generate a usable dict node by attaching it to a variable and
     # compiling everything.
-    node = parser.parse_str('def f(b): pass').body[0]
+    node = parser.parse_str('def f(b): pass')
     node.body.append(ast.Return(d))
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertDictEqual(result.f(3), {'a': 3, 'c': 1, 'd': 'e'})
 
   def assertMatch(self, target_str, pattern_str):
@@ -132,13 +131,12 @@ class AstUtilTest(test.TestCase):
                        'super(Bar, _).__init__(_)')
 
   def _mock_apply_fn(self, target, source):
-    target = compiler.ast_to_source(target)
-    source = compiler.ast_to_source(source)
+    target = compiler.ast_to_source(target, include_encoding_marker=False)
+    source = compiler.ast_to_source(source, include_encoding_marker=False)
     self._invocation_counts[(target.strip(), source.strip())] += 1
 
   def test_apply_to_single_assignments_dynamic_unpack(self):
     node = parser.parse_str('a, b, c = d')
-    node = node.body[0]
     ast_util.apply_to_single_assignments(node.targets, node.value,
                                          self._mock_apply_fn)
     self.assertDictEqual(self._invocation_counts, {
@@ -149,7 +147,6 @@ class AstUtilTest(test.TestCase):
 
   def test_apply_to_single_assignments_static_unpack(self):
     node = parser.parse_str('a, b, c = d, e, f')
-    node = node.body[0]
     ast_util.apply_to_single_assignments(node.targets, node.value,
                                          self._mock_apply_fn)
     self.assertDictEqual(self._invocation_counts, {
@@ -206,7 +203,10 @@ class AstUtilTest(test.TestCase):
     self.assertEqual(len(matching_nodes), len(expected_bodies))
     for node in matching_nodes:
       self.assertIsInstance(node, gast.Lambda)
-      self.assertIn(compiler.ast_to_source(node.body).strip(), expected_bodies)
+      self.assertIn(
+          compiler.ast_to_source(node.body,
+                                 include_encoding_marker=False).strip(),
+          expected_bodies)
 
   def test_find_matching_definitions_lambda(self):
     node = parser.parse_str(

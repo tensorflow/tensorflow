@@ -17,7 +17,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,7 +51,8 @@ class HloRematerialization : public HloModulePass {
   //     buffer of the given shape.
   //
   //   memory_limit_bytes: The threshold number of bytes to reduce memory use to
-  //     via rematerialization.
+  //     via rematerialization. Size of aliased outputs should be subtracted
+  //     from this.
   //
   //   sizes: Pointer to data structure which records the peak memory usage of
   //     the HLO module before/after rematerialization. Value are set during
@@ -79,9 +79,9 @@ class HloRematerialization : public HloModulePass {
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                          HloSchedule* schedule,
-                                          int64 memory_limit_bytes);
+  virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
+                                                  HloSchedule* schedule,
+                                                  int64 memory_limit_bytes);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at

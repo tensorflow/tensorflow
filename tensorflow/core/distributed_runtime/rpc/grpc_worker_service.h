@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace grpc {
 class ByteBuffer;
-class ServerBuilder;
 }  // namespace grpc
 
 namespace tensorflow {
@@ -33,6 +34,7 @@ class AsyncServiceInterface;
 class ConfigProto;
 struct WorkerEnv;
 struct WorkerSession;
+class GrpcResponseCache;
 
 class GrpcWorker : public Worker {
  public:
@@ -44,15 +46,24 @@ class GrpcWorker : public Worker {
                                    ::grpc::ByteBuffer* response,
                                    StatusCallback done);
 
-  virtual void LoggingAsync(const LoggingRequest* request,
-                            LoggingResponse* response, StatusCallback done);
+  void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
+                    StatusCallback done) override;
 
-  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
-                            RecvBufResponse* response, StatusCallback done);
+  void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override;
+
+  void CleanupGraphAsync(const CleanupGraphRequest* request,
+                         CleanupGraphResponse* response,
+                         StatusCallback done) override;
 
   WorkerEnv* env();
 
+  void EnableResponseCache();
+
+  void RemoveCacheEntryForId(int64 request_id);
+
  private:
+  std::unique_ptr<GrpcResponseCache> response_cache_;
   const int32 recv_buf_max_chunk_;
 };
 
@@ -64,8 +75,6 @@ struct GrpcWorkerServiceOptions {
   // default queue depth for a method.
   std::unordered_map<int, int> queue_depth;
   int num_serving_threads = 8;
-  int64 response_cache_bytes = 0;
-  int64 response_cache_expires_seconds = 0;
 };
 
 // Returns an implementation of WorkerService rpc service.

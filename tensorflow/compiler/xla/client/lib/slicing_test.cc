@@ -102,7 +102,7 @@ XLA_TEST_F(SlicingTest, SimpleSliceUpdate) {
       {a_data.get(), b_data.get(), x_data.get(), y_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchGather) {
+XLA_TEST_F(SlicingTest, TorchGatherSparse) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -111,6 +111,20 @@ XLA_TEST_F(SlicingTest, TorchGather) {
   auto index_data =
       CreateR2Parameter<int>({{0, 0}, {1, 0}}, 1, "index", &builder, &index);
   TorchGather(input, index, 1);
+
+  ComputeAndCompareR2<int>(&builder, {{1, 1}, {4, 3}},
+                           {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, TorchGatherDense) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  auto input_data =
+      CreateR2Parameter<int>({{1, 2}, {3, 4}}, 0, "input", &builder, &input);
+  auto index_data =
+      CreateR2Parameter<int>({{0, 0}, {1, 0}}, 1, "index", &builder, &index);
+  TorchGather(input, index, 1, false);
 
   ComputeAndCompareR2<int>(&builder, {{1, 1}, {4, 3}},
                            {input_data.get(), index_data.get()});
@@ -146,10 +160,41 @@ XLA_TEST_F(SlicingTest, TorchIndexSelectOn1) {
                                0, "input", &builder, &input);
   auto index_data =
       CreateR1Parameter<int>({0, 2}, 1, "index", &builder, &index);
+
   TorchIndexSelect(input, index, 1);
 
   ComputeAndCompareR2<float>(
       &builder, {{0.1427, -0.5414}, {-0.4664, -0.1228}, {-1.1734, 0.7230}},
+      {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, EmptyIndexSelect) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  auto input_data =
+      CreateR2Parameter<float>({{0}, {0}, {0}}, 0, "input", &builder, &input);
+  auto index_data = CreateR1Parameter<int>({}, 1, "index", &builder, &index);
+  TorchIndexSelect(input, index, 1);
+  ComputeAndCompareR2<float>(&builder, {{}, {}, {}},
+                             {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, BatchTorchIndexSelectOn0) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  auto input_data =
+      CreateR3Parameter<int>({{{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}},
+                              {{3, 2, 1, 0}, {7, 6, 5, 4}, {11, 10, 9, 8}}},
+                             0, "input", &builder, &input);
+  auto index_data =
+      CreateR2Parameter<int>({{0, 2}, {1, 2}}, 1, "index", &builder, &index);
+  TorchIndexSelect(input, index, 1, 1);
+
+  ComputeAndCompareR3<int>(
+      &builder,
+      {{{0, 1, 2, 3}, {8, 9, 10, 11}}, {{7, 6, 5, 4}, {11, 10, 9, 8}}},
       {input_data.get(), index_data.get()});
 }
 

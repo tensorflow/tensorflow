@@ -18,13 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.python.framework import ops
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 
-# There is a circular dependency between this and `distribute` module. So we
-# load it lazily to workaround this.
+# There is a circular dependency between this and the `distribute_lib` module.
+# So we load it lazily to work around this.
 distribute_lib = LazyLoader(
     "distribute_lib", globals(),
     "tensorflow.python.distribute.distribute_lib")
@@ -97,23 +99,33 @@ def get_replica_context():
   2. switches to cross-replica context (in which case this will return
      `None`) when entering a `with tf.distribute.Strategy.scope():` block;
   3. switches to a (non-default) replica context inside
-     `extended.call_for_each_replica(fn, ...)`;
+     `strategy.experimental_run_v2(fn, ...)`;
   4. if `fn` calls `get_replica_context().merge_call(merge_fn, ...)`, then
      inside `merge_fn` you are back in the cross-replica context (and again
      this function will return `None`).
 
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-replica context for the default `tf.distribute.Strategy`. You may
-  also switch from the cross-replica context of 4 to a replica context by
-  calling `extended.call_for_each_replica()`, jumping back to step 3.
-
   Most `tf.distribute.Strategy` methods may only be executed in
   a cross-replica context, in a replica context you should use the
-  `ReplicaContext` API instead.
+  API of the `tf.distribute.ReplicaContext` object returned by this
+  method instead.
+
+  ```
+  assert tf.distribute.get_replica_context() is not None  # default
+  with strategy.scope():
+    assert tf.distribute.get_replica_context() is None
+
+    def f():
+      replica_context = tf.distribute.get_replica_context()  # for strategy
+      assert replica_context is not None
+      tf.print("Replica id: ", replica_context.replica_id_in_sync_group,
+               " of ", replica_context.num_replicas_in_sync)
+
+    strategy.experimental_run_v2(f)
+  ```
 
   Returns:
-    The current `ReplicaContext` object when in a replica context scope,
-    else `None`.
+    The current `tf.distribute.ReplicaContext` object when in a replica context
+    scope, else `None`.
 
     Within a particular block, exactly one of these two things will be true:
 
@@ -129,24 +141,6 @@ def get_cross_replica_context():
   DEPRECATED: Please use `in_cross_replica_context()` and
   `get_strategy()` instead.
 
-  Note that execution:
-
-  1. starts in the default (single-replica) replica context;
-  2. switches to cross-replica context when entering a
-     `with tf.distribute.Strategy.scope():` block;
-  3. switches to a (non-default) replica context inside
-     `call_for_each_replica(fn, ...)`;
-  4. if `fn` calls `get_replica_context()->merge_call(merge_fn, ...)`, then
-     inside `merge_fn` you are back in the cross-replica context.
-
-  Note that you can also go directly from step 1 to 4 to switch to a
-  cross-replica context for the default `tf.distribute.Strategy`. You may
-  also switch from the cross-replica context of 4 to a replica context by
-  calling `call_for_each_replica()`, jumping back to step 3.
-
-  Most `tf.distribute.Strategy` methods may only be executed in
-  a cross-replica context.
-
   Returns:
     Returns the current `tf.distribute.Strategy` object in a cross-replica
     context, or `None`.
@@ -159,13 +153,24 @@ def get_cross_replica_context():
 
 @tf_export("distribute.in_cross_replica_context")
 def in_cross_replica_context():
-  """Returns True if in a cross-replica context.
+  """Returns `True` if in a cross-replica context.
 
   See `tf.distribute.get_replica_context` for details.
 
+  ```
+  assert not tf.distribute.in_cross_replica_context()
+  with strategy.scope():
+    assert tf.distribute.in_cross_replica_context()
+
+    def f():
+      assert not tf.distribute.in_cross_replica_context()
+
+    strategy.experimental_run_v2(f)
+  ```
+
   Returns:
-    True if in a cross-replica context (`get_replica_context()` returns
-    `None`), or False if in a replica context (`get_replica_context()` returns
+    `True` if in a cross-replica context (`get_replica_context()` returns
+    `None`), or `False` if in a replica context (`get_replica_context()` returns
     non-`None`).
   """
   return _get_per_thread_mode().cross_replica_context is not None
@@ -195,6 +200,12 @@ def get_strategy():
 def has_strategy():
   """Return if there is a current non-default `tf.distribute.Strategy`.
 
+  ```
+  assert not tf.distribute.has_strategy()
+  with strategy.scope():
+    assert tf.distribute.has_strategy()
+  ```
+
   Returns:
     True if inside a `with strategy.scope():`.
   """
@@ -204,6 +215,55 @@ def has_strategy():
 def get_strategy_and_replica_context():
   per_thread_mode = _get_per_thread_mode()
   return (per_thread_mode.strategy, per_thread_mode.replica_context)
+
+
+@tf_export("distribute.experimental_set_strategy")
+def experimental_set_strategy(strategy):
+  """Set a `tf.distribute.Strategy` as current without `with strategy.scope()`.
+
+  ```
+  tf.distribute.experimental_set_strategy(strategy1)
+  f()
+  tf.distribute.experimental_set_strategy(strategy2)
+  g()
+  tf.distribute.experimental_set_strategy(None)
+  h()
+  ```
+
+  is equivalent to:
+
+  ```
+  with strategy1.scope():
+    f()
+  with strategy2.scope():
+    g()
+  h()
+  ```
+
+  In general, you should use the `with strategy.scope():` API, but this
+  alternative may be convenient in notebooks where you would have to put
+  each cell in a `with strategy.scope():` block.
+
+  Note: This should only be called outside of any TensorFlow scope to
+  avoid improper nesting.
+
+  Args:
+    strategy: A `tf.distribute.Strategy` object or None.
+
+  Raises:
+    RuntimeError: If called inside a `with strategy.scope():`.
+  """
+  old_scope = ops.get_default_graph()._global_distribute_strategy_scope  # pylint: disable=protected-access
+  if old_scope is not None:
+    old_scope.__exit__(None, None, None)
+    ops.get_default_graph()._global_distribute_strategy_scope = None  # pylint: disable=protected-access
+  if has_strategy():
+    raise RuntimeError(
+        "Must not be called inside a `tf.distribute.Strategy` scope.")
+  if strategy is not None:
+    new_scope = strategy.scope()
+    new_scope.__enter__()
+    ops.get_default_graph()._global_distribute_strategy_scope = new_scope  # pylint: disable=protected-access
 
 
 # ------------------------------------------------------------------------------
@@ -216,24 +276,45 @@ _defaults = {
     "replica_context": None,
     "replica_mode": None
 }
+# Note: These need to be different locks since _get_default_replica_context
+# calls _get_default_strategy inside its lock, and them using the same lock
+# can lead to deadlock.
+_default_strategy_lock = threading.Lock()
+_default_replica_context_lock = threading.Lock()
+_default_replica_mode_lock = threading.Lock()
 
 
 def _get_default_strategy():
   if _defaults["strategy"] is None:
-    _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()  # pylint: disable=protected-access
+    # Avoid race condition causing two defaults to be created
+    with _default_strategy_lock:
+      if _defaults["strategy"] is None:
+        # pylint: disable=protected-access
+        # Make sure distribute_lib module is loaded by accessing some member.
+        _ = distribute_lib._creating_default_strategy_singleton
+        distribute_lib._creating_default_strategy_singleton = True
+        _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        distribute_lib._creating_default_strategy_singleton = False
+        # pylint: enable=protected-access
   return _defaults["strategy"]
 
 
 def _get_default_replica_context():
   if _defaults["replica_context"] is None:
-    _defaults["replica_context"] = distribute_lib.ReplicaContext(
-        _get_default_strategy(), replica_id_in_sync_group=0)
+    # Avoid race condition causing two defaults to be created
+    with _default_replica_context_lock:
+      if _defaults["replica_context"] is None:
+        _defaults["replica_context"] = distribute_lib.ReplicaContext(
+            _get_default_strategy(), replica_id_in_sync_group=0)
   return _defaults["replica_context"]
 
 
 def _get_default_replica_mode():
   if _defaults["replica_mode"] is None:
-    _defaults["replica_mode"] = _DefaultReplicaThreadMode()
+    # Avoid race condition causing two defaults to be created
+    with _default_replica_mode_lock:
+      if _defaults["replica_mode"] is None:
+        _defaults["replica_mode"] = _DefaultReplicaThreadMode()
   return _defaults["replica_mode"]
 
 

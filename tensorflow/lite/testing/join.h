@@ -68,6 +68,21 @@ inline string Join<uint8_t>(uint8_t* data, size_t len,
   return result.str();
 }
 
+// Join a list of int8 data separated by a delimiter. Cast data to int before
+// placing it in the string to prevent values from being treated like chars.
+template <>
+inline string Join<int8_t>(int8_t* data, size_t len, const string& delimiter) {
+  if (len == 0 || data == nullptr) {
+    return "";
+  }
+  std::stringstream result;
+  result << static_cast<int>(data[0]);
+  for (int i = 1; i < len; i++) {
+    result << delimiter << static_cast<int>(data[i]);
+  }
+  return result.str();
+}
+
 }  // namespace testing
 }  // namespace tflite
 

@@ -29,13 +29,14 @@ Status RaggedGatherShapeFn(InferenceContext* c);
 //==============================================================================
 
 REGISTER_OP("RaggedGather")
-    .Input("params_nested_splits: PARAMS_RAGGED_RANK * int64")
+    .Input("params_nested_splits: PARAMS_RAGGED_RANK * Tsplits")
     .Input("params_dense_values: Tvalues")
     .Input("indices: Tindices")
-    .Output("output_nested_splits: OUTPUT_RAGGED_RANK * int64")
+    .Output("output_nested_splits: OUTPUT_RAGGED_RANK * Tsplits")
     .Output("output_dense_values: Tvalues")
     .Attr("Tvalues: type")
     .Attr("Tindices: {int32, int64}")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .Attr("PARAMS_RAGGED_RANK: int >= 1")
     .Attr("OUTPUT_RAGGED_RANK: int >= 0")
     .SetShapeFn(RaggedGatherShapeFn);

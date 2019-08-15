@@ -55,6 +55,18 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
+int MaxParallelism(int numa_node) {
+  if (numa_node != port::kNUMANoAffinity) {
+    // Assume that CPUs are equally distributed over available NUMA nodes.
+    // This may not be true, but there isn't currently a better way of
+    // determining the number of CPUs specific to the requested node.
+    return NumSchedulableCPUs() / port::NUMANumNodes();
+  }
+  return NumSchedulableCPUs();
+}
+
 int NumTotalCPUs() {
   // TODO(ebrevdo): Make this more accurate.
   //
@@ -115,10 +127,6 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
 }
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
-
-void AdjustFilenameForLogging(string* filename) {
-  // Nothing to do
-}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY

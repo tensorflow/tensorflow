@@ -182,6 +182,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleRng(HloInstruction* rng) override;
+  Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -530,6 +531,22 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   };
 
   ProfilingState profiling_state_;
+
+  class TracingState {
+   public:
+    TracingState() : enabled_(false) {}
+    void set_enabled(bool value) { enabled_ = value; }
+    void EmitTracingStart(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                          llvm::Value* run_options);
+    void EmitTracingEnd(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                        llvm::Value* run_options);
+
+   private:
+    bool enabled_;
+    // Maps from HLO to the activity id returned by xprof::TraceMe.
+    std::unordered_map<const HloInstruction*, llvm::Value*> activity_ids_;
+  };
+  TracingState tracing_state_;
 
   // Given a load instruction and a shape or buffer size, annotate the load's
   // result with the alignment required by the shape or size.

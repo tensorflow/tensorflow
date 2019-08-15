@@ -55,7 +55,6 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
   // Do the actual output data types propagation.
   switch (op->type) {
     case OperatorType::kDequantize:
-    case OperatorType::kResizeBilinear:
       // These operators unconditionally produce float outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kFloat);
       break;
@@ -288,6 +287,13 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
     }
     case OperatorType::kMatrixDiag: {
       CHECK_EQ(op->inputs.size(), 1);
+      CHECK_EQ(op->outputs.size(), 1);
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
+    case OperatorType::kMatrixSetDiag: {
+      CHECK_EQ(op->inputs.size(), 2);
       CHECK_EQ(op->outputs.size(), 1);
       const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
       SetDataTypeForAllOutputs(model, op, data_type);

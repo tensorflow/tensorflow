@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import pickle
 import threading
@@ -28,8 +29,11 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
+from tensorflow.python.eager import executor
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -39,6 +43,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -55,7 +61,214 @@ def truncated_normal(shape):
              shape.dtype.as_datatype_enum, 'seed', 0, 'seed2', 0))[0]
 
 
+def current_device():
+  return constant_op.constant(1.).device
+
+
+def configure_virtual_cpus():
+  cpus = config.list_physical_devices('CPU')
+  # Set 2 virtual CPUs
+  config.set_virtual_device_configuration(cpus[0], [
+      context.VirtualDeviceConfiguration(),
+      context.VirtualDeviceConfiguration()
+  ])
+
+
 class TFETest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(TFETest, self).setUp()
+    configure_virtual_cpus()
+
+  def _test_hashable(self, a, b, hashable):
+    if hashable:
+      self.assertIsInstance(b, collections.Hashable)
+      self.assertLen(set([a, b]), 2)
+    else:
+      # TODO(gjn): Figure out how to make this work for tf.Tensor
+      # self.assertNotIsInstance(b, collections.Hashable)
+      with self.assertRaisesRegexp(TypeError, 'unhashable'):
+        set([a, b])
+
+  def testEquality(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    try:
+      def _v1_check(a, b):
+        self.assertEqual(a, a)
+        self.assertIs(a, a)
+        self.assertNotEqual(a, 1.0)
+        self.assertIsNot(a, 1.0)
+        self.assertNotEqual(a, b)
+        self.assertIsNot(a, b)
+
+      def _v2_check(a, b):
+        self.assertEqual(a, a)
+        self.assertIs(a, a)
+        self.assertEqual(a, 1.0)
+        self.assertIsNot(a, 1.0)
+        self.assertEqual(a, b)
+        self.assertIsNot(a, b)
+
+      constant_a = constant_op.constant(1.0)
+      constant_b = constant_op.constant(1.0)
+
+      ops.disable_tensor_equality()
+      self._test_hashable(constant_a, constant_b, True)
+      _v1_check(constant_a, constant_b)
+      ops.enable_tensor_equality()
+      _v2_check(constant_a, constant_b)
+      self._test_hashable(constant_a, constant_b, False)
+
+      variable_a = variables.Variable(1.0)
+      variable_b = variables.Variable(1.0)
+
+      ops.disable_tensor_equality()
+      _v1_check(variable_a, variable_b)
+      self._test_hashable(variable_a, variable_b, True)
+      ops.enable_tensor_equality()
+      _v2_check(variable_a, variable_b)
+      self._test_hashable(variable_a, variable_b, False)
+
+      # We only test numpy behaviour in v2 mode since we'd like to match that.
+      numpy_a = np.array(1.0)
+      numpy_b = np.array(1.0)
+      _v2_check(numpy_a, numpy_b)
+      self._test_hashable(numpy_a, numpy_b, False)
+    finally:
+      if default:
+        ops.enable_tensor_equality()
+      else:
+        ops.disable_tensor_equality()
+
+  def testEqualityNan(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    try:
+      def _v1_check(a, b):
+        self.assertEqual(a, a)
+        self.assertIs(a, a)
+        self.assertNotEqual(a, float('nan'))
+        self.assertIsNot(a, float('nan'))
+        self.assertNotEqual(a, b)
+        self.assertIsNot(a, b)
+
+      def _v2_check(a, b):
+        self.assertNotEqual(a, a)
+        self.assertIs(a, a)
+        self.assertNotEqual(a, float('nan'))
+        self.assertIsNot(a, float('nan'))
+        self.assertNotEqual(a, b)
+        self.assertIsNot(a, b)
+
+      constant_a = constant_op.constant(float('nan'))
+      constant_b = constant_op.constant(float('nan'))
+
+      ops.disable_tensor_equality()
+      self._test_hashable(constant_a, constant_b, True)
+      _v1_check(constant_a, constant_b)
+      ops.enable_tensor_equality()
+      _v2_check(constant_a, constant_b)
+      self._test_hashable(constant_a, constant_b, False)
+
+      variable_a = variables.Variable(float('nan'))
+      variable_b = variables.Variable(float('nan'))
+
+      ops.disable_tensor_equality()
+      _v1_check(variable_a, variable_b)
+      self._test_hashable(variable_a, variable_b, True)
+      ops.enable_tensor_equality()
+      _v2_check(variable_a, variable_b)
+      self._test_hashable(variable_a, variable_b, False)
+
+      numpy_a = np.array(float('nan'))
+      numpy_b = np.array(float('nan'))
+      _v2_check(numpy_a, numpy_b)
+      self._test_hashable(numpy_a, numpy_b, False)
+    finally:
+      if default:
+        ops.enable_tensor_equality()
+      else:
+        ops.disable_tensor_equality()
+
+  def testEqualityCompare(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    try:
+      tf_a = constant_op.constant([1, 2])
+      tf_b = constant_op.constant([1, 2])
+      tf_c = constant_op.constant([1, 1])
+      np_a = np.array([1, 2])
+      np_b = np.array([1, 2])
+      np_c = np.array([1, 1])
+
+      ops.disable_tensor_equality()
+      # We don't do element-wise comparison
+      self.assertNotEqual(tf_a, tf_b)
+      self.assertNotEqual(tf_a, tf_c)
+
+      # We can compare list of tensors
+      self.assertEqual([tf_a, tf_b], [tf_a, tf_b])
+      self.assertNotEqual([tf_a, tf_b], [tf_b, tf_b])
+
+      # We can compare existence in a list
+      self.assertIn(tf_a, [tf_a, tf_b])
+      self.assertIn(tf_a, [tf_b, tf_a])
+      self.assertNotIn(tf_a, [tf_b, tf_c])
+
+      ops.enable_tensor_equality()
+      # We do element-wise comparison but can't convert results array to bool
+      with self.assertRaises(ValueError):
+        bool(tf_a == tf_b)
+      self.assertAllEqual(tf_a == tf_b, [True, True])
+      with self.assertRaises(ValueError):
+        bool(tf_a == tf_c)
+      self.assertAllEqual(tf_a == tf_c, [True, False])
+      self.assertNotAllEqual(tf_a, tf_c)
+      with self.assertRaises(ValueError):
+        bool(np_a == np_b)
+      self.assertAllEqual(np_a == np_b, [True, True])
+      with self.assertRaises(ValueError):
+        bool(np_a == np_c)
+      self.assertAllEqual(np_a == np_c, [True, False])
+      self.assertNotAllEqual(np_a, np_c)
+
+      # Warning even though we technically shouldn't be able to compare here,
+      # since the id is the same both TF & numpy will handle lists with the same
+      # value without raising an error
+      self.assertEqual([tf_a, tf_b], [tf_a, tf_b])
+      with self.assertRaises(ValueError):
+        bool([tf_a, tf_b] == [tf_b, tf_b])
+      self.assertEqual([np_a, np_b], [np_a, np_b])
+      with self.assertRaises(ValueError):
+        bool([np_a, np_b] == [np_b, np_b])
+
+      # Similar to lists we shouldn't be able to do a `in` check such as
+      # `if a in [a,b]`. However if `a` is the first element, it works due to
+      # short circuiting
+      self.assertIn(tf_a, [tf_a, tf_b])
+      with self.assertRaises(ValueError):
+        bool(tf_a in [tf_b, tf_a])
+      with self.assertRaises(ValueError):
+        bool(tf_a in [tf_b, tf_c])
+      self.assertIn(np_a, [np_a, np_b])
+      with self.assertRaises(ValueError):
+        bool(np_a in [np_b, np_a])
+      with self.assertRaises(ValueError):
+        bool(np_a in [np_b, np_c])
+
+      # rank 0
+      self.assertAllEqual(
+          constant_op.constant(1) == constant_op.constant(1), True)
+      self.assertAllEqual(
+          constant_op.constant(1) == constant_op.constant(2), False)
+      self.assertAllEqual(np.array(1) == np.array(1), True)
+      self.assertAllEqual(np.array(1) == np.array(2), False)
+    finally:
+      if default:
+        ops.enable_tensor_equality()
+      else:
+        ops.disable_tensor_equality()
 
   def testContext(self):
     ctx = context.Context()
@@ -103,6 +316,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testAsyncBasic(self):
     ctx = context.Context(execution_mode=context.ASYNC)
+    ctx.ensure_initialized()
     has_cpu_device = False
     for x in ctx.devices():
       has_cpu_device = has_cpu_device or 'CPU' in x
@@ -122,9 +336,15 @@ class TFETest(test_util.TensorFlowTestCase):
                      cpu_stats.device)
     self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
 
+  def testMultiCpuPlacement(self):
+    with ops.device('cpu:1'):
+      x = constant_op.constant(1.0)
+    y = array_ops.identity(x)
+    self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:CPU:1')
+    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
+
+  @test_util.run_gpu_only
   def testShouldCopy(self):
-    if not context.context().num_gpus():
-      self.skipTest('No devices other than CPUs found')
     with ops.device('gpu:0'):
       x = constant_op.constant(1.0)
     y = array_ops.identity(x)
@@ -147,9 +367,8 @@ class TFETest(test_util.TensorFlowTestCase):
     # is enabled; the stack entry should reflect this fact.
     self.assertFalse(switch.is_building_function)
 
+  @test_util.run_gpu_only
   def testInt32GPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     with ops.device('gpu:0'):
       xent = nn_ops.sparse_softmax_cross_entropy_with_logits(
           logits=[[0.0, 0.0]], labels=[0])
@@ -186,9 +405,8 @@ class TFETest(test_util.TensorFlowTestCase):
     self._runInThread(get_values, (ctx, context_values))
     self.assertAllEqual(context_values, get_context_values(ctx))
 
+  @test_util.run_gpu_only
   def testContextConfig(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     ctx = context.Context(config=config_pb2.ConfigProto(
         device_count={'GPU': 0}))
     self.assertEquals(0, ctx.num_gpus())
@@ -204,10 +422,36 @@ class TFETest(test_util.TensorFlowTestCase):
       t = pickle.load(f)
       self.assertAllEqual(t.numpy(), 10.0)
 
-  def testTensorPlacement(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
+  @test_util.run_gpu_only
+  def testDevicePlacementEnforcesConsistency(self):
+    cpu = context.device('cpu:0')
+    gpu = context.device('gpu:0')
+    cpu.__enter__()
+    self.assertEndsWith(current_device(), 'CPU:0')
+    gpu.__enter__()
+    self.assertEndsWith(current_device(), 'GPU:0')
+    with self.assertRaisesRegexp(
+        RuntimeError, 'Exiting device scope without proper scope nesting'):
+      cpu.__exit__()
+      self.assertEndsWith(current_device(), 'GPU:0')
+    gpu.__exit__()
+    self.assertEndsWith(current_device(), 'CPU:0')
 
+  @test_util.run_gpu_only
+  def testReEntrant(self):
+    cpu = context.device('cpu:0')
+    gpu = context.device('gpu:0')
+    with cpu:
+      with gpu:
+        with gpu:
+          self.assertEndsWith(current_device(), 'GPU:0')
+        self.assertEndsWith(current_device(), 'GPU:0')
+      self.assertEndsWith(current_device(), 'CPU:0')
+      with gpu:
+        self.assertEndsWith(current_device(), 'GPU:0')
+
+  @test_util.run_gpu_only
+  def testTensorPlacement(self):
     x = constant_op.constant(1.).gpu()
     with context.device('gpu:0'):
       y = constant_op.constant(2.)
@@ -217,10 +461,8 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('T', x.dtype.as_datatype_enum))[0].cpu().numpy()
     self.assertEqual(3, result)
 
+  @test_util.run_gpu_only
   def testResourceTensorPlacement(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(1.0)
     with context.device('cpu:0'):
@@ -229,10 +471,8 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(
           gen_resource_variable_ops.read_variable_op(v.handle, v.dtype), 1.0)
 
+  @test_util.run_gpu_only
   def testCopyBetweenDevices(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     x = constant_op.constant([[1., 2.], [3., 4.]])
     x = x.cpu()
     x = x.gpu()
@@ -243,36 +483,60 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
 
+  @test_util.run_gpu_only
   def testCopyBetweenDevicesAsync(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     with context.execution_mode(context.ASYNC):
       x = constant_op.constant([[1., 2.], [3., 4.]])
       x = x.cpu()
       x = x.gpu()
       x = x.gpu()
       x = x.cpu()
-      context.async_wait()
+      context.context().executor.wait()
 
     # Invalid device
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
-      context.async_wait()
-    context.async_clear_error()
+      context.context().executor.wait()
+    context.context().executor.clear_error()
 
+  @test_util.run_gpu_only
   def testCopyScope(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
       with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
         c = constant + 1.0
     self.assertAllEqual(c, 2.0)
 
-  def testNumpyForceCPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
+  def testPyFunctionNullContext(self):
+    def simple_fn(unused_handle):
+      return 1.
 
+    @def_function.function
+    def test_fn(v):
+      script_ops.eager_py_func(simple_fn, [v.handle], dtypes.float32)
+      return 1.
+
+    test_var = variables.Variable([2., 3.])
+    self.assertAllEqual(test_fn(test_var), 1.0)
+
+  def testPyFunctionAsync(self):
+
+    def simple_fn(v):
+      one = constant_op.constant(1.)
+      return v + one
+
+    @def_function.function
+    def test_fn(v):
+      return script_ops.eager_py_func(simple_fn, [v], dtypes.float32)
+
+    async_executor = executor.new_executor(enable_async=True)
+    with context.executor_scope(async_executor):
+      test_var = variables.Variable(2.)
+      self.assertAllEqual(test_fn(test_var), 3.0)
+    async_executor.wait()
+
+  @test_util.run_gpu_only
+  def testNumpyForceCPU(self):
     cpu = constant_op.constant([[1., 2.], [3., 4.]])
     c2g = cpu.gpu()
     self.assertAllEqual(c2g, cpu.numpy())
@@ -319,8 +583,8 @@ class TFETest(test_util.TensorFlowTestCase):
           inputs=[three, five],
           attrs=('transpose_a', False, 'transpose_b', False, 'T',
                  three.dtype.as_datatype_enum))
-      context.async_wait()
-    context.async_clear_error()
+      context.context().executor.wait()
+    context.context().executor.clear_error()
     context.context().execution_mode = context.SYNC
 
   def testExecuteTooManyNumOutputs(self):
@@ -343,9 +607,8 @@ class TFETest(test_util.TensorFlowTestCase):
                   constant_op.constant(5)],
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
 
+  @test_util.run_gpu_only
   def testMatMulGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
     product = execute(
@@ -601,9 +864,8 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEquals(dtypes.int32, three_x.dtype)
     self.assertAllEqual(3, three_x)
 
+  @test_util.run_gpu_only
   def testOperationWithNoInputsRunsOnDevice(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     shape = constant_op.constant([], dtype=dtypes.int32)
 
     # x: Run the "TruncatedNormal" op CPU and copy result to GPU.
@@ -638,10 +900,8 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertIsInstance(t, ops.EagerTensor)
 
   # TODO(b/123637108): re-enable
+  @test_util.run_gpu_only
   def disabled_testSmallIntegerOpsForcedToCPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.int64)
     b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.int64)
     with context.device('gpu:0'):
@@ -727,6 +987,10 @@ class SendRecvTest(test_util.TensorFlowTestCase):
                'recv_device', device_name,
                'client_terminated', False))[0]
 
+  def setUp(self):
+    super(SendRecvTest, self).setUp()
+    configure_virtual_cpus()
+
   def testBasic(self):
     t0 = constant_op.constant(1.0)
     t1 = constant_op.constant(2.0)
@@ -739,9 +1003,8 @@ class SendRecvTest(test_util.TensorFlowTestCase):
         self._recv(dtypes.float32, 't1', self.cpu_device),
         2.0)
 
+  @test_util.run_gpu_only
   def testLocalCrossDevice(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
     gpu_device_name = '/job:localhost/replica:0/task:0/device:GPU:0'
     with ops.device('GPU:0'):
       t0 = constant_op.constant(1.0)
@@ -759,13 +1022,17 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
 class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
+  def setUp(self):
+    super(EagerTensorCacheTest, self).setUp()
+    configure_virtual_cpus()
+
   def testCacheSkipsTensorsTooLarge(self):
     cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
     cache.put('1', array_ops.zeros((2, 2)))
-    self.assertEqual(cache.get('1'), None)
+    self.assertIsNone(cache.get('1'))
 
     cache.put('2', array_ops.zeros((2)))
-    self.assertNotEqual(cache.get('2'), None)
+    self.assertIsNotNone(cache.get('2'))
 
 
 if __name__ == '__main__':

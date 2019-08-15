@@ -63,7 +63,7 @@ class _MaskedRandomUniformInitializer(init_ops.RandomUniform):
       maxval: A python scalar or a scalar tensor. Upper bound of the range of
         random values to generate.  Defaults to 1 for float types.
       seed: A Python integer. Used to create random seeds. See
-        `tf.set_random_seed` for behavior.
+        `tf.compat.v1.set_random_seed` for behavior.
       dtype: The data type. Only supports tf.float16 for now.
       num_valid_mantissa_bits: number of non-zero mantissa bits, default to 4.
 

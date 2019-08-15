@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -39,11 +42,19 @@ class ProfilerInterface {
   // Stops profiling.
   virtual Status Stop() = 0;
 
-  // Moves collected profile data into run_metadata.
+  // Moves collected profile data into step_stats_collector.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
 };
 
 }  // namespace profiler
+
+using ProfilerFactory = std::unique_ptr<profiler::ProfilerInterface> (*)();
+
+void RegisterProfilerFactory(ProfilerFactory factory);
+
+void CreateProfilers(
+    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

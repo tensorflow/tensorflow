@@ -27,7 +27,10 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsAdd(const NodeDef& node) {
-  if (node.op() == "AddV2" || node.op() == "Add") {
+  if (node.op() == "AddV2") {
+    return true;
+  }
+  if (node.op() == "Add") {
     DataType type = node.attr().at("T").type();
     return type != DT_STRING;
   }
@@ -43,9 +46,14 @@ bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
 bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
-  return node.op() == "RealDiv" || node.op() == "Div" ||
-         node.op() == "DivNoNan" || node.op() == "Xdivy" ||
+  return node.op() == "RealDiv" || node.op() == "Div" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
+}
+
+bool IsAnyMatMul(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -66,6 +74,10 @@ bool IsAnyMin(const NodeDef& node) {
 
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
+}
+
+bool IsArg(const NodeDef& node) {
+  return node.op() == "_Arg" || node.op() == "_DeviceArg";
 }
 
 bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
@@ -141,7 +153,8 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
          node.op() == "NextIteration" ||
-         node.op() == "Switch";
+         node.op() == "Switch" ||
+         node.op() == "_SwitchN";
   // clang-format on
 }
 
@@ -208,6 +221,8 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   return false;
 }
 
+bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
+
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
 
 bool IsEnter(const NodeDef& node) {
@@ -234,12 +249,18 @@ bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
 bool IsFusedBatchNorm(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2" ||
+         op == "FusedBatchNormV3";
+}
+
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
 }
 
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
+  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
+         op == "FusedBatchNormGradV3";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
@@ -296,11 +317,9 @@ bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
-bool IsMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
-}
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
+
+bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
@@ -409,6 +428,8 @@ bool IsReduction(const NodeDef& node) {
 
 bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
 
+bool IsRelu6(const NodeDef& node) { return node.op() == "Relu6"; }
+
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
 bool IsRelu6Grad(const NodeDef& node) { return node.op() == "Relu6Grad"; }
@@ -418,6 +439,10 @@ bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 bool IsRestore(const NodeDef& node) {
   return (node.op() == "Restore" || node.op() == "RestoreV2" ||
           node.op() == "RestoreSlice");
+}
+
+bool IsRetval(const NodeDef& node) {
+  return node.op() == "_Retval" || node.op() == "_DeviceRetval";
 }
 
 bool IsReverse(const NodeDef& node) {
@@ -508,7 +533,7 @@ bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch" || op == "RefSwitch";
+  return op == "_SwitchN" || op == "Switch" || op == "RefSwitch";
 }
 
 bool IsSymbolicGradient(const NodeDef& node) {
@@ -562,7 +587,8 @@ bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "ReadVariableOp";
+         op == "VarHandleOp" || op == "ReadVariableOp" ||
+         op == "_VarHandlesOp" || op == "_ReadVariablesOp";
 }
 
 bool IsWhile(const NodeDef& node) {
@@ -586,11 +612,11 @@ bool IsPersistent(const NodeDef& node) {
   return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
-bool MaybeHasRefInput(const NodeDef& node) {
+bool HasRefInput(const NodeDef& node) {
   const OpDef* op_def;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
-    return true;
+    return false;
   }
   // Nodes such as Assign or AssignAdd modify one of their inputs.
   for (const auto& input : op_def->input_arg()) {
@@ -674,7 +700,7 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
   }
 
   std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (str_util::StrContains(op_name, "inplace")) {
+  if (absl::StrContains(op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -929,8 +955,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "RandomPoissonV2"}));
   const string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
-         str_util::StrContains(op_name, "Segment") ||
-         str_util::StartsWith(op_name, "Quantize");
+         absl::StrContains(op_name, "Segment") ||
+         absl::StartsWith(op_name, "Quantize");
 }
 
 }  // namespace grappler

@@ -22,7 +22,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only
+@test_util.run_v1_only("filter_with_legacy_function only available in TF 1.x")
 class FilterWithLegacyFunctionTest(filter_test_base.FilterTestBase):
 
   def apply_filter(self, input_dataset, predicate):

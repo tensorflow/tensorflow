@@ -130,6 +130,12 @@ class BiasAddTest(test.TestCase):
       self._testAll(
           np.random.rand(4, 3, 2, 3).astype(t),
           np.random.rand(3).astype(t))
+      self._testAll(
+          np.random.rand(2048, 4, 4, 4).astype(t),
+          np.random.rand(4).astype(t))
+      self._testAll(
+          np.random.rand(4, 4, 4, 2048).astype(t),
+          np.random.rand(2048).astype(t))
 
   @test_util.run_deprecated_v1
   def test5DFloatTypes(self):
@@ -186,7 +192,7 @@ class BiasAddTest(test.TestCase):
                                                             bias_add_grad,
                                                             bias.shape)
 
-      threshold = 2e-3
+      threshold = 5e-3
       if dtype == dtypes.float64:
         threshold = 1e-10
       self.assertAllClose(tensor_jacob_t, tensor_jacob_n, threshold, threshold)
@@ -215,14 +221,23 @@ class BiasAddTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientTensor4D(self):
-    for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
-                                   ("NCHW", False), ("NCHW", True)]:
+    for (data_format, use_gpu) in [("NHWC", False)]:
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.arange(
             1.0, 49.0, dtype=dtype.as_numpy_dtype).reshape(
                 [2, 3, 4, 2]).astype(np.float32)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+        np_input = np.arange(
+            1.0, 513.0, dtype=dtype.as_numpy_dtype).reshape(
+                [64, 2, 2, 2]).astype(np.float32)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+        np_input = np.arange(
+            1.0, 513.0, dtype=dtype.as_numpy_dtype).reshape(
+                [2, 2, 2, 64]).astype(np.float32)
+        self._testGradient(np_input,
+                           np.random.rand(64).astype(dtype.as_numpy_dtype),
+                           dtype, data_format, use_gpu)
 
   @test_util.run_deprecated_v1
   def testGradientTensor5D(self):

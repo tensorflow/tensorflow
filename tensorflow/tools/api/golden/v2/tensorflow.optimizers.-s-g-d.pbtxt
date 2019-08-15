@@ -14,7 +14,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'learning_rate\', \'momentum\', \'nesterov\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.0\', \'False\', \'SGD\'], "
+    argspec: "args=[\'self\', \'learning_rate\', \'momentum\', \'nesterov\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.01\', \'0.0\', \'False\', \'SGD\'], "
   }
   member_method {
     name: "add_slot"

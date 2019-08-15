@@ -62,10 +62,14 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;  // TODO(aselle): Consider an error.
     case kTfLiteFloat32:
       return TensorType_FLOAT32;
+    case kTfLiteFloat16:
+      return TensorType_FLOAT16;
     case kTfLiteInt32:
       return TensorType_INT32;
     case kTfLiteUInt8:
       return TensorType_UINT8;
+    case kTfLiteInt8:
+      return TensorType_INT8;
     case kTfLiteInt64:
       return TensorType_INT64;
     case kTfLiteString:

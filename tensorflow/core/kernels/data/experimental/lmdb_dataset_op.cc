@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class LMDBDatasetOp : public DatasetOpKernel {
@@ -37,7 +38,7 @@ class LMDBDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     *output = new Dataset(ctx, filenames);
@@ -69,6 +70,8 @@ class LMDBDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "LMDBDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -94,13 +97,13 @@ class LMDBDatasetOp : public DatasetOpKernel {
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
             Tensor& key_tensor = out_tensors->back();
-            key_tensor.scalar<string>()() = string(
+            key_tensor.scalar<tstring>()() = string(
                 static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
 
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
             Tensor& value_tensor = out_tensors->back();
-            value_tensor.scalar<string>()() =
+            value_tensor.scalar<tstring>()() =
                 string(static_cast<const char*>(mdb_value_.mv_data),
                        mdb_value_.mv_size);
 
@@ -216,9 +219,11 @@ class LMDBDatasetOp : public DatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("LMDBDataset").Device(DEVICE_CPU), LMDBDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalLMDBDataset").Device(DEVICE_CPU),
                         LMDBDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

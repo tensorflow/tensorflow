@@ -85,10 +85,11 @@ enum class GrpcWorkerMethod {
   kCompleteGroup,
   kCompleteInstance,
   kGetStepSequence,
+  kMarkRecvFinished,
 };
 
 static const int kGrpcNumWorkerMethods =
-    static_cast<int>(GrpcWorkerMethod::kGetStepSequence) + 1;
+    static_cast<int>(GrpcWorkerMethod::kMarkRecvFinished) + 1;
 
 const char* GrpcWorkerMethodName(GrpcWorkerMethod id);
 

@@ -28,8 +28,8 @@ limitations under the License.
 
 #else  // CUDA
 
-#include "cuda/include/cuComplex.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 // cannot include curand.h here
 //   because it triggers the #error in cuda/cuda_gpu_executor.cc

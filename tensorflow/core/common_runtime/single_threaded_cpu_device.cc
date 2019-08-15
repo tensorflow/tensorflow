@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -47,18 +47,14 @@ class SingleThreadedCpuDevice : public Device {
                                                   DeviceLocality())) {
     eigen_worker_threads_.num_threads = kNumThreads;
     eigen_worker_threads_.workers = GraphRunnerThreadPool();
-    eigen_threadpool_wrapper_.reset(
-        new EigenThreadPoolWrapper(eigen_worker_threads_.workers));
     eigen_device_.reset(new Eigen::ThreadPoolDevice(
-        eigen_threadpool_wrapper_.get(), eigen_worker_threads_.num_threads));
+        eigen_worker_threads_.workers->AsEigenThreadPool(),
+        eigen_worker_threads_.num_threads));
     set_tensorflow_cpu_worker_threads(&eigen_worker_threads_);
     set_eigen_cpu_device(eigen_device_.get());
   }
 
-  ~SingleThreadedCpuDevice() override {
-    eigen_threadpool_wrapper_.reset();
-    eigen_device_.reset();
-  }
+  ~SingleThreadedCpuDevice() override { eigen_device_.reset(); }
 
   Status Sync() override { return Status::OK(); }
 
@@ -73,13 +69,25 @@ class SingleThreadedCpuDevice : public Device {
     return Status::OK();
   }
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext*,
+                              StatusCallback done) override {
+    if (input_tensor->NumElements() != output_tensor->NumElements()) {
+      done(errors::Internal(
+          "SingleThreadedCPU->SingleThreadedCPU copy shape mismatch: input=",
+          input_tensor->shape(), ", output=", output_tensor->shape()));
+      return;
+    }
+    tensor::DeepCopy(*input_tensor, output_tensor);
+    done(Status::OK());
+  }
+
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     return cpu_allocator();
   }
 
  private:
   DeviceBase::CpuWorkerThreads eigen_worker_threads_;
-  std::unique_ptr<Eigen::ThreadPoolInterface> eigen_threadpool_wrapper_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 

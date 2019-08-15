@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
-import TensorFlowLiteCAPI
+import TensorFlowLiteC
 
 /// A TensorFlow Lite model used by the 'Interpreter` to perform inference.
 final class Model {
-
-  /// The `TFL_Model` C pointer type represented as an `UnsafePointer<TFL_Model>`.
+  /// `TFL_Model` C pointer type represented as an `UnsafePointer<TFL_Model>`.
   typealias CModel = OpaquePointer
 
-  /// The underlying `TFL_Model` C pointer.
+  /// Underlying `TFL_Model` C pointer.
   let cModel: CModel?
 
   /// Creates a new model instance.

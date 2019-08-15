@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -34,12 +33,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
-extern const char* const kInputPHName;
-extern const char* const kOutputPHName;
 
 namespace convert {
 
@@ -116,13 +113,12 @@ struct EngineInfo {
   EngineType engine_type;
   int64 max_workspace_size_bytes;
   int maximum_cached_engines;
-  std::vector<int> cached_engine_batches;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
 };
 
-// Constructs a graphdef from the segment in the given graph. Adds placeholder
-// nodes for input edges (InputPH_*) and identity nodes for output edges
+// Constructs a graphdef from the segment in the given graph. Adds _Arg
+// nodes for input edges (InputPH_*) and _Retval nodes for output edges
 // (OutputPH_*). This function needs to be called before TensorRT nodes
 // inserted in order to correctly get sizes from the original graph.
 //
@@ -170,12 +166,14 @@ string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
-int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
 class TRT_ShapedWeights {
  public:
-  explicit TRT_ShapedWeights(DataType type = DT_FLOAT);
+  explicit TRT_ShapedWeights(
+      nvinfer1::DataType type = nvinfer1::DataType::kFLOAT);
 
   // Copy from another weights.
   //
@@ -184,6 +182,8 @@ class TRT_ShapedWeights {
   TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
 
   nvinfer1::Weights GetTrtWeights() const;
+
+  const Tensor& GetTensor() const { return tensor_; }
 
   // Returns the raw pointer to the underlying buffer which holds the weights
   // value.
@@ -208,14 +208,18 @@ class TRT_ShapedWeights {
     return std::vector<T>(span.data(), span.data() + span.size());
   }
 
+  nvinfer1::DataType TrtDType() const { return type_; }
+
   // TODO(aaroey): make these private.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
-  DataType type_;
 
  private:
   // This constructor is only used by TrtWeightStore, which creates the
   // underlying buffer.
-  TRT_ShapedWeights(DataType type, nvinfer1::Dims dims, Tensor tensor);
+  TRT_ShapedWeights(nvinfer1::DataType type, nvinfer1::Dims dims,
+                    Tensor tensor);
+
+  nvinfer1::DataType type_;
 
   // All weights should be stored inside TrtWeightStore to make sure lifetime of
   // all the underlying tensors are available until the engine is built. For
@@ -236,12 +240,13 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Get a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(DataType type, const nvinfer1::Dims& dims);
+  TRT_ShapedWeights GetTempWeights(nvinfer1::DataType trt_type,
+                                   const nvinfer1::Dims& dims);
 
   // Get a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
   TRT_ShapedWeights GetTempWeights(const TRT_ShapedWeights& weights) {
-    return GetTempWeights(weights.type_, weights.shape_);
+    return GetTempWeights(weights.TrtDType(), weights.shape_);
   }
 
  private:
@@ -281,9 +286,7 @@ class TRT_TensorOrWeights {
   bool is_tensor() const { return initialized_ && is_tensor_; }
   bool is_weights() const { return initialized_ && !is_tensor_; }
 
-  nvinfer1::ITensor* tensor();
-
-  const nvinfer1::ITensor* tensor() const;
+  nvinfer1::ITensor* tensor() const;
 
   TRT_ShapedWeights& weights() {
     CHECK(is_weights());
@@ -347,23 +350,27 @@ class Converter;
 
 // Parameters for each op converter.
 struct OpConverterParams {
-  OpConverterParams(Converter* arg_converter, const NodeDef& arg_node_def,
-                    const std::vector<TRT_TensorOrWeights>& arg_inputs,
-                    std::vector<TRT_TensorOrWeights>* arg_outputs,
-                    bool arg_validation_only, TrtWeightStore* arg_weight_store)
-      : converter(arg_converter),
-        node_def(arg_node_def),
-        inputs(arg_inputs),
-        outputs(arg_outputs),
-        validation_only(arg_validation_only),
-        weight_store(arg_weight_store) {}
+  // Constructor used for validation only.
+  OpConverterParams(const NodeDef& node_def,
+                    const std::vector<TRT_TensorOrWeights>& inputs,
+                    std::vector<TRT_TensorOrWeights>* outputs,
+                    TrtWeightStore* weight_store,
+                    TrtPrecisionMode precision_mode, bool use_calibration);
 
-  Converter* converter;
+  // Constructor used for conversion.
+  OpConverterParams(Converter* converter, const NodeDef& node_def,
+                    const std::vector<TRT_TensorOrWeights>& inputs,
+                    std::vector<TRT_TensorOrWeights>* outputs,
+                    TrtWeightStore* weight_store);
+
+  Converter* converter = nullptr;
   const NodeDef& node_def;
   const std::vector<TRT_TensorOrWeights>& inputs;
   std::vector<TRT_TensorOrWeights>* outputs;
   const bool validation_only;
   TrtWeightStore* weight_store;
+  const TrtPrecisionMode precision_mode;
+  const bool use_calibration;
 };
 
 using OpConverter = std::function<Status(OpConverterParams*)>;
@@ -371,21 +378,15 @@ using OpConverter = std::function<Status(OpConverterParams*)>;
 // Class to verify if specific TF node is supported by TRT.
 class TrtNodeValidator {
  public:
-  TrtNodeValidator();
+  // 'graph_properties' is the GraphProperties of the graph whose nodes will be
+  // checked by IsTensorRTCandidate() later. It is used to get the shape and
+  // data type information of a tensor for validation purpose.
+  TrtNodeValidator(const grappler::GraphProperties& graph_properties,
+                   TrtPrecisionMode precision_mode, bool use_calibration);
 
-  // Validate the node, and return ok if it's supported by TRT.
-  //
-  // - 'node_def' is the node to validate.
-  // - 'input_node_and_ports' are the input NodeDefs and their output ports that
-  //   are connected to 'node_def' in the TF graph.
-  // - 'graph_properties' is the GraphProperties of the graph where 'node_def'
-  //   belongs. It is used to get the shape and data type information of a
-  //   tensor for validation purpose.
-  Status ValidateNode(
-      const NodeDef& node_def,
-      const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
-      const TrtPrecisionMode precision_mode,
-      const grappler::GraphProperties& graph_properties);
+  // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
+  // to TRT subgraph and later converted into TRT engine.
+  Status IsTensorRTCandidate(const Node* node);
 
  private:
   static const std::set<string>* quantize_ops;
@@ -400,10 +401,8 @@ class TrtNodeValidator {
   // Convert the output tensor at 'output_port' of 'node_def' to a
   // TRT_TensorOrWeights which will be later used as an input to other nodes and
   // passed to ValidateNode() below.
-  Status ConvertToTensorOrWeights(
-      const NodeDef& node_def, int output_port,
-      const grappler::GraphProperties& graph_properties,
-      TRT_TensorOrWeights* tensor_or_weights);
+  Status ConvertToTensorOrWeights(const NodeDef& node_def, int output_port,
+                                  TRT_TensorOrWeights* tensor_or_weights);
 
   // Stores all the validators by op type. If no validator is registered for
   // specific op, it means no validation is needed and ValidateNode() will
@@ -413,6 +412,15 @@ class TrtNodeValidator {
   // Store the weights added during validation. Some validations (e.g.
   // validation for Const node) may produce weights.
   TrtWeightStore weight_store_;
+
+  // GraphProperties of the graph whose nodes are to be validated by
+  // IsTensorRTCandidate().
+  const grappler::GraphProperties& graph_properties_;
+
+  // Quantization ops are only converted when using quantized precisions.
+  const TrtPrecisionMode precision_mode_;
+
+  const bool use_calibration_;
 
   friend class ValidatorTest;
   friend class OpConverterTest;
@@ -492,9 +500,10 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
-                         const nvinfer1::ITensor** output_tensor);
+                         nvinfer1::ITensor** output_tensor);
 
-  // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  // Converts 'input' into 'tensor' with shape specified by 'dims' (which
+  // doesn't contain the batch dimension).
   //
   // If validation_only is true, it doesn't do the conversion but only do some
   // minimum validation for the eligibility of the conversion, and *tensor will
@@ -502,14 +511,7 @@ class Converter {
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
-                               const nvinfer1::ITensor** tensor);
-
-  // Return OK if the broadcast scheme is supported and compute the shapes after
-  // broadcasting.
-  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
-                              const TRT_TensorOrWeights& operand_r,
-                              nvinfer1::Dims* operand_l_new_dims,
-                              nvinfer1::Dims* operand_r_new_dims) const;
+                               nvinfer1::ITensor** tensor);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -544,9 +546,6 @@ class Converter {
 
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
-
-  // Special op converter for custom plugins.
-  OpConverter plugin_converter_;
 
   // The TRT networking being built.
   nvinfer1::INetworkDefinition* trt_network_;
@@ -584,8 +583,19 @@ class Converter {
   friend class OpConverterTest;
 };
 
+// Return OK if the broadcast scheme is supported and compute the shapes after
+// broadcasting. check_feasibility can be set to false in cases where dimensions
+// do not need to match exactly (as in the case of BatchMatMulV2).
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            const bool check_feasibility,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims);
+
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
+// Map of all supported ActivationTypes
+const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
 
 }  // namespace convert
 }  // namespace tensorrt

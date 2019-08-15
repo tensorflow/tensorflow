@@ -25,7 +25,6 @@ import threading
 
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import hooks
@@ -379,16 +378,6 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
     self.assertEqual(1, dump.size)
     self.assertEqual("delta", dump.dumped_tensor_data[0].node_name)
-
-  def testCallingInvokeNodeStepperOnDumpingWrapperRaisesException(self):
-    sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
-    node_stepper = stepper.NodeStepper(self.sess, self.inc_v)
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"NonInteractiveDebugWrapperSession does not support node-stepper "
-        r"mode\."):
-      sess.invoke_node_stepper(node_stepper)
 
   def testDumpingWrapperWithEmptyFetchWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(

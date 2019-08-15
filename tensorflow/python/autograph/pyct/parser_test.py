@@ -29,31 +29,36 @@ class ParserTest(test.TestCase):
     def f(x):
       return x + 1
 
-    node, _, _ = parser.parse_entity(f, future_imports=())
+    node, _ = parser.parse_entity(f, future_features=())
     self.assertEqual('f', node.name)
 
   def test_parse_entity_print_function(self):
+
     def f(x):
       print(x)
-    node, _, _ = parser.parse_entity(
-        f, future_imports=['print_function'])
+
+    node, _ = parser.parse_entity(f, future_features=('print_function',))
     self.assertEqual('f', node.name)
 
   def test_parse_comments(self):
+
     def f():
 # unindented comment
       pass
+
     with self.assertRaises(ValueError):
-      parser.parse_entity(f, future_imports=())
+      parser.parse_entity(f, future_features=())
 
   def test_parse_multiline_strings(self):
+
     def f():
       print("""
 some
 multiline
 string""")
+
     with self.assertRaises(ValueError):
-      parser.parse_entity(f, future_imports=())
+      parser.parse_entity(f, future_features=())
 
   def test_parse_expression(self):
     node = parser.parse_expression('a.b')

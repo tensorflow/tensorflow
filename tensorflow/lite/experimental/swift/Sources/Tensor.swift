@@ -13,11 +13,10 @@
 // limitations under the License.
 
 import Foundation
-import TensorFlowLiteCAPI
+import TensorFlowLiteC
 
 /// An input or output tensor in a TensorFlow Lite graph.
-public struct Tensor {
-
+public struct Tensor: Equatable, Hashable {
   /// Name of the tensor.
   public let name: String
 
@@ -38,9 +37,10 @@ public struct Tensor {
   /// - Parameters:
   ///   - name: Name of the tensor.
   ///   - dataType: Data type of the tensor.
+  ///   - shape: Shape of the tensor.
   ///   - data: Data in the input tensor.
   ///   - quantizationParameters Quantization parameters for the tensor if using a quantized model.
-  ///       The default is `nil`.
+  ///       Default is `nil`.
   init(
     name: String,
     dataType: TensorDataType,
@@ -57,19 +57,21 @@ public struct Tensor {
 }
 
 /// Supported TensorFlow Lite tensor data types.
-public enum TensorDataType: Equatable {
-  /// 32-bit single precision floating point tensor data type.
-  case float32
-  /// 8-bit unsigned integer tensor data type.
-  case uInt8
-  /// 16-bit signed integer tensor data type.
-  case int16
-  /// 32-bit signed integer tensor data type.
-  case int32
-  /// 64-bit signed integer tensor data type.
-  case int64
-  /// Boolean tensor data type.
+public enum TensorDataType: Equatable, Hashable {
+  /// Boolean.
   case bool
+  /// 8-bit unsigned integer.
+  case uInt8
+  /// 16-bit signed integer.
+  case int16
+  /// 32-bit signed integer.
+  case int32
+  /// 64-bit signed integer.
+  case int64
+  /// 16-bit half precision floating point.
+  case float16
+  /// 32-bit single precision floating point.
+  case float32
 
   /// Creates a new tensor data type from the given `TFL_Type` or `nil` if the data type is
   /// unsupported or could not be determined because there was an error.
@@ -77,8 +79,8 @@ public enum TensorDataType: Equatable {
   /// - Parameter type: A data type supported by a tensor.
   init?(type: TFL_Type) {
     switch type {
-    case kTfLiteFloat32:
-      self = .float32
+    case kTfLiteBool:
+      self = .bool
     case kTfLiteUInt8:
       self = .uInt8
     case kTfLiteInt16:
@@ -87,8 +89,10 @@ public enum TensorDataType: Equatable {
       self = .int32
     case kTfLiteInt64:
       self = .int64
-    case kTfLiteBool:
-      self = .bool
+    case kTfLiteFloat16:
+      self = .float16
+    case kTfLiteFloat32:
+      self = .float32
     case kTfLiteNoType:
       fallthrough
     default:
@@ -98,7 +102,7 @@ public enum TensorDataType: Equatable {
 }
 
 /// The shape of a TensorFlow Lite tensor.
-public struct TensorShape {
+public struct TensorShape: Equatable, Hashable {
 
   /// The number of dimensions of the tensor.
   public let rank: Int

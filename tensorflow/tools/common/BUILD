@@ -1,15 +1,14 @@
 # Description:
 #   Common functionality for TensorFlow tooling
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+exports_files(["LICENSE"])
 
 py_library(
     name = "public_api",
@@ -21,6 +20,7 @@ py_library(
 py_test(
     name = "public_api_test",
     srcs = ["public_api_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":public_api",
@@ -38,6 +38,7 @@ py_library(
 py_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":test_module1",

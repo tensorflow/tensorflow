@@ -34,6 +34,7 @@ from tensorflow.contrib.boosted_trees.python.ops import training_ops
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_v2 as fc_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -184,16 +185,20 @@ def extract_features(features, feature_columns, use_core_columns):
   # Make a shallow copy of features to ensure downstream usage
   # is unaffected by modifications in the model function.
   features = copy.copy(features)
+  # pylint: disable=protected-access
+  state_manager = fc_v2._StateManagerImpl(layer=None, trainable=False)
   if feature_columns:
     scope = "gbdt"
     with variable_scope.variable_scope(scope):
       feature_columns = list(feature_columns)
       transformed_features = collections.OrderedDict()
       for fc in feature_columns:
-        # pylint: disable=protected-access
         if use_core_columns:
-          # pylint: disable=protected-access
-          tensor = fc_core._transform_features(features, [fc])[fc]
+          if isinstance(fc, fc_v2.FeatureColumn):
+            tensor = fc_v2._transform_features_v2(
+                features, [fc], state_manager)[fc]
+          else:
+            tensor = fc_core._transform_features(features, [fc])[fc]
           transformed_features[fc.name] = tensor
         elif isinstance(fc, feature_column_lib._EmbeddingColumn):
           # pylint: enable=protected-access
@@ -368,8 +373,8 @@ class GradientBoostedDecisionTreeModel(object):
 
     if logits_dimension == 1 or learner_config.multi_class_strategy == (
         learner_pb2.LearnerConfig.TREE_PER_CLASS):
-      self._gradient_shape = tensor_shape.scalar()
-      self._hessian_shape = tensor_shape.scalar()
+      self._gradient_shape = tensor_shape.TensorShape([])
+      self._hessian_shape = tensor_shape.TensorShape([])
     else:
       if center_bias:
         raise ValueError("Center bias should be False for multiclass.")
@@ -590,10 +595,14 @@ class GradientBoostedDecisionTreeModel(object):
               stamp_token=ensemble_stamp,
               tree_ensemble_config=serialized_model), ensemble_stamp
 
-      refresh_local_ensemble, ensemble_stamp = control_flow_ops.cond(
-          math_ops.not_equal(ensemble_stamp,
-                             local_stamp), _refresh_local_ensemble_fn,
-          lambda: (control_flow_ops.no_op(), ensemble_stamp))
+      with ops.device(local_ensemble_handle.device):
+        # Need to colocate stamps for cond.
+        colocated_ensemble_stamp = array_ops.identity(ensemble_stamp)
+
+        refresh_local_ensemble, ensemble_stamp = control_flow_ops.cond(
+            math_ops.not_equal(colocated_ensemble_stamp,
+                               local_stamp), _refresh_local_ensemble_fn,
+            lambda: (control_flow_ops.no_op(), colocated_ensemble_stamp))
 
       # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):
@@ -834,8 +843,8 @@ class GradientBoostedDecisionTreeModel(object):
       # Create steps accumulator.
       steps_accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
-          gradient_shape=tensor_shape.scalar(),
-          hessian_shape=tensor_shape.scalar(),
+          gradient_shape=tensor_shape.TensorShape([]),
+          hessian_shape=tensor_shape.TensorShape([]),
           name="StepsAccumulator")
     # Create ensemble stats summaries.
     summary.scalar("layer_stats/num_examples", num_layer_examples)
@@ -1208,7 +1217,7 @@ class GradientBoostedDecisionTreeModel(object):
 
   def _get_weights(self, hessian_shape, hessians):
     """Derives weights to be used based on hessians and multiclass strategy."""
-    if hessian_shape == tensor_shape.scalar():
+    if hessian_shape.rank == 0:
       # This is tree per class.
       weights = hessians
     elif len(hessian_shape.dims) == 1:

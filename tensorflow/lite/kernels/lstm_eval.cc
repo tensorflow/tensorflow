@@ -16,8 +16,15 @@ limitations under the License.
 
 #include <cstdint>
 
+#ifdef GEMMLOWP_PROFILING
+#include "profiling/profiler.h"
+#endif
+
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -40,7 +47,7 @@ const float kLayerNormEpsilon = 1e-8;
 //  - n_batch: size of batch,
 //  - n_cell: number of cells (or units),
 //  - n_input: the input size,
-//  - n_aux_input: the auxilary input size.
+//  - n_aux_input: the auxiliary input size.
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
 //
@@ -50,7 +57,7 @@ const float kLayerNormEpsilon = 1e-8;
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_output_weights
-// Auxilary input weights of size 'n_cell * n_aux_input':
+// Auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
@@ -118,6 +125,9 @@ inline void LstmStepWithAuxInput(
     float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr_batch) {
+#ifdef GEMMLOWP_PROFILING
+  gemmlowp::ScopedProfilingLabel label("LstmStepWithAuxInputFloat");
+#endif
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -361,6 +371,28 @@ inline void LstmStepWithAuxInput(
   }
 }
 
+void ApplyActivationsToVector(float* input, int input_size,
+                              TfLiteFusedActivation activation_type,
+                              float* output) {
+  using VectorMap = Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 1>>;
+  VectorMap input_map(input, input_size, 1);
+  VectorMap output_map(output, input_size, 1);
+  switch (activation_type) {
+    case kTfLiteActSigmoid: {
+      output_map.array() = input_map.array().logistic();
+      break;
+    }
+    case kTfLiteActTanh: {
+      output_map.array() = input_map.array().tanh();
+      break;
+    }
+    default: {
+      tensor_utils::ApplyActivationToVector(input, input_size, activation_type,
+                                            output);
+    }
+  }
+}
+
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
 //   input_ptr_batch
@@ -371,7 +403,7 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
-// Quantized auxilary input weights of size 'n_cell * n_aux_input':
+// Quantized auxiliary input weights of size 'n_cell * n_aux_input':
 //   aux_input_to_input_weights        - optional
 //   aux_input_to_forget_weights       - optional
 //   aux_input_to_cell_weights         - optional
@@ -472,6 +504,9 @@ inline void LstmStepWithAuxInput(
     int8_t* quantized_aux_input_ptr_batch, int8_t* quantized_output_state_ptr,
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr_batch) {
+#ifdef GEMMLOWP_PROFILING
+  gemmlowp::ScopedProfilingLabel label("LstmStepWithAuxInputHybrid");
+#endif
   // Since we have already checked that weights are all there or none, we
   // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
@@ -673,8 +708,8 @@ inline void LstmStepWithAuxInput(
       tensor_utils::VectorBatchVectorAdd(input_gate_bias_ptr, n_cell, n_batch,
                                          input_gate_scratch);
     }
-    tensor_utils::ApplySigmoidToVector(input_gate_scratch, n_cell * n_batch,
-                                       input_gate_scratch);
+    ApplyActivationsToVector(input_gate_scratch, n_cell * n_batch,
+                             kTfLiteActSigmoid, input_gate_scratch);
   }
 
   // For each batch and cell: update forget gate.
@@ -696,8 +731,8 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(forget_gate_bias_ptr, n_cell, n_batch,
                                        forget_gate_scratch);
   }
-  tensor_utils::ApplySigmoidToVector(forget_gate_scratch, n_cell * n_batch,
-                                     forget_gate_scratch);
+  ApplyActivationsToVector(forget_gate_scratch, n_cell * n_batch,
+                           kTfLiteActSigmoid, forget_gate_scratch);
 
   // For each batch and cell: update the cell.
   tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
@@ -711,8 +746,8 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(cell_bias_ptr, n_cell, n_batch,
                                        cell_scratch);
   }
-  tensor_utils::ApplyActivationToVector(cell_scratch, n_batch * n_cell,
-                                        params->activation, cell_scratch);
+  ApplyActivationsToVector(cell_scratch, n_batch * n_cell, params->activation,
+                           cell_scratch);
   if (use_cifg) {
     tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
                              forget_gate_scratch);
@@ -748,10 +783,10 @@ inline void LstmStepWithAuxInput(
     tensor_utils::VectorBatchVectorAdd(output_gate_bias_ptr, n_cell, n_batch,
                                        output_gate_scratch);
   }
-  tensor_utils::ApplySigmoidToVector(output_gate_scratch, n_batch * n_cell,
-                                     output_gate_scratch);
-  tensor_utils::ApplyActivationToVector(cell_state_ptr, n_batch * n_cell,
-                                        params->activation, cell_scratch);
+  ApplyActivationsToVector(output_gate_scratch, n_batch * n_cell,
+                           kTfLiteActSigmoid, output_gate_scratch);
+  ApplyActivationsToVector(cell_state_ptr, n_batch * n_cell, params->activation,
+                           cell_scratch);
   tensor_utils::VectorVectorCwiseProduct(output_gate_scratch, cell_scratch,
                                          n_batch * n_cell, output_gate_scratch);
 
@@ -854,14 +889,6 @@ inline void LstmStepWithAuxInput(
       tensor_utils::CopyVector(output_ptr_batch + k * output_batch_leading_dim,
                                n_output, output_state_ptr + k * n_output);
     }
-  }
-}
-
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
   }
 }
 
@@ -1096,9 +1123,6 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output) {
-  // For operations that use int8 instead of uint8 we need to fetch raw data
-  // from the tensor different. We use this bool for that condition.
-  const bool is_uint8_hybrid = input_to_output_weights->type == kTfLiteUInt8;
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1137,37 +1161,33 @@ TfLiteStatus EvalHybrid(
   }
 
   // Check optional tensors, the respective pointers can be null.
-  int8_t* input_to_input_weights_ptr = nullptr;
+  const int8_t* input_to_input_weights_ptr = nullptr;
   float input_to_input_weights_scale = 1.0f;
-  int8_t* recurrent_to_input_weights_ptr = nullptr;
+  const int8_t* recurrent_to_input_weights_ptr = nullptr;
   float recurrent_to_input_weights_scale = 1.0f;
   float* input_gate_bias_ptr = nullptr;
   if (!use_cifg) {
-    input_to_input_weights_ptr =
-        GetInt8DataPtr(input_to_input_weights, is_uint8_hybrid);
+    input_to_input_weights_ptr = GetTensorData<int8_t>(input_to_input_weights);
     recurrent_to_input_weights_ptr =
-        GetInt8DataPtr(recurrent_to_input_weights, is_uint8_hybrid);
+        GetTensorData<int8_t>(recurrent_to_input_weights);
     input_gate_bias_ptr = input_gate_bias->data.f;
     input_to_input_weights_scale = input_to_input_weights->params.scale;
     recurrent_to_input_weights_scale = recurrent_to_input_weights->params.scale;
   }
 
-  int8_t* cell_to_input_weights_ptr = nullptr;
-  int8_t* cell_to_forget_weights_ptr = nullptr;
-  int8_t* cell_to_output_weights_ptr = nullptr;
+  const int8_t* cell_to_input_weights_ptr = nullptr;
+  const int8_t* cell_to_forget_weights_ptr = nullptr;
+  const int8_t* cell_to_output_weights_ptr = nullptr;
   float cell_to_input_weights_scale = 1.0f;
   float cell_to_forget_weights_scale = 1.0f;
   float cell_to_output_weights_scale = 1.0f;
   if (use_peephole) {
     if (!use_cifg) {
-      cell_to_input_weights_ptr =
-          GetInt8DataPtr(cell_to_input_weights, is_uint8_hybrid);
+      cell_to_input_weights_ptr = GetTensorData<int8_t>(cell_to_input_weights);
       cell_to_input_weights_scale = cell_to_input_weights->params.scale;
     }
-    cell_to_forget_weights_ptr =
-        GetInt8DataPtr(cell_to_forget_weights, is_uint8_hybrid);
-    cell_to_output_weights_ptr =
-        GetInt8DataPtr(cell_to_output_weights, is_uint8_hybrid);
+    cell_to_forget_weights_ptr = GetTensorData<int8_t>(cell_to_forget_weights);
+    cell_to_output_weights_ptr = GetTensorData<int8_t>(cell_to_output_weights);
     cell_to_forget_weights_scale = cell_to_forget_weights->params.scale;
     cell_to_output_weights_scale = cell_to_output_weights->params.scale;
   }
@@ -1185,7 +1205,7 @@ TfLiteStatus EvalHybrid(
   const int8_t* projection_weights_ptr =
       (projection_weights == nullptr)
           ? nullptr
-          : GetInt8DataPtr(projection_weights, is_uint8_hybrid);
+          : GetTensorData<int8_t>(projection_weights);
   const float projection_weights_scale =
       (projection_weights == nullptr) ? 1.0f : projection_weights->params.scale;
   const float* projection_bias_ptr =
@@ -1193,26 +1213,26 @@ TfLiteStatus EvalHybrid(
 
   // Required tensors, pointers are non-null.
   const int8_t* input_to_forget_weights_ptr =
-      GetInt8DataPtr(input_to_forget_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(input_to_forget_weights);
   const float input_to_forget_weights_scale =
       input_to_forget_weights->params.scale;
   const int8_t* input_to_cell_weights_ptr =
-      GetInt8DataPtr(input_to_cell_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(input_to_cell_weights);
   const float input_to_cell_weights_scale = input_to_cell_weights->params.scale;
   const int8_t* input_to_output_weights_ptr =
-      GetInt8DataPtr(input_to_output_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(input_to_output_weights);
   const float input_to_output_weights_scale =
       input_to_output_weights->params.scale;
   const int8_t* recurrent_to_forget_weights_ptr =
-      GetInt8DataPtr(recurrent_to_forget_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(recurrent_to_forget_weights);
   const float recurrent_to_forget_weights_scale =
       recurrent_to_forget_weights->params.scale;
   const int8_t* recurrent_to_cell_weights_ptr =
-      GetInt8DataPtr(recurrent_to_cell_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(recurrent_to_cell_weights);
   const float recurrent_to_cell_weights_scale =
       recurrent_to_cell_weights->params.scale;
   const int8_t* recurrent_to_output_weights_ptr =
-      GetInt8DataPtr(recurrent_to_output_weights, is_uint8_hybrid);
+      GetTensorData<int8_t>(recurrent_to_output_weights);
   const float recurrent_to_output_weights_scale =
       recurrent_to_output_weights->params.scale;
   const float* forget_gate_bias_ptr = forget_gate_bias->data.f;
@@ -1220,26 +1240,25 @@ TfLiteStatus EvalHybrid(
   const float* output_gate_bias_ptr = output_gate_bias->data.f;
 
   // Temporary storage for quantized values and scaling factors.
-  int8_t* quantized_input_ptr =
-      GetInt8DataPtr(input_quantized, is_uint8_hybrid);
+  int8_t* quantized_input_ptr = GetTensorData<int8_t>(input_quantized);
   int8_t* quantized_aux_input_ptr =
       (aux_input_quantized == nullptr)
           ? nullptr
-          : GetInt8DataPtr(aux_input_quantized, is_uint8_hybrid);
+          : GetTensorData<int8_t>(aux_input_quantized);
   int8_t* quantized_output_state_ptr =
-      GetInt8DataPtr(output_state_quantized, is_uint8_hybrid);
+      GetTensorData<int8_t>(output_state_quantized);
   int8_t* quantized_cell_state_ptr =
-      GetInt8DataPtr(cell_state_quantized, is_uint8_hybrid);
+      GetTensorData<int8_t>(cell_state_quantized);
   float* scaling_factors_ptr = scaling_factors->data.f;
   float* prod_scaling_factors_ptr = prod_scaling_factors->data.f;
   float* recovered_cell_weights_ptr = recovered_cell_weights->data.f;
 
   // Auxiliary input and weights.
   float* aux_input_ptr = nullptr;
-  int8_t* aux_input_to_input_weights_ptr = nullptr;
-  int8_t* aux_input_to_forget_weights_ptr = nullptr;
-  int8_t* aux_input_to_cell_weights_ptr = nullptr;
-  int8_t* aux_input_to_output_weights_ptr = nullptr;
+  const int8_t* aux_input_to_input_weights_ptr = nullptr;
+  const int8_t* aux_input_to_forget_weights_ptr = nullptr;
+  const int8_t* aux_input_to_cell_weights_ptr = nullptr;
+  const int8_t* aux_input_to_output_weights_ptr = nullptr;
   float aux_input_to_input_weights_scale = 0.0f;
   float aux_input_to_forget_weights_scale = 0.0f;
   float aux_input_to_cell_weights_scale = 0.0f;
@@ -1247,14 +1266,14 @@ TfLiteStatus EvalHybrid(
   if (aux_input_size > 0) {
     if (!use_cifg) {
       aux_input_to_input_weights_ptr =
-          GetInt8DataPtr(aux_input_to_input_weights, is_uint8_hybrid);
+          GetTensorData<int8_t>(aux_input_to_input_weights);
     }
     aux_input_to_forget_weights_ptr =
-        GetInt8DataPtr(aux_input_to_forget_weights, is_uint8_hybrid);
+        GetTensorData<int8_t>(aux_input_to_forget_weights);
     aux_input_to_cell_weights_ptr =
-        GetInt8DataPtr(aux_input_to_cell_weights, is_uint8_hybrid);
+        GetTensorData<int8_t>(aux_input_to_cell_weights);
     aux_input_to_output_weights_ptr =
-        GetInt8DataPtr(aux_input_to_output_weights, is_uint8_hybrid);
+        GetTensorData<int8_t>(aux_input_to_output_weights);
     if (!use_cifg) {
       aux_input_to_input_weights_scale =
           aux_input_to_input_weights->params.scale;

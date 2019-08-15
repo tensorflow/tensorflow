@@ -36,6 +36,18 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
 
   Sergey Ioffe, Christian Szegedy
 
+  Keras APIs handle BatchNormalization updates to the moving_mean and
+  moving_variance as part of their `fit()` and `evaluate()` loops. However, if a
+  custom training loop is used with an instance of `Model`, these updates need
+  to be explicitly included.  Here's a simple example of how it can be done:
+
+  ```python
+    # model is an instance of Model that contains BatchNormalization layer.
+    update_ops = model.get_updates_for(None) + model.get_updates_for(features)
+    train_op = optimizer.minimize(loss)
+    train_op = tf.group([train_op, update_ops])
+  ```
+
   Arguments:
     axis: An `int` or list of `int`, the axis or axes that should be
         normalized, typically the features axis/axes. For instance, after a
@@ -94,8 +106,8 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
@@ -156,7 +168,10 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None, instructions='Use keras.layers.BatchNormalization instead.')
+    date=None, instructions='Use keras.layers.BatchNormalization instead.  In '
+    'particular, `tf.control_dependencies(tf.GraphKeys.UPDATE_OPS)` should not '
+    'be used (consult the `tf.keras.layers.batch_normalization` '
+    'documentation).')
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
@@ -199,11 +214,11 @@ def batch_normalization(inputs,
   example:
 
   ```python
-    x_norm = tf.layers.batch_normalization(x, training=training)
+    x_norm = tf.compat.v1.layers.batch_normalization(x, training=training)
 
     # ...
 
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    update_ops = tf.compat.v1.get_collection(tf.GraphKeys.UPDATE_OPS)
     train_op = optimizer.minimize(loss)
     train_op = tf.group([train_op, update_ops])
   ```
@@ -271,8 +286,8 @@ def batch_normalization(inputs,
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If

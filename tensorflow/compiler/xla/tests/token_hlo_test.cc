@@ -222,7 +222,7 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(-156.0);
@@ -243,7 +243,7 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto expected = LiteralUtil::CreateR0<float>(420.0);
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0}));
@@ -261,7 +261,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
   auto input = LiteralUtil::CreateR1<float>({1.0, 3.0, 7.0});
   auto expected = LiteralUtil::CreateR1<float>({-1.0, -3.0, -7.0});
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&input}));
@@ -284,7 +284,7 @@ ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR1<float>({3.0, 3.0, 47.0});
   auto p1 = LiteralUtil::CreateR1<float>({1.0, -2.0, 2.0});
   auto expected = LiteralUtil::CreateR1<float>({2.0, 5.0, 45.0});

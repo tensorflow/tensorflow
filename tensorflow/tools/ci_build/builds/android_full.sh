@@ -86,22 +86,4 @@ zip -ur ${OUT_DIR}/tensorflow.aar $(find jni -name *.so)
 popd
 rm -rf ${AAR_LIB_TMP}
 
-# Test Makefile build just to make sure it still works.
-if [ -z "$NDK_ROOT" ]; then
-   export NDK_ROOT=${ANDROID_NDK_HOME}
-fi
-
-echo "========== Benchmark Makefile Build Test =========="
-tensorflow/contrib/makefile/build_all_android.sh
-
-echo "========== Demo Makefile Build Test =========="
-tensorflow/contrib/makefile/build_all_android.sh \
--s $(pwd)/tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in \
--t "libtensorflow_inference.so libtensorflow_demo.so"
-
-# Test Makefile build for tensorflow runtime with hexagon.
-# -b ... build only, -p ... use prebuilt binaries
-# This uses prebuilt binaries for hexagon dependencies because Building
-# hexagon binaries from source code requires qualcomm sdk.
-echo "========== Hexagon Build Test =========="
-tensorflow/contrib/makefile/samples/build_and_run_inception_hexagon.sh -bp
+# TODO(b/122377443): Restore Makefile builds after resolving r18b build issues.

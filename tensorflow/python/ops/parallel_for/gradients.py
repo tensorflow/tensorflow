@@ -38,10 +38,12 @@ def jacobian(output, inputs, use_pfor=True, parallel_iterations=None):
 
   Returns:
     A tensor or a nested strucutre of tensors with the same structure as
-    `inputs`. Each entry is the jacobian of `output` w.rt. to the corresponding
+    `inputs`. Each entry is the jacobian of `output` w.r.t. to the corresponding
     value in `inputs`. If output has shape [y_1, ..., y_n] and inputs_i has
     shape [x_1, ..., x_m], the corresponding jacobian has shape
-    [y_1, ..., y_n, x_1, ..., x_m].
+    [y_1, ..., y_n, x_1, ..., x_m]. Note that in cases where the gradient is
+    sparse (IndexedSlices), jacobian function currently makes it dense and
+    returns a Tensor instead. This may change in the future.
   """
   flat_inputs = nest.flatten(inputs)
   output_tensor_shape = output.shape
@@ -68,12 +70,12 @@ def jacobian(output, inputs, use_pfor=True, parallel_iterations=None):
         parallel_iterations=parallel_iterations)
 
   for i, out in enumerate(pfor_outputs):
-    if out is not None:
+    if isinstance(out, ops.Tensor):
       new_shape = array_ops.concat(
           [output_shape, array_ops.shape(out)[1:]], axis=0)
       out = array_ops.reshape(out, new_shape)
       out.set_shape(output_tensor_shape.concatenate(flat_inputs[i].shape))
-    pfor_outputs[i] = out
+      pfor_outputs[i] = out
 
   return nest.pack_sequence_as(inputs, pfor_outputs)
 

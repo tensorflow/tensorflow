@@ -41,7 +41,7 @@ table QuantizationParameters {
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
   // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // The data_buffer is an opaque container, with the assumption that the

@@ -45,7 +45,7 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
   Although in many cases it's not necessary to understand all of the many ways
       to configure a SavedModel, this method has a few practical implications:
     - It will be treated as a graph for inference / serving (i.e. uses the tag
-      `tag_constants.SERVING`)
+      `saved_model.SERVING`)
     - The SavedModel will load in TensorFlow Serving and supports the
       [Predict
       API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).

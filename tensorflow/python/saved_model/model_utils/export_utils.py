@@ -79,7 +79,7 @@ def build_all_signature_defs(receiver_tensors,
       additional serving signatures, which may be used to feed inputs at
       different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
-      tf.parse_example() op.  Defaults to None.
+      tf.io.parse_example() op.  Defaults to None.
     serving_only: boolean; if true, resulting signature defs will only include
       valid serving signatures. If false, all requested signatures will be
       returned.

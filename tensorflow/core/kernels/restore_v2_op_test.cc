@@ -105,16 +105,16 @@ class RestoreV2OpTest : public OpsTestBase {
 
       // Input #0 is the file name
       Tensor input_0(DT_STRING, TensorShape({}));
-      input_0.scalar<string>()() = filename;
+      input_0.scalar<tstring>()() = filename;
       inputs.push_back({nullptr, &input_0});
 
       // Input #1 is the tensor names
-      Tensor input_1 = MakeInput<string>(
+      Tensor input_1 = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
           [&tensor_names](int x) -> string { return tensor_names[x]; });
       inputs.push_back({nullptr, &input_1});
 
-      Tensor shape_and_slices = MakeInput<string>(
+      Tensor shape_and_slices = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
           [](int x) -> string { return "" /* saves in full */; });
       if (save_op_to_use != "Save") {
@@ -195,11 +195,11 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d bool tensor
     {
       MakeRestoreOp(DT_BOOL);
-      AddInput<string>(TensorShape({}),
-                       [&filename](int x) -> string { return filename; });
-      AddInput<string>(TensorShape({1}),
-                       [&](int x) -> string { return tensor_names[0]; });
-      AddInput<string>(TensorShape({1}), [&](int x) -> string {
+      AddInput<tstring>(TensorShape({}),
+                        [&filename](int x) -> tstring { return filename; });
+      AddInput<tstring>(TensorShape({1}),
+                        [&](int x) -> tstring { return tensor_names[0]; });
+      AddInput<tstring>(TensorShape({1}), [&](int x) -> tstring {
         return "";
       });  // Restores in full.
       TF_ASSERT_OK(RunOpKernel());
@@ -213,7 +213,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d integer tensor
     {
       MakeRestoreOp(DT_INT32);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[1];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[1];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({10});
@@ -225,7 +225,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d float tensor
     {
       MakeRestoreOp(DT_FLOAT);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[2];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[2];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({2, 4});
@@ -237,7 +237,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d double tensor
     {
       MakeRestoreOp(DT_DOUBLE);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[3];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[3];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({2, 4});
@@ -249,7 +249,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d qint8 tensor
     {
       MakeRestoreOp(DT_QINT8);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[4];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[4];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({3, 2});
@@ -261,7 +261,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d qint32 tensor
     {
       MakeRestoreOp(DT_QINT32);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[5];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[5];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({2, 3});
@@ -274,7 +274,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d uint8 tensor
     {
       MakeRestoreOp(DT_UINT8);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[6];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[6];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({11});
@@ -286,7 +286,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d int8 tensor
     {
       MakeRestoreOp(DT_INT8);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[7];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[7];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({7});
@@ -298,7 +298,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d int16 tensor
     {
       MakeRestoreOp(DT_INT16);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[8];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[8];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({7});
@@ -310,7 +310,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d int64 tensor
     {
       MakeRestoreOp(DT_INT64);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[9];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[9];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({9});
@@ -322,7 +322,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d complex64 tensor
     {
       MakeRestoreOp(DT_COMPLEX64);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[10];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[10];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({2, 3});
@@ -334,7 +334,7 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 2-d half tensor
     {
       MakeRestoreOp(DT_HALF);
-      (*mutable_input(1).tensor).flat<string>()(0) = tensor_names[11];
+      (*mutable_input(1).tensor).flat<tstring>()(0) = tensor_names[11];
       TF_ASSERT_OK(RunOpKernel());
       Tensor* output = GetOutput(0);
       TensorShape expected({2, 4});

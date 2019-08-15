@@ -35,7 +35,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #define VALUE_IN_DEBUG_STRING false
 
@@ -163,8 +165,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
     return t;
   }
 
-  Tensor Scalar(Allocator* a) const override {
-    Tensor t(a, dt_, TensorShape({}));
+  Tensor Scalar(Allocator* a, const AllocationAttributes& attr) const override {
+    Tensor t(a, dt_, TensorShape({}), attr);
     return t;
   }
 
@@ -260,11 +262,16 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     delete col_impl;
     return;
   }
-  // Run in an I/O thread, so as not to starve the executor threads.
-  // TODO(b/80529858): Instead of forking every per-device Collective
-  // Op off into its own thread, consider queuing them on a
-  // fixed-size thread-pool dedicated to running CollectiveOps.
-  SchedClosure([col_impl, col_ctx, done_safe]() {
+  // Run on an unbounded work queue that can handle blocking work so as to not
+  // starve executor threads.
+  remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
+    profiler::TraceMe activity(
+        [&] {
+          return strings::StrCat(ctx->op_kernel().name(), ":",
+                                 ctx->op_kernel().type_string(),
+                                 "#id=", ctx->step_id(), "#");
+        },
+        profiler::TraceMeLevel::kInfo);
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       done_safe(s);
       delete col_ctx;
@@ -284,28 +291,27 @@ Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {
   *col_impl = nullptr;
-  Status status;
   switch (col_params.instance.data_type) {
     case DT_INT32:
-      if (col_params.group.device_type == DEVICE_GPU) {
-        status = errors::Internal(
-            "CollectiveImplementation does not support datatype DT_INT32 on "
+      if (col_params.group.device_type == DEVICE_GPU &&
+          col_params.instance.type == REDUCTION_COLLECTIVE) {
+        // TODO(b/139421603): enable int32 all-reduce on GPU.
+        return errors::Internal(
+            "Collective all-reduce does not support datatype DT_INT32 on "
             "DEVICE_GPU");
       }
       TF_FALLTHROUGH_INTENDED;
     case DT_FLOAT:
     case DT_DOUBLE:
     case DT_INT64: {
-      status = CollectiveRegistry::Lookup(
+      return CollectiveRegistry::Lookup(
           col_params.instance.impl_details.collective_name, col_impl);
-      break;
     }
     default:
-      status = errors::Internal(
+      return errors::Internal(
           "CollectiveImplementation does not support datatype ",
           col_params.instance.data_type);
   }
-  return status;
 }
 
 bool BaseCollectiveExecutor::CheckDependencies(

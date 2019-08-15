@@ -24,7 +24,7 @@ END
 The type of the output.
 END
   }
-  summary: "Outputs random values from a normal distribution."
+  summary: "Outputs random values from a normal distribution. This op is deprecated in favor of op 'StatefulStandardNormalV2'"
   description: <<END
 The generated values will have mean 0 and standard deviation 1.
 END

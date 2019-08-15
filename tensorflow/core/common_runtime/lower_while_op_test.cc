@@ -64,7 +64,7 @@ TEST(LowerWhileOpTest, Simple) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue cond_func;
@@ -80,6 +80,9 @@ TEST(LowerWhileOpTest, Simple) {
           .Attr("parallel_iterations", 100)
           .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
           .Finalize(root.graph(), &while_node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(while_node)),
+      Output(while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
@@ -135,6 +138,9 @@ TEST(LowerWhileOpTest, Simple) {
     if (op->type_string() == "XTimesTwo") {
       x_times_two_count++;
     }
+    if (op->name() == "C") {
+      ASSERT_EQ(op->in_edges().size(), 2);
+    }
     ASSERT_NE(op->type_string(), "While");
   }
   // One node per loop input.
@@ -175,8 +181,8 @@ TEST(LowerWhileOpTest, MultipleInputs) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
-  auto b = ops::_Arg(root.WithOpName("B"), DT_INT32, 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(root.WithOpName("B"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs(
       {NodeBuilder::NodeOut(a.node()), NodeBuilder::NodeOut(b.node())});
@@ -291,7 +297,7 @@ TEST(LowerWhileOpTest, DoNotInlineLoweredFunctions) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue cond_func;

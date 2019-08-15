@@ -18,9 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+import sys
+import threading
+
 import gast
+import six
 
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
@@ -46,38 +52,87 @@ class ConversionTest(test.TestCase):
     self.assertTrue(conversion.is_whitelisted_for_graph(utils))
     self.assertTrue(conversion.is_whitelisted_for_graph(constant_op.constant))
 
-  def test_entity_to_graph_unsupported_types(self):
+  def test_is_whitelisted_for_graph_tensorflow_like(self):
+
+    tf_like = imp.new_module('tensorflow_foo')
+    def test_fn():
+      pass
+    tf_like.test_fn = test_fn
+    test_fn.__module__ = tf_like
+
+    self.assertFalse(conversion.is_whitelisted_for_graph(tf_like.test_fn))
+
+  def test_is_whitelisted_for_graph_callable_whitelisted_call(self):
+
+    whitelisted_mod = imp.new_module('test_whitelisted_call')
+    sys.modules['test_whitelisted_call'] = whitelisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
+                               config.CONVERSION_RULES)
+
+    class TestClass(object):
+
+      def __call__(self):
+        pass
+
+      def whitelisted_method(self):
+        pass
+
+    TestClass.__module__ = 'test_whitelisted_call'
+    if six.PY2:
+      TestClass.__call__.__func__.__module__ = 'test_whitelisted_call'
+    else:
+      TestClass.__call__.__module__ = 'test_whitelisted_call'
+
+    class Subclass(TestClass):
+
+      def converted_method(self):
+        pass
+
+    tc = Subclass()
+
+    self.assertTrue(conversion.is_whitelisted_for_graph(TestClass.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.__call__))
+    self.assertTrue(conversion.is_whitelisted_for_graph(tc.whitelisted_method))
+    self.assertFalse(conversion.is_whitelisted_for_graph(Subclass))
+    self.assertFalse(conversion.is_whitelisted_for_graph(tc.converted_method))
+
+  def test_convert_entity_to_ast_unsupported_types(self):
     with self.assertRaises(NotImplementedError):
       program_ctx = self._simple_program_ctx()
-      conversion.entity_to_graph('dummy', program_ctx, None, None)
+      conversion.convert_entity_to_ast('dummy', program_ctx)
 
-  def test_entity_to_graph_callable(self):
+  def test_convert_entity_to_ast_callable(self):
     b = 2
+
     def f(a):
       return a + b
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    nodes, name, info = conversion.convert_entity_to_ast(f, program_ctx)
+    fn_node, = nodes
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
-    self.assertIs(ns['b'], b)
+    self.assertIs(info.namespace['b'], b)
 
-  def test_entity_to_graph_function_with_defaults(self):
+  def test_convert_entity_to_ast_function_with_defaults(self):
     b = 2
     c = 1
+
     def f(a, d=c + 1):
       return a + b + d
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    nodes, name, _ = conversion.convert_entity_to_ast(f, program_ctx)
+    fn_node, = nodes
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertEqual(
-        compiler.ast_to_source(fn_node.args.defaults[0]).strip(), 'None')
+        compiler.ast_to_source(
+            fn_node.args.defaults[0], include_encoding_marker=False).strip(),
+        'None')
 
-  def test_entity_to_graph_call_tree(self):
+  def test_convert_entity_to_ast_call_tree(self):
 
     def g(a):
       return a
@@ -86,11 +141,11 @@ class ConversionTest(test.TestCase):
       return g(a)
 
     program_ctx = self._simple_program_ctx()
-    nodes, _, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    f_node = nodes[-2]
+    nodes, _, _ = conversion.convert_entity_to_ast(f, program_ctx)
+    f_node, = nodes
     self.assertEqual('tf__f', f_node.name)
 
-  def test_entity_to_graph_class_hierarchy(self):
+  def test_convert_entity_to_ast_class_hierarchy(self):
 
     class TestBase(object):
 
@@ -117,9 +172,9 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     with self.assertRaisesRegex(NotImplementedError, 'classes.*whitelisted'):
-      conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
+      conversion.convert_entity_to_ast(TestSubclass, program_ctx)
 
-  def test_entity_to_graph_class_hierarchy_whitelisted(self):
+  def test_convert_entity_to_ast_class_hierarchy_whitelisted(self):
 
     class TestSubclass(training.Model):
 
@@ -131,89 +186,119 @@ class ConversionTest(test.TestCase):
         return 3 * x
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, _ = conversion.entity_to_graph(TestSubclass, program_ctx, None,
-                                                None)
-    class_node = nodes[-2]  # TODO(mdan): This is brittle.
-
+    (import_node, class_node), name, _ = conversion.convert_entity_to_ast(
+        TestSubclass, program_ctx)
+    self.assertEqual(import_node.names[0].name, 'Model')
     self.assertEqual(name, 'TfTestSubclass')
     self.assertEqual(class_node.name, 'TfTestSubclass')
 
-  def test_entity_to_graph_lambda(self):
+  def test_convert_entity_to_ast_lambda(self):
     b = 2
     f = lambda x: b * x if x > 0 else -x
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    (fn_node,), name, entity_info = conversion.convert_entity_to_ast(
+        f, program_ctx)
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
-    self.assertIs(ns['b'], b)
+    self.assertIs(entity_info.namespace['b'], b)
 
-  def test_entity_to_graph_multiple_lambdas(self):
+  def test_convert_entity_to_ast_multiple_lambdas(self):
     a, b = 1, 2
     f, _ = (lambda x: a * x, lambda y: b * y)
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    (fn_node,), name, entity_info = conversion.convert_entity_to_ast(
+        f, program_ctx)
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
-    self.assertIs(ns['a'], a)
+    self.assertIs(entity_info.namespace['a'], a)
 
-  def test_entity_to_graph_multiple_lambdas_ambiguous_definitions(self):
+  def test_convert_entity_to_ast_multiple_lambdas_ambiguous_definitions(self):
     a, b = 1, 2
     f, _ = (lambda x: a * x, lambda x: b * x)
 
     program_ctx = self._simple_program_ctx()
     with self.assertRaises(ValueError):
-      conversion.entity_to_graph(f, program_ctx, None, None)
+      conversion.convert_entity_to_ast(f, program_ctx)
 
-  def test_entity_to_graph_lambda_code_with_garbage(self):
+  def test_convert_entity_to_ast_lambda_code_with_garbage(self):
     # pylint:disable=g-long-lambda
     f = (  # intentional wrap
-        lambda x: (x  # intentional wrap
-                   + 1),)[0]
+        lambda x: (
+            x  # intentional wrap
+            + 1),)[0]
     # pylint:enable=g-long-lambda
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    (fn_node,), name, _ = conversion.convert_entity_to_ast(f, program_ctx)
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
 
-  def test_entity_to_graph_nested_functions(self):
+  def test_convert_entity_to_ast_nested_functions(self):
     b = 2
 
     def f(x):
+
       def g(x):
         return b * x
+
       return g(x)
 
     program_ctx = self._simple_program_ctx()
-    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node = nodes[-2]
+    (fn_node,), name, entity_info = conversion.convert_entity_to_ast(
+        f, program_ctx)
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual(fn_node.name, 'tf__f')
     self.assertEqual('tf__f', name)
-    self.assertIs(ns['b'], b)
+    self.assertIs(entity_info.namespace['b'], b)
 
-  def test_ag_module_cached(self):
-    def callee():
-      return range(3)
+  def test_convert_concurrency(self):
 
-    def caller(a):
-      return a()
+    def test_fn():
+      pass
 
-    program_ctx = self._simple_program_ctx()
-    _, _, callee_ns = conversion.entity_to_graph(callee, program_ctx, None,
-                                                 None)
-    _, _, caller_ns = conversion.entity_to_graph(caller, program_ctx, None,
-                                                 None)
+    generated_file_names = []
 
-    self.assertTrue(callee_ns['ag__'] is caller_ns['ag__'])
+    def conversion_thread():
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      generated_file_names.append(new_f.__code__.co_filename)
+
+    threads = tuple(
+        threading.Thread(target=conversion_thread) for _ in range(10))
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+
+    # Races would potentially create multiple files (non-deterministically,
+    # but with high likelihood).
+    self.assertEqual(len(set(generated_file_names)), 1)
+
+  def test_convert_reentrance(self):
+
+    def test_fn():
+      pass
+
+    # There are no known ways to cause convert to re-enter. So we instrument
+    # an internal function to do that instead.
+    old_node_to_graph = conversion.node_to_graph
+    self.num_conversions = 0
+    def node_to_graph_wrapper(node, context):
+      self.num_conversions += 1
+      if self.num_conversions < 2:
+        conversion.convert(test_fn, self._simple_program_ctx())
+      return old_node_to_graph(node, context)
+
+    try:
+      conversion.node_to_graph = node_to_graph_wrapper
+      new_f = conversion.convert(test_fn, self._simple_program_ctx())
+      self.assertIsNotNone(new_f)
+    finally:
+      conversion.node_to_graph = old_node_to_graph
 
 
 if __name__ == '__main__':

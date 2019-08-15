@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdlib.h>
-#include <string.h>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -89,12 +91,11 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride) {
-  int batch, row, col;
-  for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+  for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
     // Get the address of the first row.
     const int8_t* row_ptr = matrix;
-    for (row = 0; row < m_rows; ++row, result += result_stride) {
+    for (int row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;
 #if defined(__GNUC__)
@@ -102,17 +103,18 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
 #endif
-      for (col = 0; col < m_cols; ++col, ++row_ptr) {
+      for (int col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col]);
       }  // for col
-      *result += (dotprod * batch_scaling_factor);
+      *result += dotprod * batch_scaling_factor;
     }  // for row
   }    // for batch
 }
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
-    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
-    const float* vector, int n_batch, float* result, int result_stride) {
+    const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
+    float* __restrict__ result, int result_stride) {
   const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
@@ -145,16 +147,15 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int m_cols, const int8_t* __restrict__ vectors,
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride) {
-  const int kBlockSize = 16;
+  static const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
-  int batch, row;
-  for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+  for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
     const float batch_scaling_factor = scaling_factors[batch];
+    const uint8_t* ledger_ptr = ledger;
     // Get the address of the first row.
     const int8_t* row_ptr = matrix;
-    const uint8_t* ledger_ptr = ledger;
-    for (row = 0; row < m_rows; ++row, result += result_stride) {
+    for (int row = 0; row < m_rows; ++row, result += result_stride) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;
 #if defined(__GNUC__)
@@ -163,16 +164,14 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
                          3 /* temporal locality */);
 #endif
       int num_nonzero_blocks = *ledger_ptr++;
-      if (num_nonzero_blocks > 0) {
-        for (int i = 0; i < num_nonzero_blocks; i++) {
-          const int block_start_index = *ledger_ptr++ * kBlockSize;
-          const int8_t* vector_block_ptr = vectors + block_start_index;
-          for (int c = 0; c < kBlockSize; c++) {
-            dotprod += (*row_ptr++) * (*vector_block_ptr++);
-          }  // for block
-        }
-      }
-      *result += (dotprod * batch_scaling_factor);
+      for (int i = 0; i < num_nonzero_blocks; i++) {
+        const int block_start_index = *ledger_ptr++ * kBlockSize;
+        const int8_t* vector_block_ptr = vectors + block_start_index;
+        for (int c = 0; c < kBlockSize; c++) {
+          dotprod += (*row_ptr++) * (*vector_block_ptr++);
+        }  // for block
+      }    // for num_nonzero_blocks
+      *result += dotprod * batch_scaling_factor;
     }  // for row
   }    // for batch
 }
@@ -250,13 +249,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   }
 }
 
-void PortableVectorBatchVectorAssign(const float* vector, int v_size,
-                                     int n_batch, float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    memcpy(batch_vector + b * v_size, vector, v_size * sizeof(float));
-  }
-}
-
 void PortableApplySigmoidToVector(const float* vector, int v_size,
                                   float* result) {
   auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);
@@ -302,14 +294,6 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
   }
 }
 
-void PortableVectorShiftLeft(float* vector, int v_size, float shift_value) {
-  TF_LITE_ASSERT(v_size > 0);
-  for (int i = 0; i < v_size - 1; i++) {
-    vector[i] = vector[i + 1];
-  }
-  vector[v_size - 1] = shift_value;
-}
-
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size) {
   const float* input_vector_ptr = input_vector;
@@ -334,9 +318,9 @@ void PortableMeanStddevNormalization(const float* input_vector,
     float stddev_inv = 0.0f;
     const float variance = sum_sq / v_size - mean * mean;
     if (variance == 0) {
-      stddev_inv = 1.0f / sqrt(normalization_epsilon);
+      stddev_inv = 1.0f / std::sqrt(normalization_epsilon);
     } else {
-      stddev_inv = 1.0f / sqrt(variance);
+      stddev_inv = 1.0f / std::sqrt(variance);
     }
     for (int i = 0; i < v_size; ++i) {
       output_vector[i] = (input_vector[i] - mean) * stddev_inv;

@@ -71,7 +71,7 @@ class TimeSeriesModel(object):
            `tf.feature_column.embedding_column`) corresponding to exogenous
            features which provide extra information to the model but are not
            part of the series to be predicted. Passed to
-           `tf.feature_column.input_layer`.
+           `tf.compat.v1.feature_column.input_layer`.
       dtype: The floating point datatype to use.
     """
     if exogenous_feature_columns:

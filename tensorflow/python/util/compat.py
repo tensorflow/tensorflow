@@ -38,12 +38,20 @@ import six as _six
 
 from tensorflow.python.util.tf_export import tf_export
 
+try:
+  # This import only works on python 3.3 and above.
+  import collections.abc as collections_abc  # pylint: disable=unused-import
+except ImportError:
+  import collections as collections_abc  # pylint: disable=unused-import
+
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
-  """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
+  """Converts `bytearray`, `bytes`, or unicode python input types to `bytes`.
+
+  Uses utf-8 encoding for text by default.
 
   Args:
-    bytes_or_text: A `bytes`, `str`, or `unicode` object.
+    bytes_or_text: A `bytearray`, `bytes`, `str`, or `unicode` object.
     encoding: A string indicating the charset for encoding unicode.
 
   Returns:
@@ -52,7 +60,9 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
-  if isinstance(bytes_or_text, _six.text_type):
+  if isinstance(bytes_or_text, bytearray):
+    return bytes(bytes_or_text)
+  elif isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text.encode(encoding)
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
@@ -62,7 +72,10 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
 
 
 def as_text(bytes_or_text, encoding='utf-8'):
-  """Returns the given argument as a unicode string.
+  """Converts any string-like python input types to unicode.
+
+  Returns the input as a unicode string. Uses utf-8 encoding for text
+  by default.
 
   Args:
     bytes_or_text: A `bytes`, `str`, or `unicode` object.
@@ -95,7 +108,10 @@ else:
 
 @tf_export('compat.as_str_any')
 def as_str_any(value):
-  """Converts to `str` as `str(value)`, but use `as_str` for `bytes`.
+  """Converts input to `str` type.
+
+     Uses `str(value)`, except for `bytes` typed inputs, which are converted
+     using `as_str`.
 
   Args:
     value: A object that can be converted to `str`.
@@ -111,13 +127,37 @@ def as_str_any(value):
 
 @tf_export('compat.path_to_str')
 def path_to_str(path):
-  """Returns the file system path representation of a `PathLike` object, else as it is.
+  r"""Converts input which is a `PathLike` object to `str` type.
+
+  Converts from any python constant representation of a `PathLike` object to
+  a string. If the input is not a `PathLike` object, simply returns the input.
 
   Args:
     path: An object that can be converted to path representation.
 
   Returns:
     A `str` object.
+
+  Usage:
+    In case a simplified `str` version of the path is needed from an
+    `os.PathLike` object
+
+  Examples:
+  ```python3
+  >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+  'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
+  >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
+  'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
+  >>> tf.compat.path_to_str(Path('./corpus'))
+  'corpus' # Linux OS
+  >>> tf.compat.path_to_str('./.././Corpus')
+  './.././Corpus' # Linux OS
+  >>> tf.compat.path_to_str(Path('./.././Corpus'))
+  '../Corpus' # Linux OS
+  >>> tf.compat.path_to_str(Path('./..////../'))
+  '../..' # Linux OS
+
+  ```
   """
   if hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())

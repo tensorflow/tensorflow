@@ -29,11 +29,7 @@ from tensorflow.python.ops import template as template_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.util import deprecation
 
-
-__all__ = [
-    "RealNVP",
-    "real_nvp_default_template"
-]
+__all__ = ["RealNVP", "real_nvp_default_template"]
 
 
 class RealNVP(bijector.Bijector):
@@ -132,8 +128,7 @@ class RealNVP(bijector.Bijector):
   """
 
   @deprecation.deprecated(
-      "2018-10-01",
-      "The TensorFlow Distributions library has moved to "
+      "2018-10-01", "The TensorFlow Distributions library has moved to "
       "TensorFlow Probability "
       "(https://github.com/tensorflow/probability). You "
       "should update all references to use `tfp.distributions` "
@@ -155,10 +150,11 @@ class RealNVP(bijector.Bijector):
         `log_scale` from both the forward domain (`x`) and the inverse domain
         (`y`). Calculation must respect the "autoregressive property" (see class
         docstring). Suggested default
-        `masked_autoregressive_default_template(hidden_layers=...)`.
-        Typically the function contains `tf.Variables` and is wrapped using
-        `tf.make_template`. Returning `None` for either (both) `shift`,
-        `log_scale` is equivalent to (but more efficient than) returning zero.
+        `masked_autoregressive_default_template(hidden_layers=...)`. Typically
+        the function contains `tf.Variables` and is wrapped using
+        `tf.compat.v1.make_template`. Returning `None` for either (both)
+        `shift`, `log_scale` is equivalent to (but more efficient than)
+        returning zero.
       is_constant_jacobian: Python `bool`. Default: `False`. When `True` the
         implementation assumes `log_scale` does not depend on the forward domain
         (`x`) or inverse domain (`y`) values. (No validation is made;
@@ -243,8 +239,7 @@ class RealNVP(bijector.Bijector):
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "
@@ -272,8 +267,8 @@ def real_nvp_default_template(
       implies a linear activation.
     name: A name for ops managed by this function. Default:
       "real_nvp_default_template".
-    *args: `tf.layers.dense` arguments.
-    **kwargs: `tf.layers.dense` keyword arguments.
+    *args: `tf.compat.v1.layers.dense` arguments.
+    **kwargs: `tf.compat.v1.layers.dense` keyword arguments.
 
   Returns:
     shift: `Float`-like `Tensor` of shift terms ("mu" in
@@ -293,15 +288,12 @@ def real_nvp_default_template(
   """
 
   with ops.name_scope(name, "real_nvp_default_template"):
+
     def _fn(x, output_units):
       """Fully connected MLP parameterized via `real_nvp_template`."""
       for units in hidden_layers:
         x = layers.dense(
-            inputs=x,
-            units=units,
-            activation=activation,
-            *args,
-            **kwargs)
+            inputs=x, units=units, activation=activation, *args, **kwargs)
       x = layers.dense(
           inputs=x,
           units=(1 if shift_only else 2) * output_units,
@@ -312,5 +304,5 @@ def real_nvp_default_template(
         return x, None
       shift, log_scale = array_ops.split(x, 2, axis=-1)
       return shift, log_scale
-    return template_ops.make_template(
-        "real_nvp_default_template", _fn)
+
+    return template_ops.make_template("real_nvp_default_template", _fn)

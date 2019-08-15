@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests and benchmarks for interacting with the `tf.Session`."""
+"""Tests and benchmarks for interacting with the `tf.compat.v1.Session`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,7 +34,7 @@ from tensorflow.python.training import server_lib
 
 
 class SessionBenchmark(test.Benchmark):
-  """Tests and benchmarks for interacting with the `tf.Session`."""
+  """Tests and benchmarks for interacting with the `tf.compat.v1.Session`."""
 
   def _benchmarkFeed(self, name, target, size, iters):
     """Runs a microbenchmark to measure the cost of feeding a tensor.

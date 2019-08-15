@@ -15,10 +15,10 @@
 
 """Testing.
 
-See the [Testing](https://tensorflow.org/api_guides/python/test) guide.
+See the [Testing](https://tensorflow.org/api_docs/python/tf/test) guide.
 
-Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
-depending on the python version.
+Note: `tf.compat.v1.test.mock` is an alias to the python `mock` or
+`unittest.mock` depending on the python version.
 """
 
 from __future__ import absolute_import
@@ -94,3 +94,15 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
+
+
+@tf_export('test.is_built_with_rocm')
+def is_built_with_rocm():
+  """Returns whether TensorFlow was built with ROCm (GPU) support."""
+  return _test_util.IsBuiltWithROCm()
+
+
+@tf_export('test.is_built_with_gpu_support')
+def is_built_with_gpu_support():
+  """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
+  return is_built_with_cuda() or is_built_with_rocm()

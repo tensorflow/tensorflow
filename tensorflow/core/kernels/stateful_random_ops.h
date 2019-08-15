@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STATEFUL_RANDOM_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_STATEFUL_RANDOM_OPS_H_
 
-// #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 
 namespace tensorflow {

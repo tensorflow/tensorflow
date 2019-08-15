@@ -123,7 +123,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor = tf.range(10)
         formatted = tf.strings.format("tensor: {}, suffix", tensor)
@@ -135,7 +135,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
     Formatting a multi-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor_one = tf.reshape(tf.range(100), [10, 10])
         tensor_two = tf.range(10)
@@ -192,10 +192,8 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
                                       name=name)
 
 
-@tf_export(v1=["string_split"])
-@deprecation.deprecated_args(None,
-                             "delimiter is deprecated, please use sep instead.",
-                             "delimiter")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
@@ -251,7 +249,8 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None):  # pylint: 
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-@tf_export("strings.split")
+# Note: tf.strings.split is exported in ragged/ragged_string_ops.py, which
+# defines a wrapper for this function.
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
 
@@ -305,13 +304,8 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-def _reduce_join_reduction_dims(x, axis, reduction_indices):
-  """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both 'axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _reduce_join_reduction_dims(x, axis):
+  """Returns range(rank(x) - 1, 0, -1) if axis is None; or axis otherwise."""
   if axis is not None:
     return axis
   else:
@@ -325,35 +319,48 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
 
 
 @tf_export(v1=["strings.reduce_join", "reduce_join"])
+@deprecation.deprecated_args(None,
+                             "keep_dims is deprecated, use keepdims instead",
+                             "keep_dims")
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
-                keep_dims=False,
+                keep_dims=None,
                 separator="",
                 name=None,
                 reduction_indices=None,
                 keepdims=None):
-  keep_dims = deprecation.deprecated_argument_lookup(
-      "keepdims", keepdims, "keep_dims", keep_dims)
-  inputs_t = ops.convert_to_tensor(inputs)
-  reduction_indices = _reduce_join_reduction_dims(
-      inputs_t, axis, reduction_indices)
-  return gen_string_ops.reduce_join(
-      inputs=inputs_t,
-      reduction_indices=reduction_indices,
-      keep_dims=keep_dims,
+  keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
+                                                    "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
+  axis = deprecation.deprecated_argument_lookup("axis", axis,
+                                                "reduction_indices",
+                                                reduction_indices)
+  return reduce_join_v2(
+      inputs=inputs,
+      axis=axis,
+      keepdims=keepdims,
       separator=separator,
       name=name)
 
 
 @tf_export("strings.reduce_join", v1=[])
+@dispatch.add_dispatch_support
 def reduce_join_v2(  # pylint: disable=missing-docstring
     inputs,
     axis=None,
     keepdims=False,
     separator="",
     name=None):
-  return reduce_join(
-      inputs, axis, keep_dims=keepdims, separator=separator, name=name)
+  with ops.name_scope(None, "ReduceJoin", [inputs, axis]):
+    inputs_t = ops.convert_to_tensor(inputs)
+    axis = _reduce_join_reduction_dims(inputs_t, axis)
+    return gen_string_ops.reduce_join(
+        inputs=inputs_t,
+        reduction_indices=axis,
+        keep_dims=keepdims,
+        separator=separator,
+        name=name)
 
 
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
@@ -460,7 +467,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
   Note that the hash function may change from time to time.
   This functionality will be deprecated and it's recommended to use
-  `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
+  `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
   Args:
     input: A `Tensor` of type `string`.

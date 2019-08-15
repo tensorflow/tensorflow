@@ -67,7 +67,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
       my_num_tasks = host_ports.size();
     }
     LOG(INFO) << "Peer " << job_name << " " << num_tasks << " {"
-              << str_util::Join(host_ports, ", ") << "}";
+              << absl::StrJoin(host_ports, ", ") << "}";
   }
   if (my_num_tasks == 0) {
     return errors::InvalidArgument("Job name \"", options->job_name(),

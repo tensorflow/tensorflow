@@ -75,7 +75,7 @@ Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
 
 Tensor CreateStringTensor(const string& value) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = value;
+  tensor.scalar<tstring>()() = value;
   return tensor;
 }
 
@@ -148,7 +148,8 @@ Status RunInitOp(const RunOptions& run_options, const string& export_dir,
                  const std::vector<AssetFileDef>& asset_file_defs,
                  Session* session, const string& init_op_name) {
   if (!init_op_name.empty()) {
-    LOG(INFO) << "Running initialization op on SavedModel bundle.";
+    LOG(INFO) << "Running initialization op on SavedModel bundle at path: "
+              << export_dir;
     std::vector<std::pair<string, Tensor>> inputs;
     AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
     RunMetadata run_metadata;
@@ -218,7 +219,7 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
 
   // Add variables to the graph.
   Tensor variables_path_tensor(DT_STRING, TensorShape({}));
-  variables_path_tensor.scalar<string>()() = variables_path;
+  variables_path_tensor.scalar<tstring>()() = variables_path;
 
   std::vector<std::pair<string, Tensor>> inputs = {
       {string(variable_filename_const_op_name), variables_path_tensor}};
@@ -307,7 +308,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   const Status status = LoadSavedModelInternal(session_options, run_options,
                                                export_dir, tags, bundle);
   auto log_and_count = [&](const string& status_str) {
-    LOG(INFO) << "SavedModel load for tags { " << str_util::Join(tags, " ")
+    LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
               << " }; Status: " << status_str << ". Took "
               << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);

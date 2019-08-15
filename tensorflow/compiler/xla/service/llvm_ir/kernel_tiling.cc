@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -53,26 +54,13 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
                                                   dimensions);
 }
 
-// Given an index for a shape, return the equivalent new index if the shape is
-// reshaped to another shape.
-IrArray::Index GetReshapedIndex(const IrArray::Index& index, const Shape& shape,
-                                const Shape& reshaped_shape,
-                                llvm::IRBuilder<>* b) {
-  auto bounds = shape.dimensions();
-  auto minor_to_major = shape.layout().minor_to_major();
-  llvm::Value* linear_index = index.GetConstantWithIndexType(0);
-  int64 multiplier = 1;
-  for (int i = 0; i < index.size(); ++i) {
-    int64 dim = minor_to_major[i];
-    llvm::Value* addend = b->CreateMul(
-        index[dim], index.GetConstantWithIndexType(multiplier), "linearizing",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = b->CreateAdd(linear_index, addend, "",
-                                /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= bounds[dim];
+std::array<int64, 3> ElementWiseCeilOfRatio(std::array<int64, 3> dividends,
+                                            std::array<int64, 3> divisors) {
+  std::array<int64, 3> out;
+  for (int i = 0; i < 3; i++) {
+    out[i] = CeilOfRatio<int64>(dividends.at(i), divisors.at(i));
   }
-
-  return IrArray::Index(linear_index, reshaped_shape, b);
+  return out;
 }
 
 }  // namespace
@@ -120,26 +108,20 @@ KernelMappingScheme::KernelMappingScheme(
     absl::Span<const int64> req_block_sizes, int64 num_threads_y,
     int64 num_threads_x, llvm::IRBuilder<>* b)
     : b_(b),
-      dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
+      dims_in_elems_{dims_in_elems.at(0), dims_in_elems.at(1),
+                     dims_in_elems.at(2)},
       tile_sizes_{1, tile_size_y, tile_size_x},
+      dims_in_tiles_(ElementWiseCeilOfRatio(dims_in_elems_, tile_sizes_)),
+      block_sizes_{std::min(req_block_sizes.at(0), dims_in_tiles_.at(0)),
+                   std::min(req_block_sizes.at(1), dims_in_tiles_.at(1)),
+                   std::min(req_block_sizes.at(2), dims_in_tiles_.at(2))},
+      dims_in_blocks_(ElementWiseCeilOfRatio(dims_in_tiles_, block_sizes_)),
       num_threads_x_(num_threads_x),
       num_threads_y_(num_threads_y),
       dilated_x_(true) {
-  DCHECK_EQ(dims_in_elems_.size(), 3);
   DCHECK_EQ(req_block_sizes.size(), 3);
-
   DCHECK_EQ(tile_size_y % num_threads_y_, 0);
   DCHECK_EQ(tile_size_x % num_threads_x_, 0);
-
-  dims_in_tiles_ = ElementWiseCeilOfRatio<int64>(dims_in_elems_, tile_sizes_);
-  block_sizes_.reserve(req_block_sizes.size());
-  absl::c_transform(req_block_sizes, dims_in_tiles_,
-                    std::back_inserter(block_sizes_),
-                    [](const int64 requested_size, const int64 max_size) {
-                      return std::min(requested_size, max_size);
-                    });
-  dims_in_blocks_ = ElementWiseCeilOfRatio<int64>(dims_in_tiles_, block_sizes_);
-
   VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",") << "]";
   VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",") << "]";
   VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")
@@ -150,15 +132,14 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
     const IrArray::Index& normalized_shape_index,
     const Shape& unnormalized_shape) {
   DCHECK_EQ(normalized_shape_index.size(), dims_in_elems_.size());
-  Shape output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      unnormalized_shape.element_type(), GetDimensionsInElements());
-  return GetReshapedIndex(normalized_shape_index, output_shape,
-                          unnormalized_shape, b_);
+  llvm::Value* linear =
+      normalized_shape_index.Linearize(GetDimensionsInElements(), b_);
+  return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
 IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
-  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_);
+  llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kBlockIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -180,7 +161,7 @@ IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
         llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
         "block_origin." + std::to_string(i)));
   }
-  return IrArray::Index(multidim, block_index[0]->getType());
+  return IrArray::Index(multidim, dims_in_tiles_, block_index.GetType());
 }
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
@@ -193,7 +174,7 @@ IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
                                              GetTileSizeForDimension(i)),
                       "tile_origin." + std::to_string(i));
   }
-  return IrArray::Index(elem_multi_index, tile_index.GetType());
+  return IrArray::Index(elem_multi_index, dims_in_elems_, tile_index.GetType());
 }
 
 llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
@@ -218,8 +199,8 @@ std::tuple<llvm::Value*, llvm::Value*>
 KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
-  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_);
+  llvm::CallInst* thread_id_raw = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,

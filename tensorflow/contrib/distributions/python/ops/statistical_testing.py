@@ -43,7 +43,7 @@ is some expected constant.  Suppose the support of P is the interval
 
   # Check that the difference in means detectable with 5000 samples is
   # small enough
-  check2 = tf.assert_less(
+  check2 = tf.compat.v1.assert_less(
       statistical_testing.min_discrepancy_of_true_means_detectable_by_dkwm(
           num_samples, low=0., high=1.0,
           false_fail_rate=1e-6, false_pass_rate=1e-6),

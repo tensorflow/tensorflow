@@ -25,6 +25,22 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece filename_node_name,
+                        StringPiece cache_node_name) {
+  return test::function::NDef(
+      name, "CacheDatasetV2",
+      {
+          string(input_node_name),
+          string(filename_node_name),
+          string(cache_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+      });
+}
+
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name) {
   return test::function::NDef(
@@ -32,7 +48,7 @@ NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
       {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+       {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
 NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
@@ -41,13 +57,13 @@ NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
                             StringPiece drop_remainder_node_name,
                             StringPiece function_name) {
   return test::function::NDef(
-      name, "ExperimentalMapAndBatchDataset",
+      name, "MapAndBatchDataset",
       {string(input_node_name), string(batch_size_node_name),
        string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
       {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+       {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
@@ -60,12 +76,12 @@ NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
        {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
-NodeDef MakeParallelInterleaveNode(StringPiece name,
-                                   StringPiece input_node_name,
-                                   StringPiece cycle_length_node_name,
-                                   StringPiece block_length_node_name,
-                                   StringPiece num_parallel_calls_node_name,
-                                   StringPiece function_name, bool sloppy) {
+NodeDef MakeParallelInterleaveV2Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name, bool sloppy) {
   return test::function::NDef(
       name, "ParallelInterleaveDatasetV2",
       {string(input_node_name), string(cycle_length_node_name),
@@ -74,7 +90,7 @@ NodeDef MakeParallelInterleaveNode(StringPiece name,
           {"f", FunctionDefHelper::FunctionRef(string(function_name))},
           {"Targuments", {}},
           {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-          {"output_types", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
           {"sloppy", sloppy},
       });
 }
@@ -104,6 +120,22 @@ NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
           {"output_shapes", gtl::ArraySlice<TensorShape>{}},
           {"output_types", gtl::ArraySlice<DataType>{}},
           {"sloppy", sloppy},
+      });
+}
+
+NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
+                          StringPiece buffer_size_node_name,
+                          StringPiece seed_generator_node_name) {
+  return test::function::NDef(
+      name, "ShuffleDatasetV2",
+      {
+          string(input_node_name),
+          string(buffer_size_node_name),
+          string(seed_generator_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
       });
 }
 

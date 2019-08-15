@@ -77,13 +77,16 @@ PHILOX_DEVICE_INLINE void UpdateMemWithPhiloxRandom(PhiloxRandom const& philox,
 template <typename Device, typename Distribution>
 struct UpdateVariableAndFill_Philox;
 
+template <typename Device>
+struct RngSkip_Philox;
+
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 using GPUDevice = Eigen::GpuDevice;
 
-// Declares the partially GPU-specialized functor struct.
+// Declares the partially GPU-specialized functor structs.
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& device,
@@ -92,7 +95,12 @@ struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
                   typename Distribution::ResultElementType* output_data);
 };
 
-#endif  // GOOGLE_CUDA
+template <>
+struct RngSkip_Philox<GPUDevice> {
+  void operator()(const GPUDevice& device, int64 delta, Tensor* state_tensor);
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

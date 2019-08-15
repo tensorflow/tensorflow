@@ -38,8 +38,8 @@ class SeedStream(object):
 
   ```python
   def broken_beta(shape, alpha, beta, seed):
-    x = tf.random_gamma(shape, alpha, seed=seed)
-    y = tf.random_gamma(shape, beta, seed=seed)
+    x = tf.random.gamma(shape, alpha, seed=seed)
+    y = tf.random.gamma(shape, beta, seed=seed)
     return x / (x + y)
   ```
 
@@ -83,8 +83,8 @@ class SeedStream(object):
   ```python
   def random_beta(shape, alpha, beta, seed):        # (a)
     seed = SeedStream(seed, salt="random_beta")     # (b)
-    x = tf.random_gamma(shape, alpha, seed=seed())  # (c)
-    y = tf.random_gamma(shape, beta, seed=seed())   # (c)
+    x = tf.random.gamma(shape, alpha, seed=seed())  # (c)
+    y = tf.random.gamma(shape, beta, seed=seed())   # (c)
     return x / (x + y)
   ```
 
@@ -123,12 +123,12 @@ class SeedStream(object):
   ```python
   def tfp_foo(seed):
     seed = SeedStream(seed, salt="")
-    foo_stuff = tf.random_normal(seed=seed())
+    foo_stuff = tf.random.normal(seed=seed())
     ...
 
   def tfp_bar(seed):
     seed = SeedStream(seed, salt="")
-    bar_stuff = tf.random_normal(seed=seed())
+    bar_stuff = tf.random.normal(seed=seed())
     ...
 
   def client_baz(seed):

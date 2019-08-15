@@ -32,10 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace barrier {
-class Barrier;
-}  // namespace barrier
-
 // Functionality common to asynchronous QueueInterface implementations.
 class QueueBase : public QueueInterface {
  public:

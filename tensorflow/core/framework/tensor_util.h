@@ -38,6 +38,10 @@ namespace tensor {
 //           'other' is not appropriately memory-aligned.
 Tensor DeepCopy(const Tensor& other);
 
+// Deep copies input to output.  This function is similar to above, but assumes
+// that the memory for the output has already been allocated.
+void DeepCopy(const Tensor& input, Tensor* output);
+
 // Concatenates 'tensors' into a single tensor, along their 0th dimension.
 //
 // REQUIRES: All members of 'tensors' must have the same data type parameter.
@@ -175,14 +179,12 @@ template <typename RealType>
 struct CopyHelper<std::complex<RealType>> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, std::complex<RealType>* dst) {
-    using SrcType = typename std::iterator_traits<SrcIter>::value_type;
     RealType* real_dst = reinterpret_cast<RealType*>(dst);
     std::copy(begin, end, real_dst);
   }
 
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
-    using DstType = typename std::iterator_traits<DstIter>::value_type;
     size_t n = std::distance(begin, end);
     const RealType* real_begin = reinterpret_cast<const RealType*>(&(*begin));
     std::copy_n(real_begin, 2 * n, dst);

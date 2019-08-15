@@ -157,25 +157,41 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 0) {
+      CountOpsWithInput(*model, array_name) == 0 &&
+      GetOpWithOutput(*model, array_name) == nullptr) {
     model->EraseArray(array_name);
     return true;
   }
   return false;
 }
 
-bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
-  if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1) {
-    model->EraseArray(array_name);
-    return true;
+bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+                                    const Operator* op, Model* model) {
+  if (!IsDiscardableArray(*model, array_name)) {
+    return false;
   }
-  return false;
+  if (CountOpsWithInput(*model, array_name) > 1) {
+    return false;
+  }
+  const Operator* op_having_this_as_input = GetOpWithInput(*model, array_name);
+  if (op_having_this_as_input && op_having_this_as_input != op) {
+    return false;
+  }
+  const Operator* op_having_this_as_output =
+      GetOpWithOutput(*model, array_name);
+  if (op_having_this_as_output && op_having_this_as_output != op) {
+    return false;
+  }
+  model->EraseArray(array_name);
+  return true;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
+void DeleteOpAndArrays(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
-    DeleteArrayIfUsedOnce(array_name, model);
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
+  }
+  for (const string& array_name : op->outputs) {
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
   }
   auto op_it = FindOp(*model, op);
   CHECK(op_it != model->operators.end());
@@ -320,6 +336,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DepthToSpace)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToDepth)
     HANDLE_OPERATORTYPENAME_CASE(FullyConnected)
+    HANDLE_OPERATORTYPENAME_CASE(HardSwish)
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
@@ -387,6 +404,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
     HANDLE_OPERATORTYPENAME_CASE(Ceil)
+    HANDLE_OPERATORTYPENAME_CASE(Round)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
     HANDLE_OPERATORTYPENAME_CASE(GatherNd)
     HANDLE_OPERATORTYPENAME_CASE(ResizeBilinear)
@@ -428,6 +446,9 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Where)
     HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
     HANDLE_OPERATORTYPENAME_CASE(MatrixDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -904,8 +925,9 @@ void CheckNonExistentIOArrays(const Model& model) {
     return;
   }
   static constexpr char general_comment[] =
-      "Is it a typo? To silence this message, pass this flag:  "
-      "allow_nonexistent_arrays";
+      "Is it a typo? This should not happen. If you trigger this error "
+      "please send a bug report (with code to reporduce this error), to the "
+      "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.
@@ -1027,18 +1049,20 @@ void CheckEachArray(const Model& model) {
     const auto& array = array_entry.second;
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
-    CHECK(!array->buffer || !array->alloc);
+    CHECK(!array->buffer || !array->alloc) << "Tensor: " << array_entry.first;
     if (array->buffer) {
       // If there is a buffer, its type should be consistent with data_type.
-      CHECK(array->buffer->type == array->data_type);
+      CHECK(array->buffer->type == array->data_type)
+          << "Tensor: " << array_entry.first;
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape());
+      CHECK(array->has_shape()) << array_entry.first;
       // Constant buffer should has a valid shape.
       CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
-               RequiredBufferSizeForShape(array->shape()));
+               RequiredBufferSizeForShape(array->shape()))
+          << "Tensor: " << array_entry.first;
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
@@ -1331,7 +1355,9 @@ namespace {
 void CopyArrayAttribs(const Array& source_array, Array* target_array) {
   target_array->data_type = source_array.data_type;
   target_array->final_data_type = source_array.final_data_type;
-  target_array->copy_shape(source_array.shape());
+  if (source_array.has_shape()) {
+    target_array->copy_shape(source_array.shape());
+  }
 
   if (source_array.minmax) {
     target_array->GetOrCreateMinMax() = source_array.GetMinMax();
@@ -1381,23 +1407,9 @@ void CloneArray(Model* model, const string& source_array_name,
   Array& target_array = model->GetOrCreateArray(target_array_name);
   CopyArrayAttribs(source_array, &target_array);
 
-  if (source_array.minmax) {
-    const auto& smm = source_array.GetMinMax();
-    auto& tmm = target_array.GetOrCreateMinMax();
-    tmm.min = smm.min;
-    tmm.max = smm.max;
+  if (!source_array.buffer) {
+    return;
   }
-
-  if (source_array.quantization_params) {
-    const auto& sqp = source_array.GetQuantizationParams();
-    auto& tqp = target_array.GetOrCreateQuantizationParams();
-    tqp.zero_point = sqp.zero_point;
-    tqp.scale = sqp.scale;
-  }
-
-  target_array.data_type = source_array.data_type;
-  target_array.final_data_type = source_array.final_data_type;
-  target_array.copy_shape(source_array.shape());
 
   switch (source_array.data_type) {
     case ArrayDataType::kBool:
@@ -1893,6 +1905,26 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
         // There is a bias vector. One more op per output value.
         *result += RequiredBufferSizeForShape(output_array.shape());
       }
+      break;
+    }
+    case OperatorType::kTransposeConv: {
+      const auto& input_array = model.GetArray(op.inputs[2]);
+      const auto& weights_array = model.GetArray(op.inputs[1]);
+      if (!input_array.has_shape() || !weights_array.has_shape()) {
+        return false;
+      }
+      const Shape& input = input_array.shape();
+      const Shape& weights = weights_array.shape();
+      // Compute op count from the seven nested loops of
+      // tflite::reference_ops::TransposeConv():
+      *result = 2 * input.dims(0) * input.dims(1) * input.dims(2) *
+                input.dims(3) * weights.dims(1) * weights.dims(2) *
+                weights.dims(0);
+      // Note that tflite::optimized_ops::TransposeConv() uses an im2col matrix
+      // and has a higher op count, by a factor of (output_height*output_width)
+      // vs. (input_height*input_width). Yet it generally performs better
+      // because of coherent memory access. (At least for 2x2 striding. But not
+      // likely for all cases.)
       break;
     }
     case OperatorType::kAdd:

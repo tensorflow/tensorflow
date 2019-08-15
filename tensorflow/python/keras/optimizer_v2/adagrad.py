@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -28,6 +30,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -66,9 +69,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     Args:
       learning_rate: A `Tensor` or a floating point value.  The learning rate.
       initial_accumulator_value: A floating point value.
-        Starting value for the accumulators, must be positive.
-      epsilon: A floating point value.
-        Starting value for the accumulators, must be positive.
+        Starting value for the accumulators, must be non-negative.
+      epsilon: A small floating point value to avoid zero denominator.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adagrad".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
@@ -92,13 +94,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
                        initial_accumulator_value)
     if epsilon is None:
       epsilon = backend_config.epsilon()
-    if epsilon < 1e-7:
-      raise ValueError('epsilon must be larger than 1e-7: %s' % epsilon)
     super(Adagrad, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._initial_accumulator_value = initial_accumulator_value
-    self._set_hyper('epsilon', epsilon)
+    self.epsilon = epsilon or backend_config.epsilon()
 
   def _create_slots(self, var_list):
     for var in var_list:
@@ -106,6 +106,14 @@ class Adagrad(optimizer_v2.OptimizerV2):
       init = init_ops.constant_initializer(
           self._initial_accumulator_value, dtype=dtype)
       self.add_slot(var, 'accumulator', init)
+
+  def _prepare_local(self, var_device, var_dtype, apply_state):
+    super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
+    apply_state[(var_device, var_dtype)].update(dict(
+        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
+        neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
+        zero=array_ops.zeros((), dtype=dtypes.int64)
+    ))
 
   def set_weights(self, weights):
     params = self.weights
@@ -139,34 +147,51 @@ class Adagrad(optimizer_v2.OptimizerV2):
       config['learning_rate'] = config.pop('lr')
     return cls(**config)
 
-  def _resource_apply_dense(self, grad, var):
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
-    epsilon = self._get_hyper('epsilon', var_dtype)
+  def _resource_apply_dense(self, grad, var, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
+
     acc = self.get_slot(var, 'accumulator')
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          use_locking=self._use_locking)
 
     acc_t = state_ops.assign_add(
         acc, math_ops.square(grad), use_locking=self._use_locking)
     var_update = state_ops.assign_sub(
-        var, lr_t * grad / (math_ops.sqrt(acc_t) + epsilon))
+        var, coefficients['lr_t'] * grad /
+        (math_ops.sqrt(acc_t) + coefficients['epsilon']))
     return var_update
 
-  def _resource_apply_sparse(self, grad, var, indices):
+  def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
 
-    def _resource_scatter_add(x, i, v):
-      with ops.control_dependencies(
-          [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
-        return x.value()
-
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
-    epsilon = self._get_hyper('epsilon', var_dtype)
     acc = self.get_slot(var, 'accumulator')
-
-    acc_t = _resource_scatter_add(acc, indices, math_ops.square(grad))
-    acc_t_slice = array_ops.gather(acc_t, indices)
-    var_update = _resource_scatter_add(
-        var, indices, -lr_t * grad / (math_ops.sqrt(acc_t_slice) + epsilon))
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_sparse_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          indices,
+          use_locking=self._use_locking)
+    with ops.control_dependencies([
+        resource_variable_ops.resource_scatter_add(acc.handle, indices,
+                                                   math_ops.square(grad))
+    ]):
+      acc_t_slice = acc.sparse_read(indices)
+    var_update = resource_variable_ops.resource_scatter_add(
+        var.handle, indices, coefficients['neg_lr_t'] * grad /
+        (math_ops.sqrt(acc_t_slice) + coefficients['epsilon']))
     return var_update
 
   def get_config(self):
@@ -175,6 +200,6 @@ class Adagrad(optimizer_v2.OptimizerV2):
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
         'decay': self._serialize_hyperparameter('decay'),
         'initial_accumulator_value': self._initial_accumulator_value,
-        'epsilon': self._serialize_hyperparameter('epsilon'),
+        'epsilon': self.epsilon,
     })
     return config

@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class UnbatchBenchmark(test.Benchmark):
   """Benchmarks for `tf.data.experimental.unbatch()`."""
 
-  def benchmarkNativeUnbatch(self):
+  def benchmark_native_unbatch(self):
     batch_sizes = [1, 2, 5, 10, 20, 50]
     elems_per_trial = 10000
     with ops.Graph().as_default():
@@ -70,7 +70,7 @@ class UnbatchBenchmark(test.Benchmark):
   # Include a benchmark of the previous `unbatch()` implementation that uses
   # a composition of more primitive ops. Eventually we'd hope to generate code
   # that is as good in both cases.
-  def benchmarkOldUnbatchImplementation(self):
+  def benchmark_old_unbatch_implementation(self):
     batch_sizes = [1, 2, 5, 10, 20, 50]
     elems_per_trial = 10000
     with ops.Graph().as_default():

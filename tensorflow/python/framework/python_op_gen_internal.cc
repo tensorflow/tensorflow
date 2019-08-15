@@ -17,18 +17,21 @@ limitations under the License.
 
 #include <float.h>
 #include <stdio.h>
+
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -116,7 +119,7 @@ string AvoidPythonReserved(const string& s) {
 string Indent(int initial, int rest, StringPiece in) {
   // TODO(josh11b): Also word-wrapping?
   string copy(in.data(), in.size());
-  str_util::StripTrailingWhitespace(&copy);
+  absl::StripTrailingAsciiWhitespace(&copy);
   std::vector<string> v = str_util::Split(copy, '\n');
 
   string result;
@@ -319,7 +322,7 @@ string GetReturns(const OpDef& op_def,
         }
       }
       strings::StrAppend(&result, "    A tuple of `Tensor` objects (",
-                         str_util::Join(out_names, ", "), ").\n\n");
+                         absl::StrJoin(out_names, ", "), ").\n\n");
       for (int i = 0; i < num_outs; ++i) {
         string desc = strings::StrCat(out_names[i], ": ");
         StringPiece description = op_def.output_arg(i).description();
@@ -350,7 +353,7 @@ string GetReturns(const OpDef& op_def,
 }
 
 string StringToPython(const string& str) {
-  return strings::StrCat("\"", str_util::CEscape(str), "\"");
+  return strings::StrCat("\"", absl::CEscape(str), "\"");
 }
 
 string DataTypeToPython(DataType dtype, const string& dtype_module) {
@@ -457,7 +460,7 @@ string AttrValueToPython(const string& type, const AttrValue& value,
     return TensorToPython(value.tensor());
   } else if (type == "func") {
     return StringToPython(value.func().name());
-  } else if (str_util::StartsWith(type, "list(")) {
+  } else if (absl::StartsWith(type, "list(")) {
     return strings::StrCat("[", AttrListToPython(value, dtype_module), "]");
   } else {
     return "?";
@@ -771,7 +774,7 @@ void GenPythonOp::AddOutputGlobals() {
       }
     }
     string out_names_list =
-        strings::StrCat("[\"", str_util::Join(out_names, "\", \""), "\"]");
+        strings::StrCat("[\"", absl::StrJoin(out_names, "\", \""), "\"]");
 
     // Provide the output names as a Python list
     string lower_op_name_outputs =

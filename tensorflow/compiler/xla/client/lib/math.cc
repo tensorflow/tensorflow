@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/lib/math.h"
+
 // This macro is required to make MSVC defines math constants in math.h
 #define _USE_MATH_DEFINES
 #include <math.h>
-
-#include "tensorflow/compiler/xla/client/lib/math.h"
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -26,6 +26,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
+namespace {
+
+// Evaluate the polynomial given `x` and coefficients in decreasing order.
+template <typename FP>
+XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const FP> coefficients) {
+  static_assert(std::is_floating_point<FP>::value,
+                "Template-argument 'FP' must be a floating-point type");
+  XlaOp poly = ScalarLike(x, 0.0);
+  for (FP c : coefficients) {
+    poly = poly * x + ScalarLike(x, c);
+  }
+  return poly;
+}
+
+}  // namespace
 
 // Returns operation(operand), except if `operand` is one of the types in
 // upcast_types, in which case first converts it to F32, and then converts the
@@ -134,88 +149,132 @@ XlaOp Square(XlaOp operand) { return operand * operand; }
 
 XlaOp Reciprocal(XlaOp operand) { return ScalarLike(operand, 1.0) / operand; }
 
-// Evaluate the polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
-  XlaOp poly = ScalarLike(x, 0.0);
-  for (float c : coefficients) {
-    poly = poly * x + ScalarLike(x, c);
-  }
-  return poly;
-}
-
 // Computes an approximation of the error function complement (1 - erf(x)).
 //
 // Precondition: abs(x) >= 1.  Otherwise, use ErfImpl.
 //
-// This follows Cephes's f32 implementation of erfc, and so it may have errors
-// for double precision.
-//
-// See also these alternate implementations of erf and erfc:
-//
-//   https://stackoverflow.com/questions/35148198
-//   https://stackoverflow.com/questions/35966695
-//
-static XlaOp ErfcImpl(XlaOp x) {
+// This follows Cephes's f32 implementation of erfc.
+static XlaOp ErfcImpl32(XlaOp x) {
   // Coefficients for erfc(f32), from Cephes.
-  //
-  // erfc(x) = exp(-x^2) P(1/x), 1 < x < 2
-  static std::array<float, 9> kErfcPCoefficient{
+  const double kMaxlog = 88.72283905206835;
+  // erfc(x) = exp(-x^2) P(1/x^2), 1 < x < 2
+  static const std::array<float, 9> kErfcPCoefficient{
       +2.326819970068386E-2, -1.387039388740657E-1, +3.687424674597105E-1,
       -5.824733027278666E-1, +6.210004621745983E-1, -4.944515323274145E-1,
       +3.404879937665872E-1, -2.741127028184656E-1, +5.638259427386472E-1,
   };
-  // erfc(x) = exp(-x^2) 1/x P(1/x^2), 2 < x < 14
-  static std::array<float, 8> kErfcRCoefficient{
+  // erfc(x) = exp(-x^2) R(1/x^2), 2 <= x < kMaxlog
+  static const std::array<float, 8> kErfcRCoefficient{
       -1.047766399936249E+1, +1.297719955372516E+1, -7.495518717768503E+0,
       +2.921019019210786E+0, -1.015265279202700E+0, +4.218463358204948E-1,
       -2.820767439740514E-1, +5.641895067754075E-1,
   };
-
   XlaOp abs_x = Abs(x);
   XlaOp z = Exp(-x * x);
   XlaOp q = ScalarLike(x, 1) / abs_x;
   XlaOp y = q * q;
   XlaOp p = Select(Lt(abs_x, ScalarLike(x, 2.0)),
-                   EvaluatePolynomial(y, kErfcPCoefficient),
-                   EvaluatePolynomial(y, kErfcRCoefficient));
+                   EvaluatePolynomial<float>(y, kErfcPCoefficient),
+                   EvaluatePolynomial<float>(y, kErfcRCoefficient));
   y = z * q * p;
-  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0) - y, y);
+  XlaOp y_clamp = Select(Lt(z, ScalarLike(x, -kMaxlog)), ScalarLike(x, 0), y);
+  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0) - y_clamp, y_clamp);
 }
 
 // Compute a polynomial approximation of the error function.
 //
 // Precondition: abs(x) <= 1.  Otherwise, use ErfcImpl.
 //
-// This follows Cephes's f32 implementation of erf, so it may have errors for
-// double precision.
-static XlaOp ErfImpl(XlaOp x) {
+// This follows Cephes's f32 implementation of erf.
+static XlaOp ErfImpl32(XlaOp x) {
   // Coefficients for by erf(f32), from Cephes.
   //
   // erf(x) = x P(x^2), 0 < x < 1
-  static std::array<float, 7> kErfTCoefficient{
+  static const std::array<float, 7> kErfTCoefficient{
       +7.853861353153693E-5, -8.010193625184903E-4, +5.188327685732524E-3,
       -2.685381193529856E-2, +1.128358514861418E-1, -3.761262582423300E-1,
       +1.128379165726710E+0,
   };
+  return x * EvaluatePolynomial<float>(x * x, kErfTCoefficient);
+}
 
-  return x * EvaluatePolynomial(x * x, kErfTCoefficient);
+static XlaOp ErfcImpl64(XlaOp x) {
+  // Coefficients for erfc(f64), from Cephes.
+  const double kMaxlog = 7.09782712893383996843E2;
+  // erfc(x) = exp(-x^2) P(|x|) / Q(|x|), 1 < x < 8
+  static const std::array<double, 9> kErfcPCoefficient{
+      2.46196981473530512524E-10, 5.64189564831068821977E-1,
+      7.46321056442269912687E0,   4.86371970985681366614E1,
+      1.96520832956077098242E2,   5.26445194995477358631E2,
+      9.34528527171957607540E2,   1.02755188689515710272E3,
+      5.57535335369399327526E2};
+  static const std::array<double, 9> kErfcQCoefficient{
+      1.00000000000000000000E0, 1.32281951154744992508E1,
+      8.67072140885989742329E1, 3.54937778887819891062E2,
+      9.75708501743205489753E2, 1.82390916687909736289E3,
+      2.24633760818710981792E3, 1.65666309194161350182E3,
+      5.57535340817727675546E2};
+
+  // erfc(x) = exp(-x^2) R(|x|) / S(|x|), 8 <= x < kMaxlog
+  static const std::array<double, 6> kErfcRCoefficient{
+      5.64189583547755073984E-1, 1.27536670759978104416E0,
+      5.01905042251180477414E0,  6.16021097993053585195E0,
+      7.40974269950448939160E0,  2.97886665372100240670E0};
+  static const std::array<double, 7> kErfcSCoefficient{
+      1.00000000000000000000E0, 2.26052863220117276590E0,
+      9.39603524938001434673E0, 1.20489539808096656605E1,
+      1.70814450747565897222E1, 9.60896809063285878198E0,
+      3.36907645100081516050E0};
+
+  XlaOp z = -x * x;
+  XlaOp abs_x = Abs(x);
+  XlaOp y =
+      Select(Lt(abs_x, ScalarLike(x, 8.0)),
+             Exp(z) * EvaluatePolynomial<double>(abs_x, kErfcPCoefficient) /
+                 EvaluatePolynomial<double>(abs_x, kErfcQCoefficient),
+             Exp(z) * EvaluatePolynomial<double>(abs_x, kErfcRCoefficient) /
+                 EvaluatePolynomial<double>(abs_x, kErfcSCoefficient));
+  XlaOp y_clamp = Select(Lt(z, ScalarLike(x, -kMaxlog)), ScalarLike(x, 0), y);
+  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0) - y_clamp, y_clamp);
+}
+
+// Compute a polynomial approximation of the error function.
+//
+// Precondition: abs(x) <= 1.  Otherwise, use ErfcImpl.
+static XlaOp ErfImpl64(XlaOp x) {
+  // Coefficients for by erf(f64), from Cephes.
+  //
+  // erf(x) = x T(x^2) / U(x^2), 0 < x < 1
+  static std::array<double, 5> kErfTCoefficient{
+      9.60497373987051638749E0, 9.00260197203842689217E1,
+      2.23200534594684319226E3, 7.00332514112805075473E3,
+      5.55923013010394962768E4};
+  static std::array<double, 6> kErfUCoefficient{
+      1.00000000000000000000E0, 3.35617141647503099647E1,
+      5.21357949780152679795E2, 4.59432382970980127987E3,
+      2.26290000613890934246E4, 4.92673942608635921086E4};
+  XlaOp z = x * x;
+  return x * EvaluatePolynomial<double>(z, kErfTCoefficient) /
+         EvaluatePolynomial<double>(z, kErfUCoefficient);
 }
 
 XlaOp Erfc(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erfc", x));
-
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     // erfc(x) =
     //   erfc_impl(x)           if x > 1
     //   1 - erf_impl(x)        otherwise
-    //
+    if (shape.element_type() == F64) {
+      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl64(x),
+                    ScalarLike(x, 1) - ErfImpl64(x));
+    }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16}, [](XlaOp x) {
-      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl(x),
-                    ScalarLike(x, 1) - ErfImpl(x));
+    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
+                    ScalarLike(x, 1) - ErfImpl32(x));
     });
   });
 }
@@ -224,15 +283,19 @@ XlaOp Erf(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erf", x));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     // erf(x) =
     //   erf_impl(x)            if x < 1
     //   1 - erfc_impl(x)       otherwise
-    //
+    if (shape.element_type() == F64) {
+      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl64(x),
+                    ScalarLike(x, 1) - ErfcImpl64(x));
+    }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16}, [](XlaOp x) {
-      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl(x),
-                    ScalarLike(x, 1) - ErfcImpl(x));
+    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl32(x),
+                    ScalarLike(x, 1) - ErfcImpl32(x));
     });
   });
 }
@@ -528,28 +591,149 @@ XlaOp Asin(XlaOp x) {
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 
-XlaOp Tan(XlaOp x) { return Sin(x) / Cos(x); }
+XlaOp Tan(XlaOp x) {
+  return DoWithUpcastToF32(x, {F16}, [](XlaOp x) { return Sin(x) / Cos(x); });
+}
 
 // Hyperbolic trigonometric functions.
 
-// acosh(x) = log(x + sqrt(x^2 - 1))
+// acosh(x) = log(x + sqrt(x^2 - 1))      if x >= -1
 //          = log(x + sqrt((x+1)*(x-1)))
+// acosh(x) = nan                         if x < -1
+//
+// If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
+// log(2*x) = log(2) + log(x).  (Note this works because negative x never
+// overflows; x < -1 simply yields nan.  This is quite different than asinh!)
 XlaOp Acosh(XlaOp x) {
-  return Log(x + Sqrt((x + ScalarLike(x, 1.0)) * (x - ScalarLike(x, 1.0))));
+  XlaBuilder* b = x.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
+    auto one = ScalarLike(x, 1);
+    auto neg_one = ScalarLike(x, -1);
+    auto nan = FullLike(x, std::numeric_limits<float>::quiet_NaN());
+
+    // return
+    //
+    //   nan                        if x < -1
+    //   log(x) + log(2)            if x >= sqrt_max_value
+    //   log(x + sqrt((x+1)*(x-1))) otherwise
+    //
+    // TODO(jlebar): For now, we ignore the question of overflow if x is a
+    // complex type, because we don't yet have exhaustive tests for complex trig
+    // functions.
+    auto naive_result = Log(x + Sqrt((x + one) * (x - one)));
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      return naive_result;
+    }
+    auto overflow_result = Log(x) + Log(ScalarLike(x, 2));
+
+    auto sqrt_max_value = Sqrt(MaxFiniteValue(b, shape.element_type()));
+    return Select(Lt(x, neg_one), nan,
+                  Select(Ge(x, sqrt_max_value), overflow_result, naive_result));
+  });
 }
 
 // asinh(x) = log(x + sqrt(x^2 + 1))
-XlaOp Asinh(XlaOp x) { return Log(x + Sqrt(x * x + ScalarLike(x, 1.0))); }
+//
+// If x^2 will overflow and x is positive, we can approximate x + sqrt(x^2 + 1)
+// as 2*x and return log(2) + log(x).
+//
+// If x is negative, the above would give us some trouble; we can't approximate
+// the result as x + abs(x) = 0!  But we're saved by the fact that asinh(-x) =
+// -asinh(x).
+XlaOp Asinh(XlaOp x) {
+  XlaBuilder* b = x.builder();
+  auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+    auto one = ScalarLike(x, 1);
 
-// atanh(x) = 0.5 * log((1 + x) / (1 - x))
-XlaOp Atanh(XlaOp x) {
-  return Log((ScalarLike(x, 1.0) + x) / (ScalarLike(x, 1.0) - x)) *
-         ScalarLike(x, 0.5);
+    // Let a = abs(x).  Compute
+    //
+    //   y = log(a + sqrt(a*a + 1))  if a < sqrt_max_value, or
+    //   y = log(a) + log(2)         otherwise
+    //
+    // and then return
+    //
+    //   y * sign(x).
+    //
+    // TODO(jlebar): For now, we ignore the question of overflow if x is a
+    // complex type, because we don't yet have exhaustive tests for complex trig
+    // functions.
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      return Log(x + Sqrt(x * x + one));
+    }
+    auto a = Abs(x);
+    auto naive_result = Log(a + Sqrt(a * a + one));
+    auto overflow_result = Log(Abs(a)) + Log(ScalarLike(a, 2));
+    auto sqrt_max_value = Sqrt(MaxFiniteValue(b, shape.element_type()));
+    return Sign(x) *
+           Select(Ge(a, sqrt_max_value), overflow_result, naive_result);
+  };
+  // These upcasts are not strictly necessary on all platforms to get within our
+  // error tolerances, so we could relax this if it ever mattered.
+  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
+    return b->ReportErrorOrReturn(do_it(x));
+  });
 }
 
-XlaOp Cosh(XlaOp x) { return (Exp(x) + Exp(-x)) * ScalarLike(x, 0.5); }
+// atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
+// atanh(x) = nan                          otherwise
+XlaOp Atanh(XlaOp x) {
+  XlaBuilder* b = x.builder();
+  auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+    auto naive_result =
+        Log((ScalarLike(x, 1.0) + x) / (ScalarLike(x, 1.0) - x)) *
+        ScalarLike(x, 0.5);
 
-XlaOp Sinh(XlaOp x) { return (Exp(x) - Exp(-x)) * ScalarLike(x, 0.5); }
+    // TODO(jlebar): For now, we ignore the nan edge case for complex inputs,
+    // because we don't yet have exhaustive tests for complex trig functions.
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      return naive_result;
+    }
+
+    auto nan = FullLike(x, std::numeric_limits<float>::quiet_NaN());
+    return Select(Gt(Abs(x), ScalarLike(x, 1)), nan, naive_result);
+  };
+  return DoWithUpcastToF32(x, {BF16}, [&](XlaOp x) {  //
+    return b->ReportErrorOrReturn(do_it(x));
+  });
+}
+
+// Cosh(x) = (e^x + e^-x) / 2
+//         = e^(x + log(1/2)) + e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Cosh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) + Exp(-x + log_one_half);
+  });
+}
+
+// Sinh(x) = (e^x - e^-x) / 2
+//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to +/-inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
+XlaOp Sinh(XlaOp x) {
+  return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
+    auto log_one_half = Log(ScalarLike(x, 0.5));
+    return Exp(x + log_one_half) - Exp(-x + log_one_half);
+  });
+}
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();
@@ -637,6 +821,11 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
     // Cast back to the original type.
     return BitcastConvertType(result, shape.element_type());
   });
+}
+
+XlaOp Logistic(XlaOp x) {
+  auto half = xla::ScalarLike(x, 0.5);
+  return half + half * xla::Tanh(half * x);
 }
 
 }  // namespace xla

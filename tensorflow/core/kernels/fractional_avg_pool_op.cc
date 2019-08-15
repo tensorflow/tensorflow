@@ -84,7 +84,7 @@ class FractionalAvgPoolOp : public OpKernel {
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       output_size[i] =
-          static_cast<int>(floor(input_size[i] / pooling_ratio_[i]));
+          static_cast<int>(std::floor(input_size[i] / pooling_ratio_[i]));
       DCHECK_GT(output_size[i], 0);
     }
 

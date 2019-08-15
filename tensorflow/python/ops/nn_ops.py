@@ -23,7 +23,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -34,6 +33,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+from tensorflow.python.ops import control_flow_ops
+# copybara:strip_end
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -41,7 +44,9 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
@@ -57,7 +62,7 @@ def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
   if value is None:
     value = [1]
-  elif not isinstance(value, collections.Sized):
+  elif not isinstance(value, collections_abc.Sized):
     value = [value]
 
   current_n = len(value)
@@ -280,7 +285,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
-    data_format: A `string`, only `"NCHW"` is currently supported.
+    data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
       `[1, rate_height, rate_width, 1]`.
@@ -289,8 +294,8 @@ def dilation2d_v2(
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if data_format != "NCHW":
-    raise ValueError("Data formats other than NCHW are not yet supported")
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
@@ -918,6 +923,22 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  run_context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while run_context is not None and not isinstance(
+      run_context, control_flow_ops.XLAControlFlowContext):
+    run_context = run_context.outer_context
+  return run_context
+
+
+# copybara:strip_end
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -925,40 +946,58 @@ def convolution_internal(
     padding="VALID",
     data_format=None,
     dilations=None,
-    name=None):
+    name=None,
+    call_from_convolution=True):
   """Internal function which performs rank agnostic convolution."""
-  with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShape) and \
+  if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
-      n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
-      n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
-      n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(filters.shape) - 2
+  elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
-      n = len(filters.shape) - 2
-    else:
-      raise ValueError("rank of input or filter must be known")
+    n = len(filters.shape) - 2
+  else:
+    raise ValueError("rank of input or filter must be known")
 
-    if not 1 <= n <= 3:
-      raise ValueError(
-          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+  if not 1 <= n <= 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
 
-    if data_format is None:
-      channel_index = n + 1
-    else:
-      channel_index = 1 if data_format.startswith("NC") else n + 1
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
 
-    strides = _get_sequence(strides, n, channel_index, "strides")
-    dilations = _get_sequence(dilations, n, channel_index, "dilations")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+  dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
+  # copybara:strip_begin
+  # TODO(b/138808492): Remove code inside copybara
+  # to make TPU code and CPU code consistent.
+  scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
+  if not call_from_convolution and _enclosing_tpu_context() is not None:
+    scope = scopes[n]
+  else:
+    scope = "convolution"
+  # copybara:strip_end
+  # copybara:insert scope = "convolution"
+
+  with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    if all(i == 1 for i in dilations):
-      # fast path if no dilation as gradient only supported on GPU for dilations
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+      # fast path for TPU or if no dilation as gradient only supported on GPU
+      # for dilations
+    # copybara:strip_end
+    # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1055,7 +1094,9 @@ class Convolution(object):
     self.filter_shape = filter_shape
     self.data_format = data_format
     self.strides = strides
+    self.padding = padding
     self.name = name
+    self.dilation_rate = dilation_rate
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
@@ -1075,7 +1116,24 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    return self.conv_op(inp, filter)
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # TPU convolution supports dilations greater than 1.
+    if _enclosing_tpu_context() is not None:
+      return convolution_internal(
+          inp,
+          filter,
+          strides=self.strides,
+          padding=self.padding,
+          data_format=self.data_format,
+          dilations=self.dilation_rate,
+          name=self.name,
+          call_from_convolution=False)
+    else:
+      return self.conv_op(inp, filter)
+    # copybara:strip_end
+    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -1817,7 +1875,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 1. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -1903,7 +1961,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 1. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2167,9 +2225,9 @@ def conv2d_transpose_v2(
     input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
       in_channels]` for `NHWC` data format or `[batch, in_channels, height,
       width]` for `NCHW` data format.
-    filters: A 4-D `Tensor` with the same type as `value` and shape `[height,
+    filters: A 4-D `Tensor` with the same type as `input` and shape `[height,
       width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+      must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
@@ -2191,7 +2249,7 @@ def conv2d_transpose_v2(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
@@ -2282,7 +2340,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -2600,10 +2659,10 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if isinstance(output_shape, collections.Sized):
-      n = len(output_shape) - 2
-    elif isinstance(output_shape, ops.Tensor):
+    if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
+    elif isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")
 
@@ -2635,7 +2694,7 @@ def bias_add(value, bias, data_format=None, name=None):
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
       `int16`, `int8`, `complex64`, or `complex128`.
-    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+    bias: A 1-D `Tensor` with size matching the channel dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
     data_format: A string. 'N...C' and 'NC...' are supported.
@@ -2742,9 +2801,8 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
-  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
-  https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
@@ -2759,12 +2817,9 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.cast(features, dtypes.float32)
-    if compat.forward_compatible(2018, 11, 1):
-      if isinstance(alpha, np.ndarray):
-        alpha = alpha.item()
-      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
-    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features, name=name)
+    if isinstance(alpha, np.ndarray):
+      alpha = alpha.item()
+    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
 def _flatten_outer_dims(logits):
@@ -3036,7 +3091,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
@@ -3221,7 +3277,8 @@ def softmax_cross_entropy_with_logits(
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
     axis: Alias for dim.
@@ -3243,7 +3300,7 @@ def softmax_cross_entropy_with_logits(
       labels=labels, logits=logits, axis=dim, name=name)
 
 
-@tf_export("nn.sparse_softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 def sparse_softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
@@ -3284,9 +3341,10 @@ def sparse_softmax_cross_entropy_with_logits(
       must be an index in `[0, num_classes)`. Other values will raise an
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
-    logits: Unscaled log probabilities of shape
+    logits: Per-label activations (typically a linear output) of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
-      `float64`.
+      `float64`. These activation energies are interpreted as unnormalized log
+      probabilities.
     name: A name for the operation (optional).
 
   Returns:
@@ -3365,6 +3423,58 @@ def sparse_softmax_cross_entropy_with_logits(
         return math_ops.cast(cost, dtypes.float16)
       else:
         return cost
+
+
+@tf_export("nn.sparse_softmax_cross_entropy_with_logits", v1=[])
+def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
+  """Computes sparse softmax cross entropy between `logits` and `labels`.
+
+  Measures the probability error in discrete classification tasks in which the
+  classes are mutually exclusive (each entry is in exactly one class).  For
+  example, each CIFAR-10 image is labeled with one and only one label: an image
+  can be a dog or a truck, but not both.
+
+  **NOTE:**  For this operation, the probability of a given label is considered
+  exclusive.  That is, soft classes are not allowed, and the `labels` vector
+  must provide a single specific index for the true class for each row of
+  `logits` (each minibatch entry).  For soft softmax classification with
+  a probability distribution for each entry, see
+  `softmax_cross_entropy_with_logits_v2`.
+
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  on `logits` internally for efficiency.  Do not call this op with the
+  output of `softmax`, as it will produce incorrect results.
+
+  A common use case is to have logits of shape
+  `[batch_size, num_classes]` and have labels of shape
+  `[batch_size]`, but higher dimensions are supported, in which
+  case the `dim`-th dimension is assumed to be of size `num_classes`.
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
+
+  **Note that to avoid confusion, it is required to pass only named arguments to
+  this function.**
+
+  Args:
+    labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
+      `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
+      must be an index in `[0, num_classes)`. Other values will raise an
+      exception when this op is run on CPU, and return `NaN` for corresponding
+      loss and gradient rows on GPU.
+    logits: Unscaled log probabilities of shape `[d_0, d_1, ..., d_{r-1},
+      num_classes]` and dtype `float16`, `float32`, or `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same shape as `labels` and of the same type as `logits`
+    with the softmax cross entropy loss.
+
+  Raises:
+    ValueError: If logits are scalars (need to have rank >= 1) or if the rank
+      of the labels is not equal to the rank of the logits minus one.
+  """
+  return sparse_softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits, name=name)
 
 
 @tf_export("nn.avg_pool", v1=["nn.avg_pool_v2"])
@@ -3543,8 +3653,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.avg_pool(
@@ -3691,6 +3801,10 @@ def max_pool(value,
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
+    if ((np.isscalar(ksize) and ksize == 0) or
+        (isinstance(ksize,
+                    (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
+      raise ValueError("ksize cannot be zero.")
 
     return gen_nn_ops.max_pool(
         value,
@@ -3730,8 +3844,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.max_pool(
@@ -3926,6 +4040,25 @@ def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
 
 
+@ops.RegisterStatistics("Conv3D", "flops")
+def _calc_conv3d_flops(graph, node):
+  """Calculates the compute resources needed for Conv3D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(
+      graph, node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_time = int(filter_shape[0])
+  filter_height = int(filter_shape[1])
+  filter_width = int(filter_shape[2])
+  filter_in_depth = int(filter_shape[3])
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
+  return ops.OpStats("flops", (output_count * filter_in_depth * filter_time *
+                               filter_height * filter_width * 2))
+
+
 @ops.RegisterStatistics("Conv2D", "flops")
 def _calc_conv_flops(graph, node):
   """Calculates the compute resources needed for Conv2D."""
@@ -4068,7 +4201,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     name: A name for this operation (optional).
     rate: A scalar `Tensor` with the same type as `x`. The probability that each
       element of `x` is discarded.
@@ -4104,6 +4237,10 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
   the expected sum is unchanged.
 
+  **Note:** The behavior of dropout has changed between TensorFlow 1.x and 2.x.
+  When converting 1.x code, please use named arguments to ensure behavior stays
+  consistent.
+
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -4120,25 +4257,30 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
-      point tensor.
+    ValueError: If `rate` is not in `(0, 1]` or if `x` is not a floating point
+      tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if not x.dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going to"
                        " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real) and not (rate >= 0 and rate < 1):
-      raise ValueError("rate must be a scalar tensor or a float in the "
-                       "range [0, 1), got %g" % rate)
+    if isinstance(rate, numbers.Real):
+      if not (rate >= 0 and rate < 1):
+        raise ValueError("rate must be a scalar tensor or a float in the "
+                         "range [0, 1), got %g" % rate)
+      if rate > 0.5:
+        logging.log_first_n(
+            logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
+            "2.x, dropout() uses dropout rate instead of keep_prob. "
+            "Please ensure that this is intended.", 5, rate)
 
     # Early return if nothing needs to be dropped.
     if isinstance(rate, numbers.Real) and rate == 0:
@@ -4150,7 +4292,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:
@@ -4206,7 +4348,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
-  r"""Finds values of the `n`-th order statistic for the last dimension.
+  r"""Finds values of the `n`-th smallest value for the last dimension.
+
+  Note that n is zero-indexed.
 
   If the input is a vector (rank-1), finds the entries which is the nth-smallest
   value in the vector and outputs their values as scalar tensor.
@@ -4670,11 +4814,11 @@ def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
   This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-  prediction for the target class is among the top `k` predictions among
-  all predictions for example `i`. Note that the behavior of `InTopK` differs
-  from the `TopK` op in its handling of ties; if multiple classes have the
-  same prediction value and straddle the top-`k` boundary, all of those
-  classes are considered to be in the top `k`.
+  prediction for the target class is finite (not inf, -inf, or nan) and among
+  the top `k` predictions among all predictions for example `i`. Note that the
+  behavior of `InTopK` differs from the `TopK` op in its handling of ties; if
+  multiple classes have the same prediction value and straddle the top-`k`
+  boundary, all of those classes are considered to be in the top `k`.
 
   More formally, let
 

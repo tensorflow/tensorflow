@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -85,7 +87,7 @@ static Status GetVariableInfosFromCtxInputs(
       variable_indices, std::back_inserter(resource_handles),
       [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
 
-  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables;
+  std::vector<core::RefCountPtr<Var>> variables;
   TF_RETURN_IF_ERROR(LookupResources(ctx, resource_handles, &variables));
 
   result->clear();
@@ -132,7 +134,8 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
       // cluster because we would not handle variable updates correctly.  Any
       // locks we have already acquired will be released when the VariableInfo
       // objects are destroyed.
-      return errors::Internal("Duplicate variable passed to XLA cluster");
+      // TODO(b/128495870) Add support for passing aliased resource variables.
+      return errors::Unimplemented("Duplicate variable passed to XLA cluster");
     }
     VLOG(4) << "Acquiring lock for variable "
             << reinterpret_cast<void*>(variable);
@@ -165,34 +168,8 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   return Status::OK();
 }
 
-XlaAllocator::XlaAllocator(const se::Platform* platform, Allocator* wrapped)
-    : xla::DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
-
-XlaAllocator::~XlaAllocator() {}
-
-xla::StatusOr<xla::OwningDeviceMemory> XlaAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
-  AllocationAttributes attrs;
-  attrs.no_retry_on_failure = !retry_on_failure;
-  void* data = nullptr;
-  if (size != 0) {
-    data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
-    if (data == nullptr) {
-      return errors::ResourceExhausted(
-          "Out of memory while trying to allocate ", size, " bytes.");
-    }
-  }
-  return xla::OwningDeviceMemory(se::DeviceMemoryBase(data, size),
-                                 device_ordinal, this);
-}
-
-Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
-  wrapped_->DeallocateRaw(mem.opaque());
-  return Status::OK();
-}
-
 XlaComputationLaunchContext::XlaComputationLaunchContext(
-    xla::LocalClient* client, xla::DeviceMemoryAllocator* xla_allocator,
+    xla::LocalClient* client, se::DeviceMemoryAllocator* xla_allocator,
     bool allocate_xla_tensors, bool use_multiple_streams)
     : client_(client),
       xla_allocator_(xla_allocator),
@@ -242,7 +219,8 @@ void XlaComputationLaunchContext::PopulateInputs(
       CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
       arg_ptrs_[i] = const_cast<ShapedBuffer*>(&xla_tensor->shaped_buffer());
     } else {
-      CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
+      CHECK(xla::Shape::Equal().MinorToMajorOnlyInLayout()(shape,
+                                                           on_device_shape))
           << "On-device shape "
           << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
           << " not the same as on-host shape "
@@ -347,9 +325,11 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
               << DataTypeString(type);
       if (type == DT_RESOURCE) {
-        TF_RET_CHECK(kernel->outputs[i].input_index >= 0)
-            << "Invalid input for outputs " << i;
-        ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
+        int input_index =
+            kernel->outputs[i].input_index - missing_ctx_input_prefix;
+        TF_RET_CHECK(input_index >= 0 && input_index < ctx->num_inputs())
+            << "Invalid input for outputs " << i << ": " << input_index;
+        ctx->set_output(i, ctx->input(input_index));
       } else {
         se::DeviceMemoryBase buffer = output.buffer({output_num});
         if (allocate_xla_tensors_) {
@@ -369,7 +349,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
         } else {
           Tensor output_tensor = XlaTensorBuffer::MakeTensor(
               ctx->expected_output_dtype(i), shape, buffer, allocator);
-          output.set_buffer(xla::OwningDeviceMemory(), {output_num});
+          output.set_buffer(se::OwningDeviceMemory(), {output_num});
           ctx->set_output(i, output_tensor);
         }
         ++output_num;
@@ -430,7 +410,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       *variable_infos[i].var()->tensor() = output_tensor;
     } else {
       se::DeviceMemoryBase buffer = output.buffer({output_num});
-      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
+      output.set_buffer(se::OwningDeviceMemory(), {output_num});
       Tensor output_tensor = XlaTensorBuffer::MakeTensor(
           write.type, write.shape, buffer, allocator);
       *variable_infos[i].var()->tensor() = output_tensor;

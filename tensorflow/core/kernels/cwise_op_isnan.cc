@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "IsNan", functor::isnan, float, Eigen::half, double,
           bfloat16);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "IsNan", functor::isnan, float, Eigen::half, double);
 #endif
 

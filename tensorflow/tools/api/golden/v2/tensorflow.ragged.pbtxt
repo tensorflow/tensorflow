@@ -1,8 +1,12 @@
 path: "tensorflow.ragged"
 tf_module {
   member_method {
+    name: "boolean_mask"
+    argspec: "args=[\'data\', \'mask\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "constant"
-    argspec: "args=[\'pylist\', \'dtype\', \'ragged_rank\', \'inner_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'pylist\', \'dtype\', \'ragged_rank\', \'inner_shape\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "map_flat_values"
@@ -10,14 +14,22 @@ tf_module {
   }
   member_method {
     name: "range"
-    argspec: "args=[\'starts\', \'limits\', \'deltas\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\'], "
+    argspec: "args=[\'starts\', \'limits\', \'deltas\', \'dtype\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "row_splits_to_segment_ids"
-    argspec: "args=[\'splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'splits\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "segment_ids_to_row_splits"
-    argspec: "args=[\'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'segment_ids\', \'num_segments\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "stack"
+    argspec: "args=[\'values\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "stack_dynamic_partitions"
+    argspec: "args=[\'data\', \'partitions\', \'num_partitions\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

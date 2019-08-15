@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_case_op.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
@@ -34,28 +35,41 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
     LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
 
 constexpr const char* const kTpuReplicateAttr = "_tpu_replicate";
+constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
 
-bool HasLowerUsingSwitchMergeAttr(const Node* n) {
+// Checks if boolean attribute is defined and it's value is 'true'.
+bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerUsingSwitchMergeAttr, &match);
-  return s.ok() && match;
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && match;
 }
 
-bool HasLowerAsMultiDeviceFunctionAttr(const Node* n) {
-  bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return s.ok() && match;
-}
-
-bool HasTpuReplicateAttr(const Node* n) {
+// Checks if string attribute is defined and it's not empty.
+bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
   string match;
-  Status s = GetNodeAttr(n->attrs(), kTpuReplicateAttr, &match);
-  return s.ok() && !match.empty();
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && !match.empty();
 }
 
-bool HasRetvals(const Graph& g) {
+bool LowerUsingSwitchMergeIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerUsingSwitchMergeAttr);
+}
+
+bool LowerAsMultiDeviceFunctionIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerAsMultiDeviceFunctionAttr);
+}
+
+bool MarkedForTpuCompilation(const Node* n) {
+  return CheckStringAttr(n, kTpuReplicateAttr);
+}
+
+bool MarkedForXlaCompilation(const Node* n) {
+  return CheckStringAttr(n, kXlaClusterAttr);
+}
+
+bool HasArgsOrRetvals(const Graph& g) {
   for (const Node* n : g.op_nodes()) {
-    if (n->IsRetval()) return true;
+    if (n->IsArg() || n->IsRetval()) return true;
   }
   return false;
 }
@@ -90,38 +104,46 @@ Status LowerFunctionalOpsPass::Run(
                                      .optimizer_options()
                                      .do_function_inlining();
 
-  // If graph is a function instantiation, it's guaranteed to have `Retval`
-  // nodes for all fetched tensors. Otherwise it's unsafe to remove any of the
-  // nodes, because they might be later used as fetches. We do this only for
-  // function calls, because in practice it's impossible to construct a graph
-  // that fetches from control flow node.
-  bool keep_lowered_function_call_node_fetchable = !HasRetvals(*g);
+  // If graph is a function instantiation, it will have `_Arg` and `_Retval`
+  // nodes for input and output tensors. Otherwise it's unsafe to remove any of
+  // the nodes, because they might be later used as fetches.
+  //
+  // When we do not keep lowered nodes fetchable, we still add a NoOp node to
+  // the graph with the same name as lowered node, because it might be used as a
+  // control output source, and it's currently not expressed in a graph.
+  bool keep_lowered_nodes_fetchable = keep_lowered_nodes_fetchable_.has_value()
+                                          ? *keep_lowered_nodes_fetchable_
+                                          : !HasArgsOrRetvals(*g);
 
-  // Lower all If and While ops that have the `kLowerUsingSwitchMergeAttr` attr
-  // set and inlines all function calls into the graph.
+  // Lower all If, Case, While ops that have the `kLowerUsingSwitchMergeAttr`
+  // attr set and inline all function calls into the graph.
   // We start at `i` = 2 to skip the source and sink nodes.
-  // Note that `g->num_node_ids()` may change in the for body if a matching If
-  // or While node is lowered. Since new graph nodes are always added to the
-  // end of the list of nodes it is ensured that nested If/While nodes will be
-  // lowered as well.
+  // Note that `g->num_node_ids()` may change in the for body if a matching If,
+  // Case, While node is lowered. Since new graph nodes are always added to the
+  // end of the list of nodes it is ensured that nested If/Case/While nodes will
+  // be lowered as well.
   for (int i = 2; i < g->num_node_ids(); ++i) {
     Node* n = g->FindNodeId(i);
-    if (n == nullptr) continue;            // deleted node
-    if (HasTpuReplicateAttr(n)) continue;  // marked for TPU compilation
+    if (n == nullptr) continue;  // deleted node
+    if (MarkedForTpuCompilation(n)) continue;
+    if (MarkedForXlaCompilation(n)) continue;
 
     // Always lower function calls produces by lowering If/While nodes.
     if (IsFunctionCall(*flib_def, *n) &&
-        (lower_function_calls || HasLowerAsMultiDeviceFunctionAttr(n))) {
-      TF_RETURN_IF_ERROR(RewriteFunctionCallNode(
-          n, g, *flib_def, keep_lowered_function_call_node_fetchable));
+        (lower_function_calls || LowerAsMultiDeviceFunctionIsOn(n))) {
+      TF_RETURN_IF_ERROR(RewriteFunctionCallNode(n, g, *flib_def,
+                                                 keep_lowered_nodes_fetchable));
       continue;
     }
 
-    if (HasLowerUsingSwitchMergeAttr(n)) {
-      if (n->type_string() == "If") {
-        TF_RETURN_IF_ERROR(RewriteIfNode(n, g, *flib_def));
-      } else if (n->type_string() == "While") {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, *flib_def));
+    if (LowerUsingSwitchMergeIsOn(n)) {
+      if (n->IsIfNode()) {
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, g, keep_lowered_nodes_fetchable));
+      } else if (n->type_string() == "Case") {
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, g, keep_lowered_nodes_fetchable));
+      } else if (n->IsWhileNode()) {
+        TF_RETURN_IF_ERROR(
+            RewriteWhileNode(n, g, keep_lowered_nodes_fetchable));
       } else {
         return errors::Internal(
             "Node ", FormatNodeForError(*n), " of type ", n->type_string(),

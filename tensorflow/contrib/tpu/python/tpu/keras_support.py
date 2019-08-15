@@ -30,7 +30,7 @@ strategy = keras_support.TPUDistributionStrategy(resolver)
 model = keras_support.tpu_model(model, strategy=strategy)
 
 # Only TF optimizers are currently supported.
-model.compile(optimizer=tf.train.AdamOptimizer(), ...)
+model.compile(optimizer=tf.compat.v1.train.AdamOptimizer(), ...)
 
 # `images` and `labels` should be Numpy arrays.  Support for tensor input
 # (e.g. datasets) is planned.
@@ -1641,7 +1641,7 @@ class KerasTPUModel(models.Model):
         validation_split=validation_split)
 
     # Prepare validation data
-    val_x, val_y, val_sample_weights = self._prepare_validation_data(
+    x, y, val_x, val_y, val_sample_weights = self._prepare_validation_data(
         validation_data, validation_split, validation_steps, x, y,
         sample_weights, batch_size)
     return self._pipeline_fit_loop(
@@ -1934,7 +1934,7 @@ class KerasTPUModel(models.Model):
       batch_size: The training batch size (if provided)
 
     Returns:
-      A 3-tuple of (val_x, val_y, val_sample_weights).
+      A 5-tuple of (x, y, val_x, val_y, val_sample_weights).
 
     Raises:
       ValueError: If the provided arguments are not compatible with
@@ -1946,7 +1946,7 @@ class KerasTPUModel(models.Model):
     # in TPUs.
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator) or
+          isinstance(validation_data, iterator_ops.IteratorV2) or
           isinstance(validation_data, dataset_ops.DatasetV2)):
         raise ValueError('KerasTPUModel cannot handle a Dataset or Iterator '
                          'for validation_data. Please instead pass a function '
@@ -1991,7 +1991,7 @@ class KerasTPUModel(models.Model):
       val_y = None
       val_sample_weights = None
 
-    return val_x, val_y, val_sample_weights
+    return x, y, val_x, val_y, val_sample_weights
 
   def predict(self,
               x,
@@ -2201,7 +2201,7 @@ def tpu_model(model, strategy=None):
   strategy = keras_support.TPUDistributionStrategy(tpu_cluster_resolver)
   model = keras_support.tpu_model(model, strategy)
   model.compile(
-      optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
+      optimizer=tf.compat.v1.train.GradientDescentOptimizer(learning_rate=1.0),
       ...)
   ```
 

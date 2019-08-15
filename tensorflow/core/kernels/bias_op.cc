@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #endif  // GOOGLE_CUDA
 
@@ -270,26 +272,19 @@ class BiasGradOp : public OpKernel {
       output->template flat<T>().setZero();
     } else {
       // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+      using AccumT = typename AccumulatorType<T>::type;
       if (data_format_ == FORMAT_NCHW) {
+        const functor::ReduceMiddleDimensions<
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>,
+            Eigen::internal::SumReducer<T>>
+            redux;
         Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
                                                   height * width * depth);
-#ifdef EIGEN_HAS_INDEX_LIST
-        using idx0 = Eigen::type2index<0>;
-        using idx2 = Eigen::type2index<2>;
-        Eigen::IndexList<idx0, idx2> reduction_axes;
-#else
-        Eigen::array<Eigen::Index, 2> reduction_axes = {0, 2};
-#endif
-        output->template flat<T>().device(context->eigen_device<Device>()) =
-            output_backprop.flat<T>()
-                .template cast<typename AccumulatorType<T>::type>()
-                .reshape(three_dims)
-                .sum(reduction_axes)
-                .template cast<T>();  // End of code by intel_tf.
+        redux(context->eigen_device<Device>(), three_dims, output_backprop,
+              output, 1);
       } else {
-        using AccumT = typename AccumulatorType<T>::type;
         const functor::ReduceOuterDimensions<
-            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>>
+            T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>>
             redux;
 
         Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,
@@ -325,7 +320,7 @@ REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 class BiasOp<GPUDevice, T> : public BinaryOp<T> {
  public:
@@ -448,7 +443,7 @@ class BiasAddParams {
   string ToString() const {
     // clang-format off
     return strings::StrCat(
-        "(", str_util::Join(in_shape_, ", "), "), ",
+        "(", absl::StrJoin(in_shape_, ", "), "), ",
         data_format_, ", ", dtype_, ", ", device_id_);
     // clang-format on
   }
@@ -624,6 +619,6 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

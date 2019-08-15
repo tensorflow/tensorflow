@@ -1,16 +1,18 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
 )
-
-package(default_visibility = [":friends"])
 
 # Filegroup used to collect source files for the dependency check.
 filegroup(
@@ -51,6 +53,8 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -64,8 +68,10 @@ cc_library(
         "host_stream.h",
     ],
     deps = [
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -105,6 +111,22 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_pimpl",
         "//tensorflow/stream_executor:timer",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
+)
+
+tf_cc_test(
+    name = "host_stream_test",
+    srcs = ["host_stream_test.cc"],
+    deps = [
+        ":host_platform",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:platform",
+        "//tensorflow/stream_executor:stream",
+        "@com_google_absl//absl/synchronization",
+    ],
 )

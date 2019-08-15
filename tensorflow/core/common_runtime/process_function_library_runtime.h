@@ -37,16 +37,18 @@ class ProcessFunctionLibraryRuntime {
       const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
-      DistributedFunctionLibraryRuntime* parent = nullptr);
+      DistributedFunctionLibraryRuntime* parent = nullptr,
+      const CustomKernelCreator* custom_kernel_creator = nullptr,
+      const SessionMetadata* metadata = nullptr);
 
-  // With `custom_kernel_creator`.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator,
-                                thread::ThreadPool* thread_pool,
-                                DistributedFunctionLibraryRuntime* parent);
+  ~ProcessFunctionLibraryRuntime() {
+    // Deleting the FunctionLibraryRuntime map will delete the function handles
+    // registered in it, which may call ReleaseHandle in this class again to
+    // release their sub-function. These circular calls may casue segfault
+    // since the flr_map_ may has already been deleted. Explicitly releasing
+    // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
+    flr_map_.reset();
+  }
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -141,8 +143,17 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
+           FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
+
+  const DeviceSet* device_set() { return &device_set_; }
+
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition() const {
+    return lib_def_;
+  }
 
  private:
   friend class FunctionLibraryRuntimeImpl;
@@ -185,23 +196,23 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            const FunctionLibraryDefinition& overlay_lib,
+                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
+          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
-          overlay_lib_(overlay_lib),
           ret_types_(std::move(ret_types)) {}
 
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
+    // A library that contains definitions of component functions and their
+    // transitive dependencies.
+    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
-    // The overlay library holding component function definitions as well as
-    // the definitions of functions they call.
-    FunctionLibraryDefinition overlay_lib_;
     DataTypeVector ret_types_;
 
     // Maps the device name to the information about the component function
@@ -221,11 +232,24 @@ class ProcessFunctionLibraryRuntime {
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
 
+  // Clones ProcessFunctionLibraryRuntime and FunctionLibraryDefinition
+  // (transferring ownership of both to the caller). Note that the
+  // ProcessFunctionLibraryRuntime borrows a pointer to the
+  // FunctionLibraryDefinition and so the FunctionLibraryDefinition should
+  // outlive the ProcessFunctionLibraryRuntime.
+  //
+  // The `skip_flib_def` argument controls whether the method should clone the
+  // FunctionLibraryDefinition (default behavior) or return an empty function
+  // library. The latter is used by tf.data, which manages
+  // FunctionLibraryDefinitions for its functions independently (and passes
+  // these into the FunctionLibraryRuntime through an overlay), to avoid linear
+  // runtime w.r.t. to number of functions in the current function library.
   Status Clone(Env* env, int graph_def_version,
                const OptimizerOptions& optimizer_options,
-               CustomKernelCreator custom_kernel_creator,
+               const CustomKernelCreator* custom_kernel_creator,
                std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) const;
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+               bool skip_flib_def = false) const;
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 
@@ -249,12 +273,29 @@ class ProcessFunctionLibraryRuntime {
   // access these resources to the appropriate devices.
   Status PinArgsAndRets(const std::vector<string>& input_devices,
                         const std::vector<string>& output_devices,
-                        const DeviceSet& device_set, Graph* graph) const;
+                        const DeviceSet& device_set,
+                        const std::vector<Node*>& arg_nodes,
+                        const std::vector<Node*>& ret_nodes) const;
+
+  struct CleanUpItem {
+    string device;
+    uint64 step_id;
+    FunctionLibraryRuntime::Handle local_handle;
+  };
+
+  void RunInternal(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::Handle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+                   FunctionLibraryRuntime::DoneCallback done) const;
 
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,
                       gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                      std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                       FunctionLibraryRuntime::DoneCallback done) const;
+  void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
+               FunctionLibraryRuntime::DoneCallback done) const;
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -297,6 +338,7 @@ class ProcessFunctionLibraryRuntime {
 
   Env* const env_;
   const DeviceMgr* const device_mgr_;
+  DeviceSet device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
 
@@ -314,9 +356,12 @@ class ProcessFunctionLibraryRuntime {
                      std::unique_ptr<MultiDeviceFunctionData>>
       mdevice_data_ GUARDED_BY(mu_);
 
-  std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  std::unique_ptr<
+      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      flr_map_;
   int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
+  const SessionMetadata* const session_metadata_;
 };
 
 }  // namespace tensorflow

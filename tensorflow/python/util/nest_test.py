@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -39,7 +40,7 @@ except ImportError:
   attr = None
 
 
-class _CustomMapping(collections.Mapping):
+class _CustomMapping(collections_abc.Mapping):
 
   def __init__(self, *args, **kwargs):
     self._wrapped = dict(*args, **kwargs)
@@ -436,6 +437,16 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     self.assertEqual(7, nest.map_structure(lambda x, y: x + y, 3, 4))
 
+    structure3 = collections.defaultdict(list)
+    structure3["a"] = [1, 2, 3, 4]
+    structure3["b"] = [2, 3, 4, 5]
+
+    expected_structure3 = collections.defaultdict(list)
+    expected_structure3["a"] = [2, 3, 4, 5]
+    expected_structure3["b"] = [3, 4, 5, 6]
+    self.assertEqual(expected_structure3,
+                     nest.map_structure(lambda x: x + 1, structure3))
+
     # Empty structures
     self.assertEqual((), nest.map_structure(lambda x: x + 1, ()))
     self.assertEqual([], nest.map_structure(lambda x: x + 1, []))
@@ -475,10 +486,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
                          check_types=False)
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, foo="a")
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
   ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name
@@ -531,12 +544,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
         ValueError,
-        nest._INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
-            shallow_size=len(inp_abc),
-            input_size=len(inp_ab))):
-      nest.assert_shallow_structure(shallow_tree=inp_abc, input_tree=inp_ab)
+        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(inp_ab),
+            shallow_length=len(inp_abc))):
+      nest.assert_shallow_structure(inp_abc, inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
@@ -707,10 +720,18 @@ class NestTest(parameterized.TestCase, test.TestCase):
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
 
+    input_tree = [(1,), (2,), 3]
+    shallow_tree = [(1,), (2,)]
+    expected_message = nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+        input_length=len(input_tree), shallow_length=len(shallow_tree))
+    with self.assertRaisesRegexp(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
+      nest.assert_shallow_structure(shallow_tree, input_tree)
+
   def testFlattenWithTuplePathsUpTo(self):
-    def get_paths_and_values(shallow_tree, input_tree):
-      path_value_pairs = nest.flatten_with_tuple_paths_up_to(shallow_tree,
-                                                             input_tree)
+    def get_paths_and_values(shallow_tree, input_tree,
+                             check_subtrees_length=True):
+      path_value_pairs = nest.flatten_with_tuple_paths_up_to(
+          shallow_tree, input_tree, check_subtrees_length=check_subtrees_length)
       paths = [p for p, _ in path_value_pairs]
       values = [v for _, v in path_value_pairs]
       return paths, values
@@ -837,8 +858,17 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Test case where len(shallow_tree) < len(input_tree)
     input_tree = {"a": "A", "b": "B", "c": "C"}
     shallow_tree = {"a": 1, "c": 2}
+
+    with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
+        ValueError,
+        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(input_tree),
+            shallow_length=len(shallow_tree))):
+      get_paths_and_values(shallow_tree, input_tree)
+
     (flattened_input_tree_paths,
-     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree,
+                                                  check_subtrees_length=False)
     (flattened_shallow_tree_paths,
      flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
     self.assertEqual(flattened_input_tree_paths, [("a",), ("c",)])

@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER6(UnaryOp, CPU, "Sqrt", functor::sqrt, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "Sqrt", functor::sqrt, float, Eigen::half, double);
 #endif
 
@@ -29,7 +29,7 @@ REGISTER2(UnaryOp, SYCL, "Sqrt", functor::sqrt, float, double);
 
 REGISTER6(SimpleBinaryOp, CPU, "SqrtGrad", functor::sqrt_grad, float,
           Eigen::half, bfloat16, double, complex64, complex128);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "SqrtGrad", functor::sqrt_grad, float,
           Eigen::half, double);
 #endif

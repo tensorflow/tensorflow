@@ -19,71 +19,75 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mutex.h"
 
 // gRPC response caching.  Most WorkerService methods cannot be retried directly
 // as they will fail or deadlock.  To enable retrying, we can instead cache
-// responses for a short period of time and reply to duplicate requests from the
-// cache.
+// responses and reply to duplicate requests from the cache. The cache will be
+// cleaned when the MarkRecvFinishedRequest is received from the receiver or the
+// session step is completed.
 namespace tensorflow {
-
-// Union type to aid caching of either raw buffers (for RecvTensor RPCs) and
-// protocol buffer messages (for all other RPCs).
-class RPCResponse {
- public:
-  explicit RPCResponse() : buf_(nullptr), msg_(nullptr) {}
-  explicit RPCResponse(::grpc::ByteBuffer* b) : buf_(b), msg_(nullptr) {}
-  explicit RPCResponse(protobuf::Message* m) : buf_(nullptr), msg_(m) {}
-
-  // Encode this response into the target buffer.
-  void Encode(::grpc::ByteBuffer* tgt) const;
-
-  // Copy from `src`: if this is a buffer, make a shallow copy.
-  // For protocol messages, parse the response from `src`.
-  void CopyFrom(const ::grpc::ByteBuffer& src);
-
- private:
-  ::grpc::ByteBuffer* buf_;
-  protobuf::Message* msg_;
-};
-
-typedef std::function<void(StatusCallback)> ComputeFunc;
-struct WorkerCacheEntry;
 
 // Track and cache the state of worker service RPCs.  An RPC can be in 3 states:
 //
 // * PENDING: this is the first call of the RPC, and it will transition to
 // * ACTIVE: another thread is active processing this RPC
 // * FINISHED: the worker has finished processing the method
-//
-// The response from completed RPCs are LRU cached until either `max_bytes`
-// bytes are in use by the cache or they expire (according to `expire_time`).
+
 class GrpcResponseCache {
  public:
-  GrpcResponseCache(int64 max_bytes, int64 expire_time_seconds)
-      : max_bytes_(max_bytes), expire_time_seconds_(expire_time_seconds) {}
+  using FinishResponseCB = std::function<void(
+      const Tensor& tensor, bool is_dead, const Status& status)>;
 
-  // Lookup the result for key.
-  // If it is finished, invoke `done_cb` immediately after filling `response`.
-  // If active, done_db will be invoked when the current call completes.
-  // Otherwise, invoke `compute_func` to fill the cache and invoke done_cb.
-  void LookupOrCompute(const string& key, RPCResponse response,
-                       ComputeFunc compute_func, StatusCallback done_cb);
+  // Add the given request to the cache.
+  // If the request is in the cache,
+  //    If it is finished, invoke `cb` immediately
+  //    If active, cb will be invoked when the current call completes.
+  //    In either case, return true.
+  // Otherwise, store the request and cb in the cache, and return false.
+  // Note FinishResponseCB is assumed to be thread-safe.
+  bool QueueRequest(int64 request_id, int64 step_id,
+                    const FinishResponseCB& cb);
 
-  // Remove all stale or expired cache entries if the cache is full.
-  void MaybeCleanup();
+  // Fill the response cache for the given request_id and respond to all
+  // pending request.
+  void OnRequestFinished(int64 request_id, const Tensor& tensor, bool is_dead,
+                         const Status& status);
+
+  // Erase the cache entry with the given request_id
+  void EraseRequestId(int64 request_id);
+
+  // Erase cache entries with the given step_id
+  void CleanEntriesForStep(int64 step_id);
 
  private:
-  int64 current_bytes_ GUARDED_BY(mu_) = 0;
-  const int64 max_bytes_;
-  const int64 expire_time_seconds_;
+  struct ResponseCacheEntry {
+    enum class State {
+      PENDING = 0,
+      ACTIVE = 1,
+      FINISHED = 2,
+    };
 
-  std::unordered_map<string, std::shared_ptr<WorkerCacheEntry>> requests_
-      GUARDED_BY(mu_);
+    State state = State::PENDING;
+    int64 step_id = -1;
+    Tensor tensor;
+    bool is_dead = false;
+    Status response_status;
+
+    void FinishResponse(const FinishResponseCB& cb) const {
+      cb(tensor, is_dead, response_status);
+    }
+    std::vector<FinishResponseCB> callbacks;
+  };
+
   mutex mu_;
+  // response_cache_ is expected to be small, as entries are cleared immediately
+  // on ack from the receiver.
+  gtl::FlatMap<int64, ResponseCacheEntry> response_cache_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

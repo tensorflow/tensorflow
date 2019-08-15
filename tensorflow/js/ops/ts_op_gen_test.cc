@@ -27,12 +27,12 @@ namespace tensorflow {
 namespace {
 
 void ExpectContainsStr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(str_util::StrContains(s, expected))
+  EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
 void ExpectDoesNotContainStr(StringPiece s, StringPiece expected) {
-  EXPECT_FALSE(str_util::StrContains(s, expected))
+  EXPECT_FALSE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 

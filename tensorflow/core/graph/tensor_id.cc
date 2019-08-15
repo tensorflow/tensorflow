@@ -51,7 +51,7 @@ TensorId ParseTensorName(StringPiece name) {
   if (p > base && *p == ':' && mul > 1) {
     id.first = StringPiece(base, p - base);
     id.second = index;
-  } else if (str_util::StartsWith(name, "^")) {
+  } else if (absl::StartsWith(name, "^")) {
     // Control edge
     id.first = StringPiece(base + 1);
     id.second = Graph::kControlSlot;

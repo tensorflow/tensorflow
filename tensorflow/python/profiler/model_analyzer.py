@@ -135,9 +135,9 @@ class Profiler(object):
 
     for i in xrange(total_steps):
       if i % 10000 == 0:
-        run_meta = tf.RunMetadata()
+        run_meta = tf.compat.v1.RunMetadata()
         _ = sess.run(...,
-                     options=tf.RunOptions(
+                     options=tf.compat.v1.RunOptions(
                          trace_level=tf.RunOptions.FULL_TRACE),
                      run_metadata=run_meta)
         profiler.add_step(i, run_meta)

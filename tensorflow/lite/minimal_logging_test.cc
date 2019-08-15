@@ -52,6 +52,27 @@ TEST(MinimalLogging, UnknownSeverity) {
             testing::internal::GetCapturedStderr());
 }
 
+TEST(MinimalLogging, Once) {
+  testing::internal::CaptureStderr();
+  for (int i = 0; i < 10; ++i) {
+    TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Count: %d", i);
+  }
+  EXPECT_EQ("INFO: Count: 0\n", testing::internal::GetCapturedStderr());
+}
+
+TEST(MinimalLogging, Debug) {
+  testing::internal::CaptureStderr();
+  TFLITE_LOG(TFLITE_LOG_INFO, "Foo");
+  TFLITE_LOG(TFLITE_LOG_WARNING, "Bar");
+  TFLITE_LOG(TFLITE_LOG_ERROR, "Baz");
+#ifndef NDEBUG
+  EXPECT_EQ("INFO: Foo\nWARNING: Bar\nERROR: Baz\n",
+            testing::internal::GetCapturedStderr());
+#else
+  EXPECT_TRUE(testing::internal::GetCapturedStderr().empty());
+#endif
+}
+
 }  // namespace tflite
 
 int main(int argc, char** argv) {

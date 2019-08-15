@@ -180,7 +180,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
       shape = ShapeUtil::MakeShape(ty, {42});
     } else if (ty == PrimitiveType::TUPLE) {
       shape = ShapeUtil::MakeTupleShape({});
-    } else if (ty == PrimitiveType::OPAQUE) {
+    } else if (ty == PrimitiveType::OPAQUE_TYPE) {
       shape = ShapeUtil::MakeOpaqueShape();
     } else if (ty == PrimitiveType::TOKEN) {
       shape = ShapeUtil::MakeTokenShape();

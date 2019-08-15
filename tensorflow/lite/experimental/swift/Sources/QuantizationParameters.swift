@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
-
 /// Parameters that determine the mapping of quantized values to real values. Quantized values can
 /// be mapped to float values using the following conversion:
 /// `realValue = scale * (quantizedValue - zeroPoint)`.
-public struct QuantizationParameters {
-
+public struct QuantizationParameters: Equatable, Hashable {
   /// Difference between real values corresponding to consecutive quantized values differing by 1.
   /// For example, the range of quantized values for `UInt8` data type is [0, 255].
   public let scale: Float

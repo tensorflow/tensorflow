@@ -57,7 +57,7 @@ class ValidateOpDefTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
     if (!status.ok()) {
       LOG(INFO) << "message: " << status;
-      EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
+      EXPECT_TRUE(absl::StrContains(status.ToString(), message))
           << "Actual: " << status << "\nExpected to contain: " << message;
     }
   }

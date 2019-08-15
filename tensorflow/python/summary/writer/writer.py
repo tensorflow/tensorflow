@@ -65,9 +65,9 @@ class SummaryToEventTransformer(object):
     ```python
     ...create a graph...
     # Launch the graph in a session.
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     # Create a summary writer, add the 'graph' to the event file.
-    writer = tf.summary.FileWriter(<some-directory>, sess.graph)
+    writer = tf.compat.v1.summary.FileWriter(<some-directory>, sess.graph)
     ```
 
 
@@ -107,7 +107,7 @@ class SummaryToEventTransformer(object):
     You can pass the result of evaluating any summary op, using
     `tf.Session.run` or
     `tf.Tensor.eval`, to this
-    function. Alternatively, you can pass a `tf.Summary` protocol
+    function. Alternatively, you can pass a `tf.compat.v1.Summary` protocol
     buffer that you populate with your own data. The latter is
     commonly done to report evaluation results in event files.
 
@@ -289,10 +289,10 @@ class FileWriter(SummaryToEventTransformer):
   to add data to the file directly from the training loop, without slowing down
   training.
 
-  When constructed with a `tf.Session` parameter, a `FileWriter` instead forms
-  a compatibility layer over new graph-based summaries (`tf.contrib.summary`)
-  to facilitate the use of new summary writing with pre-existing code that
-  expects a `FileWriter` instance.
+  When constructed with a `tf.compat.v1.Session` parameter, a `FileWriter`
+  instead forms a compatibility layer over new graph-based summaries
+  (`tf.contrib.summary`) to facilitate the use of new summary writing with
+  pre-existing code that expects a `FileWriter` instance.
   """
 
   def __init__(self,
@@ -320,9 +320,9 @@ class FileWriter(SummaryToEventTransformer):
     ```python
     ...create a graph...
     # Launch the graph in a session.
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     # Create a summary writer, add the 'graph' to the event file.
-    writer = tf.summary.FileWriter(<some-directory>, sess.graph)
+    writer = tf.compat.v1.summary.FileWriter(<some-directory>, sess.graph)
     ```
 
     The `session` argument to the constructor makes the returned `FileWriter` a
@@ -345,7 +345,7 @@ class FileWriter(SummaryToEventTransformer):
       graph_def: DEPRECATED: Use the `graph` argument instead.
       filename_suffix: A string. Every event file's name is suffixed with
         `suffix`.
-      session: A `tf.Session` object. See details above.
+      session: A `tf.compat.v1.Session` object. See details above.
 
     Raises:
       RuntimeError: If called with eager execution enabled.

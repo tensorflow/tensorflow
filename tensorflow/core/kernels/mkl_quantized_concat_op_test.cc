@@ -86,6 +86,10 @@ TEST_F(QuantizedConcatTest, Small8BitSameRange) {
   TestSmall8Bit(0.0f, 255.0f, 0.0f, 255.0f);
 }
 
+TEST_F(QuantizedConcatTest, Small8BitDifferentRange) {
+  TestSmall8Bit(0.0f, 255.0f, 0.0f, 25.0f);
+}
+
 void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
                                         float second_min, float second_max) {
   TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "_MklQuantizedConcatV2")

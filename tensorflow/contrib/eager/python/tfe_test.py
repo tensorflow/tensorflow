@@ -20,7 +20,6 @@ from __future__ import print_function
 import tempfile
 
 from tensorflow.contrib.eager.python import tfe
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -41,9 +40,10 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertAllEqual([[4.]], y.numpy())
 
   def testInstantError(self):
-    if context.num_gpus():
+    if test_util.is_gpu_available():
       # TODO(nareshmodi): make this test better
       self.skipTest("Gather doesn't do index checking on GPUs")
+
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices = 7 is not in \[0, 3\)'):
       array_ops.gather([0, 1, 2], 7)
@@ -79,10 +79,8 @@ class TFETest(test_util.TensorFlowTestCase):
     grad = tfe.gradients_function(f)
     self.assertEquals([12], [x.numpy() for x in grad(3.)])
 
+  @test_util.run_gpu_only
   def testGPU(self):
-    if tfe.num_gpus() <= 0:
-      self.skipTest('No GPUs available')
-
     # tf.Tensor.as_gpu_device() moves a tensor to GPU.
     x = constant_op.constant([[1., 2.], [3., 4.]]).gpu()
     # Alternatively, tf.device() as a context manager places tensors and

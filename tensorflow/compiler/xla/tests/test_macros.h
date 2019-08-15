@@ -30,11 +30,13 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
 
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_GPU(X) X
+#define DISABLED_ON_GPU_ROCM(X) X
 #define DISABLED_ON_INTERPRETER(X) X
 
 // We need this macro instead of pasting directly to support nesting
@@ -53,6 +55,12 @@ limitations under the License.
 #ifdef XLA_TEST_BACKEND_GPU
 # undef DISABLED_ON_GPU
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#if TENSORFLOW_USE_ROCM
+# undef DISABLED_ON_GPU_ROCM
+# define DISABLED_ON_GPU_ROCM(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // TENSORFLOW_USE_ROCM
+
 #endif  // XLA_TEST_BACKEND_GPU
 
 #ifdef XLA_TEST_BACKEND_INTERPRETER
@@ -68,8 +76,8 @@ namespace xla {
 // disabled on a particular platform. For a test that should be disabled,
 // returns DISABLED_ prepended to its name; otherwise returns the test name
 // unmodified.
-string PrependDisabledIfIndicated(const string& test_case_name,
-                                  const string& test_name);
+std::string PrependDisabledIfIndicated(absl::string_view test_case_name,
+                                       absl::string_view test_name);
 
 }  // namespace xla
 
