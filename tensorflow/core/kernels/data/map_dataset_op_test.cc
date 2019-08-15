@@ -21,11 +21,10 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "map_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 
 class MapDatasetParams : public DatasetParams {
  public:
-  MapDatasetParams(int64 start, int64 stop, int64 step,
+  MapDatasetParams(RangeDatasetParams range_dataset_params,
                    std::vector<Tensor> other_arguments,
                    FunctionDefHelper::AttrValueWrapper func,
                    std::vector<FunctionDef> func_lib,
@@ -35,8 +34,7 @@ class MapDatasetParams : public DatasetParams {
                    string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        range_dataset_params(start, stop, step, {DT_INT64},
-                             {PartialTensorShape({})}, ""),
+        range_dataset_params(std::move(range_dataset_params)),
         other_arguments(std::move(other_arguments)),
         func(std::move(func)),
         func_lib(std::move(func_lib)),
@@ -45,8 +43,7 @@ class MapDatasetParams : public DatasetParams {
         preserve_cardinality(preserve_cardinality) {}
 
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    if (input_dataset.NumElements() == 0 ||
-        input_dataset.dtype() != DT_VARIANT) {
+    if (!IsDatasetTensor(input_dataset)) {
       return tensorflow::errors::Internal(
           "The input dataset is not populated as the dataset tensor yet.");
     }
@@ -75,7 +72,7 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
         InitFunctionLibraryRuntime(map_dataset_params->func_lib, cpu_num_));
 
     TF_RETURN_IF_ERROR(
-        CreateMapDatasetOpKernel(*map_dataset_params, &dataset_kernel_));
+        MakeDatasetOpKernel(*map_dataset_params, &dataset_kernel_));
     TF_RETURN_IF_ERROR(
         MakeRangeDataset(map_dataset_params->range_dataset_params,
                          &map_dataset_params->input_dataset));
@@ -87,15 +84,15 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
         CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
     TF_RETURN_IF_ERROR(
         CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
-                                              kIteratorPrefix, &iterator_));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+        iterator_ctx_.get(), map_dataset_params->iterator_prefix, &iterator_));
     return Status::OK();
   }
 
  protected:
   // Creates a new MapDataset op kernel.
-  Status CreateMapDatasetOpKernel(const MapDatasetParams& map_dataset_params,
-                                  std::unique_ptr<OpKernel>* map_kernel) {
+  Status MakeDatasetOpKernel(const MapDatasetParams& map_dataset_params,
+                             std::unique_ptr<OpKernel>* map_kernel) override {
     NodeDef map_dataset_node_def = test::function::NDef(
         map_dataset_params.node_name,
         name_utils::OpName(MapDatasetOp::kDatasetType),
@@ -114,9 +111,7 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
 };
 
 MapDatasetParams MapDatasetParams1() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/3,
+  return {{/*start=*/0, /*stop=*/10, /*step=*/3},
           /*other_arguments=*/{},
           /*func=*/
           FunctionDefHelper::FunctionRef("XTimesTwo", {{"T", DT_INT64}}),
@@ -130,9 +125,7 @@ MapDatasetParams MapDatasetParams1() {
 }
 
 MapDatasetParams MapDatasetParams2() {
-  return {/*start=*/10,
-          /*stop=*/0,
-          /*step=*/-3,
+  return {{/*start=*/10, /*stop=*/0, /*step=*/-3},
           /*other_arguments=*/{},
           /*func=*/
           FunctionDefHelper::FunctionRef("XAddX", {{"T", DT_INT64}}),
@@ -149,9 +142,7 @@ MapDatasetParams MapDatasetParams2() {
 // both of them are added to the function library.
 MapDatasetParams MapDatasetParams3() {
   return {
-      /*start=*/0,
-      /*stop=*/10,
-      /*step=*/3,
+      {/*start=*/0, /*stop=*/10, /*step=*/3},
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XTimesFour", {{"T", DT_INT64}}),
@@ -163,11 +154,6 @@ MapDatasetParams MapDatasetParams3() {
       /*preserve_cardinality=*/true,
       /*node_name=*/kNodeName};
 }
-
-class ParameterizedGetNextTest
-    : public MapDatasetOpTest,
-      public ::testing::WithParamInterface<GetNextTestCase<MapDatasetParams>> {
-};
 
 std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
@@ -181,17 +167,16 @@ std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {
            CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
-TEST_P(ParameterizedGetNextTest, GetNext) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(
-      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
+ITERATOR_GET_NEXT_TEST_P(MapDatasetOpTest, MapDatasetParams, GetNextTestCases())
+
+std::vector<DatasetNodeNameTestCase<MapDatasetParams>>
+DatasetNodeNameTestCases() {
+  return {{/*dataset_params=*/MapDatasetParams1(),
+           /*expected_node_name=*/kNodeName}};
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    MapDatasetOpTest, ParameterizedGetNextTest,
-    ::testing::ValuesIn(
-        std::vector<GetNextTestCase<MapDatasetParams>>(GetNextTestCases())));
+DATASET_NODE_NAME_TEST_P(MapDatasetOpTest, MapDatasetParams,
+                         DatasetNodeNameTestCases())
 
 TEST_F(MapDatasetOpTest, DatasetNodeName) {
   auto dataset_params = MapDatasetParams1();
@@ -218,27 +203,14 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
-class ParameterizedCardinalityTest
-    : public MapDatasetOpTest,
-      public ::testing::WithParamInterface<
-          CardinalityTestCase<MapDatasetParams>> {};
-
 std::vector<CardinalityTestCase<MapDatasetParams>> CardinalityTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(), /*expected_cardinality=*/4},
           {/*dataset_params=*/MapDatasetParams2(), /*expected_cardinality=*/4},
           {/*dataset_params=*/MapDatasetParams3(), /*expected_cardinality=*/4}};
 }
 
-TEST_P(ParameterizedCardinalityTest, Cardinality) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    MapDatasetOpTest, ParameterizedCardinalityTest,
-    ::testing::ValuesIn(std::vector<CardinalityTestCase<MapDatasetParams>>(
-        CardinalityTestCases())));
+DATASET_CARDINALITY_TEST_P(MapDatasetOpTest, MapDatasetParams,
+                           CardinalityTestCases())
 
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   auto dataset_params = MapDatasetParams1();
@@ -255,14 +227,9 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
 TEST_F(MapDatasetOpTest, IteratorPrefix) {
   auto dataset_params = MapDatasetParams1();
   TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorPrefix(
-      name_utils::IteratorPrefix(MapDatasetOp::kDatasetType, kIteratorPrefix)));
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      MapDatasetOp::kDatasetType, dataset_params.iterator_prefix)));
 }
-
-class ParameterizedIteratorSaveAndRestoreTest
-    : public MapDatasetOpTest,
-      public ::testing::WithParamInterface<
-          IteratorSaveAndRestoreTestCase<MapDatasetParams>> {};
 
 std::vector<IteratorSaveAndRestoreTestCase<MapDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
@@ -280,18 +247,8 @@ IteratorSaveAndRestoreTestCases() {
            CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      kIteratorPrefix, test_case.expected_outputs, test_case.breakpoints));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    MapDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
-    ::testing::ValuesIn(
-        std::vector<IteratorSaveAndRestoreTestCase<MapDatasetParams>>(
-            IteratorSaveAndRestoreTestCases())));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(MapDatasetOpTest, MapDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
 }  // namespace
 }  // namespace data
