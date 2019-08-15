@@ -522,10 +522,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -555,10 +555,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       def divide():
         return x // 2
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              divide,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), divide),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -596,10 +596,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
