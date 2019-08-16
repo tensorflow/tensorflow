@@ -24,6 +24,7 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "neg.cc",
         "pack.cc",
         "pooling.cc",
         "prelu.cc",
@@ -38,8 +39,8 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -78,6 +79,7 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "neg.cc",
         "pack.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
@@ -93,8 +95,8 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -250,6 +252,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "neg_test",
+    srcs = [
+        "neg_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "maximum_minimum_test",
     srcs = [
         "maximum_minimum_test.cc",
@@ -269,9 +284,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
+#include "tensorflow/lite/kernels/internal/reference/neg.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"

@@ -123,6 +123,7 @@ tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
