@@ -553,7 +553,6 @@ class MklConcatOp : public OpKernel {
                                   dnn_shape_dst);
         DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
       }
-
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                          string(e.message) + ", in file " + string(__FILE__) +
@@ -580,7 +579,7 @@ class MklConcatOp : public OpKernel {
         OP_REQUIRES_OK(
             context, ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i],
                                        tmp_tensor));
-        converted_values[i] = tmp_tensor;
+        converted_values[i] = *tmp_tensor;
         tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
       } else {
         // no conversion since it is TF tensor already

@@ -714,9 +714,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
             "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
-
     return Status::OK();
-
   } catch (mkldnn::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
                        string(e.message) + ", in file " + string(__FILE__) +

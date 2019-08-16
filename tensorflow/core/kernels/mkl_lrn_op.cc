@@ -111,7 +111,7 @@ class MklLRNOp : public OpKernel {
         OP_REQUIRES_OK(context,
                        ConvertMklToTF<T>(context, src_tensor, src_dnn_shape,
                                          converted_tensor));
-        MklDefaultToEigen(context, converted_tensor);
+        MklDefaultToEigen(context, *converted_tensor);
         return;
       }
       // At this point, we can assume that the src is an MklTensor
@@ -533,7 +533,7 @@ class MklLRNGradOp : public OpKernel {
                                   context, MklGetInput(context, kIdxGradient),
                                   input_grad_dnn_shape, input_gradient_tensor));
     } else {
-      input_gradient_tensor = MklGetInput(context, kIdxGradient);
+      *input_gradient_tensor = MklGetInput(context, kIdxGradient);
     }
 
     if (orig_input_dnn_shape.IsMklTensor()) {
@@ -541,7 +541,7 @@ class MklLRNGradOp : public OpKernel {
                                   context, MklGetInput(context, kIdxOrigInput),
                                   orig_input_dnn_shape, orig_input_tensor));
     } else {
-      orig_input_tensor = MklGetInput(context, kIdxOrigInput);
+      *orig_input_tensor = MklGetInput(context, kIdxOrigInput);
     }
 
     if (orig_output_dnn_shape.IsMklTensor()) {
@@ -549,27 +549,27 @@ class MklLRNGradOp : public OpKernel {
                                   context, MklGetInput(context, kIdxOrigOutput),
                                   orig_output_dnn_shape, orig_output_tensor));
     } else {
-      orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
+      *orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
     }
 
-    const int64 batch = static_cast<int64>(input_gradient_tensor.dim_size(0));
-    const int64 rows = static_cast<int64>(input_gradient_tensor.dim_size(1));
-    const int64 cols = static_cast<int64>(input_gradient_tensor.dim_size(2));
-    const int64 depth = static_cast<int64>(input_gradient_tensor.dim_size(3));
+    const int64 batch = static_cast<int64>(input_gradient_tensor->dim_size(0));
+    const int64 rows = static_cast<int64>(input_gradient_tensor->dim_size(1));
+    const int64 cols = static_cast<int64>(input_gradient_tensor->dim_size(2));
+    const int64 depth = static_cast<int64>(input_gradient_tensor->dim_size(3));
     const auto nodes = cols * rows;
 
     auto grads_shaped =
-        input_gradient_tensor.shaped<T, 2>({nodes * batch, depth});
+        input_gradient_tensor->shaped<T, 2>({nodes * batch, depth});
 
-    auto in_shaped = orig_input_tensor.shaped<T, 2>({nodes * batch, depth});
-    auto activations = orig_output_tensor.shaped<T, 2>({nodes * batch, depth});
+    auto in_shaped = orig_input_tensor->shaped<T, 2>({nodes * batch, depth});
+    auto activations = orig_output_tensor->shaped<T, 2>({nodes * batch, depth});
 
     Tensor* output_dnn_data;
     MklDnnShape mkl_output_mkl_shape;
     mkl_output_mkl_shape.SetMklTensor(false);
     mkl_output_mkl_shape.SetDimensions(4);
     AllocateOutputSetMklShape(context, kIdxOutput, &output_dnn_data,
-                              input_gradient_tensor.shape(),
+                              input_gradient_tensor->shape(),
                               mkl_output_mkl_shape);
 
     auto out_shaped = output_dnn_data->shaped<T, 2>({nodes * batch, depth});
