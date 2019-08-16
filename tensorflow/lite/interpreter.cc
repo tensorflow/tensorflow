@@ -29,6 +29,20 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
+// TODO(b/139446230): Move to portable platform header.
+#if defined(__ANDROID__)
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif  // defined(__ANDROID__)
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_IPHONE_SIMULATOR
+#define TFLITE_IS_MOBILE_PLATFORM
+#elif TARGET_OS_IPHONE
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif
+#endif  // defined(__APPLE__)
+
 // TODO(b/132087118): move static_assert to c_api_internal when compiled with
 // C++.
 static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
@@ -60,7 +74,13 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
+  // Prod logging is useful for mobile platforms where scraping console logs is
+  // critical for debugging.
+#if defined(TFLITE_IS_MOBILE_PLATFORM)
   TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+#else
+  TFLITE_LOG_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+#endif
 
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);

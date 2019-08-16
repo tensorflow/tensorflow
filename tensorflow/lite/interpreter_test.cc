@@ -65,8 +65,14 @@ TEST(BasicInterpreter, ZeroInterpreter) {
   testing::internal::CaptureStderr();
 
   Interpreter interpreter;
+
+#ifndef NDEBUG
+  const char* kExpectedLog = "INFO: Initialized TensorFlow Lite runtime";
+#else
+  const char* kExpectedLog = "";
+#endif
   EXPECT_THAT(testing::internal::GetCapturedStderr(),
-              testing::HasSubstr("INFO: Initialized TensorFlow Lite runtime"));
+              testing::HasSubstr(kExpectedLog));
 
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
