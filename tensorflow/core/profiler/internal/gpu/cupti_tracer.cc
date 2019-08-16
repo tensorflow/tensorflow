@@ -644,6 +644,8 @@ Status CuptiTracer::EnableApiTracing() {
 Status CuptiTracer::DisableApiTracing() {
   if (!api_tracing_enabled_) return Status::OK();
 
+  api_tracing_enabled_ = false;
+
   if (!option_->cbids_selected.empty()) {
     for (auto cbid : option_->cbids_selected) {
       RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableCallback(
@@ -656,8 +658,6 @@ Status CuptiTracer::DisableApiTracing() {
 
   VLOG(1) << "Disable subscriber";
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Unsubscribe(subscriber_));
-
-  api_tracing_enabled_ = false;
   return Status::OK();
 }
 
