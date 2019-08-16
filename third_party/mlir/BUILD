@@ -1762,6 +1762,7 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
+        ":VectorToLLVMTransforms",
         "@llvm//:core",
         "@llvm//:support",
     ],
