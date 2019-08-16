@@ -49,6 +49,8 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "manip/__init__.py",
     "math/__init__.py",
     "metrics/__init__.py",
+    "mlir/__init__.py",
+    "mlir/experimental/__init__.py",
     "nest/__init__.py",
     "nn/__init__.py",
     "nn/rnn_cell/__init__.py",
