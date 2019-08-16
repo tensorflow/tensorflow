@@ -1,0 +1,17 @@
+namespace tflite.gpu.cl.data;
+
+file_identifier "AFCM";
+
+file_extension "jetbin";
+
+table Program {
+  fingerprint:uint64;
+  binary:[ubyte];
+}
+
+table CompiledCache {
+  driver_version:string;
+  programs:[Program];
+}
+
+root_type CompiledCache;
