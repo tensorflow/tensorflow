@@ -472,7 +472,7 @@ TestCase InvalidPaddedValuesDTypeTestCase() {
           /*padded_shapes*/
           {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {CreateTensor<string>(TensorShape{}, {"a"})},
+          {CreateTensor<tstring>(TensorShape{}, {"a"})},
           /*drop_remainder*/
           CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,

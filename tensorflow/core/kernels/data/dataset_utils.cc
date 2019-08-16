@@ -530,7 +530,7 @@ Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key, tstring* val) {
   return ReadScalarInternal(key, val);
 }
 
@@ -565,7 +565,7 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
-                                            const string& val) {
+                                            const tstring& val) {
   return WriteScalarInternal(key, val);
 }
 

@@ -89,20 +89,20 @@ TestCase ThreeDimsTestCase() {
 TestCase FourDimsTestCase() {
   return {/*input_sparse_tensor*/
           {/*indices*/ CreateTensor<int64>({2, 4}, {0, 0, 0, 0, 1, 1, 1, 1}),
-           /*values*/ CreateTensor<string>({2}, {"a", "b"}),
+           /*values*/ CreateTensor<tstring>({2}, {"a", "b"}),
            /*dense_shape*/
            CreateTensor<int64>({4}, {3, 2, 2, 2})},
           /*expected_outputs*/
           {{/*indices*/ CreateTensor<int64>({1, 3}, {0, 0, 0}),
-            /*values*/ CreateTensor<string>({1}, {"a"}),
+            /*values*/ CreateTensor<tstring>({1}, {"a"}),
             /*dense_shape*/
             CreateTensor<int64>({3}, {2, 2, 2})},
            {/*indices*/ CreateTensor<int64>({1, 3}, {1, 1, 1}),
-            /*values*/ CreateTensor<string>({1}, {"b"}),
+            /*values*/ CreateTensor<tstring>({1}, {"b"}),
             /*dense_shape*/
             CreateTensor<int64>({3}, {2, 2, 2})},
            {/*indices*/ CreateTensor<int64>({0, 3}, {}),
-            /*values*/ CreateTensor<string>({0}, {}),
+            /*values*/ CreateTensor<tstring>({0}, {}),
             /*dense_shape*/
             CreateTensor<int64>({3}, {2, 2, 2})}},
           /*breakpoints*/ {0, 1, 3}};

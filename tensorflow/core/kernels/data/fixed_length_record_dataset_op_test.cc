@@ -55,7 +55,7 @@ class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {
 };
 
 struct TestCase {
-  std::vector<string> filenames;
+  std::vector<tstring> filenames;
   std::vector<string> contents;
   int64 header_bytes;
   int64 record_bytes;
@@ -105,11 +105,11 @@ TestCase TestCase1() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::ZLIB,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"111"}),
-           CreateTensor<string>(TensorShape({}), {"222"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"aaa"}),
-           CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<tstring>(TensorShape({}), {"111"}),
+           CreateTensor<tstring>(TensorShape({}), {"222"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
+           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -129,11 +129,11 @@ TestCase TestCase2() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::GZIP,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"111"}),
-           CreateTensor<string>(TensorShape({}), {"222"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"aaa"}),
-           CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<tstring>(TensorShape({}), {"111"}),
+           CreateTensor<tstring>(TensorShape({}), {"222"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
+           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -154,11 +154,11 @@ TestCase TestCase3() {
           /*buffer_size*/ 10,
           /*compression_type*/ CompressionType::UNCOMPRESSED,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"111"}),
-           CreateTensor<string>(TensorShape({}), {"222"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"aaa"}),
-           CreateTensor<string>(TensorShape({}), {"bbb"})},
+          {CreateTensor<tstring>(TensorShape({}), {"111"}),
+           CreateTensor<tstring>(TensorShape({}), {"222"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"aaa"}),
+           CreateTensor<tstring>(TensorShape({}), {"bbb"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -183,7 +183,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, GetNext) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -192,7 +192,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, GetNext) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -243,7 +243,7 @@ TEST_F(FixedLengthRecordDatasetOpTest, DatasetNodeName) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -252,7 +252,7 @@ TEST_F(FixedLengthRecordDatasetOpTest, DatasetNodeName) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -286,7 +286,7 @@ TEST_F(FixedLengthRecordDatasetOpTest, DatasetTypeString) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -295,7 +295,7 @@ TEST_F(FixedLengthRecordDatasetOpTest, DatasetTypeString) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -333,7 +333,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -342,7 +342,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputDtypes) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -377,7 +377,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -386,7 +386,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, DatasetOutputShapes) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -422,7 +422,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Cardinality) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -431,7 +431,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Cardinality) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -466,7 +466,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -475,7 +475,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputDtypes) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -518,7 +518,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -527,7 +527,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputShapes) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -570,7 +570,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputPrefix) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -579,7 +579,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, IteratorOutputPrefix) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),
@@ -624,7 +624,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Roundtrip) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
   Tensor header_bytes =
       CreateTensor<int64>(TensorShape({}), {test_case.header_bytes});
   Tensor record_bytes =
@@ -633,7 +633,7 @@ TEST_P(ParameterizedFixedLengthRecordDatasetOpTest, Roundtrip) {
       CreateTensor<int64>(TensorShape({}), {test_case.footer_bytes});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  Tensor compression_type = CreateTensor<string>(
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   gtl::InlinedVector<TensorValue, 4> inputs{
       TensorValue(&filenames),    TensorValue(&header_bytes),

@@ -77,7 +77,7 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
                                              /*optimization_configs*/ {},
                                              &optimize_dataset_kernel));
   Tensor optimizations =
-      CreateTensor<string>(TensorShape({1}), {kNoopElimination});
+      CreateTensor<tstring>(TensorShape({1}), {kNoopElimination});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&take_dataset_tensor), TensorValue(&optimizations)});
   std::unique_ptr<OpKernelContext> optimize_dataset_context;

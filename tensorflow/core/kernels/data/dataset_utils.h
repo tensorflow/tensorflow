@@ -135,7 +135,7 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   // Returns OK iff the initialization was successful.
   Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, string* val) override;
+  Status ReadScalar(StringPiece key, tstring* val) override;
   Status ReadTensor(StringPiece key, Tensor* val) override;
   bool Contains(StringPiece key) override;
 
@@ -154,7 +154,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
   Status WriteScalar(StringPiece key, const int64 val) override;
-  Status WriteScalar(StringPiece key, const string& val) override;
+  Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteTensor(StringPiece key, const Tensor& val) override;
 
   // Writes the metadata to `data_`.

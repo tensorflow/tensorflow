@@ -37,7 +37,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  static RewriterConfig CreateConfig(std::vector<string> optimizations,
+  static RewriterConfig CreateConfig(std::vector<tstring> optimizations,
                                      std::vector<string> optimizations_configs);
 
   std::vector<string> optimization_configs_;

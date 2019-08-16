@@ -72,12 +72,12 @@ TestCase PlainTensorsTestCase() {
           {CreateTensor<int64>(TensorShape({}), {1}),
            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
            CreateTensor<double>(TensorShape({}), {37.0}),
-           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+           CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})},
           /*expected_outputs*/
           {CreateTensor<int64>(TensorShape({}), {1}),
            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
            CreateTensor<double>(TensorShape({}), {37.0}),
-           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+           CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})},
           /*expected_output_dtypes*/
           {DT_INT64, DT_INT64, DT_DOUBLE, DT_STRING},
           /*expected_output_shapes*/
@@ -96,7 +96,7 @@ TestCase NestedTensorsTestCase() {
            {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
        CreateTensor<Variant>(
            TensorShape({}),
-           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+           {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
        CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_outputs*/
       {CreateTensor<Variant>(
@@ -104,7 +104,7 @@ TestCase NestedTensorsTestCase() {
            {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
        CreateTensor<Variant>(
            TensorShape({}),
-           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+           {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
        CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_output_dtypes*/
       {DT_VARIANT, DT_VARIANT, DT_INT64},
