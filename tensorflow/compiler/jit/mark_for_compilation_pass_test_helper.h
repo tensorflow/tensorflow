@@ -24,8 +24,12 @@ class MarkForCompilationPassTestHelper {
   struct Options {
     bool enable_global_jit;
     bool disable_deadness_analysis;
+    bool enable_cluster_scoping;
 
-    Options() : enable_global_jit(true), disable_deadness_analysis(true) {}
+    Options()
+        : enable_global_jit(true),
+          disable_deadness_analysis(true),
+          enable_cluster_scoping(true) {}
 
     Options WithNoGlobalJit() {
       Options copy = *this;
@@ -36,6 +40,12 @@ class MarkForCompilationPassTestHelper {
     Options WithDeadnessAnalysis() {
       Options copy = *this;
       copy.disable_deadness_analysis = false;
+      return copy;
+    }
+
+    Options WithNoClusterScoping() {
+      Options copy = *this;
+      copy.enable_cluster_scoping = false;
       return copy;
     }
   };
