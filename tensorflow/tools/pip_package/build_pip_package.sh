@@ -260,7 +260,7 @@ function main() {
         echo "Specifying both --cpu and --gpu to build_pip_package is not allowed."
         usage
         exit 1
-      done
+      fi
 
       PROJECT_NAME_CPU=1
     elif [[ "$1" == "--gpudirect" ]]; then
