@@ -33,28 +33,28 @@ namespace gpu {
 //   cudnnConvolutionBiasActivationForward(x, w, bias, alpha1, alpha2, side)
 //
 // Integer convolution requires additional patterns to match CuDNN semantics:
-//   from
-//   cast<int8>(clamp<-128, 127>(conv(cast<int32>(int8_x), cast<int32>(int8_w))))
+//   #1 from
+//   cast<int8>(clamp<-128, 127>(conv(int8_x, int8_w)))
 //   to
 //   cudnnConvolutionForward<int8>(int8_x, int8_w)
-// or from
-//   clamp<-128, 127>(conv(cast<int32>(int8_x), cast<int32>(int8_w)))
+// or #2 from
+//   cast<float>(conv(int8_x, int8_w))
 //   to
 //   cudnnConvolutionForward<float>(int8_x, int8_w)
-// or from
-//   cast<int8>(clamp<-128, 127>(max(0, alpha1 * 
-//                           cast<float>(conv(cast<int32>(int8_x), cast<int32>(int8_w))) +
-//                           alpha2 * cast<float>(int8_side) + 
+// or #3 from
+//   cast<int8>(clamp<-128, 127>(max(0, alpha1 *
+//                           cast<float>(conv(int8_x, int8_w)) +
+//                           alpha2 * cast<float>(int8_side) +
 //                           broadcast(bias)))
 //   to
-//   cudnnConvolutionBiasActivationForward<int8>(int8_x, int8_w, bias, alpha1, alpha2, int8_side)
-// or from
-//   clamp<-128, 127>(max(0, alpha1 * 
-//                           cast<float>(conv(cast<int32>(int8_x), cast<int32>(int8_w))) +
-//                           alpha2 * float_side + 
-//                           broadcast(bias)))
+//   cudnnConvolutionBiasActivationForward<int8>(int8_x, int8_w, bias, alpha1,
+//   alpha2, int8_side)
+// or #4 from
+//   max(0, alpha1 * cast<float>(conv(int8_x, int8_w)) +
+//          alpha2 * float_side + broadcast(bias))
 //   to
-//   cudnnConvolutionBiasActivationForward<float>(int8_x, int8_w, bias, alpha1, alpha2, float_side)
+//   cudnnConvolutionBiasActivationForward<float>(int8_x, int8_w, bias, alpha1,
+//   alpha2, float_side)
 
 class CudnnFusedConvRewriter : public HloModulePass {
  public:
