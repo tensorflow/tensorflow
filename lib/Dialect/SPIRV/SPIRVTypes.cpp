@@ -34,7 +34,7 @@ using namespace mlir::spirv;
 //===----------------------------------------------------------------------===//
 
 struct spirv::detail::ArrayTypeStorage : public TypeStorage {
-  using KeyTy = std::pair<Type, unsigned>;
+  using KeyTy = std::tuple<Type, unsigned, ArrayType::LayoutInfo>;
 
   static ArrayTypeStorage *construct(TypeStorageAllocator &allocator,
                                      const KeyTy &key) {
@@ -42,18 +42,26 @@ struct spirv::detail::ArrayTypeStorage : public TypeStorage {
   }
 
   bool operator==(const KeyTy &key) const {
-    return key == KeyTy(elementType, getSubclassData());
+    return key == KeyTy(elementType, getSubclassData(), layoutInfo);
   }
 
   ArrayTypeStorage(const KeyTy &key)
-      : TypeStorage(key.second), elementType(key.first) {}
+      : TypeStorage(std::get<1>(key)), elementType(std::get<0>(key)),
+        layoutInfo(std::get<2>(key)) {}
 
   Type elementType;
+  ArrayType::LayoutInfo layoutInfo;
 };
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount) {
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
-                   elementCount);
+                   elementCount, 0);
+}
+
+ArrayType ArrayType::get(Type elementType, unsigned elementCount,
+                         ArrayType::LayoutInfo layoutInfo) {
+  return Base::get(elementType.getContext(), TypeKind::Array, elementType,
+                   elementCount, layoutInfo);
 }
 
 unsigned ArrayType::getNumElements() const {
@@ -61,6 +69,11 @@ unsigned ArrayType::getNumElements() const {
 }
 
 Type ArrayType::getElementType() const { return getImpl()->elementType; }
+
+// ArrayStride must be greater than zero
+bool ArrayType::hasLayout() const { return getImpl()->layoutInfo; }
+
+uint64_t ArrayType::getArrayStride() const { return getImpl()->layoutInfo; }
 
 //===----------------------------------------------------------------------===//
 // CompositeType

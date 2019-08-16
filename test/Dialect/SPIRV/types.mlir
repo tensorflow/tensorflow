@@ -12,6 +12,9 @@ func @scalar_array_type(!spv.array<16xf32>, !spv.array<8 x i32>) -> ()
 // CHECK: func @vector_array_type(!spv.array<32 x vector<4xf32>>)
 func @vector_array_type(!spv.array< 32 x vector<4xf32> >) -> ()
 
+// CHECK: func @array_type_stride(!spv.array<4 x !spv.array<4 x f32 [4]> [128]>)
+func @array_type_stride(!spv.array< 4 x !spv.array<4 x f32 [4]> [128]>) -> ()
+
 // -----
 
 // expected-error @+1 {{spv.array delimiter <...> mismatch}}
@@ -71,6 +74,11 @@ func @index_type(!spv.array<4xindex>) -> ()
 
 // expected-error @+1 {{cannot use '!llvm.i32' to compose SPIR-V types}}
 func @llvm_type(!spv.array<4x!llvm.i32>) -> ()
+
+// -----
+
+// expected-error @+1 {{ArrayStride must be greater than zero}}
+func @array_type_zero_stide(!spv.array<4xi32 [0]>) -> ()
 
 // -----
 
@@ -246,5 +254,5 @@ func @struct_type_missing_comma2(!spv.struct<f32 [0] i32>) -> ()
 
 // -----
 
-//  expected-error @+1 {{expected unsigned integer to specify offset of member in struct}}
+//  expected-error @+1 {{expected unsigned integer to specify layout info}}
 func @struct_type_neg_offset(!spv.struct<f32 [-1]>) -> ()
