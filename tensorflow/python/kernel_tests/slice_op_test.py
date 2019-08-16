@@ -28,9 +28,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+
 
 class SliceTest(test.TestCase):
 
@@ -42,21 +41,6 @@ class SliceTest(test.TestCase):
         slice_t = a[2, k:k]
         slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
-
-  def testView(self):
-    shape = [64, 28, 28, 32]
-    dtype = dtypes.float32
-    filter_size = [1, 1, 32, 32]
-
-    convolution = nn_ops.conv2d
-    inputs = random_ops.random_normal(shape, dtype=dtype)
-    filters = random_ops.random_normal(filter_size, dtype=dtype)
-    middle = convolution(
-      inputs, padding="VALID", strides=[1, 1, 1, 1], filter=filters)
-
-    outputs = array_ops.slice(middle, [8, 8, 8, 8], [16, 16, 16, 16])
-    with self.session(use_gpu=True):
-      outputs.eval()
 
   def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
