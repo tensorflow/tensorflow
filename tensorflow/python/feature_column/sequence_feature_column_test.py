@@ -23,6 +23,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -659,7 +660,7 @@ class DenseFeaturesTest(test.TestCase):
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
 
-    input_layer = fc.DenseFeatures([embedding_column_a])
+    input_layer = dense_features.DenseFeatures([embedding_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
@@ -680,7 +681,7 @@ class DenseFeaturesTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
-    input_layer = fc.DenseFeatures([indicator_column_a])
+    input_layer = dense_features.DenseFeatures([indicator_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
