@@ -454,7 +454,7 @@ class OptimizerV2(trackable.Trackable):
 
       apply_kwargs = {}
       if isinstance(grad, ops.IndexedSlices):
-        if var.constraint is not None:
+        if var._constraint is not None:  # pylint: disable=protected-access
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
         if "apply_state" in self._sparse_apply_args:
@@ -465,9 +465,9 @@ class OptimizerV2(trackable.Trackable):
       if "apply_state" in self._dense_apply_args:
         apply_kwargs["apply_state"] = apply_state
       update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
-      if var.constraint is not None:
+      if var._constraint is not None:  # pylint: disable=protected-access
         with ops.control_dependencies([update_op]):
-          return var.assign(var.constraint(var))
+          return var.assign(var._constraint(var))  # pylint: disable=protected-access
       else:
         return update_op
 
