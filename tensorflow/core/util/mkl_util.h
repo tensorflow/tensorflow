@@ -129,9 +129,9 @@ static const int kSmallBatchSize = 32;
 
 #ifdef ENABLE_MKLDNN_V1
 #define ENGINE_CPU engine::kind::cpu
-#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(md, tensor_ptr, net, net_args, \
-                                         engine_ptr)                    \
-  md, &tensor_ptr, net, net_args, &engine_ptr
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(md, tensor, net, net_args, \
+                                         engine_ptr)                \
+  md, tensor, net, net_args, &engine_ptr
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
   GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
@@ -158,9 +158,9 @@ static const int kSmallBatchSize = 32;
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #else
 #define ENGINE_CPU engine::cpu
-#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(pd, tensor_ptr, net_ptr, net_args, \
-                                         engine_ptr)                        \
-  pd, &tensor_ptr, &net_ptr
+#define GET_CHECK_REORDER_TO_OP_MEM_ARGS(pd, tensor, net_ptr, net_args, \
+                                         engine_ptr)                    \
+  pd, tensor, &net_ptr
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
@@ -669,18 +669,18 @@ template <typename T>
 inline Status ConvertMklToTF(OpKernelContext* context,
                              const Tensor& input_mkl_tensor,
                              const MklDnnShape& input_mkl_shape,
-                             Tensor& output_tf_tensor) {
+                             Tensor* output_tf_tensor) {
   try {
     if (!input_mkl_shape.IsMklTensor()) {
       // Return input as is since it is already a TF tensor
-      output_tf_tensor = input_mkl_tensor;
+      *output_tf_tensor = input_mkl_tensor;
       return Status::OK();
     }
 
     // Allocate output tensor.
     TensorShape output_tf_shape = input_mkl_shape.GetTfShape();
     TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<T>::v(), output_tf_shape,
-                                       &output_tf_tensor));
+                                       output_tf_tensor));
 
     engine cpu_engine(ENGINE_CPU, 0);
     MklDnnData<T> input(&cpu_engine);
@@ -707,7 +707,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     } else {
       // If not, just forward input tensor to output tensor.
       bool status =
-          output_tf_tensor.CopyFrom(input_mkl_tensor, output_tf_shape);
+          output_tf_tensor->CopyFrom(input_mkl_tensor, output_tf_shape);
       if (!status) {
         return Status(
             error::Code::INTERNAL,

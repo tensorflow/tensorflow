@@ -107,7 +107,7 @@ class MklLRNOp : public OpKernel {
         return;
       } else if (!src_dnn_shape.IsMklChannelDim(src_dnn_shape.GetDimension() -
                                                 1)) {
-        Tensor converted_tensor;
+        Tensor* converted_tensor;
         OP_REQUIRES_OK(context,
                        ConvertMklToTF<T>(context, src_tensor, src_dnn_shape,
                                          converted_tensor));
@@ -518,9 +518,9 @@ class MklLRNGradOp : public OpKernel {
   // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
   // copy.
   void MklDefaultToEigen(OpKernelContext* context) {
-    Tensor input_gradient_tensor;
-    Tensor orig_input_tensor;
-    Tensor orig_output_tensor;
+    Tensor* input_gradient_tensor;
+    Tensor* orig_input_tensor;
+    Tensor* orig_output_tensor;
 
     MklDnnShape input_grad_dnn_shape, orig_input_dnn_shape,
         orig_output_dnn_shape;
