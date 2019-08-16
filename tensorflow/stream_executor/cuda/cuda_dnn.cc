@@ -2934,6 +2934,16 @@ port::Status CudnnSupport::DoConvolve(
           "This configuration has potential integer overflow in "
           "cuDNNv5 and cuDNNv6. See b/68264959.");
     }
+    if (CUDNN_VERSION < 8000) {
+      if (algorithm_desc.algo_id() ==
+              CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM &&
+          ToCudnnDataType(element_type) == CUDNN_DATA_INT8 &&
+          ToCudnnDataType(output_type) == CUDNN_DATA_FLOAT) {
+        return port::Status(
+            port::error::FAILED_PRECONDITION,
+            "This configuration potentially produces incorrect results.");
+      }
+    }
     return port::Status::OK();
   };
 
