@@ -633,20 +633,26 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def(
       "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         int64 dimension) -> XlaOp {
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
+         absl::optional<const XlaComputation*> comparator) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
           }
-          return Sort(operands,
-                      CreateScalarLtComputation(operand_types, builder),
-                      dimension);
+
+          if (comparator) {
+            return Sort(operands, **comparator, dimension);
+          } else {
+            return Sort(operands,
+                        CreateScalarLtComputation(operand_types, builder),
+                        dimension);
+          }
         });
       },
-      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1);
+      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
+      py::arg("comparator") = absl::nullopt);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
