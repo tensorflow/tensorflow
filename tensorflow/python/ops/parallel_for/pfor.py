@@ -2429,6 +2429,14 @@ def _convert_addn(pfor_input):
   return wrap(math_ops.add_n([x.t for x in pfor_input.inputs]), True)
 
 
+@RegisterPFor("Cross")
+def _convert_cross(pfor_input):
+  pfor_input.stack_inputs()
+  a = pfor_input.stacked_input(0)
+  b = pfor_input.stacked_input(1)
+  return wrap(math_ops.cross(a, b), True)
+
+
 @RegisterPFor("BiasAddGrad")
 def _convert_biasaddgrad(pfor_input):
   grad = pfor_input.stacked_input(0)
