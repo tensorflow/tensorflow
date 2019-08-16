@@ -175,6 +175,23 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "lmdb_dataset_op_test",
+    size = "small",
+    srcs = ["lmdb_dataset_op_test.cc"],
+    data = ["//tensorflow/core:lmdb_testdata"],
+    deps = [
+        ":lmdb_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "map_and_batch_dataset_op",
     srcs = ["map_and_batch_dataset_op.cc"],
