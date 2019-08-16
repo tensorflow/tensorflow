@@ -249,7 +249,7 @@ class TensorLikeDataAdapter(DataAdapter):
     # 2. parallelized map
     # 3. vectorized shuffle by using reshape and unbatch
     # 4. disabled static optimizations
-    indices_ds = None
+    indices_list = []
     for _ in range(epochs):
       indices = np.arange(num_samples)
       if shuffle:
@@ -265,10 +265,10 @@ class TensorLikeDataAdapter(DataAdapter):
         epoch_indices_ds = epoch_indices_ds.concatenate(
             dataset_ops.DatasetV2.from_tensors(partial_batch_indices))
 
-      if indices_ds is None:
-        indices_ds = epoch_indices_ds
-      else:
-        indices_ds = indices_ds.concatenate(epoch_indices_ds)
+      indices_list.append(epoch_indices_ds)
+
+    indices_ds = dataset_ops.DatasetV2.from_tensor_slices(
+        indices_list).flat_map(lambda x: x)
 
     data_ds = dataset_ops.DatasetV2.from_tensors(inputs).repeat()
     dataset = dataset_ops.DatasetV2.zip((data_ds, indices_ds))

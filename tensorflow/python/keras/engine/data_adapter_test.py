@@ -29,6 +29,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.utils import data_utils
@@ -112,11 +113,13 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertTrue(adapter.has_partial_batch())
     self.assertEqual(adapter.partial_batch_size(), 2)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_training_numpy(self):
-    dataset = self.adapter_cls(
-        self.numpy_input, self.numpy_target, batch_size=5).get_dataset()
+    if not context.executing_eagerly():
+      return  # Only test in eager.
+
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.numpy_input, self.numpy_target, batch_size=5)
 
   def test_can_handle(self):
     self.assertTrue(self.adapter_cls.can_handle(self.tensor_input))
@@ -127,11 +130,13 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_training(self):
-    dataset = self.adapter_cls(
-        self.tensor_input, self.tensor_target, batch_size=5).get_dataset()
+    if not context.executing_eagerly():
+      return  # Only test EagerTensors.
+
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.tensor_input, self.tensor_target, batch_size=5)
 
   def test_size(self):
     adapter = self.adapter_cls(
@@ -322,4 +327,5 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
 
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()
