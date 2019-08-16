@@ -59,6 +59,7 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+        "nomac",  # b/139551813
         "notap",
         "oss_serial",
     ],
