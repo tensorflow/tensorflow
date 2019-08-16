@@ -235,10 +235,18 @@ void TopN<T, Cmp>::PushInternal(U &&v, T *dropped) {  // NOLINT(build/c++11)
   } else {
     // Only insert the new element if it is greater than the least element.
     if (cmp_(v, elements_.front())) {
+      // Store new element in the last slot of elements_.  Remember from the
+      // comments on elements_ that this last slot is unused, so we don't
+      // overwrite anything useful.
       elements_.back() = std::forward<U>(v);  // NOLINT(build/c++11)
-      std::push_heap(elements_.begin(), elements_.end(), cmp_);
-      if (dropped) *dropped = std::move(elements_.front());
+
+      // stp::pop_heap() swaps elements_.front() and elements_.back() and
+      // rearranges elements from [elements_.begin(), elements_.end() - 1) such
+      // that they are a heap according to cmp_.  Net effect: remove
+      // elements_.front() from the heap, and add the new element instead.  For
+      // more info, see https://en.cppreference.com/w/cpp/algorithm/pop_heap.
       std::pop_heap(elements_.begin(), elements_.end(), cmp_);
+      if (dropped) *dropped = std::move(elements_.back());
     } else {
       if (dropped) *dropped = std::forward<U>(v);  // NOLINT(build/c++11)
     }
