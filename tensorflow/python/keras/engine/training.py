@@ -1491,7 +1491,8 @@ class Model(network.Network):
       # as placeholder for each output.
       return [None for _ in self.output_names]
 
-    if target_tensors not in (None, []):
+    if target_tensors is not None and not (isinstance(target_tensors, list) and
+                                           target_tensors == []):  # pylint: disable=g-explicit-bool-comparison
       if isinstance(target_tensors, list):
         if len(target_tensors) != len(self.outputs):
           raise ValueError(
