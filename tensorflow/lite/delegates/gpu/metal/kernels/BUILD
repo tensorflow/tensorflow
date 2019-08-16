@@ -197,6 +197,9 @@ cc_library(
     name = "elementwise",
     srcs = ["elementwise.cc"],
     hdrs = ["elementwise.h"],
+    copts = [
+        "-std=c++14",
+    ],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
