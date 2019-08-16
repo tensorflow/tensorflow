@@ -113,28 +113,30 @@ class LARSOptimizer(optimizer.Optimizer):
                (g_norm + self._weight_decay * w_norm + self._epsilon)), 1.0),
           1.0)
       scaled_lr = self._learning_rate * trust_ratio
-    return scaled_lr
+      # Add the weight regularization gradient
+      grad = grad + self._weight_decay * var
+    return scaled_lr, grad
 
   def _apply_dense(self, grad, var):
-    scaled_lr = self.compute_lr(grad, var)
+    scaled_lr, grad = self.compute_lr(grad, var)
     mom = self.get_slot(var, "momentum")
     return training_ops.apply_momentum(
         var,
         mom,
-        scaled_lr,
-        grad,
+        math_ops.cast(1.0, var.dtype.base_dtype),
+        grad * scaled_lr,
         self._momentum,
         use_locking=False,
         use_nesterov=self._use_nesterov)
 
   def _resource_apply_dense(self, grad, var):
-    scaled_lr = self.compute_lr(grad, var)
+    scaled_lr, grad = self.compute_lr(grad, var)
     mom = self.get_slot(var, "momentum")
     return training_ops.resource_apply_momentum(
         var.handle,
         mom.handle,
-        scaled_lr,
-        grad,
+        math_ops.cast(1.0, var.dtype.base_dtype),
+        grad * scaled_lr,
         self._momentum,
         use_locking=False,
         use_nesterov=self._use_nesterov)
