@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
+import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -37,7 +39,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
@@ -633,17 +634,27 @@ def _pad_all_input(inputs, padded_shapes):
     The padded inputs and a PaddingMap list which maps the padded input
     dimension to the real shape argument index.
   """
-  input_shape_tensors = []
+  # maximum_static_shapes[idx][i] indicates the maximum static size of ith
+  # dimension of the idx input among all the replicas.
+  maximum_static_shapes = []
+  # need_padding[idx][i] indicates whether the ith dimension of the idx input
+  # needs padding.
   need_padding = []
+  input_shape_tensors = []
   for core_idx, inputs_per_core in enumerate(inputs):
     for idx, input_tensor in enumerate(inputs_per_core):
+      input_shape = input_tensor.get_shape().as_list()
       if core_idx == 0:
         input_shape_tensors.append([])
-        need_padding.append(not input_tensor.get_shape().is_fully_defined())
+        maximum_static_shapes.append(input_shape)
+        need_padding.append(np.full_like(input_shape, False, dtype=bool))
+      else:
+        for i, s in enumerate(input_shape):
+          if not s or s != maximum_static_shapes[idx][i]:
+            need_padding[idx][i] = True
+        maximum_static_shapes[idx] = max(input_shape,
+                                         maximum_static_shapes[idx])
       input_shape_tensors[idx].append(array_ops.shape(input_tensor))
-
-      if input_tensor.get_shape() != inputs[0][idx].get_shape():
-        need_padding[idx] = True
 
   maximum_shapes = []
   for shapes_per_input in input_shape_tensors:
@@ -659,12 +670,12 @@ def _pad_all_input(inputs, padded_shapes):
     real_shape_idx = len(inputs_per_core) - 1
     for idx, input_tensor in enumerate(inputs_per_core):
       input_shape_tensor = input_shape_tensors[idx][core_idx]
-      input_shape = input_tensor.get_shape()
+      input_shape = input_tensor.get_shape().as_list()
       padded_shape = padded_shapes[idx]
 
-      if need_padding[idx]:
-        for i, s in enumerate(input_shape.dims):
-          if s.value is None:
+      if any(need_padding[idx]):
+        for i, s in enumerate(input_shape):
+          if need_padding[idx][i]:
             if core_idx == 0:
               real_shape_idx += 1
               padding_map = dynamic_padding.PaddingMap()
@@ -677,22 +688,28 @@ def _pad_all_input(inputs, padded_shapes):
 
         paddings = []
         for i, s in enumerate(padded_shape.dims):
-          # Use static input shape dimension if possible.
-          if input_shape.dims[i].value:
-            input_shape_dim = input_shape.dims[i].value
+          if need_padding[idx][i]:
+            if s.value:
+              # Pad to the given maximum value.
+              padding = [0, s.value - input_shape_tensor[i]]
+            else:
+              # If maximum value is not given, then pad to the maximum dimension
+              # among all the cores.
+              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
           else:
-            input_shape_dim = input_shape_tensor[i]
-
-          if s.value:
-            # Pad to the given maximum value.
-            padding = [0, s.value - input_shape_dim]
-          else:
-            # If maximum value is not given, then pad to the maximum dimension
-            # among all the cores.
-            padding = [0, maximum_shapes[idx][i] - input_shape_dim]
+            padding = [0, 0]
           paddings.append(padding)
 
-        padded_input = array_ops.pad(input_tensor, paddings)
+        if input_tensor.get_shape().is_fully_defined():
+          # TODO(rxsang): This is a hack to make sure padded_input has dynamic
+          # shapes, so any tf.size/tf.shape op performed on it won't be constant
+          # folded. Do we have better ways to do it?
+          padded_input = control_flow_ops.cond(
+              array_ops.constant(True),
+              lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
+              lambda: input_tensor)
+        else:
+          padded_input = array_ops.pad(input_tensor, paddings)
         padded_inputs[core_idx].append(padded_input)
       else:
         padded_inputs[core_idx].append(input_tensor)
