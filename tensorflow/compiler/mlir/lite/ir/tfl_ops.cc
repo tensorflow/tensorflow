@@ -103,19 +103,21 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
                                       const CalculationT &calculate) {
   auto type = result_type.cast<ShapedType>();
 
-  if (!type.hasStaticShape()) {
-    return {};
-  }
-
   if (lhs.getType() != rhs.getType()) {
     // We only support the case that one of the operand's dimensions are
     // a perfect suffix of the other.
     // TODO: support the general broadcast behavior.
     auto lhs_shape = lhs.getType().getShape();
     auto rhs_shape = rhs.getType().getShape();
-    if (!IsTrailingDimensions(lhs_shape, rhs_shape) &&
-        !IsTrailingDimensions(rhs_shape, lhs_shape))
+    if (IsTrailingDimensions(lhs_shape, rhs_shape)) {
+      if (!type.hasStaticShape()) type = rhs.getType();
+    } else if (IsTrailingDimensions(rhs_shape, lhs_shape)) {
+      if (!type.hasStaticShape()) type = lhs.getType();
+    } else {
       return {};
+    }
+  } else if (!type.hasStaticShape()) {
+    type = lhs.getType();
   }
 
   const bool rhs_is_splat = rhs.isSplat();
