@@ -1578,22 +1578,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "training_v2_utils_test",
-    size = "medium",
-    srcs = ["engine/training_v2_utils_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
-    ],
-)
-
-tf_py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
