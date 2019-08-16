@@ -49,17 +49,17 @@ Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-absl::flat_hash_map<string, string> GetXlaAutoJitScopes(const Graph& graph) {
+absl::flat_hash_map<string, string> GetXlaInternalScopes(const Graph& graph) {
   absl::flat_hash_map<string, string> scopes;
   for (Node* node : graph.nodes()) {
     string scope;
-    if (GetNodeAttr(node->attrs(), kXlaAutoJitScopeAttr, &scope).ok()) {
+    if (GetNodeAttr(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
       scopes[node->name()] = scope;
     }
   }
 
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "_XlaScopes:";
+    VLOG(2) << "_XlaInternalScopes:";
     for (const auto& p : scopes) {
       VLOG(2) << " " << p.first << " -> " << p.second;
     }
@@ -120,7 +120,7 @@ TEST(XlaCompilationTest, StagePipelinePreserved) {
 
   TF_ASSERT_OK(ClusterScoping(&graph));
 
-  auto scopes = GetXlaAutoJitScopes(*graph);
+  auto scopes = GetXlaInternalScopes(*graph);
   EXPECT_NE(scopes["add0"], scopes["add1"]);
   EXPECT_EQ(scopes["add0"], scopes["relu0"]);
   EXPECT_EQ(scopes["add1"], scopes["relu1"]);
@@ -156,15 +156,15 @@ TEST(XlaCompilationTest, StagePipelinePreservedAndInitialScopesRespected) {
     // be separated by the ClusterScopingPass.
     Node* add0 =
         ops::BinaryOp("Add", a, b, builder.opts().WithName("add0").WithAttr(
-                                       kXlaAutoJitScopeAttr, "ClusterA"));
+                                       kXlaInternalScopeAttr, "ClusterA"));
     Node* add1 = ops::BinaryOp("Add", unstage, b,
                                builder.opts().WithName("add1").WithAttr(
-                                   kXlaAutoJitScopeAttr, "ClusterA"));
+                                   kXlaInternalScopeAttr, "ClusterA"));
     Node* relu0 =
         ops::UnaryOp("Relu", add0, builder.opts().WithName("relu0").WithAttr(
-                                       kXlaAutoJitScopeAttr, "ClusterB"));
+                                       kXlaInternalScopeAttr, "ClusterB"));
     ops::UnaryOp("Relu", add1, builder.opts().WithName("relu1").WithAttr(
-                                   kXlaAutoJitScopeAttr, "ClusterD"));
+                                   kXlaInternalScopeAttr, "ClusterD"));
     BuildStageNode(builder, "stage", {DT_FLOAT}, {relu0});
 
     TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
@@ -172,7 +172,7 @@ TEST(XlaCompilationTest, StagePipelinePreservedAndInitialScopesRespected) {
 
   TF_ASSERT_OK(ClusterScoping(&graph));
 
-  auto scopes = GetXlaAutoJitScopes(*graph);
+  auto scopes = GetXlaInternalScopes(*graph);
   EXPECT_NE(scopes["add0"], scopes["add1"]);
   EXPECT_NE(scopes["add0"], scopes["relu0"]);
   EXPECT_NE(scopes["add1"], scopes["relu1"]);

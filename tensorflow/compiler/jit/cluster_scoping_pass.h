@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// This pass adds scopes to nodes in the _XlaAutoJitScope attribute to guide
+// This pass adds scopes to nodes in the _XlaInternalScope attribute to guide
 // the later clustering passes.  A major reason to do this is to prevent the
 // clustering from losing critical parallelism in the Tensorflow graph, which
 // can incur great performance degradation.
