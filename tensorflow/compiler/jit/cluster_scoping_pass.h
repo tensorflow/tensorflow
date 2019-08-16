@@ -20,14 +20,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// This pass adds xla scopes to graphs to guide the later clustering passes.
-// A major reason to do this is to prevent the clustering from losing
-// the important parallelism in the Tensorflow graph, which can incur
-// great performance degradation.
+// This pass adds scopes to nodes in the _XlaAutoJitScope attribute to guide
+// the later clustering passes.  A major reason to do this is to prevent the
+// clustering from losing critical parallelism in the Tensorflow graph, which
+// can incur great performance degradation.
 //
 // This pass must be run before MarkForCompilationPass, as it stores the
-// scoping information in the XlaScope attributes, which MarkForCompilationPass
-// will need to respect for clustering decision.
+// scoping information that MarkForCompilationPass will need to respect for
+// clustering decision.
 class ClusterScopingPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;

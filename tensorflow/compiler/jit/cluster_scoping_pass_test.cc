@@ -49,7 +49,7 @@ Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-absl::flat_hash_map<string, string> GetXlaScopes(const Graph& graph) {
+absl::flat_hash_map<string, string> GetXlaAutoJitScopes(const Graph& graph) {
   absl::flat_hash_map<string, string> scopes;
   for (Node* node : graph.nodes()) {
     string scope;
@@ -70,8 +70,9 @@ absl::flat_hash_map<string, string> GetXlaScopes(const Graph& graph) {
 Node* BuildStageNode(GraphDefBuilder& builder, string name,
                      std::initializer_list<DataType> dtypes,
                      gtl::ArraySlice<ops::NodeOut> values) {
-  auto opts =
-      builder.opts().WithName(std::move(name)).WithAttr("dtypes", dtypes);
+  auto opts = builder.opts()
+                  .WithName(std::move(name))
+                  .WithAttr("dtypes", std::move(dtypes));
   if (opts.HaveError()) {
     return nullptr;
   }
@@ -119,7 +120,7 @@ TEST(XlaCompilationTest, StagePipelinePreserved) {
 
   TF_ASSERT_OK(ClusterScoping(&graph));
 
-  auto scopes = GetXlaScopes(*graph);
+  auto scopes = GetXlaAutoJitScopes(*graph);
   EXPECT_NE(scopes["add0"], scopes["add1"]);
   EXPECT_EQ(scopes["add0"], scopes["relu0"]);
   EXPECT_EQ(scopes["add1"], scopes["relu1"]);
@@ -171,7 +172,7 @@ TEST(XlaCompilationTest, StagePipelinePreservedAndInitialScopesRespected) {
 
   TF_ASSERT_OK(ClusterScoping(&graph));
 
-  auto scopes = GetXlaScopes(*graph);
+  auto scopes = GetXlaAutoJitScopes(*graph);
   EXPECT_NE(scopes["add0"], scopes["add1"]);
   EXPECT_NE(scopes["add0"], scopes["relu0"]);
   EXPECT_NE(scopes["add1"], scopes["relu1"]);

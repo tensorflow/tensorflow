@@ -52,7 +52,7 @@ class ClusterScopingPassImpl {
   size_t unique_scope_id_;
 };
 
-absl::optional<string> GetXlaScope(Node* node) {
+absl::optional<string> GetXlaAutoJitScope(Node* node) {
   string scope;
   if (GetNodeAttr(node->attrs(), kXlaAutoJitScopeAttr, &scope).ok()) {
     return scope;
@@ -61,23 +61,23 @@ absl::optional<string> GetXlaScope(Node* node) {
   return absl::nullopt;
 }
 
-void SetXlaScope(Node* node, StringPiece scope) {
+void SetXlaAutoJitScope(Node* node, StringPiece scope) {
   node->AddAttr(kXlaAutoJitScopeAttr, scope);
 }
 
-// NB! We append new scope as suffix to the XlaScope attribute instead of
-// overriding the old value.  In this way, we respect the original scopes.
+// NB! We append a new scope as suffix to the XlaAutoJitScope attribute instead
+// of overriding the old value.  In this way, we respect the original scopes.
 // In other words, appending X to Y creates the conjunction of the scopes X
 // and Y (i.e, X & Y in effect).
-void AddOrAppendScope(Node* node, absl::string_view suffix) {
+void AddOrAppendXlaAutoJitScope(Node* node, absl::string_view suffix) {
   string updated_scope;
-  absl::optional<string> cur_scope = GetXlaScope(node);
+  absl::optional<string> cur_scope = GetXlaAutoJitScope(node);
   if (cur_scope == absl::nullopt) {
     updated_scope = std::string(suffix);
   } else {
     updated_scope = absl::StrCat(cur_scope.value(), "&", suffix);
   }
-  SetXlaScope(node, updated_scope);
+  SetXlaAutoJitScope(node, updated_scope);
 }
 
 void ClusterScopingPassImpl::AddScopeToAllPredecessors(Node* start) {
@@ -85,7 +85,7 @@ void ClusterScopingPassImpl::AddScopeToAllPredecessors(Node* start) {
 
   std::vector<Node*> starts;
   starts.push_back(start);
-  auto enter = [&](Node* n) { AddOrAppendScope(n, unique_suffix); };
+  auto enter = [&](Node* n) { AddOrAppendXlaAutoJitScope(n, unique_suffix); };
   ReverseDFSFrom(*graph_, starts, enter, /*leave=*/nullptr,
                  /*stable_comparator=*/NodeComparatorName());
 }
@@ -95,7 +95,7 @@ void ClusterScopingPassImpl::AddScopeToAllSuccessors(Node* start) {
 
   std::vector<Node*> starts;
   starts.push_back(start);
-  auto enter = [&](Node* n) { AddOrAppendScope(n, unique_suffix); };
+  auto enter = [&](Node* n) { AddOrAppendXlaAutoJitScope(n, unique_suffix); };
   auto not_back_edge = [](const Edge& edge) -> bool {
     return !edge.src()->IsNextIteration();
   };
@@ -129,7 +129,7 @@ Status ClusterScopingPassImpl::Run() {
   // Without the heuristic, they may be put into the same cluster and it
   // can introduce artificial dependencies and incur great performance loss.
   // In this example, Node_Y becomes dependent on IteratorGetNext and the
-  // latencies add up.
+  // latencies add up if Node_X and Node_Y are in the same cluster.
   //
   // IteratorGetNext -> Node_X -> Stage
   //
