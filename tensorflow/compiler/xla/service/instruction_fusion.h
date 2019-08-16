@@ -47,6 +47,7 @@ class InstructionFusion : public HloModulePass {
           FusionConfigCollection::kOff)
       : is_expensive_(is_expensive),
         may_duplicate_(may_duplicate),
+        nb_run_(0),
         config_collection_mode_(config_collection_mode) {}
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
@@ -121,6 +122,8 @@ class InstructionFusion : public HloModulePass {
     return is_expensive_(instruction);
   }
 
+  int nb_run() { return nb_run_; }
+
   // Whether multi-output fusion would introduce a cycle into the HLO graph.
   bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
                                      HloInstruction* consumer);
@@ -165,6 +168,8 @@ class InstructionFusion : public HloModulePass {
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;
+
+  int nb_run_;
 
   // Configuration mode.
   FusionConfigCollection config_collection_mode_;

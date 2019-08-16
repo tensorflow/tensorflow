@@ -589,6 +589,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   }
   VLOG(1) << "Fusion count: " << fuse_count;
 
+  ++nb_run_;
+
   return changed;
 }
 

@@ -129,8 +129,8 @@ double GetMergedBytesTransferred(HloInstruction* fusion) {
 // Accumulates and reports stats on successful/failed merge attempts.
 class FusionInstructionMerger {
  public:
-  explicit FusionInstructionMerger(HloComputation* computation)
-      : computation_(computation) {}
+  explicit FusionInstructionMerger(HloComputation* computation, bool postpone)
+      : computation_(computation), postpone_(postpone) {}
 
   Status Run();
 
@@ -141,6 +141,7 @@ class FusionInstructionMerger {
 
   HloComputation* computation_;
   bool changed_ = false;
+  bool postpone_;
 
   // Fusion instruction merge stats.
   int total_visited_ = 0;
@@ -300,7 +301,7 @@ StatusOr<bool> FusionMerger::Run(HloModule* module) {
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());
 
-    FusionInstructionMerger fusion_merger(computation);
+    FusionInstructionMerger fusion_merger(computation, nb_run_ == 0);
     TF_RETURN_IF_ERROR(fusion_merger.Run());
     changed |= fusion_merger.changed();
 
@@ -308,6 +309,7 @@ StatusOr<bool> FusionMerger::Run(HloModule* module) {
             << computation->name() << " changed: " << changed;
     XLA_VLOG_LINES(3, computation->ToString());
   }
+  ++nb_run_;
   return changed;
 }
 
