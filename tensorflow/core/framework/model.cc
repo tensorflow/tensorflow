@@ -28,8 +28,6 @@ namespace {
 // Key of the derivative w.r.t. the last input time in the gradient of
 // `OutputTime`.
 constexpr char kInputTimeDerivativeKey[] = "last_input_time";
-constexpr char kParallelism[] = "parallelism";
-constexpr char kBufferSize[] = "buffer_size";
 
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
@@ -713,13 +711,14 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget) {
+void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
+                     int64 ram_budget) {
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(cpu_budget);
+      OptimizeHillClimb(cpu_budget, ram_budget);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
-      OptimizeGradientDescent(cpu_budget);
+      OptimizeGradientDescent(cpu_budget, ram_budget);
       break;
   }
 }
@@ -808,7 +807,7 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectEssentialParallelism(
   return essential_parameters;
 }
 
-void Model::OptimizeGradientDescent(int64 cpu_budget) {
+void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
@@ -817,6 +816,9 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
   auto essential_parameters = CollectEssentialParallelism(snapshot);
+  // We add the number of model's buffered bytes because it is excluded from the
+  // memory budget, but it is included in the maximum number of buffered bytes.
+  ram_budget += TotalBufferedBytes(snapshot);
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
@@ -841,9 +843,11 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
       model_parallelism += std::round(pair.second->value);
     }
     // We terminate once the improvement of the output latency is too small or
-    // the essential transformations' parallelism reaches the CPU budget.
+    // the essential transformations' parallelism reaches the CPU budget or the
+    // worst-case total buffer size exceeds the memory budget.
     if (std::abs(output_time - new_output_time) < kOptimizationPrecision ||
-        model_parallelism > cpu_budget) {
+        model_parallelism > cpu_budget ||
+        TotalMaximumBufferedBytes(snapshot) > ram_budget) {
       break;
     }
     double max_abs_derivative = 1.0;
@@ -879,7 +883,7 @@ void Model::OptimizeGradientDescent(int64 cpu_budget) {
   }
 }
 
-void Model::OptimizeHillClimb(int64 cpu_budget) {
+void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
@@ -888,6 +892,9 @@ void Model::OptimizeHillClimb(int64 cpu_budget) {
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  // We add the number of model's buffered bytes because it is excluded from the
+  // memory budget, but it is included in the maximum number of buffered bytes.
+  ram_budget += TotalBufferedBytes(snapshot);
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;
@@ -904,7 +911,8 @@ void Model::OptimizeHillClimb(int64 cpu_budget) {
         break;
       }
     }
-    if (output_time < processing_time / cpu_budget || all_max) {
+    if (output_time < processing_time / cpu_budget || all_max ||
+        TotalMaximumBufferedBytes(snapshot) > ram_budget) {
       break;
     }
     double best_delta = -1.0L;
@@ -953,6 +961,14 @@ double Model::OutputTime(std::shared_ptr<Node> node,
   // We should compute the output latency as a fix-point of the following
   // equation: `output_time = node(OutputTime(input_times(1, output_time))`.
   return node->OutputTime(&input_times, gradient);
+}
+
+double Model::TotalBufferedBytes(std::shared_ptr<Node> node) {
+  return node->TotalBufferedBytes();
+}
+
+double Model::TotalMaximumBufferedBytes(std::shared_ptr<Node> node) {
+  return node->TotalMaximumBufferedBytes();
 }
 
 double Model::TotalProcessingTime(std::shared_ptr<Node> node) {

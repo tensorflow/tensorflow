@@ -874,7 +874,7 @@ class DatasetBaseIterator : public IteratorBase {
   void RecordBufferDequeue(IteratorContext* ctx,
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
-      node_->add_buffered_bytes(-GetAllocatedBytes(element));
+      node_->record_buffer_event(-GetAllocatedBytes(element), -1);
     }
   }
 
@@ -883,7 +883,7 @@ class DatasetBaseIterator : public IteratorBase {
   void RecordBufferEnqueue(IteratorContext* ctx,
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
-      node_->add_buffered_bytes(GetAllocatedBytes(element));
+      node_->record_buffer_event(GetAllocatedBytes(element), 1);
     }
   }
 
