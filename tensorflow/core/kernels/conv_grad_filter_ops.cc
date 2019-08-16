@@ -947,6 +947,53 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
+  Tensor bfloat16_out_backprop, bfloat16_input, bfloat16_filter_backprop;
+  se::DeviceMemory<bfloat16> bfloat16_out_backprop_ptr, bfloat16_input_ptr,
+      bfloat16_filter_backprop_ptr;
+
+  if (TestMIOpenBFloat16Support<T>()) {
+    TensorShape out_backprop_shape = ShapeFromFormat(
+        FORMAT_NCHW, dims.batch_size, dims.spatial_dims[0].output_size,
+        dims.spatial_dims[1].output_size, dims.out_depth);
+    VLOG(3) << "Allocate temporary memory for bfloat16 out_backprop";
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_BFLOAT16, out_backprop_shape,
+                                           &bfloat16_out_backprop));
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_out_backprop).tensor<T, 4>(),
+        bfloat16_out_backprop.tensor<bfloat16, 4>());
+
+    TensorShape input_shape = ShapeFromFormat(
+        compute_data_format, GetTensorDim(compatible_input, data_format, 'N'),
+        GetTensorDim(compatible_input, data_format, 'H'),
+        GetTensorDim(compatible_input, data_format, 'W'),
+        GetTensorDim(compatible_input, data_format, 'C'));
+    VLOG(3) << "Allocate temporary memory for bfloat16 input";
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_BFLOAT16, input_shape, &bfloat16_input));
+    functor::ConvertToBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_input).tensor<T, 4>(),
+        bfloat16_input.tensor<bfloat16, 4>());
+
+    TensorShape filter_backprop_shape =
+        TensorShape({filter_shape.dim_size(3), filter_shape.dim_size(2),
+                     filter_shape.dim_size(0), filter_shape.dim_size(1)});
+    VLOG(3) << "Allocate temporary memory for bfloat16 filter_backprop";
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_BFLOAT16, filter_backprop_shape,
+                                           &bfloat16_filter_backprop));
+
+    bfloat16_out_backprop_ptr =
+        AsDeviceMemory(bfloat16_out_backprop.template flat<bfloat16>().data(),
+                       bfloat16_out_backprop.template flat<bfloat16>().size());
+    bfloat16_filter_backprop_ptr = AsDeviceMemory(
+        bfloat16_filter_backprop.template flat<bfloat16>().data(),
+        bfloat16_filter_backprop.template flat<bfloat16>().size());
+    bfloat16_input_ptr =
+        AsDeviceMemory(bfloat16_input.template flat<bfloat16>().data(),
+                       bfloat16_input.template flat<bfloat16>().size());
+  }
+
   static int64 ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
   );
@@ -1040,13 +1087,25 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     ProfileResult best_result;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           ctx);
-    bool miopen_find_status =
-        stream
-            ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                AlgorithmConfig(), &best_result)
-            .ok();
+    bool miopen_find_status = true;
+    if (TestMIOpenBFloat16Support<T>()) {
+      miopen_find_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, bfloat16_input_ptr, output_desc,
+                  bfloat16_out_backprop_ptr, conv_desc, filter_desc,
+                  &bfloat16_filter_backprop_ptr, &scratch_allocator,
+                  AlgorithmConfig(), &best_result)
+              .ok();
+    } else {
+      miopen_find_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator, AlgorithmConfig(), &best_result)
+              .ok();
+    }
     OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
                 errors::NotFound("Failed to find backward filter algorithm!"));
     algorithm_config.set_algorithm(best_result.algorithm());
@@ -1056,20 +1115,40 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                                                  algorithm_config);
   }
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-  bool cudnn_launch_status =
-      stream
-          ->ThenConvolveBackwardFilterWithAlgorithm(
-              input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-              filter_desc, &filter_backprop_ptr, &scratch_allocator,
-              algorithm_config, nullptr)
-          .ok();
-
+  bool cudnn_launch_status = true;
+  if (TestMIOpenBFloat16Support<T>()) {
+    cudnn_launch_status = stream
+                              ->ThenConvolveBackwardFilterWithAlgorithm(
+                                  input_desc, bfloat16_input_ptr, output_desc,
+                                  bfloat16_out_backprop_ptr, conv_desc,
+                                  filter_desc, &bfloat16_filter_backprop_ptr,
+                                  &scratch_allocator, algorithm_config, nullptr)
+                              .ok();
+  } else {
+    cudnn_launch_status =
+        stream
+            ->ThenConvolveBackwardFilterWithAlgorithm(
+                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+                filter_desc, &filter_backprop_ptr, &scratch_allocator,
+                algorithm_config, nullptr)
+            .ok();
+  }
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
         "DNN Backward Filter function launch failure : input shape(",
         input.shape().DebugString(), ") filter shape(",
         filter_shape.DebugString(), ")"));
     return;
+  }
+
+  if (TestMIOpenBFloat16Support<T>()) {
+    VLOG(3)
+        << "Convert the filter_backprop tensor back from bfloat16 to float.";
+    functor::ConvertFromBFloat16<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(bfloat16_filter_backprop)
+            .tensor<bfloat16, 4>(),
+        pre_transformed_filter_backprop.tensor<T, 4>());
   }
 
   FilterTensorFormat src_filter_format =
