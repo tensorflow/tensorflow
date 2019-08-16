@@ -5,7 +5,7 @@ FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
 # (but their default value is retained if set previously)
 ARG ARCH
 ARG CUDA
-ARG CUDNN=7.4.1.5-1
+ARG CUDNN=7.6.2.24-1
 
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
@@ -28,9 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         unzip
 
 RUN [ ${ARCH} = ppc64le ] || (apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1804-5.0.2-ga-cuda${CUDA} \
-        && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
+        apt-get install -y --no-install-recommends libnvinfer5=5.1.5-1+cuda${CUDA} \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*)
 
