@@ -165,6 +165,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lmdb_dataset_op",
     srcs = ["lmdb_dataset_op.cc"],
+    hdrs = ["lmdb_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",

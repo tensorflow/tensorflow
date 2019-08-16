@@ -15,6 +15,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/kernels/data/experimental/lmdb_dataset_op.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/platform/file_system.h"
 
@@ -23,29 +24,15 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace experimental {
-namespace {
 
-class LMDBDatasetOp : public DatasetOpKernel {
- public:
-  using DatasetOpKernel::DatasetOpKernel;
-  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    const Tensor* filenames_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
-    OP_REQUIRES(
-        ctx, filenames_tensor->dims() <= 1,
-        errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+/* static */ constexpr const char* const LMDBDatasetOp::kDatasetType;
+/* static */ constexpr const char* const LMDBDatasetOp::kFileNames;
+/* static */ constexpr const char* const LMDBDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const LMDBDatasetOp::kOutputShapes;
 
-    std::vector<string> filenames;
-    filenames.reserve(filenames_tensor->NumElements());
-    for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<tstring>()(i));
-    }
 
-    *output = new Dataset(ctx, filenames);
-  }
 
- private:
-  class Dataset : public DatasetBase {
+class LMDBDatasetOp::Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const std::vector<string>& filenames)
         : DatasetBase(DatasetContext(ctx)), filenames_(filenames) {}
@@ -217,7 +204,24 @@ class LMDBDatasetOp : public DatasetOpKernel {
 
     const std::vector<string> filenames_;
   };
-};
+
+void LMDBDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
+  const Tensor* filenames_tensor;
+  OP_REQUIRES_OK(ctx, ctx->input("filenames", &filenames_tensor));
+  OP_REQUIRES(
+      ctx, filenames_tensor->dims() <= 1,
+      errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+
+  std::vector<string> filenames;
+  filenames.reserve(filenames_tensor->NumElements());
+  for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
+    filenames.push_back(filenames_tensor->flat<tstring>()(i));
+  }
+
+  *output = new Dataset(ctx, filenames);
+}
+
+namespace {
 
 REGISTER_KERNEL_BUILDER(Name("LMDBDataset").Device(DEVICE_CPU), LMDBDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalLMDBDataset").Device(DEVICE_CPU),
