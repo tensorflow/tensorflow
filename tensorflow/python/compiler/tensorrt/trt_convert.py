@@ -100,6 +100,7 @@ class TrtPrecisionMode(object):
     ]
     return precisions + [p.lower() for p in precisions]
 
+
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
 DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
@@ -263,8 +264,7 @@ def get_tensorrt_rewriter_config(
       "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
   optimizer.parameter_map[
       "use_calibration"].b = conversion_params.use_calibration
-  optimizer.parameter_map[
-      "max_batch_size"].i = conversion_params.max_batch_size
+  optimizer.parameter_map["max_batch_size"].i = conversion_params.max_batch_size
   optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
   return rewriter_config_with_trt
 
@@ -962,14 +962,20 @@ class TrtGraphConverterV2(object):
     engine_asset_dir = tempfile.mkdtemp()
     resource_map = {}
 
-    def _serialize_and_track_engine(canonical_engine_name):
+    def _serialize_and_track_engine(node):
       """Serialize TRT engines in the cache and track them."""
       # Don't dump the same cache twice.
+      canonical_engine_name = _get_canonical_engine_name(node.name)
       if canonical_engine_name in resource_map:
         return
 
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
+      if self._need_calibration:
+        calibration_table = gen_trt_ops.get_calibration_data_op(
+            canonical_engine_name)
+        node.attr["calibration_data"].s = calibration_table.numpy()
+
       try:
         gen_trt_ops.serialize_trt_resource(
             resource_name=canonical_engine_name,
@@ -987,19 +993,28 @@ class TrtGraphConverterV2(object):
 
     for node in self._converted_graph_def.node:
       if node.op == _TRT_ENGINE_OP_NAME:
-        _serialize_and_track_engine(_get_canonical_engine_name(node.name))
+        _serialize_and_track_engine(node)
     for func in self._converted_graph_def.library.function:
       for node in func.node_def:
         if node.op == _TRT_ENGINE_OP_NAME:
-          _serialize_and_track_engine(canonical_engine_name(node))
+          _serialize_and_track_engine(node)
 
     self._saved_model.trt_engine_resources = resource_map
+
+    # Rebuild the function since calibration may change the graph.
+    func_to_save = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in self._converted_func.inputs],
+        [tensor.name for tensor in self._converted_func.outputs])
+    func_to_save.graph.structured_outputs = nest.pack_sequence_as(
+        self._converted_func.graph.structured_outputs,
+        func_to_save.graph.structured_outputs)
 
     # Rewrite the signature map using the optimized ConcreteFunction.
     signatures = {
         key: value for key, value in self._saved_model.signatures.items()
     }
-    signatures[self._input_saved_model_signature_key] = self._converted_func
+    signatures[self._input_saved_model_signature_key] = func_to_save
     save.save(self._saved_model, output_saved_model_dir, signatures)
 
 

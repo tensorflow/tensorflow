@@ -837,18 +837,17 @@ Status TRTEngineOp::AllocateCalibrationResources(
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes
+    } else {
+      // Transfer the ownership of the engine to the engine cache, so we can
+      // dump it out during conversion for TF 2.0.
+      mutex_lock lock(this->engine_mutex_);
+      this->calibrator_ = std::move(cres->calibrator_);
+      TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
+          cres->engine_->createExecutionContext());
+      cache_res->cache_.emplace(
+          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                   std::move(exec_context)));
     }
-
-    // Transfer the ownership of the engine to the engine cache, so we can
-    // dump it out during conversion for TF 2.0.
-    mutex_lock lock(this->engine_mutex_);
-    cres->SetCalibrationTable();
-    this->calibrator_ = std::move(cres->calibrator_);
-    TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
-        cres->engine_->createExecutionContext());
-    cache_res->cache_.emplace(
-        shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                 std::move(exec_context)));
 
     VLOG(1) << "Calibration loop terminated " << this->name();
   }));
