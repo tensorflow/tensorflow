@@ -53,7 +53,7 @@ class SliceTest(test.TestCase):
     gain = 3.14
     kernel_size = [1, 1]
 
-    convolution = tf.keras.layers.Conv2D
+    convolution = tf.layers.Conv2D
     inputs = random_ops.random_normal(shape, dtype=dtype)
     middle = convolution(
       padding="valid", filters=cout,
