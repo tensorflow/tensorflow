@@ -174,14 +174,14 @@ Examples:
 
 ```mlir {.mlir}
 // Affine map out-of-line definition and usage example.
-#affine_map42 = (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))
+#affine_map42 = (d0, d1)[s0] -> (d0, d0 + d1 + s0 floordiv 2)
 
 // Use an affine mapping definition in an alloc operation, binding the
 // SSA value %N to the symbol s0.
 %a = alloc()[%N] : memref<4x4xf32, #affine_map42>
 
 // Same thing with an inline affine mapping definition.
-%b = alloc()[%N] : memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))>
+%b = alloc()[%N] : memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + s0 floordiv 2)>
 ```
 
 ### Semi-affine maps
@@ -197,8 +197,8 @@ semi-affine-expr ::= `(` semi-affine-expr `)`
                    | semi-affine-expr `+` semi-affine-expr
                    | semi-affine-expr `-` semi-affine-expr
                    | symbol-or-const `*` semi-affine-expr
-                   | `ceildiv` `(` semi-affine-expr `,` symbol-or-const `)`
-                   | `floordiv` `(` semi-affine-expr `,` symbol-or-const `)`
+                   | semi-affine-expr `ceildiv` symbol-or-const
+                   | semi-affine-expr `floordiv` symbol-or-const
                    | semi-affine-expr `mod` symbol-or-const
                    | bare-id
                    | `-`? integer-literal
@@ -278,7 +278,7 @@ Example:
 ```mlir {.mlir}
 // A example two-dimensional integer set with two symbols.
 #set42 = (d0, d1)[s0, s1]
-   : d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0
+   : (d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0)
 
 // Inside a Region
 affine.if #set42(%i, %j)[%M, %N] {
@@ -309,7 +309,7 @@ value. The input operands and result must all have 'index' type.
 Example:
 
 ```mlir {.mlir}
-#map10 = (d0, d1) -> (floordiv(d0,8) + floordiv(d1,128))
+#map10 = (d0, d1) -> (d0 floordiv 8 + d1 floordiv 128)
 ...
 %1 = affine.apply #map10 (%s, %t)
 

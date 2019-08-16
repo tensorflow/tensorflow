@@ -373,7 +373,7 @@ tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
 tensor-memref-element-type ::= vector-element-type | vector-type
 
 // memref requires a known rank, but tensor does not.
-dimension-list ::= dimension-list-ranked | `*` `x`
+dimension-list ::= dimension-list-ranked | (`*` `x`)
 dimension-list-ranked ::= (dimension `x`)*
 dimension ::= `?` | decimal-literal
 ```
@@ -449,7 +449,7 @@ default space is target specific but always at index 0.
 TODO: MLIR will eventually have target-dialects which allow symbolic use of
 memory hierarchy names (e.g. L3, L2, L1, ...) but we have not spec'd the details
 of that mechanism yet. Until then, this document pretends that it is valid to
-refer to these memories by `bare_id`.
+refer to these memories by `bare-id`.
 
 The notionally dynamic value of a memref value includes the address of the
 buffer allocated, as well as the symbols referred to by the shape, layout map,
@@ -558,7 +558,7 @@ Layout map examples:
 #layout_map_row_major = (i, j) [M, N] -> (i, j) size (M, N)
 
 // MxN matrix stored in column major layout in memory:
-#layout_map_col_major = (i, j), [M, N] -> (j, i) size (M, N)
+#layout_map_col_major = (i, j) [M, N] -> (j, i) size (M, N)
 ```
 
 ##### Affine Map Composition
@@ -804,7 +804,7 @@ corresponding values for the indices.
 Example:
 
 ```mlir {.mlir}
-  sparse<tensor<3x4xi32>, [[0, 0], [1, 2]], [1, 5]>
+  sparse<[[0, 0], [1, 2]], [1, 5]> : tensor<3x4xi32>
 
 // This represents the following tensor:
 ///  [[1, 0, 0, 0],
@@ -839,8 +839,8 @@ An integer-set attribute is an attribute that represents a integer-set object.
 Syntax:
 
 ``` {.ebnf}
-float-attribute ::= float-literal (`:` float-type)?
-                  | hexadecimal-literal `:` float-type
+float-attribute ::= (float-literal (`:` float-type)?)
+                  | (hexadecimal-literal `:` float-type)
 ```
 
 A float attribute is a literal attribute that represents a floating point value
