@@ -689,7 +689,7 @@ Status CuptiTracer::DisableActivityTracing() {
     for (auto activity : option_->activities_selected) {
       VLOG(1) << "Disabling activity tracing for: " << activity;
       if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
-        ConfigureActivityUnifiedMemoryCounter(true);
+        ConfigureActivityUnifiedMemoryCounter(false);
       }
       RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityDisable(activity));
     }
