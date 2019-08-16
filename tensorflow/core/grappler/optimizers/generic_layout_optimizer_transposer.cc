@@ -335,11 +335,12 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
   if (op == kOpTranspose && output_shape_attr != nullptr) {
     shape_attr_copy = *output_shape_attr;
     for (int port : src_ports) {
-      TF_RETURN_IF_ERROR(PermuteSingle(
-          absl::StrCat("output shape attribute at port ", port, " in",
-                       src_node->GetName()),
-          context->src_to_dst,
-          shape_attr_copy.mutable_list()->mutable_shape(port)->mutable_dim()));
+      auto* shape = shape_attr_copy.mutable_list()->mutable_shape(port);
+      if (shape->unknown_rank()) continue;
+      TF_RETURN_IF_ERROR(
+          PermuteSingle(absl::StrCat("output shape attribute at port ", port,
+                                     " in", src_node->GetName()),
+                        context->src_to_dst, shape->mutable_dim()));
     }
     context->graph_view->GetMutationBuilder()->AddOrUpdateNodeAttr(
         src_node, kAttrOutputShape, shape_attr_copy);
