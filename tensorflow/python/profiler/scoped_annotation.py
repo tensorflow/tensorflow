@@ -23,20 +23,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.pywrap_tensorflow import PythonScopedAnnotation
 
 
 class ScopedAnnotation(object):
-  """Context manager that generates a trace event in the profiler."""
+  """Context manager that generates an annotation for the profiler."""
 
   def __init__(self, name, **kwargs):
-    if kwargs:
-      name += '#' + ','.join(
-          [key + '=' + str(value) for key, value in kwargs.iteritems()]) + '#'
-    self._scoped_annotation = pywrap_tensorflow.PythonScopedAnnotation(name)
+    if PythonScopedAnnotation.IsEnabled():
+      if kwargs:
+        name += '#' + ','.join(
+            [key + '=' + str(value) for key, value in kwargs.iteritems()]) + '#'
+      self._scoped_annotation = PythonScopedAnnotation(name)
+    else:
+      self._scoped_annotation = None
 
   def __enter__(self):
-    self._scoped_annotation.Enter()
+    if self._scoped_annotation:
+      self._scoped_annotation.Enter()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    self._scoped_annotation.Exit()
+    if self._scoped_annotation:
+      self._scoped_annotation.Exit()

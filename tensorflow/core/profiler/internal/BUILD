@@ -444,6 +444,7 @@ tf_cuda_library(
     hdrs = ["python_traceme.h"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/types:optional",
     ],

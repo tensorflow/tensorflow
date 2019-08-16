@@ -36,6 +36,8 @@ class PythonScopedAnnotation {
   void Enter() { current_.emplace(std::move(name_)); }
   void Exit() { current_.reset(); }
 
+  static bool IsEnabled() { return tracing::ScopedAnnotation::IsEnabled(); }
+
  private:
   std::string name_;
   absl::optional<tracing::ScopedAnnotation> current_;

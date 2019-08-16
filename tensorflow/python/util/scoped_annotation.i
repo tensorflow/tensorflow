@@ -29,6 +29,7 @@ limitations under the License.
 %unignore tensorflow::profiler::PythonScopedAnnotation::Enter;
 %unignore tensorflow::profiler::PythonScopedAnnotation::Exit;
 %unignore tensorflow::profiler::PythonScopedAnnotation::~PythonScopedAnnotation;
+%unignore tensorflow::profiler::PythonScopedAnnotation::IsEnabled;
 
 %include "tensorflow/core/profiler/internal/python_scoped_annotation.h"
 
