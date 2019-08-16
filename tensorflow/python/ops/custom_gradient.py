@@ -223,14 +223,17 @@ def _graph_mode_decorator(f, *args, **kwargs):
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
   current_var_scope = variable_scope.get_variable_scope()
-  before_vars = set(current_var_scope.global_variables() +
-                    current_var_scope.local_variables())
+  before_vars = set(
+      [v.experimental_ref() for v in current_var_scope.global_variables() +
+       current_var_scope.local_variables()])
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args)
-  after_vars = set(current_var_scope.global_variables() +
-                   current_var_scope.local_variables())
+  after_vars = set(
+      [v.experimental_ref() for v in current_var_scope.global_variables() +
+       current_var_scope.local_variables()])
   new_vars = after_vars - before_vars
-  for v in new_vars:
+  new_vars_list = [v.deref() for v in new_vars]
+  for v in new_vars_list:
     if not resource_variable_ops.is_resource_variable(v):
       raise TypeError(
           "All variables used by a function wrapped with @custom_gradient must "
