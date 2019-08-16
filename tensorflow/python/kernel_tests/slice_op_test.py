@@ -29,11 +29,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
-
-import tensorflow as tf
 
 class SliceTest(test.TestCase):
 
@@ -51,20 +48,16 @@ class SliceTest(test.TestCase):
     shape = [64, 28, 28, 32]
     dtype = dtypes.float32
     gain = 3.14
-    kernel_size = [1, 1]
+    filter_size = [1, 1, 32, 32]
 
-    convolution = tf.layers.Conv2D
+    convolution = nn_ops.conv2d
     inputs = random_ops.random_normal(shape, dtype=dtype)
+    filters = random_ops.random_normal(filter_size, dtype=dtype)
     middle = convolution(
-      padding="valid", filters=cout,
-      kernel_size=kernel_size, use_bias=False,
-      kernel_initializer=init_ops.convolutional_orthogonal_2d(gain=gain)
-    ).apply(inputs)
+      inputs, padding="VALID", strides=[1, 1, 1, 1], filter=filters)
 
     outputs = array_ops.slice(middle, [8, 8, 8, 8], [16, 16, 16, 16])
-    my_ops = variables.global_variables_initializer()
     with self.session(use_gpu=True) as sess:
-      sess.run(my_ops)
       t = outputs.eval()
 
   def testInt32(self):
