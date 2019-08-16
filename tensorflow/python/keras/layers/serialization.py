@@ -32,6 +32,7 @@ from tensorflow.python.keras.layers.convolutional import *
 from tensorflow.python.keras.layers.convolutional_recurrent import *
 from tensorflow.python.keras.layers.core import *
 from tensorflow.python.keras.layers.cudnn_recurrent import *
+from tensorflow.python.keras.layers.dense_attention import *
 from tensorflow.python.keras.layers.embeddings import *
 from tensorflow.python.keras.layers.local import *
 from tensorflow.python.keras.layers.merge import *
