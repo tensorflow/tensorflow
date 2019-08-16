@@ -33,9 +33,13 @@ from tensorflow.python.util import tf_stack
 
 def _make_frame_with_filename(op, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
-  stack_frame = list(op._traceback[idx])
-  stack_frame[tf_stack.TB_FILENAME] = filename
-  return tuple(stack_frame)
+  frame = op._traceback[idx]
+  return tf_stack.StackFrame(
+      filename,
+      frame.lineno,
+      frame.name,
+      frame.globals,
+      frame.func_start_lineno)
 
 
 def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,

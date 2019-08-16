@@ -42,11 +42,11 @@ def _call_location():
   # We want to get stack frame 3 frames up from current frame,
   # i.e. above __getattr__, _tfmw_add_deprecation_warning,
   # and _call_location calls.
-  stack = tf_stack.extract_stack_file_and_line(max_length=4)
+  stack = tf_stack.extract_stack(limit=4)
   if not stack:  # should never happen as we're in a function
     return 'UNKNOWN'
   frame = stack[0]
-  return '{}:{}'.format(frame.file, frame.line)
+  return '{}:{}'.format(frame.filename, frame.lineno)
 
 
 def contains_deprecation_decorator(decorators):

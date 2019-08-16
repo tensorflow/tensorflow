@@ -55,19 +55,21 @@ class TraceableObject(object):
     # beyond the caller.
     local_offset = offset + 1
 
-    frame_records = tf_stack.extract_stack_file_and_line(
-        max_length=local_offset + 1)
+    frame_records = tf_stack.extract_stack(
+        limit=local_offset + 1)
     if not frame_records:
       return self.FAILURE
     if len(frame_records) > local_offset:
-      # Negative indexing is one-indexed instead of zero-indexed.
-      negative_offset = -(local_offset + 1)
-      self.filename, self.lineno = frame_records[negative_offset]
+      frame = frame_records[len(frame_records) - (local_offset + 1)]
+      self.filename = frame.filename
+      self.lineno = frame.lineno
       return self.SUCCESS
     else:
       # If the offset is too large then we use the largest offset possible,
       # meaning we use the outermost stack frame at index 0.
-      self.filename, self.lineno = frame_records[0]
+      frame = frame_records[0]
+      self.filename = frame.filename
+      self.lineno = frame.lineno
       return self.HEURISTIC_USED
 
   def copy_metadata(self):
