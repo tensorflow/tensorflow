@@ -12,8 +12,10 @@ func @extractelement(%arg0: vector<4x8x16xf32>) -> (vector<8x16xf32>, vector<16x
 }
 
 // CHECK-LABEL: outerproduct
-func @outerproduct(%arg0: vector<4xf32>, %arg1: vector<8xf32>) -> vector<4x8xf32> {
+func @outerproduct(%arg0: vector<4xf32>, %arg1: vector<8xf32>, %arg2: vector<4x8xf32>) -> vector<4x8xf32> {
   //     CHECK: vector.outerproduct {{.*}} : vector<4xf32>, vector<8xf32>
   %0 = vector.outerproduct %arg0, %arg1 : vector<4xf32>, vector<8xf32>
-  return %0 : vector<4x8xf32>
+  //     CHECK: vector.outerproduct {{.*}}, {{.*}}, {{.*}} : vector<4xf32>, vector<8xf32>
+  %1 = vector.outerproduct %arg0, %arg1, %arg2 : vector<4xf32>, vector<8xf32>
+  return %1 : vector<4x8xf32>
 }

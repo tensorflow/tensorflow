@@ -72,17 +72,25 @@ def ExtractElementOp :
 }
 def OuterProductOp :
   Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
-    Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+    Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, Variadic<AnyVector>:$acc)>,
     Results<(outs AnyVector)> {
-  let summary = "outerproduct operation";
+  let summary = "vector outerproduct with optional fused add";
   let description = [{
     Takes 2 1-D vectors and returns the 2-D vector containing the outer product.
 
-    Example:
-    ```
+    An optional extra 2-D vector argument may be specified in which case the
+    operation returns the sum of the outer product and the extra vector. When
+    lowered to the LLVMIR dialect, this form emits `llvm.fmuladd`, which can
+    lower to actual `fma` instructions in LLVM.
+
+    Examples
+
       %2 = vector.extractelement %0, %1: vector<4xf32>, vector<8xf32>
       return %2: vector<4x8xf32>
-    ```
+
+      %3 = vector.extractelement %0, %1, %2:
+        vector<4xf32>, vector<8xf32>, vector<4x8xf32>
+      return %3: vector<4x8xf32>
   }];
   let extraClassDeclaration = [{
     VectorType getOperandVectorTypeLHS() {
@@ -90,6 +98,10 @@ def OuterProductOp :
     }
     VectorType getOperandVectorTypeRHS() {
       return rhs()->getType().cast<VectorType>();
+    }
+    VectorType getOperandVectorTypeACC() {
+      return (llvm::size(acc()) == 0) ? VectorType() :
+        (*acc().begin())->getType().cast<VectorType>();
     }
     VectorType getVectorType() {
       return getResult()->getType().cast<VectorType>();
