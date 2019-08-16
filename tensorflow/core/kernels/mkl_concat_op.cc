@@ -575,11 +575,9 @@ class MklConcatOp : public OpKernel {
     for (size_t i = 0; i < num_mkl_input_shapes; ++i) {
       if (mkl_input_shapes[i].IsMklTensor()) {
         // do conversion from MKL to TF
-        Tensor* tmp_tensor;
         OP_REQUIRES_OK(
             context, ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i],
-                                       tmp_tensor));
-        converted_values[i] = *tmp_tensor;
+                                       &converted_values[i]));
         tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
       } else {
         // no conversion since it is TF tensor already
