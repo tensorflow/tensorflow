@@ -6787,6 +6787,7 @@ tf_py_test(
     tags = [
         "grappler",
         "no_pip",
+        "nomac",  # b/139551813
     ],
 )
 
