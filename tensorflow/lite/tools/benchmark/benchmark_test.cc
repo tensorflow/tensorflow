@@ -54,6 +54,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
   params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   params.AddParam("max_profiling_buffer_entries",
                   BenchmarkParam::Create<int32_t>(1024));
+  params.AddParam("nnapi_accelerator_name",
+                  BenchmarkParam::Create<std::string>(""));
   return params;
 }
 

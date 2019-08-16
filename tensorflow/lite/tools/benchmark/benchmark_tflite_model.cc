@@ -291,7 +291,7 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
-  if (params_.HasParam("nnapi_accelerator_name")) {
+  if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
     TFLITE_LOG(INFO) << "nnapi accelerator name: ["
                      << params_.Get<string>("nnapi_accelerator_name") << "]";
   }
@@ -595,9 +595,9 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
   }
   if (params_.Get<bool>("use_nnapi")) {
     StatefulNnApiDelegate::Options options;
-    std::string accelerator_name;
-    if (params_.HasParam("nnapi_accelerator_name")) {
-      accelerator_name = params_.Get<std::string>("nnapi_accelerator_name");
+    std::string accelerator_name =
+        params_.Get<std::string>("nnapi_accelerator_name");
+    if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
     }
     Interpreter::TfLiteDelegatePtr delegate =
@@ -607,7 +607,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
-  } else if (params_.HasParam("nnapi_accelerator_name")) {
+  } else if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
     TFLITE_LOG(WARN)
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
         << params_.Get<std::string>("nnapi_accelerator_name")
