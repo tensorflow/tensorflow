@@ -443,6 +443,7 @@ Status Transposer::UpdateEdge(
   string added_node_name;
   if (op == kOpTranspose) {
     TensorShapeProto input_shape_proto;
+    input_shape_proto.set_unknown_rank(true);
     if (input_shape != nullptr) {
       input_shape_proto = input_shape->list().shape(src_port);
     } else {
