@@ -307,8 +307,8 @@ Status ImplementationSelector::Optimize(Cluster* cluster,
   // function_optimizer from previous runs, which will fail due to function
   // signature mismatch.
   if (!status.ok()) {
-    LOG(WARNING) << "Skipping optimization due to error while loading function "
-                 << "libraries: " << status;
+    VLOG(2) << "Skipping optimization due to error while loading function "
+            << "libraries: " << status;
     return errors::Aborted("Skipped Optimization");
   }
   *optimized_graph = item.graph;
