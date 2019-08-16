@@ -196,6 +196,7 @@ cc_library(
         "transforms/generated_prepare_tf.inc",
         "transforms/legalize_tf.cc",
         "transforms/lower_static_tensor_list.cc",
+        "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/trim_functions_tf.cc",
     ],
