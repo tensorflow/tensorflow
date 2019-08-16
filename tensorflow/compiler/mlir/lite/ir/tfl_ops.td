@@ -2772,7 +2772,7 @@ def TFL_UnidirectionalSequenceRNNOp :
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TensorOf<[F32, I8]>:$output);
 
   let hasOptions = 1;
 
