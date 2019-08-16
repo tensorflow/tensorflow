@@ -40,7 +40,7 @@ class HloPassFix : public Pass {
     int64 iteration_count = 0;
     int64 limit =
         std::max(static_cast<int64>(1000), module->instruction_count());
-    VLOG(3) << "Running HloPassFix.";
+    VLOG(3) << "Running HloPassFix on " << Pass::name();
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration, Pass::Run(module));
       changed |= changed_this_iteration;
