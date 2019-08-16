@@ -395,9 +395,8 @@ MatchBackwardInput(HloInstruction* conv) {
   Window new_window = old_window;
   for (size_t i = 0; i < input_spatial_dims.size(); ++i) {
     // Restore backward convolution's padding config from the matched pattern.
-    // See the comment in tensorflow/core/kernels/conv_grad_tuple_ops.cc
-    // for how we convert backward input convolution to a variant of forward
-    // convolution.
+    // See the comment in tensorflow/core/kernels/conv_grad_ops.h for how we
+    // convert backward input convolution to a variant of forward convolution.
     //
     // The stride of the backward convolution
     // = the base dilation factor of the forward convolution
@@ -491,11 +490,23 @@ MatchBackwardInput(HloInstruction* conv) {
   }
 
   // OK, it's a match! Switch the input feature dimension with the output
-  // feature dimension. This is the way cuDNN expects it to be.
+  // feature dimension. Also switch the output with the input. This is the way
+  // cuDNN expects it to be.
+  auto conv_dnums = conv->convolution_dimension_numbers();
   dnums.set_kernel_input_feature_dimension(
-      conv->convolution_dimension_numbers().kernel_output_feature_dimension());
+      conv_dnums.kernel_output_feature_dimension());
   dnums.set_kernel_output_feature_dimension(
-      conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+      conv_dnums.kernel_input_feature_dimension());
+  for (int i = 0; i < input_spatial_dims.size(); ++i) {
+    dnums.set_input_spatial_dimensions(i,
+                                       conv_dnums.output_spatial_dimensions(i));
+    dnums.set_output_spatial_dimensions(i,
+                                        conv_dnums.input_spatial_dimensions(i));
+  }
+  dnums.set_input_feature_dimension(conv_dnums.output_feature_dimension());
+  dnums.set_input_batch_dimension(conv_dnums.output_batch_dimension());
+  dnums.set_output_feature_dimension(conv_dnums.input_feature_dimension());
+  dnums.set_output_batch_dimension(conv_dnums.input_batch_dimension());
 
   // If we matched against a constant, we need to add a reverse op that can be
   // subsumed by the cuDNN call. algebraic-simplifier will later remove any

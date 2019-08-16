@@ -1995,9 +1995,7 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-// TODO(b/139371794): Enable this test for the GPU backend once the bug is
-// fixed.
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(ConvolveBackwardInput)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveBackwardInput) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
