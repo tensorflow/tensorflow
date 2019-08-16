@@ -191,6 +191,7 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToBatchNd:
     case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinDepthToSpace:
     case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
@@ -1842,6 +1843,21 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
               mapping_args.node->builtin_data);
           mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
           return ANEURALNETWORKS_SPACE_TO_DEPTH;
+        };
+      }
+    } break;
+    case kTfLiteBuiltinDepthToSpace: {
+      const TfLiteType input_type =
+          context->tensors[node->inputs->data[0]].type;
+      if (version <= 1 &&
+          (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+           input_type == kTfLiteInt8)) {
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+          return ANEURALNETWORKS_DEPTH_TO_SPACE;
         };
       }
     } break;

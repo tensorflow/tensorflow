@@ -247,6 +247,7 @@ def generated_test_models():
         "conv_to_depthwiseconv_with_shared_weights",
         "cos",
         "depthwiseconv",
+        "depth_to_space",
         "div",
         "elu",
         "equal",

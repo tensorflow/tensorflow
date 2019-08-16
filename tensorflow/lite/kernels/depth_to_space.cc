@@ -23,10 +23,10 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace space_to_depth {
+namespace depth_to_space {
 
-// This file has two implementation of SpaceToDepth. Note that SpaceToDepth
-// only works on 4D tensors.
+// This file has two implementation of DepthToSpace. Note that DepthToSpace only
+// works on 4D tensors.
 enum KernelType {
   kReference,
   kGenericOptimized,
@@ -37,7 +37,7 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
-      reinterpret_cast<TfLiteSpaceToDepthParams*>(node->builtin_data);
+      reinterpret_cast<TfLiteDepthToSpaceParams*>(node->builtin_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -57,17 +57,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int block_size = params->block_size;
   const int input_height = input->dims->data[1];
   const int input_width = input->dims->data[2];
-  int output_height = input_height / block_size;
-  int output_width = input_width / block_size;
+  const int input_channels = input->dims->data[3];
+  int output_height = input_height * block_size;
+  int output_width = input_width * block_size;
+  int output_channels = input_channels / block_size / block_size;
 
-  TF_LITE_ENSURE_EQ(context, input_height, output_height * block_size);
-  TF_LITE_ENSURE_EQ(context, input_width, output_width * block_size);
+  TF_LITE_ENSURE_EQ(context, input_height, output_height / block_size);
+  TF_LITE_ENSURE_EQ(context, input_width, output_width / block_size);
+  TF_LITE_ENSURE_EQ(context, input_channels,
+                    output_channels * block_size * block_size);
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
   output_size->data[1] = output_height;
   output_size->data[2] = output_width;
-  output_size->data[3] = input->dims->data[3] * block_size * block_size;
+  output_size->data[3] = output_channels;
 
   return context->ResizeTensor(context, output, output_size);
 }
@@ -75,51 +79,51 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
-      reinterpret_cast<TfLiteSpaceToDepthParams*>(node->builtin_data);
+      reinterpret_cast<TfLiteDepthToSpaceParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_SPACE_TO_DEPTH(type, scalar)                               \
-  tflite::SpaceToDepthParams op_params;                                    \
+#define TF_LITE_DEPTH_TO_SPACE(type, scalar)                               \
+  tflite::DepthToSpaceParams op_params;                                    \
   op_params.block_size = params->block_size;                               \
-  type::SpaceToDepth(op_params, GetTensorShape(input),                     \
+  type::DepthToSpace(op_params, GetTensorShape(input),                     \
                      GetTensorData<scalar>(input), GetTensorShape(output), \
                      GetTensorData<scalar>(output))
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, float);
+        TF_LITE_DEPTH_TO_SPACE(reference_ops, float);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, float);
+        TF_LITE_DEPTH_TO_SPACE(optimized_ops, float);
       }
       break;
     case kTfLiteUInt8:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, uint8_t);
+        TF_LITE_DEPTH_TO_SPACE(reference_ops, uint8_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint8_t);
+        TF_LITE_DEPTH_TO_SPACE(optimized_ops, uint8_t);
       }
       break;
     case kTfLiteInt8:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int8_t);
+        TF_LITE_DEPTH_TO_SPACE(reference_ops, int8_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int8_t);
+        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int8_t);
       }
       break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int32_t);
+        TF_LITE_DEPTH_TO_SPACE(reference_ops, int32_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int32_t);
+        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int32_t);
       }
       break;
     case kTfLiteInt64:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int64_t);
+        TF_LITE_DEPTH_TO_SPACE(reference_ops, int64_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int64_t);
+        TF_LITE_DEPTH_TO_SPACE(optimized_ops, int64_t);
       }
       break;
     default:
@@ -127,29 +131,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
-#undef TF_LITE_SPACE_TO_DEPTH
+#undef TF_LITE_DEPTH_TO_SPACE
 
   return kTfLiteOk;
 }
 
-}  // namespace space_to_depth
+}  // namespace depth_to_space
 
-TfLiteRegistration* Register_SPACE_TO_DEPTH_REF() {
+TfLiteRegistration* Register_DEPTH_TO_SPACE_REF() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, space_to_depth::Prepare,
-      space_to_depth::Eval<space_to_depth::kReference>};
+      nullptr, nullptr, depth_to_space::Prepare,
+      depth_to_space::Eval<depth_to_space::kReference>};
   return &r;
 }
 
-TfLiteRegistration* Register_SPACE_TO_DEPTH_GENERIC_OPT() {
+TfLiteRegistration* Register_DEPTH_TO_SPACE_GENERIC_OPT() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, space_to_depth::Prepare,
-      space_to_depth::Eval<space_to_depth::kGenericOptimized>};
+      nullptr, nullptr, depth_to_space::Prepare,
+      depth_to_space::Eval<depth_to_space::kGenericOptimized>};
   return &r;
 }
 
-TfLiteRegistration* Register_SPACE_TO_DEPTH() {
-  return Register_SPACE_TO_DEPTH_GENERIC_OPT();
+TfLiteRegistration* Register_DEPTH_TO_SPACE() {
+  return Register_DEPTH_TO_SPACE_GENERIC_OPT();
 }
 
 }  // namespace builtin
