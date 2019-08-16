@@ -126,7 +126,6 @@ const string DeviceNameOrUnspecified(const DeviceNameUtils::ParsedName& name) {
 // unset and we might have selected some specific device to run this op on.
 Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
                                       int i, Device* expected_input_device,
-                                      RunMetadata* run_metadata,
                                       TensorHandle** result) {
   tensorflow::TensorHandle* handle = op->Inputs()[i];
   EagerContext* ctx = op->EagerContext();
@@ -175,29 +174,12 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
   }
   // We are only here if the policy is warn or silent copies, so we should
   // trigger a copy.
-  auto pre_time_nanos = Env::Default()->NowNanos();
   TensorHandle* result_handle = nullptr;
+  profiler::TraceMe activity("_Send", profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, op->Executor(), expected_input_device,
                         ctx->MirrorTensors(), &result_handle);
-  if (run_metadata != nullptr) {
-    auto* step_stats = run_metadata->mutable_step_stats();
-    MaybeInitializeStepStats(step_stats, ctx);
-    // Record the sending on the source device for now.
-    int device_idx = StepStatsDeviceIndex(step_stats, ctx, handle_device);
-    auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
-    auto* node_stats = dev_stats->add_node_stats();
-    node_stats->set_node_name("_Send");
-    node_stats->set_all_start_micros(pre_time_nanos / EnvTime::kMicrosToNanos);
-    node_stats->set_all_start_nanos(pre_time_nanos);
-    int64 now_nanos = Env::Default()->NowNanos();
-    node_stats->set_op_end_rel_micros((now_nanos - pre_time_nanos) /
-                                      EnvTime::kMicrosToNanos);
-    node_stats->set_op_end_rel_nanos(now_nanos - pre_time_nanos);
-    node_stats->set_all_end_rel_micros((now_nanos - pre_time_nanos) /
-                                       EnvTime::kMicrosToNanos);
-    node_stats->set_all_end_rel_nanos(now_nanos - pre_time_nanos);
-  }
+  activity.Stop();
   if (!status.ok()) {
     if (result_handle != nullptr) result_handle->Unref();
     return errors::Internal("Failed copying input tensor from ",
@@ -216,8 +198,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
 // unspecified.
 Status ValidateInputTypeAndPlacement(
     EagerContext* ctx, EagerOperation* op,
-    const core::RefCountPtr<KernelAndDevice>& kernel,
-    RunMetadata* run_metadata) {
+    const core::RefCountPtr<KernelAndDevice>& kernel) {
   profiler::TraceMe activity("ValidateInputTypeAndPlacement",
                              profiler::TraceMeLevel::kInfo);
   if (kernel->num_inputs() != op->Inputs().size()) {
@@ -228,7 +209,7 @@ Status ValidateInputTypeAndPlacement(
     Device* expected_device = kernel->InputDevice(i);
     TensorHandle* handle = nullptr;
     TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-        op, kernel->device(), i, expected_device, run_metadata, &handle));
+        op, kernel->device(), i, expected_device, &handle));
     op->UpdateInput(i, handle);
     // Unref handle since it has a ref as an input now
     handle->Unref();
@@ -642,28 +623,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                                    *num_retvals);
   }
   *num_retvals = num_outputs;
-  TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(
-      ctx, op, kernel,
-      ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr));
+  TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(ctx, op, kernel));
 
-  std::unique_ptr<NodeExecStats> maybe_stats;
   StepStats* maybe_step_stats = nullptr;
   GraphCollector* graph_collector = nullptr;
   if (ctx->ShouldStoreGraphs()) {
     graph_collector = ctx->GetGraphCollector();
-  }
-  if (ctx->ShouldStoreStepStats()) {
-    maybe_step_stats = ctx->RunMetadataProto()->mutable_step_stats();
-    int64 now_nanos = Env::Default()->NowNanos();
-    maybe_stats.reset(new NodeExecStats);
-    maybe_stats->set_node_name(op->Name());
-    maybe_stats->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
-    maybe_stats->set_all_start_nanos(now_nanos);
-    maybe_stats->set_op_start_rel_micros(0);
-    maybe_stats->set_op_start_rel_nanos(0);
-    maybe_stats->set_scheduled_micros(now_nanos / EnvTime::kMicrosToNanos);
-    maybe_stats->set_scheduled_nanos(now_nanos);
-    // TODO(apassos) track referenced tensors
   }
 
   for (int i = 0; i < num_outputs; ++i) {
@@ -674,10 +639,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new ExecuteNode(
-      ctx, op->Inputs(), std::move(kernel), maybe_stats.release(),
-      maybe_step_stats, graph_collector, output_dtypes,
-      op->GetCancellationManager(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(
+      new ExecuteNode(ctx, op->Inputs(), std::move(kernel), nullptr,
+                      maybe_step_stats, graph_collector, output_dtypes,
+                      op->GetCancellationManager(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -749,8 +714,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         // the op might have its inputs on host memory.
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(MaybeCopyInputToExpectedDevice(
-            op, op->Device(), i, remote_cpu_device,
-            /* run_metadata= */ nullptr, &handle));
+            op, op->Device(), i, remote_cpu_device, &handle));
         op->UpdateInput(i, handle);
         input = handle;
         input_device = remote_cpu_device;
@@ -1047,44 +1011,6 @@ Status EagerKernelExecute(EagerContext* ctx,
       }
 
       collector->ClearGraphs();
-    }
-  }
-  if (maybe_stats != nullptr) {
-    int64 nanos = Env::Default()->NowNanos();
-    maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
-                                       maybe_stats->all_start_micros());
-    maybe_stats->set_op_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
-    maybe_stats->set_all_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
-                                        maybe_stats->all_start_micros());
-    maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
-    if (ctx->ShouldStoreStepStats()) {
-      mutex_lock ml(*ctx->MetadataMu());
-      {
-        auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();
-        // Lazily initialize the RunMetadata with information about all devices
-        // if this is the first call.
-        while (step_stats->dev_stats_size() < ctx->devices()->size()) {
-          step_stats->add_dev_stats();
-        }
-        // Find the current device's index.
-        // If device is a nullptr (we are running a function without explicitly
-        // requested device), attribute the function runtime to CPU.
-        Device* attribution_device = kernel->device();
-        if (attribution_device == nullptr) {
-          attribution_device = ctx->HostCPU();
-        }
-        int device_idx = 0;
-        for (int i = 0; i < ctx->devices()->size(); ++i) {
-          if (ctx->devices()->at(i) == attribution_device) {
-            device_idx = i;
-            break;
-          }
-        }
-        // Populate the device stats for this device.
-        auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
-        dev_stats->set_device(attribution_device->name());
-        *dev_stats->add_node_stats() = *maybe_stats;
-      }
     }
   }
   DCHECK_EQ(retvals.size(), outputs.size());
