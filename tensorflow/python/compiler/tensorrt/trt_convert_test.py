@@ -367,7 +367,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_with_trt = converted_func(np_input)
     self.assertEqual(1, len(output_with_trt))
     self.assertAllClose(
-        expected_output, output_with_trt.values()[0], atol=1e-6, rtol=1e-6)
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
     # Save the converted model again with serialized engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -392,8 +395,11 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
-    output_with_trt = output_with_trt.values()[0]
-    self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
+    self.assertAllClose(
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
@@ -418,7 +424,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     calibration_output = converted_func(np_input)
     self.assertEqual(1, len(calibration_output))
     self.assertAllClose(
-        expected_output, calibration_output.values()[0], atol=1e-6, rtol=1e-6)
+        expected_output,
+        list(calibration_output.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
     # Save the converted model again with serialized engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -437,7 +446,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
     self.assertAllClose(
-        expected_output, output_with_trt.values()[0], atol=1e-6, rtol=1e-6)
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
   @test_util.run_v2_only
   def testTrtGraphConverter_DestroyEngineCache(self):
