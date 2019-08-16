@@ -172,6 +172,16 @@ cc_library(
 )
 
 cc_library(
+    name = "stacktrace_handler",
+    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
+    hdrs = ["stacktrace_handler.h"],
+    deps = [
+        ":platform",
+        ":stacktrace",
+    ],
+)
+
+cc_library(
     name = "setround",
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
