@@ -45,6 +45,8 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
                                 mlir::PassManager *pass_manager) {
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
+  // Ophint extraction will happen after island extraction pass.
+  pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
 
   if (lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
