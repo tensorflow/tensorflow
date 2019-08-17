@@ -323,19 +323,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
-  def testRunMetadata(self):
-    context.enable_run_metadata()
-    t = constant_op.constant(1.0)
-    _ = t + t  # Runs an operation which will be in the RunMetadata
-    run_metadata = context.export_run_metadata()
-    context.disable_run_metadata()
-    step_stats = run_metadata.step_stats
-    self.assertGreater(len(step_stats.dev_stats), 0)
-    cpu_stats = step_stats.dev_stats[0]
-    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
-                     cpu_stats.device)
-    self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
-
   def testMultiCpuPlacement(self):
     with ops.device('cpu:1'):
       x = constant_op.constant(1.0)

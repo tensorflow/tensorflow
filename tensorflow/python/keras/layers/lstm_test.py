@@ -185,7 +185,9 @@ class LSTMLayerTest(keras_parameterized.TestCase):
       output = layer(inputs, initial_state=initial_state[0])
     else:
       output = layer(inputs, initial_state=initial_state)
-    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+    self.assertTrue(
+        any(initial_state[0] is t
+            for t in layer._inbound_nodes[0].input_tensors))
 
     model = keras.models.Model([inputs] + initial_state, output)
     model.compile(
@@ -330,7 +332,9 @@ class LSTMLayerTest(keras_parameterized.TestCase):
 
     layer = layer_class(units)
     output = layer(inputs)
-    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+    self.assertTrue(
+        any(initial_state[0] is t
+            for t in layer._inbound_nodes[0].input_tensors))
 
     model = keras.models.Model(inputs, output)
     model.compile(

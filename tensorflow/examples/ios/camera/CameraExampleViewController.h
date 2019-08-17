@@ -16,8 +16,8 @@
 #import <UIKit/UIKit.h>
 
 #include <memory>
-#include "third_party/tensorflow/core/public/session.h"
-#include "third_party/tensorflow/core/util/memmapped_file_system.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/memmapped_file_system.h"
 
 @interface CameraExampleViewController
     : UIViewController<UIGestureRecognizerDelegate,

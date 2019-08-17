@@ -118,7 +118,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
   }
 
   const DatasetBase* const input_;
-  const string filename_;
+  const tstring filename_;
 
  private:
   static size_t StringPaddingSize(size_t num_tensors) {
@@ -447,7 +447,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         // that the next call to `MakeIterator` can build a
         // `FileReaderIterator`.
         {
-          std::vector<string> prefixes;
+          std::vector<tstring> prefixes;
           prefixes.reserve(shard_id_ + 1);
           for (size_t i = 0; i <= shard_id_; ++i) {
             prefixes.emplace_back(
@@ -682,7 +682,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
     Node* input_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
     Node* filename_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(string(""), &filename_node));
+    TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_node, filename_node}, output));
     return Status::OK();
@@ -987,7 +987,7 @@ class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
     Node* input_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
     Node* filename_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(string(""), &filename_node));
+    TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     Node* resource_handle_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
@@ -1006,8 +1006,8 @@ CacheDatasetOp::CacheDatasetOp(OpKernelConstruction* ctx)
 void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
   // Parse out the filenames tensor.
-  string filename;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kFileName, &filename));
+  tstring filename;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kFileName, &filename));
 
   if (filename.empty()) {
     if (op_version_ == 2) {

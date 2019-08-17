@@ -898,13 +898,15 @@ static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
       return failure();
   }
 
-  // Parse optional descriptor binding
-  Attribute set, binding;
-  auto descriptorSetName =
-      convertToSnakeCase(stringifyDecoration(spirv::Decoration::DescriptorSet));
-  auto bindingName =
-      convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
+  auto builtInName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn));
   if (succeeded(parser->parseOptionalKeyword("bind"))) {
+    Attribute set, binding;
+    // Parse optional descriptor binding
+    auto descriptorSetName = convertToSnakeCase(
+        stringifyDecoration(spirv::Decoration::DescriptorSet));
+    auto bindingName =
+        convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
     Type i32Type = parser->getBuilder().getIntegerType(32);
     if (parser->parseLParen() ||
         parser->parseAttribute(set, i32Type, descriptorSetName,
@@ -912,8 +914,21 @@ static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
         parser->parseComma() ||
         parser->parseAttribute(binding, i32Type, bindingName,
                                state->attributes) ||
-        parser->parseRParen())
+        parser->parseRParen()) {
       return failure();
+    }
+  } else if (succeeded(parser->parseOptionalKeyword(builtInName.c_str()))) {
+    Attribute builtIn;
+    if (parser->parseLParen() ||
+        parser->parseAttribute(builtIn, Type(), builtInName,
+                               state->attributes) ||
+        parser->parseRParen()) {
+      return failure();
+    }
+    if (!builtIn.isa<StringAttr>()) {
+      return parser->emitError(parser->getCurrentLocation(),
+                               "expected string value for built_in attribute");
+    }
   }
 
   // Parse other attributes
@@ -973,6 +988,14 @@ static void print(spirv::VariableOp varOp, OpAsmPrinter *printer) {
     elidedAttrs.push_back(bindingName);
     *printer << " bind(" << descriptorSet.getInt() << ", " << binding.getInt()
              << ")";
+  }
+
+  // Print BuiltIn attribute if present
+  auto builtInName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn));
+  if (auto builtin = varOp.getAttrOfType<StringAttr>(builtInName)) {
+    *printer << " " << builtInName << "(\"" << builtin.getValue() << "\")";
+    elidedAttrs.push_back(builtInName);
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);

@@ -833,16 +833,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       f(constant_op.constant(1.0))
     run_metadata = context.export_run_metadata()
     context.disable_run_metadata()
-    step_stats = run_metadata.step_stats
-    self.assertNotEmpty(step_stats.dev_stats)
-    cpu_stats = step_stats.dev_stats[0]
-    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
-                     cpu_stats.device)
-    # Testing for at least 2 because the function call should generate at most
-    # one entry in the step_stats; the ops inside function can generate
-    # arbitrarily many (placeholders, return identities, etc, might be included
-    # or not in the future, so shouldn't be tested for exactly.
-    self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
     self.assertLen(run_metadata.partition_graphs, 1)
 
   def testGraphModeCaptureVariable(self):
@@ -2581,10 +2571,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    weak_variables = weakref.WeakSet(m.variables)
-    self.assertLen(weak_variables, 2)
+    variable_refs = list({v.experimental_ref() for v in m.variables})
+    self.assertLen(variable_refs, 2)
     del m
-    self.assertEqual([], list(weak_variables))
+
+    # Verifying if the variables are only referenced from variable_refs.
+    # We expect the reference counter to be 1, but `sys.getrefcount` reports
+    # one higher reference counter because a temporary is created when we call
+    # sys.getrefcount().  Hence check if the number returned is 2.
+    # https://docs.python.org/3/library/sys.html#sys.getrefcount
+    self.assertEqual(sys.getrefcount(variable_refs[0].deref()), 2)
+    self.assertEqual(sys.getrefcount(variable_refs[1].deref()), 2)
 
   def testExecutorType(self):
     @function.defun

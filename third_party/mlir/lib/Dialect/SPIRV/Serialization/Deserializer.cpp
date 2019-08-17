@@ -207,6 +207,9 @@ private:
   // Result <id> to decorations mapping.
   DenseMap<uint32_t, NamedAttributeList> decorations;
 
+  // Result <id> to type decorations.
+  DenseMap<uint32_t, uint32_t> typeDecorations;
+
   // List of instructions that are processed in a defered fashion (after an
   // initial processing of the entire binary). Some operations like
   // OpEntryPoint, and OpExecutionMode use forward references to function
@@ -320,6 +323,22 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     decorations[words[0]].set(
         opBuilder.getIdentifier(attrName),
         opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
+    break;
+  case spirv::Decoration::BuiltIn:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
+                              opBuilder.getStringAttr(stringifyBuiltIn(
+                                  static_cast<spirv::BuiltIn>(words[2]))));
+    break;
+  case spirv::Decoration::ArrayStride:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
@@ -581,7 +600,8 @@ LogicalResult Deserializer::processArrayType(ArrayRef<uint32_t> operands) {
            << defOp->getName();
   }
 
-  typeMap[operands[0]] = spirv::ArrayType::get(elementTy, count);
+  typeMap[operands[0]] = spirv::ArrayType::get(
+      elementTy, count, typeDecorations.lookup(operands[0]));
   return success();
 }
 

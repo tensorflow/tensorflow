@@ -116,45 +116,54 @@ static LogicalResult verify(ExtractElementOp op) {
 
 static void print(OpAsmPrinter *p, OuterProductOp op) {
   *p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+  if (llvm::size(op.acc()) > 0)
+    *p << ", " << **op.acc().begin();
   *p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
 }
 
 static ParseResult parseOuterProductOp(OpAsmParser *parser,
                                        OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> operandsInfo;
-  Type t0, t1;
-  if (parser->parseOperandList(operandsInfo) || parser->parseColonType(t0) ||
-      parser->parseComma() || parser->parseType(t1))
+  SmallVector<OpAsmParser::OperandType, 3> operandsInfo;
+  Type tLHS, tRHS;
+  if (parser->parseOperandList(operandsInfo) || parser->parseColonType(tLHS) ||
+      parser->parseComma() || parser->parseType(tRHS))
     return failure();
-  VectorType v0 = t0.dyn_cast<VectorType>();
-  VectorType v1 = t1.dyn_cast<VectorType>();
-  if (!v0 || !v1)
+  if (operandsInfo.size() < 2)
+    return parser->emitError(parser->getNameLoc(),
+                             "expected at least 2 operands");
+  VectorType vLHS = tLHS.dyn_cast<VectorType>();
+  VectorType vRHS = tRHS.dyn_cast<VectorType>();
+  if (!vLHS || !vRHS)
     return parser->emitError(parser->getNameLoc(), "expected 2 vector types");
-  VectorType resType = VectorType::get({v0.getDimSize(0), v1.getDimSize(0)},
-                                       v0.getElementType());
-  return failure(parser->resolveOperands(operandsInfo, {t0, t1},
-                                         parser->getCurrentLocation(),
-                                         result->operands) ||
-                 parser->addTypeToList(resType, result->types));
+  VectorType resType = VectorType::get({vLHS.getDimSize(0), vRHS.getDimSize(0)},
+                                       vLHS.getElementType());
+  return failure(
+      parser->resolveOperand(operandsInfo[0], tLHS, result->operands) ||
+      parser->resolveOperand(operandsInfo[1], tRHS, result->operands) ||
+      (operandsInfo.size() > 2 &&
+       parser->resolveOperand(operandsInfo[2], resType, result->operands)) ||
+      parser->addTypeToList(resType, result->types));
 }
 
 static LogicalResult verify(OuterProductOp op) {
-  VectorType v1 = op.getOperandVectorTypeLHS(),
-             v2 = op.getOperandVectorTypeRHS(), res = op.getVectorType();
-  if (v1.getRank() != 1)
+  VectorType vLHS = op.getOperandVectorTypeLHS(),
+             vRHS = op.getOperandVectorTypeRHS(),
+             vACC = op.getOperandVectorTypeACC(), vRES = op.getVectorType();
+  if (vLHS.getRank() != 1)
     return op.emitOpError("expected 1-d vector for operand #1");
-  if (v2.getRank() != 1)
+  if (vRHS.getRank() != 1)
     return op.emitOpError("expected 1-d vector for operand #2");
-  if (res.getRank() != 2)
+  if (vRES.getRank() != 2)
     return op.emitOpError("expected 2-d vector result");
-  if (v1.getDimSize(0) != res.getDimSize(0))
-    return op.emitOpError(
-        "expected first operand dim to match first result dim");
-  if (v2.getDimSize(0) != res.getDimSize(1))
-    return op.emitOpError(
-        "expected second operand dim to match second result dim");
+  if (vLHS.getDimSize(0) != vRES.getDimSize(0))
+    return op.emitOpError("expected #1 operand dim to match result dim #1");
+  if (vRHS.getDimSize(0) != vRES.getDimSize(1))
+    return op.emitOpError("expected #2 operand dim to match result dim #2");
+  if (vACC && vACC != vRES)
+    return op.emitOpError("expected operand #3 of same type as result type");
   return success();
 }
+
 //===----------------------------------------------------------------------===//
 // VectorTransferReadOp
 //===----------------------------------------------------------------------===//

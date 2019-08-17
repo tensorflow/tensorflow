@@ -56,6 +56,12 @@ TEST_P(AsyncInterleaveManyTest, Model) {
     async_interleave_many->remove_input(source2);
   });
   std::vector<double> input_times(1, input_time);
+  EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 0);
+  EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(), 0);
+  async_interleave_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 110);
+  EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(),
+            110 * parallelism / 10);
   async_interleave_many->add_processing_time(100);
   EXPECT_EQ(async_interleave_many->processing_time(), 100);
   EXPECT_EQ(
@@ -118,6 +124,12 @@ TEST_P(AsyncKnownRatioTest, Model) {
       model::MakeSourceNode({2, "source2", async_known_many});
   async_known_many->add_input(source2);
   std::vector<double> input_times(1, input_time);
+  EXPECT_EQ(async_known_many->TotalBufferedBytes(), 0);
+  EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(), 0);
+  async_known_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_known_many->TotalBufferedBytes(), 110);
+  EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(),
+            110 * parallelism / 10);
   source1->add_processing_time(100);
   EXPECT_EQ(async_known_many->TotalProcessingTime(/*processing_times=*/nullptr),
             0);
@@ -398,8 +410,19 @@ TEST(SetterGetterTest, Node) {
   EXPECT_EQ(node->output(), nullptr);
 
   EXPECT_EQ(node->buffered_bytes(), 0);
-  node->add_buffered_bytes(42);
+  EXPECT_EQ(node->buffered_elements(), 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  node->record_buffer_event(42, 0);
   EXPECT_EQ(node->buffered_bytes(), 42);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  EXPECT_EQ(node->buffered_elements(), 0);
+  node->record_buffer_event(0, 11);
+  EXPECT_EQ(node->buffered_bytes(), 42);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  EXPECT_EQ(node->buffered_elements(), 11);
 
   EXPECT_EQ(node->processing_time(), 0);
   node->record_start(1);
@@ -416,6 +439,9 @@ TEST(SetterGetterTest, Node) {
   node->add_input(input);
   EXPECT_EQ(node->inputs().size(), 1);
   EXPECT_EQ(node->inputs().front(), input);
+  input->record_buffer_event(13, 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
   node->remove_input(input);
   EXPECT_EQ(node->inputs().size(), 0);
 

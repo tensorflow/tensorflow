@@ -30,10 +30,10 @@ using namespace mlir;
 // Type Conversion
 //===----------------------------------------------------------------------===//
 
-SPIRVTypeConverter::SPIRVTypeConverter(MLIRContext *context)
+SPIRVBasicTypeConverter::SPIRVBasicTypeConverter(MLIRContext *context)
     : spirvDialect(context->getRegisteredDialect<spirv::SPIRVDialect>()) {}
 
-Type SPIRVTypeConverter::convertType(Type t) {
+Type SPIRVBasicTypeConverter::convertType(Type t) {
   // Check if the type is SPIR-V supported. If so return the type.
   if (spirvDialect->isValidSPIRVType(t)) {
     return t;
@@ -58,10 +58,10 @@ Type SPIRVTypeConverter::convertType(Type t) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult
-SPIRVEntryFnTypeConverter::convertSignatureArg(unsigned inputNo, Type type,
-                                               SignatureConversion &result) {
+SPIRVTypeConverter::convertSignatureArg(unsigned inputNo, Type type,
+                                        SignatureConversion &result) {
   // Try to convert the given input type.
-  auto convertedType = convertType(type);
+  auto convertedType = basicTypeConverter->convertType(type);
   // TODO(ravishankarm) : Vulkan spec requires these to be a
   // spirv::StructType. This is not a SPIR-V requirement, so just making this a
   // pointer type for now.
@@ -81,12 +81,10 @@ SPIRVEntryFnTypeConverter::convertSignatureArg(unsigned inputNo, Type type,
   return success();
 }
 
-template <typename Converter>
-static LogicalResult
-lowerFunctionImpl(FuncOp funcOp, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter, Converter &typeConverter,
-                  TypeConverter::SignatureConversion &signatureConverter,
-                  FuncOp &newFuncOp) {
+static LogicalResult lowerFunctionImpl(
+    FuncOp funcOp, ArrayRef<Value *> operands,
+    ConversionPatternRewriter &rewriter, TypeConverter *typeConverter,
+    TypeConverter::SignatureConversion &signatureConverter, FuncOp &newFuncOp) {
   auto fnType = funcOp.getType();
 
   if (fnType.getNumResults()) {
@@ -96,7 +94,7 @@ lowerFunctionImpl(FuncOp funcOp, ArrayRef<Value *> operands,
 
   for (auto &argType : enumerate(fnType.getInputs())) {
     // Get the type of the argument
-    if (failed(typeConverter.convertSignatureArg(
+    if (failed(typeConverter->convertSignatureArg(
             argType.index(), argType.value(), signatureConverter))) {
       return funcOp.emitError("unable to convert argument type ")
              << argType.value() << " to SPIR-V type";
@@ -116,23 +114,25 @@ lowerFunctionImpl(FuncOp funcOp, ArrayRef<Value *> operands,
   return success();
 }
 
-LogicalResult
-SPIRVFnLowering::lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                               ConversionPatternRewriter &rewriter,
-                               FuncOp &newFuncOp) const {
+namespace mlir {
+LogicalResult lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
+                            SPIRVTypeConverter *typeConverter,
+                            ConversionPatternRewriter &rewriter,
+                            FuncOp &newFuncOp) {
   auto fnType = funcOp.getType();
   TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  return lowerFunctionImpl(funcOp, operands, rewriter, typeConverter,
+  return lowerFunctionImpl(funcOp, operands, rewriter,
+                           typeConverter->getBasicTypeConverter(),
                            signatureConverter, newFuncOp);
 }
 
-LogicalResult
-SPIRVFnLowering::lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                                      ConversionPatternRewriter &rewriter,
-                                      FuncOp &newFuncOp) const {
+LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
+                                   SPIRVTypeConverter *typeConverter,
+                                   ConversionPatternRewriter &rewriter,
+                                   FuncOp &newFuncOp) {
   auto fnType = funcOp.getType();
   TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  if (failed(lowerFunctionImpl(funcOp, operands, rewriter, entryFnConverter,
+  if (failed(lowerFunctionImpl(funcOp, operands, rewriter, typeConverter,
                                signatureConverter, newFuncOp))) {
     return failure();
   }
@@ -167,6 +167,7 @@ SPIRVFnLowering::lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
       builder.getSymbolRefAttr(newFuncOp.getName()), interface);
   return success();
 }
+} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // Operation conversion

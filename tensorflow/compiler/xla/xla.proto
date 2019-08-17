@@ -291,7 +291,7 @@ message DebugOptions {
   repeated string xla_gpu_ptx_file = 127;
 
   // Blacklist for cuDNN convolutions.
-  string xla_gpu_cudnn_conv_blacklist_path = 128;
+  string xla_gpu_algorithm_blacklist_path = 128;
 
   // Next id: 130
 

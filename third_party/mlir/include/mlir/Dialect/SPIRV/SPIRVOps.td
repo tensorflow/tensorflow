@@ -1192,11 +1192,13 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     ``` {.ebnf}
     variable-op ::= ssa-id `=` `spv.Variable` (`init(` ssa-use `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
+                    (`built_in(` string-literal `)`)?
                     attribute-dict? `:` spirv-pointer-type
     ```
 
-    where `init` specifies initializer and `bind` specifies the descriptor set
-    and binding number.
+    where `init` specifies initializer and `bind` specifies the
+    descriptor set and binding number. `built_in` specifies SPIR-V
+    BuiltIn decoration associated with the op.
 
     For example:
 
@@ -1206,6 +1208,7 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     %1 = spv.Variable : !spv.ptr<f32, Function>
     %2 = spv.Variable init(%0): !spv.ptr<f32, Private>
     %3 = spv.Variable init(%0) bind(1, 2): !spv.ptr<f32, Uniform>
+    %3 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Uniform>
     ```
   }];
 

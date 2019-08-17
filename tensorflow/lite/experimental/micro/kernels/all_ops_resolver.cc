@@ -51,6 +51,7 @@ TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_PACK();
 TfLiteRegistration* Register_SPLIT();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_NEG();
 
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
@@ -92,6 +93,7 @@ AllOpsResolver::AllOpsResolver() {
              /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
+  AddBuiltin(BuiltinOperator_NEG, Register_NEG());
 }
 
 }  // namespace micro

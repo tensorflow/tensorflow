@@ -798,17 +798,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "stacktrace_handler",
-    srcs = ["//tensorflow/core/platform:stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:abi",
-        "//tensorflow/core/platform:stacktrace",
-    ],
-)
-
 # DEPRECATED: use platform:stringpiece instead.
 cc_library(
     name = "core_stringpiece",
@@ -3760,9 +3749,9 @@ cc_library(
         # that "core_stringpiece" was enough but that recently changed and
         # we now need at least "str_util".
         ":lib",
-        ":stacktrace_handler",
         ":test_lite",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,

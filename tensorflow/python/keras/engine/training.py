@@ -1529,7 +1529,8 @@ class Model(network.Network):
       # as placeholder for each output.
       return [None for _ in self.output_names]
 
-    if target_tensors not in (None, []):
+    if target_tensors is not None and not (isinstance(target_tensors, list) and
+                                           target_tensors == []):  # pylint: disable=g-explicit-bool-comparison
       if isinstance(target_tensors, list):
         if len(target_tensors) != len(self.outputs):
           raise ValueError(
@@ -1821,24 +1822,25 @@ class Model(network.Network):
     layers = super(Model, self).layers  # Avoids the override in Sequential.
     if layers:
       first_layer = layers[0]
+      # The per-replica static batch size.
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
-        split_batch_size = self._distribution_strategy and \
+
+        # Determine number of times the user-supplied batch size will be split.
+        if (self._distribution_strategy and
             distributed_training_utils.global_batch_size_supported(
-                self._distribution_strategy)
-        if split_batch_size:
-          num_replicas = self._distribution_strategy.num_replicas_in_sync
+                self._distribution_strategy)):
+          num_splits_for_ds = self._distribution_strategy.num_replicas_in_sync
+        else:
+          num_splits_for_ds = 1
 
         # Check `batch_size` argument is consistent with InputLayer.
         if batch_size is not None:
-          if split_batch_size:
-            if batch_size % num_replicas != 0:
-              raise ValueError('The `batch_size` argument value {} cannot be '
-                               'divisible by number of replicas {}'.format(
-                                   batch_size, num_replicas))
-            per_replica_batch_size = batch_size // num_replicas
-          else:
-            per_replica_batch_size = batch_size
+          if batch_size % num_splits_for_ds != 0:
+            raise ValueError('The `batch_size` argument value {} cannot be '
+                             'divisible by number of replicas {}'.format(
+                                 batch_size, num_splits_for_ds))
+          per_replica_batch_size = batch_size // num_splits_for_ds
 
           if per_replica_batch_size != static_batch_size:
             raise ValueError('The `batch_size` argument value {} is '
@@ -1852,23 +1854,23 @@ class Model(network.Network):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
-            if split_batch_size:
-              if ds_batch_size % num_replicas != 0:
-                raise ValueError(
-                    'The batch output shape of your `Dataset` {} '
-                    'cannot be divisible by number of replicas {}'.format(
-                        ds_batch_size, num_replicas))
-              ds_batch_size = ds_batch_size // num_replicas
+            if ds_batch_size % num_splits_for_ds != 0:
+              raise ValueError(
+                  'The batch output shape of your `Dataset` {} '
+                  'cannot be divisible by number of replicas {}'.format(
+                      ds_batch_size, num_splits_for_ds))
 
-            if ds_batch_size != static_batch_size:
+            ds_per_replica_batch_size = ds_batch_size // num_splits_for_ds
+            if ds_per_replica_batch_size != static_batch_size:
               raise ValueError('The batch output shape of your `Dataset` is '
                                '{}, which is incompatible with the specified '
                                'batch size of your Input Layer: {}'.format(
-                                   ds_batch_size, static_batch_size))
+                                   ds_per_replica_batch_size,
+                                   static_batch_size))
 
         # Set inferred batch size from the InputLayer.
         if steps is None:
-          batch_size = static_batch_size
+          batch_size = static_batch_size * num_splits_for_ds
 
     if batch_size is None and steps is None:
       # Backwards compatibility

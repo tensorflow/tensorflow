@@ -246,6 +246,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.avg_pool3d = "AvgPool3D";
     csinfo_.avg_pool3d_grad = "AvgPool3DGrad";
     csinfo_.batch_matmul = "BatchMatMul";
+    csinfo_.batch_matmul_v2 = "BatchMatMulV2";
     csinfo_.bias_add = "BiasAdd";
     csinfo_.bias_add_grad = "BiasAddGrad";
     csinfo_.concat = "Concat";
@@ -379,6 +380,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.batch_matmul_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.batch_matmul_v2),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.concat, mkl_op_registry::GetMklOpName(csinfo_.concat),
@@ -868,6 +872,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string avg_pool3d;
     string avg_pool3d_grad;
     string batch_matmul;
+    string batch_matmul_v2;
     string bias_add;
     string bias_add_grad;
     string concat;

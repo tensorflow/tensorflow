@@ -208,7 +208,7 @@ def function_def_to_graph_def(fdef, input_shapes=None, copy_functions=True):
         # Since this function is referenced as an op type, we have no choice but
         # to copy it into the GraphDef if we want downstream tools to process
         # it.
-        graph_def.library.function.append(f.definition)
+        graph_def.library.function.add().CopyFrom(f.definition)
         copied_functions.add(node_def.op)
     else:
       op_def = ops.get_default_graph()._get_op_def(node_def.op)  # pylint: disable=protected-access

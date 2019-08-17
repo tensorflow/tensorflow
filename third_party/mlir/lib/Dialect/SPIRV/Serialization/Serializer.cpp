@@ -132,6 +132,12 @@ private:
   LogicalResult processDecoration(Location loc, uint32_t resultID,
                                   NamedAttribute attr);
 
+  template <typename DType>
+  LogicalResult processTypeDecoration(Location loc, DType type,
+                                      uint32_t resultId) {
+    return emitError(loc, "unhandled decoraion for type:") << type;
+  }
+
   //===--------------------------------------------------------------------===//
   // Types
   //===--------------------------------------------------------------------===//
@@ -148,7 +154,7 @@ private:
 
   /// Method for preparing basic SPIR-V type serialization. Returns the type's
   /// opcode and operands for the instruction via `typeEnum` and `operands`.
-  LogicalResult prepareBasicType(Location loc, Type type,
+  LogicalResult prepareBasicType(Location loc, Type type, uint32_t resultID,
                                  spirv::Opcode &typeEnum,
                                  SmallVectorImpl<uint32_t> &operands);
 
@@ -349,11 +355,38 @@ LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
       break;
     }
     return emitError(loc, "expected integer attribute for ") << attrName;
+  case spirv::Decoration::BuiltIn:
+    if (auto strAttr = attr.second.dyn_cast<StringAttr>()) {
+      auto enumVal = spirv::symbolizeBuiltIn(strAttr.getValue());
+      if (enumVal) {
+        args.push_back(static_cast<uint32_t>(enumVal.getValue()));
+        break;
+      }
+      return emitError(loc, "invalid ")
+             << attrName << " attribute " << strAttr.getValue();
+    }
+    return emitError(loc, "expected string attribute for ") << attrName;
   default:
     return emitError(loc, "unhandled decoration ") << decorationName;
   }
   return encodeInstructionInto(decorations, spirv::Opcode::OpDecorate, args);
 }
+
+namespace {
+template <>
+LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
+    Location loc, spirv::ArrayType type, uint32_t resultID) {
+  if (type.hasLayout()) {
+    // OpDecorate %arrayTypeSSA ArrayStride strideLiteral
+    SmallVector<uint32_t, 3> args;
+    args.push_back(resultID);
+    args.push_back(static_cast<uint32_t>(spirv::Decoration::ArrayStride));
+    args.push_back(type.getArrayStride());
+    return encodeInstructionInto(decorations, spirv::Opcode::OpDecorate, args);
+  }
+  return success();
+}
+} // namespace
 
 LogicalResult Serializer::processFuncOp(FuncOp op) {
   uint32_t fnTypeID = 0;
@@ -434,7 +467,7 @@ LogicalResult Serializer::processType(Location loc, Type type,
   if ((type.isa<FunctionType>() &&
        succeeded(prepareFunctionType(loc, type.cast<FunctionType>(), typeEnum,
                                      operands))) ||
-      succeeded(prepareBasicType(loc, type, typeEnum, operands))) {
+      succeeded(prepareBasicType(loc, type, typeID, typeEnum, operands))) {
     typeIDMap[type] = typeID;
     return encodeInstructionInto(typesGlobalValues, typeEnum, operands);
   }
@@ -442,7 +475,8 @@ LogicalResult Serializer::processType(Location loc, Type type,
 }
 
 LogicalResult
-Serializer::prepareBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
+Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
+                             spirv::Opcode &typeEnum,
                              SmallVectorImpl<uint32_t> &operands) {
   if (isVoidType(type)) {
     typeEnum = spirv::Opcode::OpTypeVoid;
@@ -490,9 +524,8 @@ Serializer::prepareBasicType(Location loc, Type type, spirv::Opcode &typeEnum,
             loc, mlirBuilder.getI32IntegerAttr(arrayType.getNumElements()),
             /*isSpec=*/false)) {
       operands.push_back(elementCountID);
-      return success();
     }
-    return failure();
+    return processTypeDecoration(loc, arrayType, resultID);
   }
 
   if (auto ptrType = type.dyn_cast<spirv::PointerType>()) {

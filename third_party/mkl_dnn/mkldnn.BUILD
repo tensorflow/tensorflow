@@ -91,7 +91,6 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/xbyak",
     ],
-    nocopts = "-fno-exceptions",
     visibility = ["//visibility:public"],
     deps = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [

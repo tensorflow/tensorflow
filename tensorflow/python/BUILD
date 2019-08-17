@@ -20,6 +20,7 @@ visibility = [
 ]
 
 load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
@@ -1197,7 +1198,9 @@ py_library(
     srcs = ["util/tf_stack.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [],
+    deps = [
+        ":_tf_stack",
+    ],
 )
 
 py_library(
@@ -3691,6 +3694,24 @@ py_library(
     ],
 )
 
+py_test(
+    name = "rnn_grad_test",
+    srcs = ["ops/rnn_grad_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":gradients",
+        ":math_ops",
+        ":rnn_grad",
+        ":rnn_ops_gen",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "standard_ops",
     srcs = ["ops/standard_ops.py"],
@@ -4524,6 +4545,19 @@ py_library(
     ],
 )
 
+pybind_extension(
+    name = "_tf_stack",
+    srcs = ["util/tf_stack.cc"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
+    module_name = "_tf_stack",
+    deps = [
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = glob(
@@ -4541,12 +4575,22 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
+        ":_tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
+)
+
+tf_py_test(
+    name = "tf_stack_test",
+    srcs = ["util/tf_stack_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":util",
+    ],
 )
 
 tf_py_test(
@@ -4883,6 +4927,7 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
+        "util/scoped_annotation.i",
         "util/stat_summarizer.i",
         "util/tfprof.i",
         "util/traceme.i",
@@ -4935,6 +4980,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/internal:python_traceme",
+        "//tensorflow/core/profiler/internal:python_scoped_annotation",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",

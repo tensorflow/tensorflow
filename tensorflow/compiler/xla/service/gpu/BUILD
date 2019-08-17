@@ -612,10 +612,10 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_blacklist",
         ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
         ":gpu_executable",
+        ":hlo_algorithm_blacklist",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -1500,9 +1500,9 @@ xla_proto_library(
 )
 
 cc_library(
-    name = "cudnn_conv_blacklist",
-    srcs = ["cudnn_conv_blacklist.cc"],
-    hdrs = ["cudnn_conv_blacklist.h"],
+    name = "hlo_algorithm_blacklist",
+    srcs = ["hlo_algorithm_blacklist.cc"],
+    hdrs = ["hlo_algorithm_blacklist.h"],
     deps = [
         ":gpu_autotuning_proto",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1514,11 +1514,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_blacklist_test",
-    srcs = ["cudnn_conv_blacklist_test.cc"],
-    data = ["data/cudnn_conv_blacklist.pbtxt"],
+    name = "hlo_algorithm_blacklist_test",
+    srcs = ["hlo_algorithm_blacklist_test.cc"],
+    data = ["data/hlo_algorithm_blacklist.pbtxt"],
     deps = [
-        ":cudnn_conv_blacklist",
+        ":hlo_algorithm_blacklist",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -76,9 +76,7 @@ cc_library(
 
 cc_library(
     name = "cpu_info",
-    srcs = ["cpu_info.cc"] + tf_platform_srcs([
-        "cpu_info.h",
-    ]),
+    srcs = ["cpu_info.cc"],
     hdrs = ["cpu_info.h"],
     copts = tf_copts(),
     deps = [
@@ -170,6 +168,16 @@ cc_library(
         ":abi",
         ":platform",
         "//tensorflow/core/platform/default/build_config:stacktrace",
+    ],
+)
+
+cc_library(
+    name = "stacktrace_handler",
+    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
+    hdrs = ["stacktrace_handler.h"],
+    deps = [
+        ":platform",
+        ":stacktrace",
     ],
 )
 

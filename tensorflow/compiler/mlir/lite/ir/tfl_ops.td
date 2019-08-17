@@ -2266,7 +2266,8 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
 }
 
 def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
-                                [NoSideEffect]> {
+                                [NoSideEffect,
+                                 TFL_SameOperandsAndResultsScale]> {
   let summary = "ResizeNearestNeighbor Op";
 
   let description = [{
@@ -2274,13 +2275,13 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, TFL_Uint8]>:$input,
+    TensorOf<[F32, I8, TFL_Uint8, TFL_QUI8, TFL_QI8]>:$input,
     TensorOf<[I32]>:$size,
     BoolAttr:$align_corners
   );
 
   let results = (outs
-    TensorOf<[F32, I8, TFL_Uint8]>:$output
+    TensorOf<[F32, I8, TFL_Uint8, TFL_QUI8, TFL_QI8]>:$output
   );
 
   let hasOptions = 1;
@@ -2772,7 +2773,7 @@ def TFL_UnidirectionalSequenceRNNOp :
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TensorOf<[F32, I8]>:$output);
 
   let hasOptions = 1;
 
