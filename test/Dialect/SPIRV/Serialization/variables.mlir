@@ -1,15 +1,15 @@
 // RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
 
-// CHECK:           {{%.*}} = spv.Variable bind(1, 0) : !spv.ptr<f32, Input>
-// CHECK-NEXT:      {{%.*}} = spv.Variable bind(0, 1) : !spv.ptr<f32, Output>
-// CHECK-NEXT:      {{%.*}} = spv.Variable built_in("GlobalInvocationId") : !spv.ptr<vector<3xi32>, Input>
-// CHECK-NEXT:      {{%.*}} = spv.Variable built_in("GlobalInvocationId") : !spv.ptr<vector<3xi32>, Input>
+// CHECK:         spv.globalVariable !spv.ptr<f32, Input> @var0 bind(1, 0)
+// CHECK-NEXT:    spv.globalVariable !spv.ptr<f32, Output> @var1 bind(0, 1)
+// CHECK-NEXT:    spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 built_in("GlobalInvocationId")
+// CHECK-NEXT:    spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var3 built_in("GlobalInvocationId")
 func @spirv_variables() -> () {
   spv.module "Logical" "VulkanKHR" {
-    %2 = spv.Variable bind(1, 0) : !spv.ptr<f32, Input>
-    %3 = spv.Variable bind(0, 1): !spv.ptr<f32, Output>
-    %4 = spv.Variable {built_in = "GlobalInvocationId"} : !spv.ptr<vector<3xi32>, Input>
-    %5 = spv.Variable built_in("GlobalInvocationId") : !spv.ptr<vector<3xi32>, Input>
+    spv.globalVariable !spv.ptr<f32, Input> @var0 bind(1, 0)
+    spv.globalVariable !spv.ptr<f32, Output> @var1 bind(0, 1)
+    spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 {built_in = "GlobalInvocationId"}
+    spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var3 built_in("GlobalInvocationId")
   }
   return
 }

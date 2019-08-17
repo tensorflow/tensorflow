@@ -872,6 +872,11 @@ def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
 }
 
+def SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "symbol ref array attribute"> {
+  let constBuilderCall = ?;
+}
+
 //===----------------------------------------------------------------------===//
 // Derive attribute kinds
 

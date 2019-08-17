@@ -3,11 +3,10 @@
 //===----------------------------------------------------------------------===//
 // spv.AccessChain
 //===----------------------------------------------------------------------===//
-
 func @access_chain_struct() -> () {
   %0 = spv.constant 1: i32
   %1 = spv.Variable : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Function>
-  // CHECK: {{.*}} = spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.struct<f32, !spv.array<4 x f32>>, Function>
+  // CHECK: spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.struct<f32, !spv.array<4 x f32>>, Function>
   %2 = spv.AccessChain %1[%0, %0] : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Function>
   return
 }
@@ -16,7 +15,7 @@ func @access_chain_struct() -> () {
 
 func @access_chain_1D_array(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4xf32>, Function>
-  // CHECK: {{.*}} = spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.array<4 x f32>, Function>
+  // CHECK: spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.array<4 x f32>, Function>
   %1 = spv.AccessChain %0[%arg0] : !spv.ptr<!spv.array<4xf32>, Function>
   return
 }
@@ -25,7 +24,7 @@ func @access_chain_1D_array(%arg0 : i32) -> () {
 
 func @access_chain_2D_array_1(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
-  // CHECK: {{.*}} = spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.array<4 x !spv.array<4 x f32>>, Function>
+  // CHECK: spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.array<4 x !spv.array<4 x f32>>, Function>
   %1 = spv.AccessChain %0[%arg0, %arg0] : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
   %2 = spv.Load "Function" %1 ["Volatile"] : f32
   return
@@ -35,7 +34,7 @@ func @access_chain_2D_array_1(%arg0 : i32) -> () {
 
 func @access_chain_2D_array_2(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
-  // CHECK: {{.*}} = spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.array<4 x !spv.array<4 x f32>>, Function>
+  // CHECK: spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.array<4 x !spv.array<4 x f32>>, Function>
   %1 = spv.AccessChain %0[%arg0] : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
   %2 = spv.Load "Function" %1 ["Volatile"] : !spv.array<4xf32>
   return
@@ -115,6 +114,18 @@ func @access_chain_invalid_accessing_type(%index0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
   %1 = spv.AccessChain %0[%index, %index0, %index0] : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
   return
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  spv.globalVariable !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input> @var1
+  func @access_chain() -> () {
+    %0 = spv.constant 1: i32
+    %1 = spv._address_of @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
+    // CHECK: spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.struct<f32, !spv.array<4 x f32>>, Input>
+    %2 = spv.AccessChain %1[%0, %0] : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
+    spv.Return
+  }
 }
 
 // -----
@@ -276,15 +287,15 @@ spv.module "Logical" "VulkanKHR" {
 }
 
 spv.module "Logical" "VulkanKHR" {
-   %2 = spv.Variable : !spv.ptr<f32, Input>
-   %3 = spv.Variable : !spv.ptr<f32, Output>
+   spv.globalVariable !spv.ptr<f32, Input> @var2
+   spv.globalVariable !spv.ptr<f32, Output> @var3
    func @do_something(%arg0 : !spv.ptr<f32, Input>, %arg1 : !spv.ptr<f32, Output>) -> () {
      %1 = spv.Load "Input" %arg0 : f32
      spv.Store "Output" %arg1, %1 : f32
      spv.Return
    }
-   // CHECK: spv.EntryPoint "GLCompute" @do_something, {{%.*}}, {{%.*}} : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
-   spv.EntryPoint "GLCompute" @do_something, %2, %3 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+   // CHECK: spv.EntryPoint "GLCompute" @do_something, @var2, @var3
+   spv.EntryPoint "GLCompute" @do_something, @var2, @var3
 }
 
 // -----
@@ -293,7 +304,7 @@ spv.module "Logical" "VulkanKHR" {
    func @do_nothing() -> () {
      spv.Return
    }
-   // expected-error @+1 {{custom op 'spv.EntryPoint' expected symbol reference attribute}}
+   // expected-error @+1 {{invalid kind of constant specified}}
    spv.EntryPoint "GLCompute" "do_nothing"
 }
 
@@ -376,6 +387,74 @@ spv.module "Logical" "VulkanKHR" {
    spv.EntryPoint "GLCompute" @do_nothing
    // expected-error @+1 {{custom op 'spv.ExecutionMode' invalid execution_mode attribute specification: "GLCompute"}}
    spv.ExecutionMode @do_nothing "GLCompute", 3, 4, 5
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.globalVariable
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "VulkanKHR" {
+  // CHECK: spv.globalVariable !spv.ptr<f32, Input> @var0
+  spv.globalVariable !spv.ptr<f32, Input> @var0
+}
+
+// TODO: Fix test case after initialization with constant is addressed
+// spv.module "Logical" "VulkanKHR" {
+//   %0 = spv.constant 4.0 : f32
+//   // CHECK1: spv.Variable init(%0) : !spv.ptr<f32, Private>
+//   spv.globalVariable !spv.ptr<f32, Private> @var1 init(%0)
+// }
+
+spv.module "Logical" "VulkanKHR" {
+  // CHECK: spv.globalVariable !spv.ptr<f32, Uniform> @var0 bind(1, 2)
+  spv.globalVariable !spv.ptr<f32, Uniform> @var0 bind(1, 2)
+}
+
+// TODO: Fix test case after initialization with constant is addressed
+// spv.module "Logical" "VulkanKHR" {
+//   %0 = spv.constant 4.0 : f32
+//   // CHECK1: spv.globalVariable !spv.ptr<f32, Private> @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
+//   spv.globalVariable !spv.ptr<f32, Private> @var1 initializer(%0) {binding = 5 : i32} :
+// }
+
+spv.module "Logical" "VulkanKHR" {
+  // CHECK: spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var1 built_in("GlobalInvocationID")
+  spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var1 built_in("GlobalInvocationID")
+  // CHECK: spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 built_in("GlobalInvocationID")
+  spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 {built_in = "GlobalInvocationID"}
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  // expected-error @+1 {{expected spv.ptr type}}
+  spv.globalVariable f32 @var0
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  // expected-error @+1 {{op initializer must be result of a spv.globalVariable op}}
+  spv.globalVariable !spv.ptr<f32, Private> @var0 initializer(@var1)
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  // expected-error @+1 {{storage class cannot be 'Generic'}}
+  spv.globalVariable !spv.ptr<f32, Generic> @var0
+}
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  func @foo() {
+    // expected-error @+1 {{op failed to verify that op can only be used in a 'spv.module' block}}
+    spv.globalVariable !spv.ptr<f32, Input> @var0
+    spv.Return
+  }
 }
 
 // -----
@@ -499,7 +578,7 @@ func @iadd_scalar(%arg: i32) -> i32 {
 //===----------------------------------------------------------------------===//
 
 func @iequal_scalar(%arg0: i32, %arg1: i32) -> i1 {
-  // CHECK: {{.*}} = spv.IEqual {{.*}}, {{.*}} : i32
+  // CHECK: spv.IEqual {{.*}}, {{.*}} : i32
   %0 = spv.IEqual %arg0, %arg1 : i32
   return %0 : i1
 }
@@ -507,7 +586,7 @@ func @iequal_scalar(%arg0: i32, %arg1: i32) -> i1 {
 // -----
 
 func @iequal_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.IEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.IEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.IEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -519,7 +598,7 @@ func @iequal_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> 
 //===----------------------------------------------------------------------===//
 
 func @inotequal_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.INotEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.INotEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.INotEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -670,6 +749,19 @@ func @aligned_load_incorrect_attributes() -> () {
 
 // -----
 
+spv.module "Logical" "VulkanKHR" {
+  spv.globalVariable !spv.ptr<f32, Input> @var0
+  // CHECK_LABEL: @simple_load
+  func @simple_load() -> () {
+    // CHECK: spv.Load "Input" {{%.*}} : f32
+    %0 = spv._address_of @var0 : !spv.ptr<f32, Input>
+    %1 = spv.Load "Input" %0 : f32
+    spv.Return
+  }
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
@@ -708,7 +800,7 @@ func @sdiv_scalar(%arg: i32) -> i32 {
 //===----------------------------------------------------------------------===//
 
 func @sgt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.SGreaterThan {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.SGreaterThan {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.SGreaterThan %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -720,7 +812,7 @@ func @sgt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @sge_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.SGreaterThanEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.SGreaterThanEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.SGreaterThanEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -732,7 +824,7 @@ func @sge_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @slt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.SLessThan {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.SLessThan {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.SLessThan %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -744,7 +836,7 @@ func @slt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @slte_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.SLessThanEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.SLessThanEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.SLessThanEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -883,6 +975,18 @@ func @aligned_store_incorrect_attributes(%arg0 : f32) -> () {
 
 // -----
 
+spv.module "Logical" "VulkanKHR" {
+  spv.globalVariable !spv.ptr<f32, Input> @var0
+  func @simple_store(%arg0 : f32) -> () {
+    %0 = spv._address_of @var0 : !spv.ptr<f32, Input>
+    // CHECK: spv.Store  "Input" {{%.*}}, {{%.*}} : f32
+    spv.Store  "Input" %0, %arg0 : f32
+    spv.Return
+  }
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // spv.UDiv
 //===----------------------------------------------------------------------===//
@@ -900,7 +1004,7 @@ func @udiv_scalar(%arg: i32) -> i32 {
 //===----------------------------------------------------------------------===//
 
 func @ugt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.UGreaterThan {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.UGreaterThan {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.UGreaterThan %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -912,7 +1016,7 @@ func @ugt_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @ugte_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.UGreaterThanEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.UGreaterThanEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.UGreaterThanEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -924,7 +1028,7 @@ func @ugte_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @ult_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.ULessThan {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.ULessThan {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.ULessThan %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -936,7 +1040,7 @@ func @ult_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
 //===----------------------------------------------------------------------===//
 
 func @ulte_vector(%arg0: vector<4xi32>, %arg1: vector<4xi32>) -> vector<4xi1> {
-  // CHECK: {{.*}} = spv.ULessThanEqual {{.*}}, {{.*}} : vector<4xi32>
+  // CHECK: spv.ULessThanEqual {{.*}}, {{.*}} : vector<4xi32>
   %0 = spv.ULessThanEqual %arg0, %arg1 : vector<4xi32>
   return %0 : vector<4xi1>
 }
@@ -967,29 +1071,29 @@ func @variable_no_init(%arg0: f32) -> () {
 
 func @variable_init() -> () {
   %0 = spv.constant 4.0 : f32
-  // CHECK: spv.Variable init(%0) : !spv.ptr<f32, Private>
-  %1 = spv.Variable init(%0) : !spv.ptr<f32, Private>
+  // CHECK: spv.Variable init(%0) : !spv.ptr<f32, Function>
+  %1 = spv.Variable init(%0) : !spv.ptr<f32, Function>
   return
 }
 
 func @variable_bind() -> () {
-  // CHECK: spv.Variable bind(1, 2) : !spv.ptr<f32, Uniform>
-  %0 = spv.Variable bind(1, 2) : !spv.ptr<f32, Uniform>
+  // CHECK: spv.Variable bind(1, 2) : !spv.ptr<f32, Function>
+  %0 = spv.Variable bind(1, 2) : !spv.ptr<f32, Function>
   return
 }
 
 func @variable_init_bind() -> () {
   %0 = spv.constant 4.0 : f32
-  // CHECK: spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
-  %1 = spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
+  // CHECK: spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Function>
+  %1 = spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Function>
   return
 }
 
 func @variable_builtin() -> () {
-  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
-  %1 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
-  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
-  %2 = spv.Variable {built_in = "GlobalInvocationID"} : !spv.ptr<vector<3xi32>, Input>
+  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
+  %1 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
+  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
+  %2 = spv.Variable {built_in = "GlobalInvocationID"} : !spv.ptr<vector<3xi32>, Function>
   return
 }
 
@@ -1005,23 +1109,14 @@ func @expect_ptr_result_type(%arg0: f32) -> () {
 
 func @variable_init(%arg0: f32) -> () {
   // expected-error @+1 {{op initializer must be the result of a spv.Constant or module-level spv.Variable op}}
-  %0 = spv.Variable init(%arg0) : !spv.ptr<f32, Private>
-  return
-}
-
-// -----
-
-func @storage_class_mismatch() -> () {
-  %0 = spv.constant 5.0 : f32
-  // expected-error @+1 {{storage class must match result pointer's storage class}}
-  %1 = "spv.Variable"(%0) {storage_class = 2: i32} : (f32) -> !spv.ptr<f32, Function>
+  %0 = spv.Variable init(%arg0) : !spv.ptr<f32, Function>
   return
 }
 
 // -----
 
 func @cannot_be_generic_storage_class(%arg0: f32) -> () {
-  // expected-error @+1 {{storage class cannot be 'Generic'}}
+  // expected-error @+1 {{op can only be used to model function-level variables. Use spv.globalVariable for module-level variables}}
   %0 = spv.Variable : !spv.ptr<f32, Generic>
   return
 }
