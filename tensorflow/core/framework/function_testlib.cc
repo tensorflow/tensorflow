@@ -605,12 +605,19 @@ FunctionDef MakeBatchDataset() {
          {"output_shapes", "$output_shapes"}}}});
 }
 
-FunctionDef MakeMapDataset() {
+FunctionDef MakeMapDataset(bool has_other_args) {
+  auto args = has_other_args
+                  ? std::vector<string>{"input_dataset: variant",
+                                        "other_arguments: Targuments"}
+                  : std::vector<string>{"input_dataset: variant"};
+  auto input_placeholders =
+      has_other_args ? std::vector<string>{"input_dataset", "other_arguments"}
+                     : std::vector<string>{"input_dataset"};
   return FDH::Define(
       // Name
       "MakeMapDataset",
       // Args
-      {"input_dataset: variant", "other_arguments: Targuments"},
+      args,
       // Return values
       {"y:variant"},
       // Attr def
@@ -621,32 +628,7 @@ FunctionDef MakeMapDataset() {
       // Nodes
       {{{"y"},
         "MapDataset",
-        {"input_dataset", "other_arguments"},
-        {{"f", "$f"},
-         {"Targuments", "$Targuments"},
-         {"output_types", "$output_types"},
-         {"output_shapes", "$output_shapes"},
-         {"use_inter_op_parallelism", "$use_inter_op_parallelism"},
-         {"preserve_cardinality", "$preserve_cardinality"}}}});
-}
-
-FunctionDef MakeMapDatasetWithoutOtherArgs() {
-  return FDH::Define(
-      // Name
-      "MakeMapDataset",
-      // Args
-      {"input_dataset: variant"},
-      // Return values
-      {"y:variant"},
-      // Attr def
-      {"f: func", "Targuments: list(type) >= 0",
-       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
-       "use_inter_op_parallelism: bool = true",
-       "preserve_cardinality: bool = false"},
-      // Nodes
-      {{{"y"},
-        "MapDataset",
-        {"input_dataset"},
+        input_placeholders,
         {{"f", "$f"},
          {"Targuments", "$Targuments"},
          {"output_types", "$output_types"},

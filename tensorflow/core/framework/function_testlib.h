@@ -146,13 +146,7 @@ FunctionDef MakeBatchDataset();
 // Targuments: list(type), output_types: list(type), output_shapes: list(shape),
 // use_inter_op_parallelism: bool, preserve_cardinality: bool
 // -> y: MapDatasetOp::Dataset
-FunctionDef MakeMapDataset();
-
-// input_dataset: variant, f: func, Targuments: list(type),
-// output_types: list(type), output_shapes: list(shape),
-// use_inter_op_parallelism: bool, preserve_cardinality: bool
-// -> y: MapDatasetOp::Dataset
-FunctionDef MakeMapDatasetWithoutOtherArgs();
+FunctionDef MakeMapDataset(bool has_other_args);
 
 // input_dataset:variant, count:int64 -> y: TakeDataset::Dataset
 FunctionDef MakeTakeDataset();

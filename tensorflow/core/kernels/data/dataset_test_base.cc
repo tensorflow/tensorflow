@@ -322,8 +322,8 @@ Status DatasetOpsTestBase::MakeBatchDataset(
        {BatchDatasetOp::kOutputTypes, batch_dataset_params.output_dtypes},
        {BatchDatasetOp::kOutputShapes, batch_dataset_params.output_shapes}},
       /*inputs*/
-      {batch_dataset_params.input_dataset, batch_dataset_params.batch_size,
-       batch_dataset_params.drop_remainder},
+      {batch_dataset_params.input_dataset_params_group[0].second,
+       batch_dataset_params.batch_size, batch_dataset_params.drop_remainder},
       graph_opts,
       /*rets*/ {batch_dataset}));
   return Status::OK();
@@ -336,12 +336,11 @@ Status DatasetOpsTestBase::MakeMapDataset(
   graph_opts.expect_device_spec = false;
   std::vector<Tensor> inputs;
   inputs.reserve(1 + map_dataset_params.other_arguments.size());
-  inputs.push_back(map_dataset_params.input_dataset);
+  inputs.push_back(map_dataset_params.input_dataset_params_group[0].second);
   inputs.insert(inputs.end(), map_dataset_params.other_arguments.begin(),
                 map_dataset_params.other_arguments.end());
-  auto fdef = map_dataset_params.other_arguments.empty()
-                  ? test::function::MakeMapDatasetWithoutOtherArgs()
-                  : test::function::MakeMapDataset();
+  bool has_other_args = !map_dataset_params.other_arguments.empty();
+  auto fdef = test::function::MakeMapDataset(has_other_args);
 
   TF_RETURN_IF_ERROR(RunFunction(
       fdef,

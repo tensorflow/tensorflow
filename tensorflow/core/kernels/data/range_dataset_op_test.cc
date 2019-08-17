@@ -28,8 +28,6 @@ class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
 
     TF_RETURN_IF_ERROR(
         MakeDatasetOpKernel(*range_dataset_params, &dataset_kernel_));
-    gtl::InlinedVector<TensorValue, 4> inputs;
-    TF_RETURN_IF_ERROR(range_dataset_params->MakeInputs(&inputs));
     TF_RETURN_IF_ERROR(MakeDatasetAndIterator(range_dataset_params));
     return Status::OK();
   }
@@ -49,25 +47,20 @@ class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
   }
 };
 
-RangeDatasetParams* PositiveStepRangeDatasetParams() {
-  return new RangeDatasetParams(/*start=*/0,
-                                /*stop=*/10,
-                                /*step=*/3);
+std::shared_ptr<RangeDatasetParams> PositiveStepRangeDatasetParams() {
+  return Range(/*start=*/0, /*stop=*/10, /*step=*/3);
 }
 
-RangeDatasetParams* NegativeStepRangeDatasetParams() {
-  return new RangeDatasetParams(/*start=*/10,
-                                /*stop=*/0,
-                                /*step=*/-3);
+std::shared_ptr<RangeDatasetParams> NegativeStepRangeDatasetParams() {
+  return Range(/*start=*/10, /*stop=*/0, /*step=*/-3);
 }
 
-RangeDatasetParams* ZeroStepRangeDatasetParams() {
-  return new RangeDatasetParams(/*start=*/10,
-                                /*stop=*/0,
-                                /*step=*/0);
+std::shared_ptr<RangeDatasetParams> ZeroStepRangeDatasetParams() {
+  return Range(/*start=*/10, /*stop=*/0, /*step=*/0);
 }
 
-std::vector<GetNextTestCase<RangeDatasetParams*>> GetNextTestCases() {
+std::vector<GetNextTestCase<std::shared_ptr<RangeDatasetParams>>>
+GetNextTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
@@ -81,34 +74,31 @@ ITERATOR_GET_NEXT_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, DatasetNodeName) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetNodeName(range_dataset_params->node_name));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetTypeString) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(
       CheckDatasetTypeString(name_utils::OpName(RangeDatasetOp::kDatasetType)));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
-std::vector<CardinalityTestCase<RangeDatasetParams*>> CardinalityTestCases() {
+std::vector<CardinalityTestCase<std::shared_ptr<RangeDatasetParams>>>
+CardinalityTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*expected_cardinality=*/4},
           {/*dataset_params=*/NegativeStepRangeDatasetParams(),
@@ -120,27 +110,24 @@ DATASET_CARDINALITY_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(RangeDatasetOpTest, IteratorPrefix) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       RangeDatasetOp::kDatasetType, range_dataset_params->iterator_prefix)));
 }
 
-std::vector<IteratorSaveAndRestoreTestCase<RangeDatasetParams*>>
+std::vector<IteratorSaveAndRestoreTestCase<std::shared_ptr<RangeDatasetParams>>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*breakpoints=*/{0, 1, 4},
@@ -157,8 +144,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, ZeroStep) {
   auto range_dataset_params = ZeroStepRangeDatasetParams();
-  core::ScopedUnref scoped_unref(range_dataset_params);
-  EXPECT_EQ(Initialize(range_dataset_params).code(),
+  EXPECT_EQ(Initialize(range_dataset_params.get()).code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 

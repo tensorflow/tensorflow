@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_test_params.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,65 +42,85 @@ bool DatasetParams::IsDatasetTensor(const Tensor& tensor) {
          TensorShapeUtils::IsScalar(tensor.shape());
 }
 
-BatchDatasetParams* DatasetParams::Batch(
-    int64 batch_size, bool drop_remainder, bool parallel_copy,
-    DataTypeVector output_dtypes, std::vector<PartialTensorShape> output_shapes,
-    string node_name) {
-  return new BatchDatasetParams(this, batch_size, drop_remainder, parallel_copy,
-                                std::move(output_dtypes),
-                                std::move(output_shapes), std::move(node_name));
+BatchDatasetParams::BatchDatasetParams(
+    std::shared_ptr<DatasetParams> input_dataset_params, int64 batch_size,
+    bool drop_remainder, bool parallel_copy, DataTypeVector output_dtypes,
+    std::vector<PartialTensorShape> output_shapes, string node_name)
+    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                    std::move(node_name), DatasetParamsType::Batch),
+      batch_size(CreateTensor<int64>(TensorShape({}), {batch_size})),
+      drop_remainder(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
+      parallel_copy(parallel_copy) {
+  input_dataset_params_group.emplace_back(
+      std::make_pair(std::move(input_dataset_params), Tensor()));
 }
 
-MapDatasetParams* DatasetParams::Map(
+Status BatchDatasetParams::MakeInputs(
+    gtl::InlinedVector<TensorValue, 4>* inputs) {
+  inputs->reserve(input_dataset_params_group.size());
+  for (auto& pair : input_dataset_params_group) {
+    if (!IsDatasetTensor(pair.second)) {
+      inputs->clear();
+      return errors::Internal(
+          "The input dataset is not populated as the dataset tensor yet.");
+    } else {
+      inputs->emplace_back(TensorValue(&pair.second));
+    }
+  }
+  inputs->emplace_back(TensorValue(&batch_size));
+  inputs->emplace_back(TensorValue(&drop_remainder));
+  return Status::OK();
+}
+
+MapDatasetParams::MapDatasetParams(
+    std::shared_ptr<DatasetParams> input_dataset_params,
     std::vector<Tensor> other_arguments,
     FunctionDefHelper::AttrValueWrapper func, std::vector<FunctionDef> func_lib,
     DataTypeVector type_arguments, DataTypeVector output_dtypes,
     std::vector<PartialTensorShape> output_shapes,
-    bool use_inter_op_parallelism, bool preserve_cardinality,
-    string node_name) {
-  return new MapDatasetParams(
-      this, std::move(other_arguments), std::move(func), std::move(func_lib),
-      std::move(type_arguments), std::move(output_dtypes),
-      std::move(output_shapes), use_inter_op_parallelism, preserve_cardinality,
-      std::move(node_name));
+    bool use_inter_op_parallelism, bool preserve_cardinality, string node_name)
+    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                    std::move(node_name), DatasetParamsType::Map),
+      other_arguments(std::move(other_arguments)),
+      func(std::move(func)),
+      func_lib(std::move(func_lib)),
+      type_arguments(std::move(type_arguments)),
+      use_inter_op_parallelism(use_inter_op_parallelism),
+      preserve_cardinality(preserve_cardinality) {
+  input_dataset_params_group.emplace_back(
+      std::make_pair(std::move(input_dataset_params), Tensor()));
 }
 
-SourceDatasetParams::SourceDatasetParams(
-    DataTypeVector output_dtypes, std::vector<PartialTensorShape> output_shapes,
-    string node_name, DatasetParamsType type)
-    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                    std::move(node_name), type) {}
-
-UnaryDatasetParams::UnaryDatasetParams(
-    DatasetParams* input_dataset_params, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes, string node_name,
-    DatasetParamsType type)
-    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                    std::move(node_name), type),
-      input_dataset_params(input_dataset_params) {}
-
-BinaryDatasetParams::BinaryDatasetParams(
-    DatasetParams* input_dataset_params_0,
-    DatasetParams* input_dataset_params_1, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes, string node_name,
-    DatasetParamsType type)
-    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                    std::move(node_name), type),
-      input_dataset_params_0(input_dataset_params_0),
-      input_dataset_params_1(input_dataset_params_1) {}
+Status MapDatasetParams::MakeInputs(
+    gtl::InlinedVector<TensorValue, 4>* inputs) {
+  inputs->reserve(input_dataset_params_group.size());
+  for (auto& pair : input_dataset_params_group) {
+    if (!IsDatasetTensor(pair.second)) {
+      inputs->clear();
+      return errors::Internal(
+          "The input dataset is not populated as the dataset tensor yet.");
+    } else {
+      inputs->emplace_back(TensorValue(&pair.second));
+    }
+  }
+  for (auto& argument : other_arguments) {
+    inputs->emplace_back(TensorValue(&argument));
+  }
+  return Status::OK();
+}
 
 RangeDatasetParams::RangeDatasetParams(
     int64 start, int64 stop, int64 step, DataTypeVector output_dtypes,
     std::vector<PartialTensorShape> output_shapes, string node_name)
-    : SourceDatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                          std::move(node_name), DatasetParamsType::Range),
+    : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                    std::move(node_name), DatasetParamsType::Range),
       start(CreateTensor<int64>(TensorShape({}), {start})),
       stop(CreateTensor<int64>(TensorShape({}), {stop})),
       step(CreateTensor<int64>(TensorShape({}), {step})) {}
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
-    : SourceDatasetParams({DT_INT64}, {PartialTensorShape({})}, "",
-                          DatasetParamsType::Range),
+    : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset",
+                    DatasetParamsType::Range),
       start(CreateTensor<int64>(TensorShape({}), {start})),
       stop(CreateTensor<int64>(TensorShape({}), {stop})),
       step(CreateTensor<int64>(TensorShape({}), {step})) {}
@@ -108,57 +128,6 @@ RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
 Status RangeDatasetParams::MakeInputs(
     gtl::InlinedVector<TensorValue, 4>* inputs) {
   *inputs = {TensorValue(&start), TensorValue(&stop), TensorValue(&step)};
-  return Status::OK();
-}
-
-BatchDatasetParams::BatchDatasetParams(
-    DatasetParams* input_dataset_params, int64 batch_size, bool drop_remainder,
-    bool parallel_copy, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes, string node_name)
-    : UnaryDatasetParams(input_dataset_params, std::move(output_dtypes),
-                         std::move(output_shapes), std::move(node_name),
-                         DatasetParamsType::Batch),
-      batch_size(CreateTensor<int64>(TensorShape({}), {batch_size})),
-      drop_remainder(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
-      parallel_copy(parallel_copy) {}
-
-Status BatchDatasetParams::MakeInputs(
-    gtl::InlinedVector<TensorValue, 4>* inputs) {
-  if (!IsDatasetTensor(input_dataset)) {
-    return errors::Internal(
-        "The input dataset is not populated as the dataset tensor yet.");
-  }
-  *inputs = {TensorValue(&input_dataset), TensorValue(&batch_size),
-             TensorValue(&drop_remainder)};
-  return Status::OK();
-}
-
-MapDatasetParams::MapDatasetParams(
-    DatasetParams* input_dataset_params, std::vector<Tensor> other_arguments,
-    FunctionDefHelper::AttrValueWrapper func, std::vector<FunctionDef> func_lib,
-    DataTypeVector type_arguments, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes,
-    bool use_inter_op_parallelism, bool preserve_cardinality, string node_name)
-    : UnaryDatasetParams(input_dataset_params, std::move(output_dtypes),
-                         std::move(output_shapes), std::move(node_name),
-                         DatasetParamsType::Map),
-      other_arguments(std::move(other_arguments)),
-      func(std::move(func)),
-      func_lib(std::move(func_lib)),
-      type_arguments(std::move(type_arguments)),
-      use_inter_op_parallelism(use_inter_op_parallelism),
-      preserve_cardinality(preserve_cardinality) {}
-
-Status MapDatasetParams::MakeInputs(
-    gtl::InlinedVector<TensorValue, 4>* inputs) {
-  if (!IsDatasetTensor(input_dataset)) {
-    return tensorflow::errors::Internal(
-        "The input dataset is not populated as the dataset tensor yet.");
-  }
-  *inputs = {TensorValue(&input_dataset)};
-  for (auto& argument : other_arguments) {
-    inputs->emplace_back(TensorValue(&argument));
-  }
   return Status::OK();
 }
 

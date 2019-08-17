@@ -30,9 +30,6 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
         InitFunctionLibraryRuntime(map_dataset_params->func_lib, cpu_num_));
     TF_RETURN_IF_ERROR(
         MakeDatasetOpKernel(*map_dataset_params, &dataset_kernel_));
-    TF_RETURN_IF_ERROR(
-        MakeDatasetTensor(map_dataset_params->input_dataset_params,
-                          &map_dataset_params->input_dataset));
     TF_RETURN_IF_ERROR(MakeDatasetAndIterator(map_dataset_params));
     return Status::OK();
   }
@@ -41,10 +38,13 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
   // Creates a new MapDataset op kernel.
   Status MakeDatasetOpKernel(const MapDatasetParams& map_dataset_params,
                              std::unique_ptr<OpKernel>* map_kernel) override {
+    std::vector<string> input_placeholder = {MapDatasetOp::kInputDataset};
+    if (!map_dataset_params.other_arguments.empty()) {
+      input_placeholder.emplace_back(MapDatasetOp::kOtherArguments);
+    }
     NodeDef map_dataset_node_def = test::function::NDef(
         map_dataset_params.node_name,
-        name_utils::OpName(MapDatasetOp::kDatasetType),
-        {MapDatasetOp::kInputDataset},
+        name_utils::OpName(MapDatasetOp::kDatasetType), input_placeholder,
         {{MapDatasetOp::kFunc, map_dataset_params.func},
          {MapDatasetOp::kTarguments, map_dataset_params.type_arguments},
          {MapDatasetOp::kOutputShapes, map_dataset_params.output_shapes},
@@ -58,10 +58,10 @@ class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
   }
 };
 
-MapDatasetParams* MapDatasetParams1() {
-  auto* range_dataset_params = new RangeDatasetParams(0, 10, 3);
-  return range_dataset_params
-      ->Map(
+std::shared_ptr<MapDatasetParams> MapDatasetParams1() {
+  auto range_dataset_params = Range(0, 10, 3);
+  auto map_dataset_params_0 =
+      Map(range_dataset_params,
           /*other_arguments=*/{},
           /*func=*/
           FunctionDefHelper::FunctionRef("XTimesTwo", {{"T", DT_INT64}}),
@@ -71,8 +71,9 @@ MapDatasetParams* MapDatasetParams1() {
           /*output_shapes=*/{PartialTensorShape({})},
           /*use_inter_op_parallelism=*/true,
           /*preserve_cardinality=*/true,
-          /*node_name=*/kNodeName)
-      ->Map(
+          /*node_name=*/"map_dataset_0");
+  auto map_dataset_params_1 =
+      Map(map_dataset_params_0,
           /*other_arguments=*/{},
           /*func=*/
           FunctionDefHelper::FunctionRef("XTimesTwo", {{"T", DT_INT64}}),
@@ -82,20 +83,21 @@ MapDatasetParams* MapDatasetParams1() {
           /*output_shapes=*/{PartialTensorShape({})},
           /*use_inter_op_parallelism=*/true,
           /*preserve_cardinality=*/true,
-          /*node_name=*/kNodeName);
+          /*node_name=*/"map_dataset_1");
+  return map_dataset_params_1;
 }
 
-MapDatasetParams* MapDatasetParams2() {
-  auto* range_dataset_params = new RangeDatasetParams(10, 0, -3);
-  return range_dataset_params
-      ->Batch(
-          /*batch_size=*/2,
-          /*drop_remainder=*/false,
-          /*parallel_copy=*/true,
-          /*output_dtypes=*/{DT_INT64},
-          /*output_shapes=*/{PartialTensorShape({2})},
-          /*node_name=*/"batch_node")
-      ->Map(
+std::shared_ptr<MapDatasetParams> MapDatasetParams2() {
+  auto range_dataset_params = Range(10, 0, -3);
+  auto batch_dataset_params = Batch(range_dataset_params,
+                                    /*batch_size=*/2,
+                                    /*drop_remainder=*/false,
+                                    /*parallel_copy=*/true,
+                                    /*output_dtypes=*/{DT_INT64},
+                                    /*output_shapes=*/{PartialTensorShape({2})},
+                                    /*node_name=*/"batch_dataset");
+  auto map_dataset_params =
+      Map(batch_dataset_params,
           /*other_arguments=*/{},
           /*func=*/
           FunctionDefHelper::FunctionRef("XAddX", {{"T", DT_INT64}}),
@@ -106,13 +108,15 @@ MapDatasetParams* MapDatasetParams2() {
           /*use_inter_op_parallelism=*/true,
           /*preserve_cardinality=*/false,
           /*node_name=*/kNodeName);
+  return map_dataset_params;
 }
 
 // In this test case, the function `XTimesFour()` will call `XTimesTwo()`, so
 // both of them are added to the function library.
-MapDatasetParams* MapDatasetParams3() {
-  auto* range_dataset_params = new RangeDatasetParams(0, 10, 3);
-  return range_dataset_params->Map(
+std::shared_ptr<MapDatasetParams> MapDatasetParams3() {
+  auto range_dataset_params = Range(0, 10, 3);
+  auto map_dataset_params = Map(
+      range_dataset_params,
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XTimesFour", {{"T", DT_INT64}}),
@@ -123,9 +127,11 @@ MapDatasetParams* MapDatasetParams3() {
       /*use_inter_op_parallelism=*/false,
       /*preserve_cardinality=*/true,
       /*node_name=*/kNodeName);
+  return map_dataset_params;
 }
 
-std::vector<GetNextTestCase<MapDatasetParams*>> GetNextTestCases() {
+std::vector<GetNextTestCase<std::shared_ptr<MapDatasetParams>>>
+GetNextTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})},
@@ -140,38 +146,38 @@ std::vector<GetNextTestCase<MapDatasetParams*>> GetNextTestCases() {
 ITERATOR_GET_NEXT_TEST_P(MapDatasetOpTest, MapDatasetParams, GetNextTestCases())
 
 TEST_F(MapDatasetOpTest, DatasetNodeName) {
-  auto* dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetNodeName(dataset_params->node_name));
 }
 
 TEST_F(MapDatasetOpTest, DatasetTypeString) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(
       CheckDatasetTypeString(name_utils::OpName(MapDatasetOp::kDatasetType)));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
-std::vector<CardinalityTestCase<MapDatasetParams*>> CardinalityTestCases() {
-  return {{/*dataset_params=*/MapDatasetParams1(), /*expected_cardinality=*/4},
-          {/*dataset_params=*/MapDatasetParams2(), /*expected_cardinality=*/2},
-          {/*dataset_params=*/MapDatasetParams3(), /*expected_cardinality=*/4}};
+std::vector<CardinalityTestCase<std::shared_ptr<MapDatasetParams>>>
+CardinalityTestCases() {
+  return {{/*dataset_params=*/MapDatasetParams1(),
+           /*expected_cardinality=*/4},
+          {/*dataset_params=*/MapDatasetParams2(),
+           /*expected_cardinality=*/2},
+          {/*dataset_params=*/MapDatasetParams3(),
+           /*expected_cardinality=*/4}};
 }
 
 DATASET_CARDINALITY_TEST_P(MapDatasetOpTest, MapDatasetParams,
@@ -179,27 +185,24 @@ DATASET_CARDINALITY_TEST_P(MapDatasetOpTest, MapDatasetParams,
 
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorPrefix) {
   auto dataset_params = MapDatasetParams1();
-  core::ScopedUnref scoped_unref(dataset_params);
-  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params.get()));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       MapDatasetOp::kDatasetType, dataset_params->iterator_prefix)));
 }
 
-std::vector<IteratorSaveAndRestoreTestCase<MapDatasetParams*>>
+std::vector<IteratorSaveAndRestoreTestCase<std::shared_ptr<MapDatasetParams>>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/MapDatasetParams1(),
            /*breakpoints*/ {0, 1, 5},
