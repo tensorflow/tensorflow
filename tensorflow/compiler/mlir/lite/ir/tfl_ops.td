@@ -2805,4 +2805,49 @@ the output tensor can vary depending on how many true values there are in
   );
 }
 
+def SVDFResultConstraint: PredOpTrait<
+  "the input and result tensor elemental types must be same",
+  TCresVTEtIsSameAsOp<0, 0>>;
+
+// SVDF op.
+def TFL_SVDFOp :
+  TFL_Op<"svdf",
+         [SVDFResultConstraint, StatefulOperands<[4]>]> {
+
+  let summary = "Single value decomposition filter operator";
+
+  let description = [{
+    The SVDF op is a decomposition of a densely connected op into low rank
+    filters.
+    For details: https://research.google.com/pubs/pub43813.html
+                 https://arxiv.org/abs/1812.02802
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, I8]>:$input,
+
+    // Feature Weights.
+    TensorOf<[F32, I8]>:$feature_weights,
+
+    // Time weights
+    TensorOf<[F32, I8]>:$time_weights,
+
+    // Bias
+    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+
+    // Activation state.
+    TFL_StatefulTensor:$activation_state,
+
+    // Attributes
+    I32Attr:$rank,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs TensorOf<[F32, I8]>:$output);
+
+  let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
 #endif // TFL_OPS
