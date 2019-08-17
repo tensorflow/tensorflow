@@ -734,7 +734,6 @@ cc_library(
         "lib/io/table.h",
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
-        "lib/math/math_util.h",
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
@@ -758,6 +757,7 @@ cc_library(
         ":platform_protobuf_hdrs",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
+        "//tensorflow/core/lib/math:math_util.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1795,6 +1795,7 @@ filegroup(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/math:math_util.h",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2379,6 +2380,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/platform:legacy_lib_internal_headers",
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+    "//tensorflow/core/lib/math:math_util.h",
 ] + glob(
     [
         "lib/**/*.h",
@@ -3782,7 +3784,6 @@ tf_cc_tests(
         "lib/io/snappy/snappy_buffers_test.cc",
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",
-        "lib/math/math_util_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
         "lib/monitoring/gauge_test.cc",
@@ -3799,6 +3800,7 @@ tf_cc_tests(
         "lib/strings/strcat_test.cc",
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
+        "//tensorflow/core/lib/math:math_util_test.cc",
         "//tensorflow/core/platform:fingerprint_test.cc",
         "//tensorflow/core/platform:integral_types_test.cc",
         "//tensorflow/core/platform:logging_test.cc",
