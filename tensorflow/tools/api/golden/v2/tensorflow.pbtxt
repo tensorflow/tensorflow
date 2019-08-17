@@ -257,10 +257,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "mlir"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }
