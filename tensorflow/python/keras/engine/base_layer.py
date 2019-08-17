@@ -36,6 +36,7 @@ from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -83,6 +84,9 @@ from tensorflow.tools.docs import doc_controls
 
 # Prefix that is added to the TF op layer names.
 _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
+_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
+                                           'keras layers usage', 'method')
 
 
 @keras_export('keras.layers.Layer')
@@ -2549,6 +2553,7 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
+    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
     else:
