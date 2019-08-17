@@ -49,7 +49,11 @@ int main(int argc, char* argv[]) {
   // The size of this will depend on the model you're using, and may need to be
   // determined by experimentation.
   const int tensor_arena_size = 10 * 1024;
-  uint8_t tensor_arena[tensor_arena_size];
+  #ifdef ESP32
+    uint8_t* tensor_arena = (uint8_t*) malloc(tensor_arena_size);
+  #elif
+    uint8_t tensor_arena[tensor_arena_size];
+  #endif
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
