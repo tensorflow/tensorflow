@@ -121,7 +121,7 @@ void TrimFunctionsPass::Verify() {
 /// pass.
 std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
-  return llvm::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
+  return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }
 
 static PassRegistration<TrimFunctionsPass> pass(

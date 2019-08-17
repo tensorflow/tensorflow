@@ -332,7 +332,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 }  // namespace
 
 std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG() {
-  return llvm::make_unique<FunctionalControlFlowToCFG>();
+  return std::make_unique<FunctionalControlFlowToCFG>();
 }
 
 static PassRegistration<FunctionalControlFlowToCFG> pass(

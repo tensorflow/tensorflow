@@ -146,6 +146,7 @@ cc_library(
     hdrs = [
         "utils/validators.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
@@ -171,6 +172,7 @@ cc_library(
         # TODO(fengliuai): remove this dependence.
         "//tensorflow/compiler/mlir/lite/quantization:quantization_utils.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
@@ -204,6 +206,7 @@ cc_library(
     hdrs = [
         "transforms/passes.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         ":validators",
@@ -232,6 +235,7 @@ cc_library(
     hdrs = [
         "transforms/passes.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         ":validators",
@@ -258,6 +262,7 @@ cc_library(
     hdrs = [
         "transforms/passes.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         ":validators",
@@ -315,6 +320,7 @@ cc_library(
     srcs = [
         "ir/dialect_registration.cc",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "@local_config_mlir//:IR",
@@ -359,6 +365,7 @@ cc_library(
     hdrs = [
         "flatbuffer_operator.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -388,6 +395,7 @@ cc_library(
     hdrs = [
         "emit_error_reporter.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/lite/core/api",
         "@local_config_mlir//:IR",
@@ -404,6 +412,7 @@ cc_library(
         "flatbuffer_import.h",
         "flatbuffer_translate.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
@@ -453,6 +462,7 @@ cc_library(
     hdrs = [
         "tf_tfl_translate_cl.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "@llvm//:support",
     ],
@@ -511,6 +521,7 @@ cc_library(
     hdrs = [
         "tf_tfl_passes.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
@@ -538,6 +549,7 @@ cc_library(
     hdrs = [
         "tf_to_tfl_flatbuffer.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",

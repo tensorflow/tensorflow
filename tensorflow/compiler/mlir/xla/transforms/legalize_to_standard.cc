@@ -124,7 +124,7 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeToStdPass() {
-  return llvm::make_unique<LegalizeToStandard>();
+  return std::make_unique<LegalizeToStandard>();
 }
 
 /// Perform the lowering to standard dialect.

@@ -530,12 +530,12 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
 std::unique_ptr<FunctionPassBase>
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
-  return llvm::make_unique<LinalgTilingPass>(tileSizes, promoteViews);
+  return std::make_unique<LinalgTilingPass>(tileSizes, promoteViews);
 }
 
 static PassRegistration<LinalgTilingPass>
     pass("linalg-tile", "Tile operations in the linalg dialect", [] {
-      auto pass = llvm::make_unique<LinalgTilingPass>();
+      auto pass = std::make_unique<LinalgTilingPass>();
       pass->tileSizes.assign(clTileSizes.begin(), clTileSizes.end());
       pass->promoteViews = clPromoteFullTileViews;
       return pass;

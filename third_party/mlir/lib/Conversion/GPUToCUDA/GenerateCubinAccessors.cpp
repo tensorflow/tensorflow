@@ -120,7 +120,7 @@ private:
 } // anonymous namespace
 
 std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass() {
-  return llvm::make_unique<GpuGenerateCubinAccessorsPass>();
+  return std::make_unique<GpuGenerateCubinAccessorsPass>();
 }
 
 static PassRegistration<GpuGenerateCubinAccessorsPass>

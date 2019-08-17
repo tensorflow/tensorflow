@@ -200,7 +200,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 }
 
 std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion() {
-  return llvm::make_unique<ExecutorToControlDialectConversion>();
+  return std::make_unique<ExecutorToControlDialectConversion>();
 }
 
 }  // namespace mlir

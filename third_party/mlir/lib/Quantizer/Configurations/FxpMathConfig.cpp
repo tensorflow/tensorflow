@@ -283,5 +283,5 @@ struct FxpMathTargetConfigImpl : public FxpMathTargetConfig {
 
 std::unique_ptr<FxpMathTargetConfig>
 FxpMathTargetConfig::create(SolverContext &context) {
-  return llvm::make_unique<FxpMathTargetConfigImpl>(context);
+  return std::make_unique<FxpMathTargetConfigImpl>(context);
 }

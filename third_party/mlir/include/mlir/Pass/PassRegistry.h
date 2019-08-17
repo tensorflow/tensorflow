@@ -122,7 +122,7 @@ template <typename ConcretePass> struct PassRegistration {
 
   PassRegistration(StringRef arg, StringRef description) {
     PassAllocatorFunction constructor = [] {
-      return llvm::make_unique<ConcretePass>();
+      return std::make_unique<ConcretePass>();
     };
     registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
   }

@@ -283,7 +283,7 @@ void PassManager::addPass(std::unique_ptr<ModulePassBase> pass) {
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    mpe->addPass(llvm::make_unique<ModuleVerifierPass>());
+    mpe->addPass(std::make_unique<ModuleVerifierPass>());
 }
 
 /// Add a function pass to the current manager. This takes ownership over the
@@ -295,11 +295,11 @@ void PassManager::addPass(std::unique_ptr<FunctionPassBase> pass) {
     /// Create an executor adaptor for this pass.
     if (disableThreads || !llvm::llvm_is_multithreaded()) {
       // If multi-threading is disabled, then create a synchronous adaptor.
-      auto adaptor = llvm::make_unique<ModuleToFunctionPassAdaptor>();
+      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptor>();
       fpe = &adaptor->getFunctionExecutor();
       addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
     } else {
-      auto adaptor = llvm::make_unique<ModuleToFunctionPassAdaptorParallel>();
+      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptorParallel>();
       fpe = &adaptor->getFunctionExecutor();
       addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
     }
@@ -313,7 +313,7 @@ void PassManager::addPass(std::unique_ptr<FunctionPassBase> pass) {
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    fpe->addPass(llvm::make_unique<FunctionVerifierPass>());
+    fpe->addPass(std::make_unique<FunctionVerifierPass>());
 }
 
 /// Add the provided instrumentation to the pass manager. This takes ownership

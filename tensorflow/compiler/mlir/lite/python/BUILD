@@ -15,6 +15,7 @@ cc_library(
     hdrs = [
         "graphdef_to_tfl_flatbuffer.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",

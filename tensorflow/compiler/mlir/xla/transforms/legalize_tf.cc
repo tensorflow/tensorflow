@@ -34,7 +34,7 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeTFPass() {
-  return llvm::make_unique<LegalizeTF>();
+  return std::make_unique<LegalizeTF>();
 }
 
 /// Returns if the given TF data format string is the default format.

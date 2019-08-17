@@ -260,7 +260,7 @@ struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
 
   /// A clone method to create a copy of this pass.
   std::unique_ptr<FunctionPassBase> clone() const override {
-    return llvm::make_unique<T>(*static_cast<const T *>(this));
+    return std::make_unique<T>(*static_cast<const T *>(this));
   }
 };
 

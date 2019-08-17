@@ -113,7 +113,7 @@ void ConvertConstPass::runOnFunction() {
 }
 
 std::unique_ptr<FunctionPassBase> mlir::quant::createConvertConstPass() {
-  return llvm::make_unique<ConvertConstPass>();
+  return std::make_unique<ConvertConstPass>();
 }
 
 static PassRegistration<ConvertConstPass>

@@ -75,7 +75,7 @@ void TestConstantFold::runOnFunction() {
 
 /// Creates a constant folding pass.
 std::unique_ptr<FunctionPassBase> mlir::createTestConstantFoldPass() {
-  return llvm::make_unique<TestConstantFold>();
+  return std::make_unique<TestConstantFold>();
 }
 
 static PassRegistration<TestConstantFold>
