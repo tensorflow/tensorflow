@@ -65,13 +65,6 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   return Unimplemented("Not yet implemented in MLIR compiler");
 }
 
-Status MlirCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group,
-    absl::Span<se::StreamExecutor* const> executors,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Not yet implemented in MLIR compiler");
-}
-
 StatusOr<std::vector<std::unique_ptr<Executable>>>
 MlirCompiler::RunBackendOnModuleGroup(
     std::unique_ptr<HloModuleGroup> module_group,
