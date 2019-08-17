@@ -878,7 +878,6 @@ class TrtGraphConverterV2(object):
     if (self._need_calibration and not conversion_params.is_dynamic_op):
       raise ValueError("INT8 precision mode with calibration is not supported "
                        "with static TensorRT ops. Set is_dynamic_op to True.")
-    self._calibration_data_collected = False
 
     self._converted = False
 
@@ -901,9 +900,7 @@ class TrtGraphConverterV2(object):
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
-  def convert(self,
-              num_calibration_runs=None,
-              calibration_input_map_fn=None):
+  def convert(self, num_calibration_runs=None, calibration_input_map_fn=None):
     """Convert the input SavedModel in 2.0 format.
 
     Args:
@@ -915,6 +912,7 @@ class TrtGraphConverterV2(object):
         def input_map_fn():
           return input1, input2, input3
         ```
+
     Raises:
       ValueError: if the input combination is invalid.
 
@@ -924,14 +922,12 @@ class TrtGraphConverterV2(object):
     assert not self._converted
 
     if (self._need_calibration and
-        (not num_calibration_runs or
-         not calibration_input_map_fn)):
+        (not num_calibration_runs or not calibration_input_map_fn)):
       raise ValueError(
           "Should specify num_calibration_runs and calibration_input_map_fn"
           "because INT8 calibration is needed")
     if (not self._need_calibration and
-        (num_calibration_runs or
-         calibration_input_map_fn)):
+        (num_calibration_runs or calibration_input_map_fn)):
       raise ValueError(
           "Should not specify num_calibration_runs or calibration_input_map_fn"
           "because INT8 calibration is not needed")
@@ -961,39 +957,16 @@ class TrtGraphConverterV2(object):
         func.graph.structured_outputs,
         self._converted_func.graph.structured_outputs)
 
+    if self._need_calibration:
+      for _ in range(num_calibration_runs):
+        self._converted_func(
+            *map(ops.convert_to_tensor, calibration_input_map_fn()))
+
     self._converted = True
-
-    if self._need_calibration and not self._calibration_data_collected:
-      self._calibrate(num_runs=num_calibration_runs,
-                      input_map_fn=calibration_input_map_fn)
-
-  def _calibrate(self,
-                 num_runs=None,
-                 input_map_fn=None):
-    """Run calibration.
-
-    Args:
-      num_runs: number of runs of the graph during calibration.
-      input_map_fn: a function that returns inputs for the converted
-        tf_function to be calibrated.
-        Example:
-        ```
-        def input_map_fn():
-          return input1, input2, input3
-        ```
-    """
-    assert self._converted
-    assert self._need_calibration
-    assert num_runs
-    assert input_map_fn
-
-    for _ in range(num_runs):
-      self._converted_func(*map(ops.convert_to_tensor, input_map_fn()))
-
-    self._calibration_data_collected = True
 
   def build(self, *args, **kwargs):
     """Run inference on graph in order to build a TensorRT engine
+
        in the cahce of TRTEngineOp.
 
     Returns:
@@ -1004,8 +977,8 @@ class TrtGraphConverterV2(object):
     try:
       return self._converted_func(*args_tensor, **kwargs_tensor)
     except OpError:
-      print('Failure in execution of function with input args {}'
-            'and kwargs {}'.format(args_tensor, kwargs_tensor))
+      print("Failure in execution of function with input args {}"
+            "and kwargs {}".format(args_tensor, kwargs_tensor))
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
