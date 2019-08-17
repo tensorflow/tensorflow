@@ -45,6 +45,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -850,6 +851,29 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       assert (
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+
+      cbks = [keras.callbacks.LearningRateScheduler(lambda epoch, _: learning_rate_schedule.CosineDecay(
+          0.01, 2)(epoch))]
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+
+      cosine_decay_np = 0.5 * (1 + np.cos(np.pi * (1 / 2)))
+      decayed_learning_rate = 0.01 * cosine_decay_np
+
+      assert (
+          float(keras.backend.get_value(
+              model.optimizer.lr
+              )) - decayed_learning_rate) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
