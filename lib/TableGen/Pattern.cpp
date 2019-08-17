@@ -122,7 +122,7 @@ Operator &tblgen::DagNode::getDialectOp(RecordOperatorMap *mapper) const {
   auto it = mapper->find(opDef);
   if (it != mapper->end())
     return *it->second;
-  return *mapper->try_emplace(opDef, llvm::make_unique<Operator>(opDef))
+  return *mapper->try_emplace(opDef, std::make_unique<Operator>(opDef))
               .first->second;
 }
 

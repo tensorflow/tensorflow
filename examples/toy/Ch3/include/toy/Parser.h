@@ -62,7 +62,7 @@ public:
     if (lexer.getCurToken() != tok_eof)
       return parseError<ModuleAST>("nothing", "at end of module");
 
-    return llvm::make_unique<ModuleAST>(std::move(functions));
+    return std::make_unique<ModuleAST>(std::move(functions));
   }
 
 private:
@@ -81,7 +81,7 @@ private:
       if (!expr)
         return nullptr;
     }
-    return llvm::make_unique<ReturnExprAST>(std::move(loc), std::move(expr));
+    return std::make_unique<ReturnExprAST>(std::move(loc), std::move(expr));
   }
 
   /// Parse a literal number.
@@ -89,7 +89,7 @@ private:
   std::unique_ptr<ExprAST> ParseNumberExpr() {
     auto loc = lexer.getLastLocation();
     auto Result =
-        llvm::make_unique<NumberExprAST>(std::move(loc), lexer.getValue());
+        std::make_unique<NumberExprAST>(std::move(loc), lexer.getValue());
     lexer.consume(tok_number);
     return std::move(Result);
   }
@@ -157,8 +157,8 @@ private:
                                      "inside literal expession");
       }
     }
-    return llvm::make_unique<LiteralExprAST>(std::move(loc), std::move(values),
-                                             std::move(dims));
+    return std::make_unique<LiteralExprAST>(std::move(loc), std::move(values),
+                                            std::move(dims));
   }
 
   /// parenexpr ::= '(' expression ')'
@@ -184,7 +184,7 @@ private:
     lexer.getNextToken(); // eat identifier.
 
     if (lexer.getCurToken() != '(') // Simple variable ref.
-      return llvm::make_unique<VariableExprAST>(std::move(loc), name);
+      return std::make_unique<VariableExprAST>(std::move(loc), name);
 
     // This is a function call.
     lexer.consume(Token('('));
@@ -211,13 +211,11 @@ private:
       if (Args.size() != 1)
         return parseError<ExprAST>("<single arg>", "as argument to print()");
 
-      return llvm::make_unique<PrintExprAST>(std::move(loc),
-                                             std::move(Args[0]));
+      return std::make_unique<PrintExprAST>(std::move(loc), std::move(Args[0]));
     }
 
     // Call to a user-defined function
-    return llvm::make_unique<CallExprAST>(std::move(loc), name,
-                                          std::move(Args));
+    return std::make_unique<CallExprAST>(std::move(loc), name, std::move(Args));
   }
 
   /// primary
@@ -281,8 +279,8 @@ private:
       }
 
       // Merge LHS/RHS.
-      LHS = llvm::make_unique<BinaryExprAST>(std::move(loc), BinOp,
-                                             std::move(LHS), std::move(RHS));
+      LHS = std::make_unique<BinaryExprAST>(std::move(loc), BinOp,
+                                            std::move(LHS), std::move(RHS));
     }
   }
 
@@ -302,7 +300,7 @@ private:
       return parseError<VarType>("<", "to begin type");
     lexer.getNextToken(); // eat <
 
-    auto type = llvm::make_unique<VarType>();
+    auto type = std::make_unique<VarType>();
 
     while (lexer.getCurToken() == tok_number) {
       type->shape.push_back(lexer.getValue());
@@ -341,11 +339,11 @@ private:
     }
 
     if (!type)
-      type = llvm::make_unique<VarType>();
+      type = std::make_unique<VarType>();
     lexer.consume(Token('='));
     auto expr = ParseExpression();
-    return llvm::make_unique<VarDeclExprAST>(std::move(loc), std::move(id),
-                                             std::move(*type), std::move(expr));
+    return std::make_unique<VarDeclExprAST>(std::move(loc), std::move(id),
+                                            std::move(*type), std::move(expr));
   }
 
   /// Parse a block: a list of expression separated by semicolons and wrapped in
@@ -359,7 +357,7 @@ private:
       return parseError<ExprASTList>("{", "to begin block");
     lexer.consume(Token('{'));
 
-    auto exprList = llvm::make_unique<ExprASTList>();
+    auto exprList = std::make_unique<ExprASTList>();
 
     // Ignore empty expressions: swallow sequences of semicolons.
     while (lexer.getCurToken() == ';')
@@ -422,7 +420,7 @@ private:
         std::string name = lexer.getId();
         auto loc = lexer.getLastLocation();
         lexer.consume(tok_identifier);
-        auto decl = llvm::make_unique<VariableExprAST>(std::move(loc), name);
+        auto decl = std::make_unique<VariableExprAST>(std::move(loc), name);
         args.push_back(std::move(decl));
         if (lexer.getCurToken() != ',')
           break;
@@ -437,8 +435,8 @@ private:
 
     // success.
     lexer.consume(Token(')'));
-    return llvm::make_unique<PrototypeAST>(std::move(loc), FnName,
-                                           std::move(args));
+    return std::make_unique<PrototypeAST>(std::move(loc), FnName,
+                                          std::move(args));
   }
 
   /// Parse a function definition, we expect a prototype initiated with the
@@ -451,7 +449,7 @@ private:
       return nullptr;
 
     if (auto block = ParseBlock())
-      return llvm::make_unique<FunctionAST>(std::move(Proto), std::move(block));
+      return std::make_unique<FunctionAST>(std::move(Proto), std::move(block));
     return nullptr;
   }
 

@@ -77,7 +77,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 std::unique_ptr<FunctionPassBase> mlir::createLoopInvariantCodeMotionPass() {
-  return llvm::make_unique<LoopInvariantCodeMotion>();
+  return std::make_unique<LoopInvariantCodeMotion>();
 }
 
 // Returns true if the individual op is loop invariant.

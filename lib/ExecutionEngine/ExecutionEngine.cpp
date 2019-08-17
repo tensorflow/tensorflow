@@ -132,13 +132,13 @@ public:
       : irTransformer(transform),
         objectLayer(
             session,
-            [this]() { return llvm::make_unique<MemoryManager>(session); }),
+            [this]() { return std::make_unique<MemoryManager>(session); }),
         compileLayer(
             session, objectLayer,
             llvm::orc::ConcurrentIRCompiler(std::move(machineBuilder))),
         transformLayer(session, compileLayer, makeIRTransformFunction()),
         dataLayout(layout), mangler(session, this->dataLayout),
-        threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
+        threadSafeCtx(std::make_unique<llvm::LLVMContext>()) {
     session.getMainJITDylib().addGenerator(
         cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             layout.getGlobalPrefix())));
@@ -156,9 +156,9 @@ public:
     if (!dataLayout)
       return dataLayout.takeError();
 
-    return llvm::make_unique<OrcJIT>(std::move(*machineBuilder),
-                                     std::move(*dataLayout), transformer,
-                                     sharedLibPaths);
+    return std::make_unique<OrcJIT>(std::move(*machineBuilder),
+                                    std::move(*dataLayout), transformer,
+                                    sharedLibPaths);
   }
 
   // Add an LLVM module to the main library managed by the JIT engine.
@@ -328,7 +328,7 @@ Expected<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::create(ModuleOp m,
                         std::function<llvm::Error(llvm::Module *)> transformer,
                         ArrayRef<StringRef> sharedLibPaths) {
-  auto engine = llvm::make_unique<ExecutionEngine>();
+  auto engine = std::make_unique<ExecutionEngine>();
   auto expectedJIT = impl::OrcJIT::createDefault(transformer, sharedLibPaths);
   if (!expectedJIT)
     return expectedJIT.takeError();

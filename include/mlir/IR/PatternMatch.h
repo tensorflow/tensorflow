@@ -422,7 +422,7 @@ public:
     // FIXME: In c++17 this can be simplified by using 'fold expressions'.
     using dummy = int[];
     (void)dummy{
-        0, (patterns.emplace_back(llvm::make_unique<Ts>(arg, args...)), 0)...};
+        0, (patterns.emplace_back(std::make_unique<Ts>(arg, args...)), 0)...};
   }
 
 private:

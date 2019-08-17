@@ -68,7 +68,7 @@ void RemoveInstrumentationPass::runOnFunction() {
 
 std::unique_ptr<FunctionPassBase>
 mlir::quantizer::createRemoveInstrumentationPass() {
-  return llvm::make_unique<RemoveInstrumentationPass>();
+  return std::make_unique<RemoveInstrumentationPass>();
 }
 
 static PassRegistration<RemoveInstrumentationPass>

@@ -62,4 +62,4 @@ public:
 static PassRegistration<TestLoopMappingPass>
     reg("test-mapping-to-processing-elements",
         "test mapping a single loop on a virtual processor grid",
-        [] { return llvm::make_unique<TestLoopMappingPass>(); });
+        [] { return std::make_unique<TestLoopMappingPass>(); });

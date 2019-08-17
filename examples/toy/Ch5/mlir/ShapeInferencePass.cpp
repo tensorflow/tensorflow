@@ -376,6 +376,6 @@ public:
 
 namespace toy {
 std::unique_ptr<mlir::Pass> createShapeInferencePass() {
-  return llvm::make_unique<ShapeInferencePass>();
+  return std::make_unique<ShapeInferencePass>();
 }
 } // namespace toy

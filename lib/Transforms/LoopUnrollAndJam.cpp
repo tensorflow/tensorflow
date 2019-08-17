@@ -84,7 +84,7 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
 
 std::unique_ptr<FunctionPassBase>
 mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
-  return llvm::make_unique<LoopUnrollAndJam>(
+  return std::make_unique<LoopUnrollAndJam>(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 

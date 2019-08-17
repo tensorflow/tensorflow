@@ -250,6 +250,6 @@ static llvm::cl::opt<TestLegalizePatternDriver::ConversionMode>
 static mlir::PassRegistration<TestLegalizePatternDriver>
     legalizer_pass("test-legalize-patterns",
                    "Run test dialect legalization patterns", [] {
-                     return llvm::make_unique<TestLegalizePatternDriver>(
+                     return std::make_unique<TestLegalizePatternDriver>(
                          legalizerConversionMode);
                    });

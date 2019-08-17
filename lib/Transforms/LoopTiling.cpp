@@ -83,7 +83,7 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
 /// Function.
 std::unique_ptr<FunctionPassBase>
 mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
-  return llvm::make_unique<LoopTiling>(cacheSizeBytes);
+  return std::make_unique<LoopTiling>(cacheSizeBytes);
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified

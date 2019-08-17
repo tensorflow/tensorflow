@@ -112,7 +112,7 @@ method:
   /// supports, for use by the canonicalization pass.
   static void getCanonicalizationPatterns(mlir::OwningRewritePatternList &results,
                                           mlir::MLIRContext *context) {
-    results.push_back(llvm::make_unique<SimplifyRedundantTranspose>(context));
+    results.push_back(std::make_unique<SimplifyRedundantTranspose>(context));
   }
 ```
 

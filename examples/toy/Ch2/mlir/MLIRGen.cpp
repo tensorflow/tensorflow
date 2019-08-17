@@ -43,11 +43,11 @@ using namespace toy;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
-using llvm::make_unique;
 using llvm::ScopedHashTableScope;
 using llvm::SmallVector;
 using llvm::StringRef;
 using llvm::Twine;
+using std::make_unique;
 
 namespace {
 
@@ -172,7 +172,7 @@ private:
 
     // Create a builder for the function, it will be used throughout the codegen
     // to create operations in this function.
-    builder = llvm::make_unique<mlir::OpBuilder>(function.getBody());
+    builder = std::make_unique<mlir::OpBuilder>(function.getBody());
 
     // Emit the body of the function.
     if (!mlirGen(*funcAST.getBody())) {

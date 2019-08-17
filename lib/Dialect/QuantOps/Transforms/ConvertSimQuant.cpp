@@ -105,7 +105,7 @@ void ConvertSimulatedQuantPass::runOnFunction() {
 
 std::unique_ptr<FunctionPassBase>
 mlir::quant::createConvertSimulatedQuantPass() {
-  return llvm::make_unique<ConvertSimulatedQuantPass>();
+  return std::make_unique<ConvertSimulatedQuantPass>();
 }
 
 static PassRegistration<ConvertSimulatedQuantPass>

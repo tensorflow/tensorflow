@@ -183,7 +183,7 @@ LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
 std::unique_ptr<FunctionPassBase> mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
     const std::function<unsigned(AffineForOp)> &getUnrollFactor) {
-  return llvm::make_unique<LoopUnroll>(
+  return std::make_unique<LoopUnroll>(
       unrollFactor == -1 ? None : Optional<unsigned>(unrollFactor),
       unrollFull == -1 ? None : Optional<bool>(unrollFull), getUnrollFactor);
 }

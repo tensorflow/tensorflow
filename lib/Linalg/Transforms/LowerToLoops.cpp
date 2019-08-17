@@ -391,7 +391,7 @@ void LowerLinalgToLoopsPass::runOnFunction() {
 }
 
 std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
-  return llvm::make_unique<LowerLinalgToLoopsPass>();
+  return std::make_unique<LowerLinalgToLoopsPass>();
 }
 
 static PassRegistration<LowerLinalgToLoopsPass>

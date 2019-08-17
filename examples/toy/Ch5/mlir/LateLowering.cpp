@@ -455,6 +455,6 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
 
 namespace toy {
 std::unique_ptr<mlir::Pass> createLateLoweringPass() {
-  return llvm::make_unique<LateLoweringPass>();
+  return std::make_unique<LateLoweringPass>();
 }
 } // namespace toy

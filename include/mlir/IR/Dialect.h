@@ -262,7 +262,7 @@ protected:
     addInterfaces<T2, Tys...>();
   }
   template <typename T> void addInterfaces() {
-    addInterface(llvm::make_unique<T>(this));
+    addInterface(std::make_unique<T>(this));
   }
 
 private:
