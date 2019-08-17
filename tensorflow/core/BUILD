@@ -740,10 +740,6 @@ cc_library(
         "lib/monitoring/gauge.h",
         "lib/monitoring/metric_def.h",
         "lib/monitoring/sampler.h",
-        "lib/random/distribution_sampler.h",
-        "lib/random/philox_random.h",
-        "lib/random/random_distributions.h",
-        "lib/random/simple_philox.h",
         "lib/strings/numbers.h",
         "lib/strings/proto_serialization.h",
         "lib/strings/str_util.h",
@@ -758,6 +754,7 @@ cc_library(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/random:legacy_lib_random_headers",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1795,6 +1792,8 @@ filegroup(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/math:math_util.h",
     ] + glob(
         [
@@ -2380,6 +2379,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/platform:legacy_lib_internal_headers",
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+    "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
     "//tensorflow/core/lib/math:math_util.h",
 ] + glob(
     [
@@ -2409,9 +2409,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
     "lib/png/png_io.h",
-    "lib/random/random.h",
-    "lib/random/random_distributions.h",
-    "lib/random/weighted_picker.h",
+    "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "lib/strings/base64.h",
     "lib/strings/ordered_code.h",
     "lib/strings/proto_text_util.h",
@@ -2487,6 +2485,7 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
@@ -3683,8 +3682,8 @@ cc_library(
         "lib/io/block.h",
         "lib/io/block_builder.h",
         "lib/io/format.h",
-        "lib/random/philox_random_test_utils.h",
         "//tensorflow/core/lib/gtl:legacy_lib_test_internal_headers",
+        "//tensorflow/core/lib/random:legacy_lib_test_internal_headers",
     ],
     deps = [
         ":lib",
@@ -3789,10 +3788,6 @@ tf_cc_tests(
         "lib/monitoring/gauge_test.cc",
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
-        "lib/random/distribution_sampler_test.cc",
-        "lib/random/philox_random_test.cc",
-        "lib/random/random_test.cc",
-        "lib/random/simple_philox_test.cc",
         "lib/strings/base64_test.cc",
         "lib/strings/numbers_test.cc",
         "lib/strings/scanner_test.cc",
@@ -3801,6 +3796,7 @@ tf_cc_tests(
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/math:math_util_test.cc",
+        "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/platform:fingerprint_test.cc",
         "//tensorflow/core/platform:integral_types_test.cc",
         "//tensorflow/core/platform:logging_test.cc",
@@ -3848,7 +3844,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "lib_random_random_distributions_test",
-    srcs = ["lib/random/random_distributions_test.cc"],
+    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_distributions_test"],
     tags = ["optonly"],
     deps = [
         ":lib",
@@ -4048,7 +4044,7 @@ tf_cc_test(
 tf_cc_test(
     name = "lib_random_weighted_picker_test",
     size = "medium",
-    srcs = ["lib/random/weighted_picker_test.cc"],
+    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_weighted_picker_test"],
     deps = [
         ":lib",
         ":lib_internal",
