@@ -1,0 +1,14 @@
+# To format a file manually using the command line:
+# npm install -g clang-format
+# clang-format -i --style=file <file>
+BasedOnStyle: Google # Copy Google style guide
+Language: Cpp # C++ language
+DerivePointerAlignment: false
+PointerAlignment: Left
+IndentWidth: 4
+---
+# ProtoBUF language by Google
+Language: Proto
+# Don't format .proto files.
+DisableFormat: true
+---
