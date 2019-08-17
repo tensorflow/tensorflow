@@ -99,8 +99,20 @@ sudo apt-get update && sudo apt-get install -y \
     sudo apt-get clean && \
     sudo rm -rf /var/lib/apt/lists/*
 ```
+## Install Tensorflow Community Supported Builds 
+Link to the upstream Tensorflow CSB doc:
+https://github.com/tensorflow/tensorflow#community-supported-builds
 
-## Install TensorFlow ROCm port
+We provide nightly tensorflow-rocm whl packages for Python 2.7, 3.5, 3.6 and 3.7 based systems.
+After downloading the compatible whl package, you can use pip/pip3 to install.
+
+For example, the following commands can be used to download and install the tensorflow-rocm CSB package on an Ubuntu 16.04 system previously configured with ROCm and Python3.5:
+```
+wget http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/lastSuccessfulBuild/artifact/pip35_test/whl/tensorflow_rocm-1.14.0-cp35-cp35m-manylinux1_x86_64.whl
+pip3 install --user tensorflow_rocm-1.14.0-cp35-cp35m-manylinux1_x86_64.whl
+```
+
+## Install TensorFlow ROCm release build
 
 Uninstall any previously-installed tensorflow whl packages:  
 ```
