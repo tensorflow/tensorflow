@@ -393,40 +393,40 @@ PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
 PassInstrumentor::~PassInstrumentor() {}
 
 /// See PassInstrumentation::runBeforePass for details.
-void PassInstrumentor::runBeforePass(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runBeforePass(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforePass(pass, ir);
+    instr->runBeforePass(pass, op);
 }
 
 /// See PassInstrumentation::runAfterPass for details.
-void PassInstrumentor::runAfterPass(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runAfterPass(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterPass(pass, ir);
+    instr->runAfterPass(pass, op);
 }
 
 /// See PassInstrumentation::runAfterPassFailed for details.
-void PassInstrumentor::runAfterPassFailed(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runAfterPassFailed(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterPassFailed(pass, ir);
+    instr->runAfterPassFailed(pass, op);
 }
 
 /// See PassInstrumentation::runBeforeAnalysis for details.
 void PassInstrumentor::runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                                         const llvm::Any &ir) {
+                                         Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforeAnalysis(name, id, ir);
+    instr->runBeforeAnalysis(name, id, op);
 }
 
 /// See PassInstrumentation::runAfterAnalysis for details.
 void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                                        const llvm::Any &ir) {
+                                        Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterAnalysis(name, id, ir);
+    instr->runAfterAnalysis(name, id, op);
 }
 
 /// Add the given instrumentation to the collection. This takes ownership over
