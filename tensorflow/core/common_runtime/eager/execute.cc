@@ -228,7 +228,8 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
   std::vector<Device*> final_devices;
   PrioritizedDeviceTypeVector supported_devs;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
-      ctx->prioritized_device_type_list(), ndef, &supported_devs));
+      ctx->prioritized_device_type_list(), ndef, &supported_devs,
+      &ctx->HostCPU()->parsed_name()));
   if (supported_devs.empty()) {
     return errors::NotFound("Could not find valid device for node.\nNode:",
                             FormatNodeDefForError(ndef),
