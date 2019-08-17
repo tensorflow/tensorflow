@@ -555,19 +555,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "platform_strings",
-    srcs = [
-        "//tensorflow/core/platform:platform_strings.cc",
-        "//tensorflow/core/platform:platform_strings_computed.h",
-    ],
-    hdrs = [
-        "//tensorflow/core/platform:platform_strings.h",
-    ],
-    visibility = [":__subpackages__"],
-    deps = [],
-)
-
 filegroup(
     name = "platform_other_hdrs",
     srcs = [
@@ -2494,7 +2481,6 @@ cc_library(
                ":core_stringpiece",
                ":lib_hash_crc32c_accelerate_internal",
                ":lib_proto_parsing",
-               ":platform_strings",
                "@com_google_absl//absl/memory",
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
@@ -2502,6 +2488,7 @@ cc_library(
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
+               "//tensorflow/core/platform:platform_strings",
                "//tensorflow/core/platform:stringprintf",
                "//tensorflow/core/platform/default/build_config:platformlib",
                "@snappy",
@@ -3864,7 +3851,7 @@ tf_cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":lib",
-        ":platform_strings",
+        "//tensorflow/core/platform:platform_strings",
     ],
 )
 
@@ -5537,9 +5524,9 @@ transitive_hdrs(
         ":core_cpu",
         ":framework",
         ":lib",
-        ":platform_strings",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/platform:platform_strings",
     ],
 )
 

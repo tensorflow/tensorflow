@@ -154,6 +154,15 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_strings",
+    srcs = [
+        "platform_strings.cc",
+        "platform_strings_computed.h",
+    ],
+    hdrs = ["platform_strings.h"],
+)
+
+cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     deps = [":platform"],

@@ -8012,7 +8012,7 @@ cc_library(
     name = "kernel_platform_strings",
     srcs = ["kernel_platform_strings.h"],
     deps = [
-        "//tensorflow/core:platform_strings",
+        "//tensorflow/core/platform:platform_strings",
     ],
     alwayslink = 1,
 )
