@@ -20,7 +20,6 @@ load(
     "tf_additional_rocdl_deps",
     "tf_additional_rocdl_srcs",
     "tf_additional_test_srcs",
-    "tf_env_time_srcs",
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
@@ -102,7 +101,7 @@ cc_library(
 
 cc_library(
     name = "env_time",
-    srcs = ["env_time.cc"] + tf_env_time_srcs(),
+    srcs = tf_platform_srcs(["env_time.cc"]),
     hdrs = ["env_time.h"],
     deps = [
         ":types",
