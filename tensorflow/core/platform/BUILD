@@ -218,6 +218,11 @@ cc_library(
 )
 
 cc_library(
+    name = "thread_annotations",
+    hdrs = ["thread_annotations.h"],
+)
+
+cc_library(
     name = "tstring",
     hdrs = ["tstring.h"],
 )
