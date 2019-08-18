@@ -1821,12 +1821,14 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
 
 class RepeatTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testRepeatScalar(self):
     with self.test_session():
       v_tf = array_ops.repeat(constant_op.constant(3), 4)
       v_np = np.repeat(3, 4)
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  @test_util.run_deprecated_v1
   def testRepeatMatrix(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
@@ -1834,6 +1836,7 @@ class RepeatTest(test_util.TensorFlowTestCase):
       v_np = np.repeat(x, 2)
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  @test_util.run_deprecated_v1
   def testRepeatMatrixAxis0(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
@@ -1842,6 +1845,7 @@ class RepeatTest(test_util.TensorFlowTestCase):
       v_np = np.repeat(x, [1, 2], axis=0)
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  @test_util.run_deprecated_v1
   def testRepeatMatrixAxis1(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
@@ -1850,6 +1854,7 @@ class RepeatTest(test_util.TensorFlowTestCase):
       v_np = np.repeat(x, 3, axis=1)
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  @test_util.run_deprecated_v1
   def testRepeatMatrixRepeatArray(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
