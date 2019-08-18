@@ -57,9 +57,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
-gen_trt_ops = LazyLoader(
-    "gen_trt_ops", globals(),
-    "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
+gen_trt_ops = LazyLoader("gen_trt_ops", globals(),
+                         "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
@@ -905,6 +904,16 @@ class TrtGraphConverterV2(object):
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
+  def _for_each_trt_node(self, graph_def, fn):
+    """Helper method to manipulate all TRTEngineOps in a GraphDef."""
+    for node in graph_def.node:
+      if node.op == _TRT_ENGINE_OP_NAME:
+        fn(node)
+    for func in graph_def.library.function:
+      for node in func.node_def:
+        if node.op == _TRT_ENGINE_OP_NAME:
+          fn(node)
+
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
   def convert(self, num_calibration_runs=None, calibration_input_map_fn=None):
@@ -914,11 +923,8 @@ class TrtGraphConverterV2(object):
       num_calibration_runs: number of runs of the graph during calibration.
       calibration_input_map_fn: a function that returns inputs for the converted
         tf_function to be calibrated.
-        Example:
-        ```
-        def input_map_fn():
-          return input1, input2, input3
-        ```
+        Example: ```
+        def input_map_fn(): return input1, input2, input3 ```
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -969,6 +975,24 @@ class TrtGraphConverterV2(object):
         self._converted_func(
             *map(ops.convert_to_tensor, calibration_input_map_fn()))
 
+      def _save_calibration_table(node):
+        calibration_table = gen_trt_ops.get_calibration_data_op(
+            _get_canonical_engine_name(node.name))
+        node.attr["calibration_data"].s = calibration_table.numpy()
+
+      self._for_each_trt_node(self._converted_graph_def,
+                              _save_calibration_table)
+
+      # Rebuild the function since calibration has changed the graph.
+      calibrated_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      calibrated_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          calibrated_func.graph.structured_outputs)
+      self._converted_func = calibrated_func
+
     self._converted = True
 
   def build(self, *args, **kwargs):
@@ -1009,10 +1033,6 @@ class TrtGraphConverterV2(object):
 
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
-      if self._need_calibration:
-        calibration_table = gen_trt_ops.get_calibration_data_op(
-            canonical_engine_name)
-        node.attr["calibration_data"].s = calibration_table.numpy()
 
       try:
         gen_trt_ops.serialize_trt_resource(
@@ -1029,30 +1049,15 @@ class TrtGraphConverterV2(object):
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
 
-    for node in self._converted_graph_def.node:
-      if node.op == _TRT_ENGINE_OP_NAME:
-        _serialize_and_track_engine(node)
-    for func in self._converted_graph_def.library.function:
-      for node in func.node_def:
-        if node.op == _TRT_ENGINE_OP_NAME:
-          _serialize_and_track_engine(node)
-
+    self._for_each_trt_node(self._converted_graph_def,
+                            _serialize_and_track_engine)
     self._saved_model.trt_engine_resources = resource_map
-
-    # Rebuild the function since calibration may change the graph.
-    func_to_save = wrap_function.function_from_graph_def(
-        self._converted_graph_def,
-        [tensor.name for tensor in self._converted_func.inputs],
-        [tensor.name for tensor in self._converted_func.outputs])
-    func_to_save.graph.structured_outputs = nest.pack_sequence_as(
-        self._converted_func.graph.structured_outputs,
-        func_to_save.graph.structured_outputs)
 
     # Rewrite the signature map using the optimized ConcreteFunction.
     signatures = {
         key: value for key, value in self._saved_model.signatures.items()
     }
-    signatures[self._input_saved_model_signature_key] = func_to_save
+    signatures[self._input_saved_model_signature_key] = self._converted_func
     save.save(self._saved_model, output_saved_model_dir, signatures)
 
 
