@@ -24,7 +24,6 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TranslateClParser.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 
 using namespace mlir;
 
@@ -37,7 +36,6 @@ static llvm::cl::opt<std::string>
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"));
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   // Add flags for all the registered translations.
