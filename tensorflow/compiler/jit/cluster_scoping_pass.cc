@@ -96,12 +96,12 @@ void ClusterScopingPassImpl::AddScopeToAllTransitiveSuccessors(Node* start) {
   std::vector<Node*> starts;
   starts.push_back(start);
   auto enter = [&](Node* n) { AddOrAppendXlaInternalScope(n, unique_suffix); };
-  auto not_back_edge = [](const Edge& edge) -> bool {
-    return !edge.src()->IsNextIteration();
-  };
   DFSFrom(*graph_, starts, enter, /*leave=*/nullptr,
           /*stable_comparator=*/NodeComparatorName(),
-          /*edge_filter=*/not_back_edge);
+          // Do not filter any edges to better capture the semantics of
+          // transitive closure of successors.  We may revisit this when
+          // we see more cases needing cluster scoping in the future.
+          /*edge_filter=*/nullptr);
 }
 
 // This preserves the parallelism between pipeline stages.  For example, below
