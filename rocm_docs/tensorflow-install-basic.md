@@ -16,6 +16,12 @@ Add the ROCm repository:
 wget -qO - http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | sudo apt-key add -
 sudo sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main > /etc/apt/sources.list.d/rocm.list'
 ```
+Tensorflow CSB nigtly build requires to ROCm2.6, use the follwoing ROCm repository instead:
+```
+wget -qO - http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | sudo apt-key add -
+sudo sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/2.6/ xenial main > /etc/apt/sources.list.d/rocm.list'
+```
+
 Install misc pkgs:
 ```
 sudo apt-get update && sudo apt-get install -y \
