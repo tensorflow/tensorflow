@@ -16,15 +16,17 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include <ctype.h>
+
 #include <algorithm>
 #include <cstring>
 #include <vector>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace str_util {

@@ -22,9 +22,9 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().

@@ -19,12 +19,13 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+
 #include "absl/base/macros.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 // Basic string utility routines
