@@ -28,13 +28,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-<<<<<<< HEAD
 #if GOOGLE_CUDA
-=======
->>>>>>> google_upstream/master
 #include "third_party/nccl/nccl.h"
-#endif
-#if TENSORFLOW_USE_ROCM
+#elif TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -82,10 +78,7 @@ class NcclManager {
       DCHECK(executor != nullptr);
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
-<<<<<<< HEAD
       DCHECK(nccl_stream != nullptr);
-=======
->>>>>>> google_upstream/master
       if (input != nullptr) {
         input_event = absl::make_unique<se::Event>(executor);
         input_event->Init();

@@ -36,10 +36,6 @@ cc_library(
     ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-<<<<<<< HEAD
-=======
-        "@local_config_nccl//:nccl",
->>>>>>> google_upstream/master
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
