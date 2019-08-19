@@ -3206,8 +3206,11 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes) {
-  return absl::StrFormat("{%s}", absl::StrJoin(frontend_attributes.map(), ",",
-                                               absl::PairFormatter("=")));
+  std::vector<std::pair<string, string>> sorted_attributes(
+      frontend_attributes.map().begin(), frontend_attributes.map().end());
+  std::sort(sorted_attributes.begin(), sorted_attributes.end());
+  return absl::StrFormat(
+      "{%s}", absl::StrJoin(sorted_attributes, ",", absl::PairFormatter("=")));
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {
