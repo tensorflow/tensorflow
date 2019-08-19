@@ -41,7 +41,7 @@ class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
 
 def BufferAllocOp :
     Linalg_Op<"buffer_alloc">,
-    Arguments<(ins Variadic<Index>:$size)>,
+    Arguments<(ins Variadic<Index>:$size, OptionalAttr<I64Attr>:$alignment)>,
     Results<(outs Buffer)> {
   let summary = "buffer allocation operation";
   let description = [{
@@ -49,10 +49,17 @@ def BufferAllocOp :
     upon which a base view can be laid out to give it indexing semantics.
     "buffer_alloc" takes a single argument, the size of the buffer to allocate
     (in number of elements).
+    An optional alignment attribute may be specified in which case the actual
+    underlying allocation size may be increased. The base pointer is guaranteed
+    to be a multiple of `alignment`. Such an alignment must be a positive power
+    of 2.
 
-    Example:
+    Examples:
 
         %0 = linalg.buffer_alloc(%arg0) : !linalg.buffer<?xf32>
+
+        %1 = linalg.buffer_alloc(%arg0) { alignment = 16 } :
+          !linalg.buffer<?xf32>
 
     The size argument may be omitted if it is statically known, in which case it
     must be reflected in the type.
@@ -61,12 +68,32 @@ def BufferAllocOp :
 
         %0 = linalg.buffer_alloc() : !linalg.buffer<4xf32>
   }];
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, BufferType bufferType", [{
-       result->types.push_back(bufferType);
-     }]
-  >];
+  let builders = [
+    OpBuilder<
+      "Builder *b, OperationState *result, BufferType bufferType", [{
+          result->addTypes(bufferType);
+       }]>,
+    OpBuilder<
+      "Builder *b, OperationState *result, BufferType bufferType, "
+      "unsigned alignment", [{
+        build(b, result, bufferType);
+        if (alignment != 0)
+          result->addAttribute(BufferAllocOp::getAlignmentAttrName(),
+                               b->getI64IntegerAttr(alignment));
+      }]>,
+    OpBuilder<
+      "Builder *b, OperationState *result, BufferType bufferType, "
+      "Value *size, unsigned alignment", [{
+        if (alignment == 0)
+          return build(b, result, bufferType, size);
+        build(b, result, bufferType, size, b->getI64IntegerAttr(alignment));
+      }]>,
+    OpBuilder<
+      "Builder *b, OperationState *result, BufferType bufferType, Value *size",
+      [{ build(b, result, bufferType, size, 0); }]>
+  ];
   let extraClassDeclaration = [{
+    static StringRef getAlignmentAttrName() { return "alignment"; }
     BufferType getBufferType() { return getType().cast<BufferType>(); }
     Type getElementType() { return getBufferType().getElementType(); }
   }];

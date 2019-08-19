@@ -37,6 +37,7 @@
 #include "mlir/Transforms/FoldUtils.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -131,7 +132,11 @@ static void print(OpAsmPrinter *p, BufferAllocOp op) {
   *p << op.getOperationName() << " ";
   if (!llvm::empty(op.size()))
     *p << *op.getOperand(0);
-  p->printOptionalAttrDict(op.getAttrs());
+  if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
+    p->printOptionalAttrDict(op.getAttrs());
+  else
+    p->printOptionalAttrDict(op.getAttrs(),
+                             BufferAllocOp::getAlignmentAttrName());
   *p << " : " << op.getBufferType();
 }
 
@@ -159,6 +164,13 @@ static LogicalResult verify(BufferAllocOp op) {
       return op.emitOpError("expected zero operand");
     if (op.getBufferType().getBufferSize().getValue() <= 0)
       return op.emitOpError("expected nonnegative static buffer size");
+  }
+  if (op.alignment().hasValue()) {
+    auto align = op.alignment().getValue();
+    if (align.getSExtValue() < 0)
+      return op.emitOpError("expected positive alignment");
+    if (!llvm::isPowerOf2_64(align.getZExtValue()))
+      return op.emitOpError("expected power of 2 alignment");
   }
   if (!TensorType::isValidElementType(op.getElementType()))
     return op.emitOpError("expected valid buffer element type");
