@@ -472,6 +472,12 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
   const int last_index = str.size() - 1;
   for (int i = 0; i <= last_index; ++i) {
     const char c = str[i];
+    // Convert namespace separators ('>' characters) to joiners
+    if (c == '>') {
+      result->push_back(joiner);
+      continue;
+    }
+
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
     if (isupper(c) && (i > 0)) {
