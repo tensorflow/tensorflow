@@ -461,7 +461,7 @@ static void print(spirv::AddressOfOp addressOfOp, OpAsmPrinter *printer) {
   *printer << " @" << addressOfOp.variable();
 
   // Print the type.
-  *printer << " : " << addressOfOp.pointer();
+  *printer << " : " << addressOfOp.pointer()->getType();
 }
 
 static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
@@ -676,9 +676,8 @@ static ParseResult parseEntryPointOp(OpAsmParser *parser,
       }
       interfaceVars.push_back(var);
     } while (!parser->parseOptionalComma());
-    state->attributes.push_back(
-        {parser->getBuilder().getIdentifier(kInterfaceAttrName),
-         parser->getBuilder().getArrayAttr(interfaceVars)});
+    state->addAttribute(kInterfaceAttrName,
+                        parser->getBuilder().getArrayAttr(interfaceVars));
   }
   return success();
 }
@@ -748,18 +747,6 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
 
 static ParseResult parseGlobalVariableOp(OpAsmParser *parser,
                                          OperationState *state) {
-  // Parse variable type.
-  TypeAttr typeAttr;
-  auto loc = parser->getCurrentLocation();
-  if (parser->parseAttribute(typeAttr, Type(), kTypeAttrName,
-                             state->attributes)) {
-    return failure();
-  }
-  auto ptrType = typeAttr.getValue().dyn_cast<spirv::PointerType>();
-  if (!ptrType) {
-    return parser->emitError(loc, "expected spv.ptr type");
-  }
-
   // Parse variable name.
   StringAttr nameAttr;
   if (parser->parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
@@ -781,6 +768,16 @@ static ParseResult parseGlobalVariableOp(OpAsmParser *parser,
     return failure();
   }
 
+  Type type;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseColonType(type)) {
+    return failure();
+  }
+  if (!type.isa<spirv::PointerType>()) {
+    return parser->emitError(loc, "expected spv.ptr type");
+  }
+  state->addAttribute(kTypeAttrName, parser->getBuilder().getTypeAttr(type));
+
   return success();
 }
 
@@ -789,10 +786,6 @@ static void print(spirv::GlobalVariableOp varOp, OpAsmPrinter *printer) {
   SmallVector<StringRef, 4> elidedAttrs{
       spirv::attributeName<spirv::StorageClass>()};
   *printer << spirv::GlobalVariableOp::getOperationName();
-
-  // Print variable type.
-  *printer << " " << varOp.type();
-  elidedAttrs.push_back(kTypeAttrName);
 
   // Print variable name.
   *printer << " @" << varOp.sym_name();
@@ -804,7 +797,10 @@ static void print(spirv::GlobalVariableOp varOp, OpAsmPrinter *printer) {
              << ")";
     elidedAttrs.push_back(kInitializerAttrName);
   }
+
+  elidedAttrs.push_back(kTypeAttrName);
   printVariableDecorations(op, printer, elidedAttrs);
+  *printer << " : " << varOp.type();
 }
 
 static LogicalResult verify(spirv::GlobalVariableOp varOp) {
