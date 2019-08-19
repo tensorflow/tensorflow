@@ -128,6 +128,7 @@ def SPV_OC_OpSLessThan             : I32EnumAttrCase<"OpSLessThan", 177>;
 def SPV_OC_OpULessThanEqual        : I32EnumAttrCase<"OpULessThanEqual", 178>;
 def SPV_OC_OpSLessThanEqual        : I32EnumAttrCase<"OpSLessThanEqual", 179>;
 def SPV_OC_OpReturn                : I32EnumAttrCase<"OpReturn", 253>;
+def SPV_OC_OpReturnValue           : I32EnumAttrCase<"OpReturnValue", 254>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
@@ -146,7 +147,7 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFMod, SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
       SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
       SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
-      SPV_OC_OpSLessThanEqual, SPV_OC_OpReturn
+      SPV_OC_OpSLessThanEqual, SPV_OC_OpReturn, SPV_OC_OpReturnValue
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -778,12 +779,15 @@ def SPV_SamplerUseAttr:
 // SPIR-V OpTrait definitions
 //===----------------------------------------------------------------------===//
 
-// Check that an op can only be used with SPIR-V ModuleOp
-def IsModuleOnlyPred :
-  CPred<"llvm::isa_and_nonnull<spirv::ModuleOp>($_op.getParentOp())">;
+// Check that an op can only be used within the scope of a FuncOp.
+def InFunctionScope : PredOpTrait<
+  "op must appear in a 'func' block",
+  CPred<"llvm::isa_and_nonnull<FuncOp>($_op.getParentOp())">>;
 
-def ModuleOnly :
-  PredOpTrait<"op can only be used in a 'spv.module' block", IsModuleOnlyPred>;
+// Check that an op can only be used within the scope of a SPIR-V ModuleOp.
+def InModuleScope : PredOpTrait<
+  "op must appear in a 'spv.module' block",
+  CPred<"llvm::isa_and_nonnull<spirv::ModuleOp>($_op.getParentOp())">>;
 
 //===----------------------------------------------------------------------===//
 // SPIR-V op definitions
