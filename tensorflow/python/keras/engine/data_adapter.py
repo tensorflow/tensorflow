@@ -163,6 +163,13 @@ class DataAdapter(object):
     """
     raise NotImplementedError
 
+  def should_recreate_iterator(self, steps_per_epoch):
+    """Returns whether a new iterator should be created every epoch."""
+    # Only recreate iterator when the data has a fixed length, which will be
+    # fully consumed every epoch, or has a unknown length (dataset, generator)
+    # and will be fully consumed (steps_per_epoch is None)
+    return self.get_size() is not None or steps_per_epoch is None
+
 
 class TensorLikeDataAdapter(DataAdapter):
   """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
@@ -175,26 +182,181 @@ class TensorLikeDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    def _is_tensor_or_composite(v):
+    def _is_tensor(v):
       if isinstance(v, (ops.Tensor, np.ndarray)):
-        return True
-      # Dataset inherits from CompositeTensor but shouldn't be handled here.
-      if (isinstance(v, composite_tensor.CompositeTensor) and
-          not isinstance(v, dataset_ops.DatasetV2)):
         return True
       return False
 
-    return all(_is_tensor_or_composite(v) for v in flat_inputs)
+    return all(_is_tensor(v) for v in flat_inputs)
 
-  def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               steps=None, shuffle=False, **kwargs):
+  def __init__(self,
+               x,
+               y=None,
+               sample_weights=None,
+               batch_size=None,
+               epochs=1,
+               steps=None,
+               shuffle=False,
+               **kwargs):
     super(TensorLikeDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
 
     # If sample_weights are not specified for an output use 1.0 as weights.
-    if sample_weights is not None and None in sample_weights:
+    if sample_weights is not None and any(w is None for w in sample_weights):
+      weight = next(s for s in sample_weights if s is not None)
+      sample_weights = training_utils.list_to_tuple([
+          array_ops.ones((weight.shape[0],)) if sw is None else sw
+          for sw in sample_weights
+      ])
+
+    if y is not None and sample_weights is not None:
+      inputs = (x, y, sample_weights)
+    elif y is not None:
+      # Sample weight is only needed for training, so if y is None, then
+      # sample_weight is ignored.
+      inputs = (x, y)
+    else:
+      inputs = (x,)
+
+    num_samples = int(nest.flatten(x)[0].shape[0])
+
+    # If batch_size is not passed but steps is, calculate from the input data.
+    if steps and not batch_size:
+      batch_size = int(math.ceil(num_samples / steps))
+
+    if not batch_size:
+      raise ValueError(
+          "`batch_size` or `steps` is required for `Tensor` or `NumPy`"
+          " input data.")
+
+    self._size = int(math.ceil(num_samples / batch_size))
+    self._batch_size = batch_size
+    self._has_partial_batch = (self._size != (num_samples // batch_size))
+
+    self._partial_batch_size = None
+    if self._has_partial_batch:
+      self._partial_batch_size = (
+          num_samples - (self._size - 1) * self._batch_size)
+
+    # Vectorized version of shuffle.
+    # This is a performance improvement over using `from_tensor_slices`.
+    # The indices of the data are shuffled and batched, and these indices
+    # are then zipped with the data and used to extract a batch of the data
+    # at each step. The performance improvements here come from:
+    # 1. vectorized batch using gather
+    # 2. parallelized map
+    # 3. vectorized shuffle by using reshape and unbatch
+    # 4. disabled static optimizations
+    indices_list = []
+    for _ in range(epochs):
+      indices = np.arange(num_samples)
+      if shuffle:
+        np.random.shuffle(indices)
+
+      full_batch_indices = np.reshape(
+          indices[:(num_samples // batch_size) * batch_size], [-1, batch_size])
+      partial_batch_indices = indices[(num_samples // batch_size) * batch_size:]
+
+      epoch_indices_ds = dataset_ops.DatasetV2.from_tensors(
+          full_batch_indices).unbatch()
+      if partial_batch_indices.size:
+        epoch_indices_ds = epoch_indices_ds.concatenate(
+            dataset_ops.DatasetV2.from_tensors(partial_batch_indices))
+
+      indices_list.append(epoch_indices_ds)
+
+    indices_ds = dataset_ops.DatasetV2.from_tensor_slices(
+        indices_list).flat_map(lambda x: x)
+
+    data_ds = dataset_ops.DatasetV2.from_tensors(inputs).repeat()
+    dataset = dataset_ops.DatasetV2.zip((data_ds, indices_ds))
+
+    def _nested_grab_batch(data, indices):
+      """Grabs batches of Tensors in `data` based on `indices`."""
+
+      def _grab_batch(x):
+        """Grabs a batch of `x`."""
+        x_batch = array_ops.gather(x, indices)
+        x_shape = x.shape.as_list()
+
+        if not self._has_partial_batch:
+          # Recover the batch shape info.
+          x_shape[0] = self._batch_size
+          x_batch.set_shape(x_shape)
+        elif self._partial_batch_size >= num_samples:
+          # Only one batch per epoch.
+          x_shape[0] = self._partial_batch_size
+          x_batch.set_shape(x_shape)
+        return x_batch
+
+      return nest.map_structure(_grab_batch, data)
+
+    dataset = dataset.map(
+        _nested_grab_batch, num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    # Default optimizations are disabled to avoid the overhead of (unnecessary)
+    # input pipeline graph serialization and deserialization
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    self._dataset = dataset
+
+  def get_dataset(self):
+    return self._dataset
+
+  def get_size(self):
+    return self._size
+
+  def batch_size(self):
+    return self._batch_size
+
+  def has_partial_batch(self):
+    return self._has_partial_batch
+
+  def partial_batch_size(self):
+    return self._partial_batch_size
+
+  def should_recreate_iterator(self, _):
+    # An infinite dataset is always created here.
+    return False
+
+
+class CompositeTensorDataAdapter(DataAdapter):
+  """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
+
+  @staticmethod
+  def can_handle(x, y=None):
+    flat_inputs = nest.flatten(x)
+    if y is not None:
+      flat_inputs += nest.flatten(y)
+
+    def _is_composite(v):
+      # Dataset inherits from CompositeTensor but shouldn't be handled here.
+      if (isinstance(v, composite_tensor.CompositeTensor) and
+          not isinstance(v, dataset_ops.DatasetV2)):
+        return True
+      return False
+
+    def _is_tensor_or_composite(v):
+      if isinstance(v, (ops.Tensor, np.ndarray)):
+        return True
+      return _is_composite(v)
+
+    return (any(_is_composite(v) for v in flat_inputs) and
+            all(_is_tensor_or_composite(v) for v in flat_inputs))
+
+  def __init__(self, x, y=None, sample_weights=None, batch_size=None,
+               steps=None, shuffle=False, **kwargs):
+    super(CompositeTensorDataAdapter, self).__init__(x, y, **kwargs)
+    x = _process_numpy_inputs(x)
+    y = _process_numpy_inputs(y)
+    sample_weights = _process_numpy_inputs(sample_weights)
+
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if (sample_weights is not None and
+        any([sw is None for sw in sample_weights])):
       weight = next(s for s in sample_weights if s is not None)
       sample_weights = training_utils.list_to_tuple([
           array_ops.ones((weight.shape[0],)) if sw is None else sw
@@ -453,9 +615,8 @@ class KerasSequenceAdapter(DataAdapter):
 
 
 ALL_ADAPTER_CLS = [
-    ListsOfScalarsDataAdapter,
-    TensorLikeDataAdapter, DatasetAdapter, GeneratorDataAdapter,
-    KerasSequenceAdapter
+    ListsOfScalarsDataAdapter, TensorLikeDataAdapter, DatasetAdapter,
+    GeneratorDataAdapter, KerasSequenceAdapter, CompositeTensorDataAdapter
 ]
 
 

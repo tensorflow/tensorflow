@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -xla-legalize-to-std -canonicalize | FileCheck %s
+// RUN: tf-opt %s -split-input-file -canonicalize | FileCheck %s
 
 // CHECK-LABEL: func @const_fold_collapse_to_scalar
 func @const_fold_collapse_to_scalar() -> tensor<i32> {
@@ -96,4 +96,54 @@ func @non_const_same_shape(%arg : tensor<2x3xi32>) -> tensor<2x3xi32> {
   // CHECK-NEXT: return [[ARG]]
   %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_chained_reshape
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @non_const_chained_reshape(%arg : tensor<2x3xi32>) -> (tensor<3x2xi32>, tensor<6xi32>) {
+  // CHECK-NEXT: "xla_hlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<3x2xi32>
+  // CHECK-NEXT: "xla_hlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<6xi32>
+  %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<3x2xi32>
+  %1 = "xla_hlo.reshape"(%0) : (tensor<3x2xi32>) -> tensor<6xi32>
+  return %0, %1 : tensor<3x2xi32>, tensor<6xi32> // return both so nothing is removed
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_chained_reshape_unused_parent
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @non_const_chained_reshape_unused_parent(%arg : tensor<2x3xi32>) -> tensor<6xi32> {
+  // CHECK-NEXT: [[RES:%.+]] = "xla_hlo.reshape"([[ARG]]) : (tensor<2x3xi32>) -> tensor<6xi32>
+  %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<3x2xi32>
+  %1 = "xla_hlo.reshape"(%0) : (tensor<3x2xi32>) -> tensor<6xi32>
+  // CHECK-NEXT: return [[RES]]
+  return %1 : tensor<6xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_chained_reshape_becomes_noop
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @non_const_chained_reshape_becomes_noop(%arg : tensor<2x3xi32>) -> tensor<2x3xi32> {
+  %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<3x2xi32>
+  %1 = "xla_hlo.reshape"(%0) : (tensor<3x2xi32>) -> tensor<2x3xi32>
+  // CHECK-NEXT: return [[ARG]]
+  return %1 : tensor<2x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_many_chained_reshapes
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @non_const_many_chained_reshapes(%arg : tensor<2x3x4xi32>) -> tensor<1x2x4x3xi32> {
+  // CHECK-NEXT: [[RES:%.+]] = "xla_hlo.reshape"([[ARG]]) : (tensor<2x3x4xi32>) -> tensor<1x2x4x3xi32>
+  %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3x4xi32>) -> tensor<4x3x2xi32>
+  %1 = "xla_hlo.reshape"(%0) : (tensor<4x3x2xi32>) -> tensor<12x2xi32>
+  %2 = "xla_hlo.reshape"(%1) : (tensor<12x2xi32>) -> tensor<2x12xi32>
+  %3 = "xla_hlo.reshape"(%2) : (tensor<2x12xi32>) -> tensor<24xi32>
+  %4 = "xla_hlo.reshape"(%3) : (tensor<24xi32>) -> tensor<1x2x4x3xi32>
+  // CHECK-NEXT: return [[RES]]
+  return %4 : tensor<1x2x4x3xi32>
 }

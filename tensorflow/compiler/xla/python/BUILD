@@ -169,9 +169,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "device",
-    srcs = ["device.cc"],
-    hdrs = ["device.h"],
+    name = "device_state",
+    srcs = ["device_state.cc"],
+    hdrs = ["device_state.h"],
     deps = [
         ":event_pool",
         ":semaphore",
@@ -190,7 +190,7 @@ cc_library(
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
-        ":device",
+        ":device_state",
         ":shared_device_buffer",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",

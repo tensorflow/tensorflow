@@ -357,7 +357,6 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
-  RUY_DCHECK_EQ(16, 16);
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;

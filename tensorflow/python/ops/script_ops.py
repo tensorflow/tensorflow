@@ -270,6 +270,9 @@ def _internal_py_func(func,
                       is_grad_func=False,
                       name=None):
   """See documentation for py_func and eager_py_func."""
+  if not callable(func):
+    raise ValueError("Expected func to be callable, got func of type {}".format(
+        type(func)))
 
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):

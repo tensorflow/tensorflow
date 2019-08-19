@@ -97,7 +97,7 @@ public:
 } // namespace
 
 std::unique_ptr<FunctionPassBase> mlir::createLoopCoalescingPass() {
-  return llvm::make_unique<LoopCoalescingPass>();
+  return std::make_unique<LoopCoalescingPass>();
 }
 
 static PassRegistration<LoopCoalescingPass>

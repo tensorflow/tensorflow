@@ -415,7 +415,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
 
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       ctx->compiler()->options().shape_representation_fn(
-                          variable->shape(), variable->type()));
+                          variable->shape(), variable->type(),
+                          /*use_fast_memory=*/false));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -550,9 +551,10 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
-  TF_ASSIGN_OR_RETURN(
-      xla::Shape representation_shape,
-      ctx->compiler()->options().shape_representation_fn(shape, type));
+  TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
+                      ctx->compiler()->options().shape_representation_fn(
+                          shape, type,
+                          /*use_fast_memory=*/false));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {

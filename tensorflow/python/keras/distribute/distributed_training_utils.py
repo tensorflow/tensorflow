@@ -137,6 +137,38 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   return all_inputs, all_outputs, all_updates, all_session_args
 
 
+def unwrap_output_dict(strategy, grouped_outputs, mode):
+  """Unwrap the list of outputs contained in the PerReplica parameters."""
+  if mode == ModeKeys.PREDICT:
+    return flatten_per_replica_values(strategy, grouped_outputs)
+
+  # In the case of fit/eval, the grouped_outputs is a dict, whereas in predict,
+  # the output is as same structure as model output. They need to be treated
+  # differently
+  total_loss = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['total_loss'][0], axis=None)
+  output_losses = flatten_per_replica_values(strategy,
+                                             grouped_outputs['output_losses'])
+  metrics = flatten_per_replica_values(strategy,
+                                       grouped_outputs['metrics'])
+  batch_size = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['batch_size'], axis=None)
+  if (is_tpu_strategy(strategy) and
+      ops.executing_eagerly_outside_functions()):
+    # Choose 1 value per replica in the TPU case since all replicas produce the
+    # same output.
+    # We only do this in eager mode for now since this function is used in
+    # both graph and eager mode and in the graph case we currently don't use
+    # experimental_run so would need to be removed when we converge the graph
+    # code path as well.
+    output_losses = output_losses[::strategy.num_replicas_in_sync]
+    metrics = metrics[::strategy.num_replicas_in_sync]
+  return {'total_loss': [total_loss],
+          'output_losses': output_losses,
+          'metrics': metrics,
+          'batch_size': batch_size}
+
+
 def unwrap_outputs(distribution_strategy, grouped_outputs,
                    with_loss_tensor=False):
   """Unwrap the list of outputs contained in the PerReplica parameters.

@@ -1272,11 +1272,31 @@ class SingleOpTest(ComputationTest):
     keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
     values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
     c = self._NewComputation()
-    c.SortKeyVal(c.Constant(keys), c.Constant(values), dimension=0)
+    c.Sort((c.Constant(keys), c.Constant(values)), dimension=0)
     result = xla_client.execute_with_python_values(c.Build().Compile())
     self.assertIsInstance(result, tuple)
     np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
     np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
+
+  def testSortCustomComparator(self):
+    b = self._NewComputation("comparator")
+    p0 = b.ParameterFromNumpy(NumpyArrayF32(0))
+    q0 = b.ParameterFromNumpy(NumpyArrayF32(0))
+    p1 = b.ParameterFromNumpy(NumpyArrayS32(0))
+    q1 = b.ParameterFromNumpy(NumpyArrayS32(0))
+    b.Or(b.Lt(p0, q0), b.And(b.Eq(p0, q0), b.Gt(p1, q1)))
+    comparator = b.Build()
+
+    keys = np.array([[2, 3, 1, 3], [3, 1, 2, 2]], dtype=np.float32)
+    values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
+    c = self._NewComputation()
+    c.Sort((c.Constant(keys), c.Constant(values)),
+           dimension=1,
+           comparator=comparator)
+    result = xla_client.execute_with_python_values(c.Build().Compile())
+    self.assertIsInstance(result, tuple)
+    np.testing.assert_allclose(result[0], [[1, 2, 3, 3], [1, 2, 2, 3]])
+    np.testing.assert_equal(result[1], [[2, 0, 3, 1], [5, 7, 6, 4]])
 
   def testQR(self):
     a = np.array(

@@ -345,16 +345,65 @@ TEST_F(ConstantFoldingTest, AddTree) {
   }
 }
 
+TEST_F(ConstantFoldingTest, AddSubtactTree) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {1});
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output sub_child = ops::Sub(s.WithOpName("sub_child"), x, x);
+  Output add_parent = ops::Add(s.WithOpName("add_parent"), sub_child, c1);
+
+  GrapplerItem item;
+  item.fetch = {"add_parent"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // We expect the following rewrite(s) to occur:
+  //
+  //     +                +
+  //    / \              / \
+  //   -   1     -->    -   x
+  //  / \              / \
+  // x   x            1   x
+
+  EXPECT_EQ(4, output.node_size());
+  for (const auto& node : output.node()) {
+    if (node.name() == "sub_child") {
+      EXPECT_EQ("Sub", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("c1", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+    } else if (node.name() == "add_parent") {
+      EXPECT_EQ("Add", node.op());
+      ASSERT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("sub_child", node.input(1));
+    }
+  }
+
+  // Check that the result nodes have the expected value.
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+
+  std::vector<string> fetch = {"add_parent"};
+  auto tensor_expected = EvaluateNodes(item.graph, fetch, {{"x", x_t}});
+  ASSERT_EQ(fetch.size(), tensor_expected.size());
+  fetch = {"add_parent"};
+  auto tensors = EvaluateNodes(output, fetch, {{"x", x_t}});
+  ASSERT_EQ(fetch.size(), tensors.size());
+  for (int i = 0; i < fetch.size(); i++) {
+    test::ExpectTensorEqual<float>(tensor_expected[i], tensors[i]);
+  }
+}
+
 TEST_F(ConstantFoldingTest, TreeCanonicalization) {
   for (int is_add : {true, false}) {
     for (int is_parent_commutative : {true, false}) {
       for (int is_child_commutative : {true, false}) {
-        // TODO(rmlarsen): Consider enabling for subtractions if we are
-        // comfortable with the potential loss of numerical accuracy due to
-        // re-association. Notice that subtraction is not really different from
-        // addition in this regard.
-        if (is_add && (!is_parent_commutative || !is_child_commutative))
-          continue;
         for (int is_left_child_const : {true, false}) {
           for (int is_left_leaf_const : {true, false}) {
             tensorflow::Scope s = tensorflow::Scope::NewRootScope();

@@ -91,7 +91,7 @@ public:
   // `llvm::sys::DynamicLibrary::AddSymbol`.
   Expected<llvm::orc::SymbolNameSet>
   operator()(llvm::orc::JITDylib &JD, const llvm::orc::SymbolNameSet &Names) {
-    auto res = defaultGenerator(JD, Names);
+    auto res = defaultGenerator->tryToGenerate(JD, Names);
     if (!res)
       return res;
     llvm::orc::SymbolMap newSymbols;
@@ -114,7 +114,7 @@ public:
   }
 
 private:
-  llvm::orc::DynamicLibrarySearchGenerator defaultGenerator;
+  std::unique_ptr<llvm::orc::DynamicLibrarySearchGenerator> defaultGenerator;
 };
 
 // Simple layered Orc JIT compilation engine.
@@ -132,15 +132,16 @@ public:
       : irTransformer(transform),
         objectLayer(
             session,
-            [this]() { return llvm::make_unique<MemoryManager>(session); }),
+            [this]() { return std::make_unique<MemoryManager>(session); }),
         compileLayer(
             session, objectLayer,
             llvm::orc::ConcurrentIRCompiler(std::move(machineBuilder))),
         transformLayer(session, compileLayer, makeIRTransformFunction()),
         dataLayout(layout), mangler(session, this->dataLayout),
-        threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
-    session.getMainJITDylib().setGenerator(
-        SearchGenerator(layout.getGlobalPrefix()));
+        threadSafeCtx(std::make_unique<llvm::LLVMContext>()) {
+    session.getMainJITDylib().addGenerator(
+        cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            layout.getGlobalPrefix())));
     loadLibraries(sharedLibPaths);
   }
 
@@ -155,9 +156,9 @@ public:
     if (!dataLayout)
       return dataLayout.takeError();
 
-    return llvm::make_unique<OrcJIT>(std::move(*machineBuilder),
-                                     std::move(*dataLayout), transformer,
-                                     sharedLibPaths);
+    return std::make_unique<OrcJIT>(std::move(*machineBuilder),
+                                    std::move(*dataLayout), transformer,
+                                    sharedLibPaths);
   }
 
   // Add an LLVM module to the main library managed by the JIT engine.
@@ -223,7 +224,7 @@ void mlir::impl::OrcJIT::loadLibraries(ArrayRef<StringRef> sharedLibPaths) {
                    << "\n";
       continue;
     }
-    JD.setGenerator(loaded.get());
+    JD.addGenerator(std::move(*loaded));
     auto res = objectLayer.add(JD, std::move(mb.get()));
     if (res)
       llvm::errs() << "Could not add: " << libPath << " " << res << "\n";
@@ -327,7 +328,7 @@ Expected<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::create(ModuleOp m,
                         std::function<llvm::Error(llvm::Module *)> transformer,
                         ArrayRef<StringRef> sharedLibPaths) {
-  auto engine = llvm::make_unique<ExecutionEngine>();
+  auto engine = std::make_unique<ExecutionEngine>();
   auto expectedJIT = impl::OrcJIT::createDefault(transformer, sharedLibPaths);
   if (!expectedJIT)
     return expectedJIT.takeError();

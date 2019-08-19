@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/python/device.h"
+#include "tensorflow/compiler/xla/python/device_state.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -37,6 +37,50 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
+
+class Device {
+ public:
+  explicit Device(int id, int local_device_ordinal, int host_id = 0)
+      : id_(id),
+        local_device_ordinal_(local_device_ordinal),
+        host_id_(host_id) {}
+  virtual ~Device() {}
+
+  // The ID of this device. IDs are unique among devices of this type
+  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
+  int id() const { return id_; }
+
+  // If this is a device local to this host, the local index of this device as
+  // according to the underlying backend. Unlike id(), this will always be in
+  // the range [0, num_local_devices), and can be used with the xla::LocalClient
+  // and xla::Backend APIs.
+  //
+  // -1 if this device is not local to this host.
+  int local_device_ordinal() const { return local_device_ordinal_; }
+
+  // The ID of this device's host. This is always 0 on single-host platforms.
+  int host_id() const { return host_id_; }
+
+  virtual std::string DebugString() const = 0;
+
+ private:
+  const int id_;
+  const int local_device_ordinal_;
+  const int host_id_;
+};
+
+class CpuDevice : public Device {
+ public:
+  using Device::Device;
+  std::string DebugString() const override;
+};
+
+class GpuDevice : public Device {
+ public:
+  using Device::Device;
+  std::string DebugString() const override;
+};
 
 struct AllocatorConfig {
   enum class Kind {
@@ -70,7 +114,8 @@ class PyLocalClient {
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(
       std::string platform_name, LocalClient* client,
-      std::vector<std::unique_ptr<Device>> devices,
+      std::vector<std::shared_ptr<Device>> devices, int host_id,
+      std::vector<std::unique_ptr<DeviceState>> device_states,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
   virtual ~PyLocalClient() = default;
@@ -78,10 +123,21 @@ class PyLocalClient {
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
   StatusOr<Literal> TransferFromOutfeed(const Shape& shape, int device_ordinal);
 
-  int device_count() const { return client_->device_count(); }
-  Device& device(int device_ordinal) const {
-    return *devices_.at(device_ordinal);
+  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas) const;
+
+  int device_count() const { return devices_.size(); }
+  const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
+  const std::map<int, std::shared_ptr<Device>>& id_to_device() const {
+    return id_to_device_;
   }
+  int host_id() const { return host_id_; }
+
+  int local_device_count() const { return device_states_.size(); }
+  DeviceState& device_state(int device_ordinal) const {
+    return *device_states_.at(device_ordinal);
+  }
+
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   tensorflow::Allocator* host_memory_allocator() const {
@@ -96,7 +152,14 @@ class PyLocalClient {
   std::string platform_name_;
   LocalClient* client_;
 
-  std::vector<std::unique_ptr<Device>> devices_;
+  // Includes all devices, including non-local devices on multi-host platforms.
+  std::vector<std::shared_ptr<Device>> devices_;
+  // Maps Device::id() to the corresponding Device.
+  std::map<int, std::shared_ptr<Device>> id_to_device_;
+  int host_id_;
+
+  // Device states local to this host. Indexed by local device ordinal.
+  std::vector<std::unique_ptr<DeviceState>> device_states_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
@@ -217,7 +280,7 @@ class PyLocalExecutable {
   }
 
   // Returns the device ordinals to which each replica is assigned.
-  std::vector<int> DeviceOrdinals() const;
+  const std::vector<int>& DeviceOrdinals() const { return device_ordinals_; }
 
   const DeviceAssignment& device_assignment() const {
     return device_assignment_;
@@ -242,6 +305,13 @@ class PyLocalExecutable {
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;
   const DeviceAssignment device_assignment_;
+  // The replica indices of device_assignment_ to be run by this client. On
+  // single-host platforms, this is all replicas (i.e. local_replicas_[i] = i),
+  // but this may not be the case on multi-host platforms.
+  std::vector<int> local_replicas_;
+  // device_ordinals_[i] is the device ordinal to which local_replicas_[i] is
+  // assigned.
+  std::vector<int> device_ordinals_;
 };
 
 }  // namespace xla

@@ -42,7 +42,7 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 }  // namespace
 
 std::unique_ptr<FunctionPassBase> CreateTFOptimizePass() {
-  return llvm::make_unique<TFOptimizePass>();
+  return std::make_unique<TFOptimizePass>();
 }
 
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");

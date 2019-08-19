@@ -62,7 +62,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
         previous_sources = get_source_inputs(tensor, layer, node_index)
         # Avoid input redundancy.
         for x in previous_sources:
-          if x not in source_tensors:
+          if all(x is not t for t in source_tensors):
             source_tensors.append(x)
       return source_tensors
 

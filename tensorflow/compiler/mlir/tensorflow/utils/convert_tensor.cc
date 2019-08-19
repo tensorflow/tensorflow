@@ -165,10 +165,27 @@ Status ConvertFloatElementsAttr(const ElementsAttr attr,
                                 TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
     if (elts.isSplat()) {
-      output_tensor->add_float_val(*elts.getValues<float>().begin());
+      output_tensor->add_float_val(elts.getSplatValue<float>());
     } else {
       for (auto value : elts.getValues<float>())
         output_tensor->add_float_val(value);
+    }
+    return Status::OK();
+  }
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
+}
+
+// Converts an MLIR elements attribute to a TensorFlow tensor proto
+// with the half_val field updated.
+Status ConvertHalfElementsAttr(const ElementsAttr attr,
+                               TensorProto* output_tensor) {
+  if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
+    if (elts.isSplat()) {
+      output_tensor->add_half_val(
+          (*elts.begin()).bitcastToAPInt().getSExtValue());
+    } else {
+      for (auto value : elts.getFloatValues())
+        output_tensor->add_half_val(value.bitcastToAPInt().getSExtValue());
     }
     return Status::OK();
   }
@@ -231,6 +248,9 @@ Status ConvertToTensorProto(const ElementsAttr attr,
   switch (output_dtype) {
     case DT_FLOAT:
       return ConvertFloatElementsAttr(attr, output_tensor);
+    case DT_HALF:
+      // Handles both DenseFPElementsAttr and OpaqueElementsAttr.
+      return ConvertHalfElementsAttr(attr, output_tensor);
     case DT_QUINT8:
     case DT_UINT8:
     case DT_INT8:

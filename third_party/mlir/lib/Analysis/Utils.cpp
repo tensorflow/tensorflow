@@ -913,7 +913,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     }
 
     // Compute the memref region symbolic in any IVs enclosing this block.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {

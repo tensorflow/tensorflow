@@ -49,14 +49,36 @@ class MemorySpaceAssignmentTest : public HloTestBase {
       return true;
     };
 
-    return std::move(MemorySpaceAssignment::Run(
-                         module, kAlternateMemorySpace,
-                         /*max_size_in_bytes=*/128,
-                         /*min_prefetch_interval=*/2,
-                         /*max_prefetch_interval=*/10,
-                         /*alternate_memory_space_alignment_in_bytes=*/8,
-                         size_fn, is_allowed_in_alternate_mem)
-                         .ValueOrDie());
+    std::unique_ptr<PresetAssignments> preset_assignments =
+        MemorySpaceAssignment::Run(
+            module, kAlternateMemorySpace,
+            /*max_size_in_bytes=*/128,
+            /*min_prefetch_interval=*/2,
+            /*max_prefetch_interval=*/10,
+            /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
+            is_allowed_in_alternate_mem)
+            .ValueOrDie();
+    CheckPresetAssignments(preset_assignments.get());
+    return preset_assignments;
+  }
+
+  void CheckPresetAssignments(const PresetAssignments* preset_assignments) {
+    // Ensure that the exported preset assignments point to layouts in the
+    // alternate memory.  Also ensure that the positions are unique. Note that
+    // we're using a std::set instead of absl::flat_hash_set because we can make
+    // use of HloPosition's comparator logic instead of providing a hasher.
+    std::set<HloPosition> positions_in_preset_assignments;
+    for (auto& position_and_chunk : preset_assignments->chunks()) {
+      HloPosition position = position_and_chunk.first;
+      EXPECT_EQ(positions_in_preset_assignments.find(position),
+                positions_in_preset_assignments.end());
+      positions_in_preset_assignments.insert(position);
+      const Shape& subshape =
+          ShapeUtil::GetSubshape(position.instruction->shape(), position.index);
+      EXPECT_EQ(subshape.layout().memory_space(), kAlternateMemorySpace)
+          << "Exported position is not in alternate mem: "
+          << position.ToString();
+    }
   }
 };
 
@@ -422,18 +444,108 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
   schedule.set_sequence(computation, {p0, p1, negate, bitcast, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  auto preset_assignments = AssignMemorySpace(module.get());
+  AssignMemorySpace(module.get());
 
-  // Ensure the positions are unique. Note that we're using a std::set instead
-  // of absl::flat_hash_set because we can make use of HloPosition's comparator
-  // logic instead of providing a hasher.
-  std::set<HloPosition> positions_in_preset_assignments;
-  for (auto& position_and_chunk : preset_assignments->chunks()) {
-    HloPosition position = position_and_chunk.first;
-    EXPECT_EQ(positions_in_preset_assignments.find(position),
-              positions_in_preset_assignments.end());
-    positions_in_preset_assignments.insert(position);
-  }
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, bitcast, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
+  Shape shape3 = ShapeUtil::MakeShape(F32, {1, 6});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
+  HloInstruction* bitcast1 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape1, p1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, bitcast1, negate4));
+  HloInstruction* bitcast2 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape3, p1));
+  HloInstruction* bitcast3 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape2, bitcast2));
+  HloInstruction* bitcast4 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape2, add));
+  HloInstruction* mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape2, HloOpcode::kMultiply, bitcast3, bitcast4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {p0, p1, negate0, negate1, negate2, negate3, negate4,
+                         bitcast1, add, bitcast2, bitcast3, bitcast4, mul});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  // We expect one bitcast on the LHS of multiply since bitcast(bitcast(foo)) is
+  // converted to bitcast(foo).
+  EXPECT_THAT(
+      mul,
+      op::Multiply(
+          op::Bitcast(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::Parameter(1))),
+          op::Bitcast(op::Add(
+              op::Bitcast(op::AsyncCopy(kAlternateMemorySpace,
+                                        kDefaultMemorySpace, op::Parameter(1))),
+              op::Negate()))));
+  EXPECT_EQ(bitcast1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->shape().layout().memory_space(), kAlternateMemorySpace);
+  // bitcast2 will no longer have a consumer and should get DCE'd, so we don't
+  // care about its memory space.
+  EXPECT_EQ(bitcast3->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
 }  // namespace

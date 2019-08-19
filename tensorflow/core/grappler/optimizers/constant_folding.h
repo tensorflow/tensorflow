@@ -51,6 +51,8 @@ class ConstantFolding : public GraphOptimizer {
 
   string name() const override { return "constant folding"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
 

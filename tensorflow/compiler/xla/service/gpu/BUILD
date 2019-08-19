@@ -272,6 +272,7 @@ cc_library(
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
         ":partition_assignment",
+        ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
@@ -611,10 +612,10 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_blacklist",
         ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
         ":gpu_executable",
+        ":hlo_algorithm_blacklist",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -1088,7 +1089,6 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
-        ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
@@ -1098,23 +1098,13 @@ cc_library(
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_compiler",
-        ":gpu_constants",
-        ":gpu_copy_insertion",
-        ":gpu_executable",
-        ":gpu_hlo_schedule",
-        ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
-        ":gpu_sanitize_constant_names",
-        ":gpu_scatter_expander",
-        ":instruction_fusion",
-        ":ir_emission_utils",
-        ":ir_emitter",
-        ":multi_output_fusion",
-        ":partition_assignment",
-        ":stream_assignment",
         ":stream_executor_util",
         ":target_constants",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1510,9 +1500,9 @@ xla_proto_library(
 )
 
 cc_library(
-    name = "cudnn_conv_blacklist",
-    srcs = ["cudnn_conv_blacklist.cc"],
-    hdrs = ["cudnn_conv_blacklist.h"],
+    name = "hlo_algorithm_blacklist",
+    srcs = ["hlo_algorithm_blacklist.cc"],
+    hdrs = ["hlo_algorithm_blacklist.h"],
     deps = [
         ":gpu_autotuning_proto",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1524,11 +1514,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_blacklist_test",
-    srcs = ["cudnn_conv_blacklist_test.cc"],
-    data = ["data/cudnn_conv_blacklist.pbtxt"],
+    name = "hlo_algorithm_blacklist_test",
+    srcs = ["hlo_algorithm_blacklist_test.cc"],
+    data = ["data/hlo_algorithm_blacklist.pbtxt"],
     deps = [
-        ":cudnn_conv_blacklist",
+        ":hlo_algorithm_blacklist",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -69,8 +69,8 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   if (!module) return failure();
 
   std::error_code error;
-  auto result = llvm::make_unique<llvm::ToolOutputFile>(output_filename, error,
-                                                        llvm::sys::fs::F_None);
+  auto result = std::make_unique<llvm::ToolOutputFile>(output_filename, error,
+                                                       llvm::sys::fs::F_None);
   if (error) {
     LOG(ERROR) << error.message();
     return failure();

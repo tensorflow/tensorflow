@@ -57,13 +57,9 @@ namespace gpu {
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
-
   BHWC,
-
   DHWC4,
-
   HWDC4,
-
   HDWC4,
 };
 

@@ -123,7 +123,7 @@ public:
       if (pi)
         pi->runBeforeAnalysis(getAnalysisName<AnalysisT>(), id, ir);
 
-      it->second = llvm::make_unique<AnalysisModel<AnalysisT>>(ir);
+      it->second = std::make_unique<AnalysisModel<AnalysisT>>(ir);
 
       if (pi)
         pi->runAfterAnalysis(getAnalysisName<AnalysisT>(), id, ir);

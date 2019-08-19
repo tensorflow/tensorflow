@@ -59,7 +59,7 @@ struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
 } // end anonymous namespace
 
 std::unique_ptr<FunctionPassBase> mlir::createTestLoopFusionPass() {
-  return llvm::make_unique<TestLoopFusion>();
+  return std::make_unique<TestLoopFusion>();
 }
 
 // Gathers all AffineForOps in 'block' at 'currLoopDepth' in 'depthToLoops'.

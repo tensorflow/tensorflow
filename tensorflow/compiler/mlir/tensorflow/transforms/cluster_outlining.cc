@@ -129,7 +129,7 @@ void ClusterOutliningPass::runOnModule() {
 }  // namespace
 
 std::unique_ptr<ModulePassBase> CreateClusterOutliningPass() {
-  return llvm::make_unique<ClusterOutliningPass>();
+  return std::make_unique<ClusterOutliningPass>();
 }
 
 static PassRegistration<ClusterOutliningPass> pass(

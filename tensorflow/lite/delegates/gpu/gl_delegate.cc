@@ -372,18 +372,6 @@ class Delegate {
   std::unique_ptr<InferenceContext> inference_context_;
 };
 
-// TODO(impjdi): Merge with MetalDelegate.
-bool IsAllFloatTensors(const TfLiteContext* context,
-                       const TfLiteIntArray* array) {
-  for (int i = 0; i < array->size; ++i) {
-    const TfLiteTensor* t = context->tensors + array->data[i];
-    if (t->allocation_type == kTfLiteArenaRw && t->type != kTfLiteFloat32) {
-      return false;
-    }
-  }
-  return true;
-}
-
 inline Delegate* GetGpuDelegate(TfLiteNode* node) {
   return reinterpret_cast<Delegate*>(node->user_data);
 }

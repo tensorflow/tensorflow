@@ -15,18 +15,18 @@ message ConvInstructionLog {
   repeated uint64 operand_addresses = 4;
 }
 
-message CudnnConvAlgorithm {
+message BlacklistedAlgorithm {
   int64 id = 1;
   bool tensor_ops = 2;
 }
 
-message CudnnConvolutionEntry {
+message AlgorithmBlacklistEntry {
   string hlo = 1;
   tensorflow.ComputeCapability cc = 2;
-  repeated tensorflow.CudnnVersion cudnn_versions = 3;
-  repeated CudnnConvAlgorithm algos = 4;
+  tensorflow.CudnnVersion cudnn_version = 3;
+  repeated BlacklistedAlgorithm algos = 4;
 }
 
-message CudnnConvolutionList {
-  repeated CudnnConvolutionEntry entries = 1;
+message AlgorithmBlacklist {
+  repeated AlgorithmBlacklistEntry entries = 1;
 }

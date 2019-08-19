@@ -150,8 +150,8 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          TTypes<string, 1>::Tensor input_bcast =
-              input_buffer.shaped<string, 1>(bcast.result_shape());
+          TTypes<tstring, 1>::Tensor input_bcast =
+              input_buffer.shaped<tstring, 1>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<1>(bcast.x_bcast()));
 
@@ -213,8 +213,8 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          TTypes<string, 2>::Tensor input_bcast =
-              input_buffer.shaped<string, 2>(bcast.result_shape());
+          TTypes<tstring, 2>::Tensor input_bcast =
+              input_buffer.shaped<tstring, 2>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
 

@@ -36,11 +36,9 @@ class PosixEnvTime : public EnvTime {
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
 EnvTime* EnvTime::Default() {
   static EnvTime* default_env_time = new PosixEnvTime;
   return default_env_time;
 }
-#endif
 
 }  // namespace tensorflow

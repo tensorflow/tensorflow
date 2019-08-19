@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -311,8 +311,9 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
 
   absl::Span<const AlgorithmDesc> blacklisted_algos =
-      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
-                               GetCudnnVersion(stream_exec_), canonical_hlo);
+      GetBlacklistedConvAlgorithms(GetComputeCapability(stream_exec_),
+                                   GetCudnnVersion(stream_exec_),
+                                   canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -370,11 +371,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
-      CudnnConvolutionList proto;
+      AlgorithmBlacklist proto;
       auto entry = proto.add_entries();
       entry->set_hlo(canonical_hlo);
       *entry->mutable_cc() = GetComputeCapability(stream_exec_);
-      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
       auto algo = entry->add_algos();
       algo->set_id(alg.algo_id());
       algo->set_tensor_ops(alg.tensor_ops_enabled());
@@ -383,8 +384,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
           << "To blacklist this algorithm for this convolution, "
              "copy-paste the following "
              "proto to the blacklist file pointed by XLA_FLAGS "
-             "--xla_gpu_cudnn_conv_blacklist_path="
-          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+             "--xla_gpu_algorithm_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_algorithm_blacklist_path()
           << " : " << proto.ShortDebugString();
       continue;
     }

@@ -165,7 +165,7 @@ struct AffineDataCopyGeneration
 std::unique_ptr<FunctionPassBase> mlir::createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
     int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
-  return llvm::make_unique<AffineDataCopyGeneration>(
+  return std::make_unique<AffineDataCopyGeneration>(
       slowMemorySpace, fastMemorySpace, tagMemorySpace, minDmaTransferSize,
       fastMemCapacityBytes);
 }
@@ -743,7 +743,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(region->compute(opInst, copyDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");

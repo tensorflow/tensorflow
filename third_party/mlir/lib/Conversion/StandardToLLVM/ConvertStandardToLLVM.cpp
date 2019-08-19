@@ -808,10 +808,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
                                 transformed.indices(), rewriter, getModule());
-    auto elementType = lowering.convertType(type.getElementType());
-
-    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, elementType,
-                                              ArrayRef<Value *>{dataPtr});
+    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, dataPtr);
     return matchSuccess();
   }
 };
@@ -1082,7 +1079,7 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
 /// Create an instance of LLVMTypeConverter in the given context.
 static std::unique_ptr<LLVMTypeConverter>
 makeStandardToLLVMTypeConverter(MLIRContext *context) {
-  return llvm::make_unique<LLVMTypeConverter>(context);
+  return std::make_unique<LLVMTypeConverter>(context);
 }
 
 namespace {
@@ -1133,14 +1130,14 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 } // end namespace
 
 std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
-  return llvm::make_unique<LLVMLoweringPass>();
+  return std::make_unique<LLVMLoweringPass>();
 }
 
 std::unique_ptr<ModulePassBase>
 mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
                                 LLVMTypeConverterMaker typeConverterMaker) {
-  return llvm::make_unique<LLVMLoweringPass>(patternListFiller,
-                                             typeConverterMaker);
+  return std::make_unique<LLVMLoweringPass>(patternListFiller,
+                                            typeConverterMaker);
 }
 
 static PassRegistration<LLVMLoweringPass>

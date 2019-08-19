@@ -63,7 +63,7 @@ void QuantizePass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<FunctionPassBase> CreateQuantizePass() {
-  return llvm::make_unique<QuantizePass>();
+  return std::make_unique<QuantizePass>();
 }
 
 static PassRegistration<QuantizePass> pass(

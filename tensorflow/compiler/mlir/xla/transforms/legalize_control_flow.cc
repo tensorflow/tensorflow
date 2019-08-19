@@ -152,7 +152,7 @@ void LegalizeControlFlow::runOnFunction() {
 
 std::unique_ptr<mlir::FunctionPassBase>
 mlir::XLA::createLegalizeControlFlowPass() {
-  return llvm::make_unique<LegalizeControlFlow>();
+  return std::make_unique<LegalizeControlFlow>();
 }
 
 static PassRegistration<mlir::XLA::LegalizeControlFlow> legalize_cf_pass(

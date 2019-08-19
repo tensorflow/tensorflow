@@ -752,8 +752,8 @@ class NestedTrackingTest(test.TestCase):
     self.assertEqual(len(layer.trainable_weights), 0)
     self.assertEqual(len(layer.non_trainable_weights), 8)
     self.assertEqual(
-        set([layer.dense1, layer.dense2, layer.v1, layer.v2]),
-        set([obj for unused_name, obj in layer._checkpoint_dependencies]))
+        {id(v) for v in [layer.dense1, layer.dense2, layer.v1, layer.v2]},
+        {id(v) for _, v in layer._checkpoint_dependencies})
 
   def test_nested_layer_updates_losses_tracking(self):
     # Test that updates and losses from nested sublayers are

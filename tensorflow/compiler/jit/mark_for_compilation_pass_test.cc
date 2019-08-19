@@ -1138,30 +1138,31 @@ TEST(XlaCompilationTest, DontClusterMergingNodesOnCPU) {
   EXPECT_EQ(clusters["B_dev1"], clusters["MatMul1_dev1"]);
 }
 
-// TODO(b/117085735): This form of clustering should be prevented.
-TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
+TEST(XlaCompilationTest, DontClusterSpreadingNodes) {
   // MatMulSource below creates data for nodes on GPU0 and GPU1 and is placed
   // on GPU0. However, it should not be clustered with the next node on
   // GPU0, because that will prevent the node on GPU1 from beginning its work as
   // soon as the data has been produced.
   //
   // This graph is:
-  // (Const0, Const0) -> MatMulSource
+  // Add(Const0, Const0) -> MatMulSource
   // MatMulSource -> (MatMul0, MatMul1)
   //
-  // Device0: [Const0, Const1, MatMulSource, MatMul0]
+  // Device0: [Const0, Add, MatMulSource, MatMul0]
   // Device1: [MatMul1]
   //
-  // Cluster0: [Const0, Const1, MatMulSource]
-  // Cluster1: [MatMul0]
-  // Cluster2: [MatMul1]
+  // Cluster0: [Const0, Const1, Add]
+  // Cluster1: MatMulSource
+  // Cluster2: [MatMul0]
+  // Cluster3: [MatMul1]
   Scope root = Scope::NewRootScope().ExitOnError();
   absl::string_view xla_gpu_dev0 =
       "/job:worker/replica:0/task:0/device:XLA_GPU:0";
   absl::string_view xla_gpu_dev1 =
       "/job:worker/replica:0/task:0/device:XLA_GPU:1";
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  Output a = ops::Const(root.WithOpName("A_dev0"), 1.0f, {2, 2});
+  Output const_val = ops::Const(root.WithOpName("A_dev0"), 1.0f, {2, 2});
+  Output a = ops::Add(root.WithOpName("Add_dev0"), const_val, const_val);
   Output matmul_source =
       ops::MatMul(root.WithOpName("MatMulSource_dev0"), a, a);
 
@@ -1181,12 +1182,16 @@ TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
+  // The source should be clustered with its producers.
   EXPECT_EQ(clusters["A_dev0"], clusters["MatMulSource_dev0"]);
-  EXPECT_NE(clusters["MatMul0_dev0"], clusters["MatMul1_dev1"]);
-  EXPECT_NE(clusters["MatMulSource_dev0"], clusters["MatMul1_dev1"]);
 
-  // Improved Heuristics should prevent this probably.
-  EXPECT_EQ(clusters["MatMulSource_dev0"], clusters["MatMul0_dev0"]);
+  // The source should be clustered with its consumers on multiple devices.
+  EXPECT_NE(clusters["MatMulSource_dev0"], clusters["MatMul1_dev1"]);
+  EXPECT_NE(clusters["MatMulSource_dev0"], clusters["MatMul0_dev0"]);
+
+  // The consumers are now too small to be clustered.
+  EXPECT_EQ(clusters["MatMul0_dev0"], "");
+  EXPECT_EQ(clusters["MatMul1_dev1"], "");
 }
 
 TEST(XlaCompilationTest, ClusterStatefulRandomOpOnXlaDevice) {

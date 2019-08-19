@@ -146,68 +146,7 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
 
 // -----
 
-def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
-  let summary = [{
-    Declare an entry point, its execution model, and its interface.
-  }];
-
-  let description = [{
-    Execution Model is the execution model for the entry point and its
-    static call tree. See Execution Model.
-
-    Entry Point must be the Result <id> of an OpFunction instruction.
-
-    Name is a name string for the entry point. A module cannot have two
-    OpEntryPoint instructions with the same Execution Model and the same
-    Name string.
-
-    Interface is a list of <id> of global OpVariable instructions. These
-    declare the set of global variables from a module that form the
-    interface of this entry point. The set of Interface <id> must be equal
-    to or a superset of the global OpVariable Result <id> referenced by the
-    entry point’s static call tree, within the interface’s storage classes.
-    Before version 1.4, the interface’s storage classes are limited to the
-    Input and Output storage classes. Starting with version 1.4, the
-    interface’s storage classes are all storage classes used in declaring
-    all global variables referenced by the entry point’s call tree.
-
-    Interface <id> are forward references. Before version 1.4, duplication
-    of these <id> is tolerated. Starting with version 1.4, an <id> must not
-    appear more than once.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    execution-model ::= "Vertex" | "TesellationControl" |
-                        <and other SPIR-V execution models...>
-
-    entry-point-op ::= ssa-id ` = spv.EntryPoint ` execution-model fn-name
-                       (ssa-use ( `, ` ssa-use)* ` : `
-                        pointer-type ( `, ` pointer-type)* )?
-    ```
-
-    For example:
-
-    ```
-    spv.EntryPoint "GLCompute" @foo
-    spv.EntryPoint "Kernel" @foo, %1, %2 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
-
-    ```
-  }];
-
-  let arguments = (ins
-    SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
-    Variadic<SPV_AnyPtr>:$interface
-  );
-
-  let results = (outs);
-  let autogenSerialization = 0;
-}
-
-// -----
-
-def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
+def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let summary = "Declare an execution mode for an entry point.";
 
   let description = [{
@@ -660,7 +599,7 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
 
 // -----
 
-def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
+def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
   let summary = "Return with no value from a function with void return type.";
 
   let description = [{
@@ -681,6 +620,38 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyReturn(*this); }];
+}
+
+// -----
+
+def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
+  let summary = "Return a value from a function.";
+
+  let description = [{
+    Value is the value returned, by copy, and must match the Return Type
+    operand of the OpTypeFunction type of the OpFunction body this return
+    instruction is in.
+
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    return-value-op ::= `spv.ReturnValue` ssa-use `:` spirv-type
+    ```
+
+    For example:
+
+    ```
+    spv.ReturnValue %0 : f32
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_Type:$value
+  );
+
+  let results = (outs);
 }
 
 // -----
@@ -1192,11 +1163,13 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     ``` {.ebnf}
     variable-op ::= ssa-id `=` `spv.Variable` (`init(` ssa-use `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
+                    (`built_in(` string-literal `)`)?
                     attribute-dict? `:` spirv-pointer-type
     ```
 
-    where `init` specifies initializer and `bind` specifies the descriptor set
-    and binding number.
+    where `init` specifies initializer and `bind` specifies the
+    descriptor set and binding number. `built_in` specifies SPIR-V
+    BuiltIn decoration associated with the op.
 
     For example:
 
@@ -1206,6 +1179,7 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     %1 = spv.Variable : !spv.ptr<f32, Function>
     %2 = spv.Variable init(%0): !spv.ptr<f32, Private>
     %3 = spv.Variable init(%0) bind(1, 2): !spv.ptr<f32, Uniform>
+    %3 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Uniform>
     ```
   }];
 

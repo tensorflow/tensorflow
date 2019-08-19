@@ -952,12 +952,10 @@ unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(true);
-  ctx->context->SetShouldStoreStepStats(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(false);
-  ctx->context->SetShouldStoreStepStats(false);
 }
 
 }  // extern "C"

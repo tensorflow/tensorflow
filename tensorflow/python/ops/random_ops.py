@@ -489,7 +489,7 @@ def random_gamma(shape,
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
     result = math_ops.maximum(
-        np.finfo(dtype.as_numpy_dtype).tiny,
+        np.finfo(alpha.dtype.as_numpy_dtype).tiny,
         gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
     _maybe_set_static_shape_helper(result, shape, alpha_broadcast)

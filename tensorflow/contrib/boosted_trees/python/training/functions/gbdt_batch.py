@@ -185,18 +185,18 @@ def extract_features(features, feature_columns, use_core_columns):
   # Make a shallow copy of features to ensure downstream usage
   # is unaffected by modifications in the model function.
   features = copy.copy(features)
-  cache = fc_v2.FeatureTransformationCache(features)
+  # pylint: disable=protected-access
+  state_manager = fc_v2._StateManagerImpl(layer=None, trainable=False)
   if feature_columns:
     scope = "gbdt"
     with variable_scope.variable_scope(scope):
       feature_columns = list(feature_columns)
       transformed_features = collections.OrderedDict()
       for fc in feature_columns:
-        # pylint: disable=protected-access
         if use_core_columns:
-          # pylint: disable=protected-access
           if isinstance(fc, fc_v2.FeatureColumn):
-            tensor = fc_v2._transform_features_v2(features, [fc], cache)[fc]
+            tensor = fc_v2._transform_features_v2(
+                features, [fc], state_manager)[fc]
           else:
             tensor = fc_core._transform_features(features, [fc])[fc]
           transformed_features[fc.name] = tensor

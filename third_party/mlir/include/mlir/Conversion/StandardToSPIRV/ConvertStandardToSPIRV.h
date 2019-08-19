@@ -33,12 +33,12 @@ class SPIRVDialect;
 }
 
 /// Type conversion from Standard Types to SPIR-V Types.
-class SPIRVTypeConverter : public TypeConverter {
+class SPIRVBasicTypeConverter : public TypeConverter {
 public:
-  explicit SPIRVTypeConverter(MLIRContext *context);
+  explicit SPIRVBasicTypeConverter(MLIRContext *context);
 
   /// Converts types to SPIR-V supported types.
-  Type convertType(Type t) override;
+  virtual Type convertType(Type t);
 
 protected:
   spirv::SPIRVDialect *spirvDialect;
@@ -47,51 +47,54 @@ protected:
 /// Converts a function type according to the requirements of a SPIR-V entry
 /// function. The arguments need to be converted to spv.Variables of spv.ptr
 /// types so that they could be bound by the runtime.
-class SPIRVEntryFnTypeConverter final : public SPIRVTypeConverter {
+class SPIRVTypeConverter final : public TypeConverter {
 public:
-  using SPIRVTypeConverter::SPIRVTypeConverter;
+  explicit SPIRVTypeConverter(SPIRVBasicTypeConverter *basicTypeConverter)
+      : basicTypeConverter(basicTypeConverter) {}
+
+  /// Convert types to SPIR-V types using the basic type converter.
+  Type convertType(Type t) override {
+    return basicTypeConverter->convertType(t);
+  }
 
   /// Method to convert argument of a function. The `type` is converted to
   /// spv.ptr<type, Uniform>.
   // TODO(ravishankarm) : Support other storage classes.
   LogicalResult convertSignatureArg(unsigned inputNo, Type type,
                                     SignatureConversion &result) override;
+
+  /// Get the basic type converter.
+  SPIRVBasicTypeConverter *getBasicTypeConverter() const {
+    return basicTypeConverter;
+  }
+
+private:
+  SPIRVBasicTypeConverter *basicTypeConverter;
 };
 
 /// Base class to define a conversion pattern to translate Ops into SPIR-V.
 template <typename OpTy> class SPIRVOpLowering : public ConversionPattern {
 public:
-  SPIRVOpLowering(MLIRContext *context, SPIRVTypeConverter &typeConverter,
-                  SPIRVEntryFnTypeConverter &entryFnConverter)
+  SPIRVOpLowering(MLIRContext *context, SPIRVTypeConverter &typeConverter)
       : ConversionPattern(OpTy::getOperationName(), 1, context),
-        typeConverter(typeConverter), entryFnConverter(entryFnConverter) {}
+        typeConverter(typeConverter) {}
 
 protected:
   // Type lowering class.
   SPIRVTypeConverter &typeConverter;
-
-  // Entry function signature converter.
-  SPIRVEntryFnTypeConverter &entryFnConverter;
 };
 
-/// Base Class for legalize a FuncOp within a spv.module. This class can be
-/// extended to implement a ConversionPattern to lower a FuncOp. It provides
-/// hooks to legalize a FuncOp as a simple function, or as an entry function.
-class SPIRVFnLowering : public SPIRVOpLowering<FuncOp> {
-public:
-  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
+/// Method to legalize a function as a non-entry function.
+LogicalResult lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
+                            SPIRVTypeConverter *typeConverter,
+                            ConversionPatternRewriter &rewriter,
+                            FuncOp &newFuncOp);
 
-protected:
-  /// Method to legalize the function as a non-entry function.
-  LogicalResult lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                              ConversionPatternRewriter &rewriter,
-                              FuncOp &newFuncOp) const;
-
-  /// Method to legalize the function as an entry function.
-  LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                                     ConversionPatternRewriter &rewriter,
-                                     FuncOp &newFuncOp) const;
-};
+/// Method to legalize a function as an entry function.
+LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
+                                   SPIRVTypeConverter *typeConverter,
+                                   ConversionPatternRewriter &rewriter,
+                                   FuncOp &newFuncOp);
 
 /// Appends to a pattern list additional patterns for translating StandardOps to
 /// SPIR-V ops.

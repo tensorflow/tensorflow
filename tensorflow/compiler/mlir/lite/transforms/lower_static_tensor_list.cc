@@ -500,7 +500,7 @@ void LowerStaticTensorListPass::runOnModule() {
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
 std::unique_ptr<ModulePassBase> TFL::CreateLowerStaticTensorListPass() {
-  return llvm::make_unique<LowerStaticTensorListPass>();
+  return std::make_unique<LowerStaticTensorListPass>();
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass(

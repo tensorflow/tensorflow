@@ -768,7 +768,7 @@ void MaterializeVectorsPass::runOnFunction() {
 
 std::unique_ptr<FunctionPassBase>
 mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
-  return llvm::make_unique<MaterializeVectorsPass>(vectorSize);
+  return std::make_unique<MaterializeVectorsPass>(vectorSize);
 }
 
 static PassRegistration<MaterializeVectorsPass>

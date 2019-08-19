@@ -441,7 +441,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
   const int64 record_bytes_;
   const int64 footer_bytes_;
   const int64 buffer_size_;
-  const string compression_type_;
+  const tstring compression_type_;
   const int op_version_;
 };
 
@@ -490,10 +490,10 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   if (buffer_size == 0) {
     buffer_size = 256 << 10;  // 256 kB as default.
   }
-  string compression_type;
+  tstring compression_type;
   if (op_version_ > 1) {
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kCompressionType,
-                                                    &compression_type));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
+                                                     &compression_type));
     OP_REQUIRES(ctx,
                 compression_type.empty() || compression_type == kZLIB ||
                     compression_type == kGZIP,

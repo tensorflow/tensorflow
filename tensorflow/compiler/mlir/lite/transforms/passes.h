@@ -57,6 +57,13 @@ std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
 std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist);
 
+// Creates an instance of the TensorFlow Lite dialect PrepareCompositeFunctions
+// pass.
+std::unique_ptr<FunctionPassBase> CreatePrepareCompositeFunctionsPass();
+
+// Creates a instance of the TensorFlow Lite dialect ExtractOphint pass.
+std::unique_ptr<ModulePassBase> CreateExtractOphintPass();
+
 }  // namespace TFL
 
 }  // namespace mlir

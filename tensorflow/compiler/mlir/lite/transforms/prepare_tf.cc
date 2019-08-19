@@ -207,7 +207,7 @@ struct ConvertTFConvOp : public RewritePattern {
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return matchFailure();
 
-    auto state = llvm::make_unique<ConvertTFConvOpMatchState>();
+    auto state = std::make_unique<ConvertTFConvOpMatchState>();
 
     state->stride_height = height;
     state->stride_width = width;
@@ -415,7 +415,7 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
-  return llvm::make_unique<PrepareTFPass>();
+  return std::make_unique<PrepareTFPass>();
 }
 
 static PassRegistration<PrepareTFPass> pass(

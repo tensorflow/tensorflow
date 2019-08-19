@@ -214,7 +214,7 @@ void LegalizeTF::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<FunctionPassBase> CreateLegalizeTFPass() {
-  return llvm::make_unique<LegalizeTF>();
+  return std::make_unique<LegalizeTF>();
 }
 
 static PassRegistration<LegalizeTF> pass(
