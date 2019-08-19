@@ -1133,8 +1133,7 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
-        # TODO(whchung@gmail.com): Enable in the subsequent PR.
-        # "amdgpu_compiler_registration.cc",
+        "amdgpu_compiler_registration.cc",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -1145,18 +1144,32 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler_impl",
     srcs = [
-        # TODO(whchung@gmail.com) : enable in the subsequent PR.
-        #"amdgpu_compiler.cc",
+        "amdgpu_compiler.cc",
     ],
     hdrs = [
-        # TODO(whchung@gmail.com): enable in the subsequent PR.
-        #"amdgpu_compiler.h"
+        "amdgpu_compiler.h",
     ],
     deps = [
-        # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
-        #":gpu_compiler_impl",
-        #":miopen_conv_algorithm_picker",
-        #"//tensorflow/core:rocm_rocdl_path",
+        ":cudnn_conv_padding_legalization",
+        ":cudnn_conv_rewriter",
+        ":gpu_compiler",
+        ":gpu_layout_assignment",
+        ":target_constants",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_constant_folding",
+        "//tensorflow/compiler/xla/service:hlo_cse",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
 
