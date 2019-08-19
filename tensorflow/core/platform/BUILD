@@ -23,6 +23,8 @@ load(
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
+    "tf_protobuf_deps",
+    "tf_protobuf_compiler_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -166,6 +168,25 @@ cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     deps = [":platform"],
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [
+        "protobuf.cc",
+        "protobuf_util.cc",
+    ],
+    hdrs = ["protobuf.h"],
+    deps = [
+        ":platform",
+        ":types",
+    ] + tf_protobuf_deps(),
+)
+
+cc_library(
+    name = "protobuf_compiler",
+    hdrs = ["protobuf_compiler.h"],
+    deps = tf_protobuf_compiler_deps(),
 )
 
 cc_library(

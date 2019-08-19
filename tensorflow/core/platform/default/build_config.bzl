@@ -826,3 +826,13 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ]
+
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
