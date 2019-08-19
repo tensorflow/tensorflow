@@ -643,7 +643,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
-@tf_export("dtypes.cast", "cast")
+@tf_export("cast", "dtypes.cast")
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
