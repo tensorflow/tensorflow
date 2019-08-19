@@ -19,8 +19,8 @@ namespace xla {
 
 namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
-// space.
-const HeapSimulator::Chunk kDefaultMemorySpaceDummyChunk{-1, -1};
+// space and for keeping track of number of asynchronous copies.
+const HeapSimulator::Chunk kDummyChunk{-1, -1};
 }  // namespace
 
 std::vector<const GlobalDecreasingSizeBestFitHeap::BufferInterval*>
@@ -91,12 +91,12 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
     MemorySpaceAssignment::AllocationSequence* allocation_sequence =
         &(*allocation_map_)[&buffer];
-    if (keep_in_default_memory) {
-      continue;
-    }
 
     // At this point, none of the colocated buffers contain any phi buffers.
     for (const BufferInterval* colocated_interval : colocated_intervals) {
+      if (keep_in_default_memory) {
+        break;
+      }
       const HloValue* value = colocated_interval->buffer;
       int64 definition_time =
           instruction_schedule_->at(value->defining_instruction());
@@ -114,15 +114,27 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
         // Skip allocating buffers for bitcast uses. The uses that feed from
         // bitcasts will be handled specially.
         if (use.instruction->opcode() != HloOpcode::kBitcast) {
-          FindAllocation(definition_time, use_time, value->defining_position(),
-                         use, value, colocated_interval->size,
-                         allocation_sequence);
+          if (!FindAllocation(definition_time, use_time,
+                              value->defining_position(), use, value,
+                              colocated_interval->size, allocation_sequence)) {
+            // If the allocation finding failed (e.g., due to running out of
+            // asynchronous copies), then fall back to allocating the buffer
+            // entirely in the default memory.
+            pending_chunks_.clear();
+            pending_async_copies_.clear();
+            allocation_sequence->clear();
+            keep_in_default_memory = true;
+            break;
+          }
+
           // If there are multiple uses, they can try using the memory
           // allocation already at the alternate memory.
           definition_time = use_time;
         }
       }
     }
+
+    CommitPendingChunks();
   }
 
   if (VLOG_IS_ON(3)) {
@@ -147,7 +159,32 @@ HloInstruction* AlternateMemoryBestFitHeap::GetInstructionAt(int64 time) const {
   return flattened_instruction_sequence_->instructions()[time];
 }
 
-void AlternateMemoryBestFitHeap::FindAllocation(
+void AlternateMemoryBestFitHeap::CommitPendingChunks() {
+  for (auto interval_and_chunk : pending_chunks_) {
+    VLOG(3) << "Committing chunk: " << interval_and_chunk.first.start << "-"
+            << interval_and_chunk.first.end << " : ["
+            << interval_and_chunk.second.chunk.offset << ", "
+            << interval_and_chunk.second.chunk.size << "]";
+    CommitChunk(interval_and_chunk.first, interval_and_chunk.second);
+  }
+  pending_chunks_.clear();
+  // Also add the pending async copies to the interval tree.
+  if (max_outstanding_async_copies_ >= 0) {
+    for (auto interval : pending_async_copies_) {
+      async_copy_interval_tree_.Add(interval.first, interval.second,
+                                    kDummyChunk);
+    }
+  }
+  pending_async_copies_.clear();
+}
+
+void AlternateMemoryBestFitHeap::AddToPendingChunks(
+    const BufferInterval& buffer_interval,
+    const ChunkCandidate& chunk_candidate) {
+  pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
+}
+
+bool AlternateMemoryBestFitHeap::FindAllocation(
     int64 start_time, int64 end_time, HloPosition defining_position, HloUse use,
     const HloValue* buffer, int64 size,
     MemorySpaceAssignment::AllocationSequence* allocations) {
@@ -181,7 +218,7 @@ void AlternateMemoryBestFitHeap::FindAllocation(
   if (TryAllocatingInAlternateMemoryNoCopy(
           start_time, end_time, defining_position, use, alternate_mem_interval,
           non_bitcast_operand, allocations)) {
-    return;
+    return true;
   }
 
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
@@ -199,26 +236,46 @@ void AlternateMemoryBestFitHeap::FindAllocation(
     // TODO(berkin): For now evictions happen relative to the most recent
     // allocation in the alternate memory. We can potentially start evictions
     // earlier and end later.
-    HloInstruction* earliest_instruction =
-        GetInstructionAt(prev_allocation->start_time());
-    HloInstruction* latest_instruction =
-        GetInstructionAt(prev_allocation->end_time());
-
     VLOG(3) << "Evicting buffer at " << prev_allocation->chunk().offset << " ("
             << prev_allocation->start_time() << ", "
             << prev_allocation->end_time() << ")";
-    VLOG(3) << "Copy to default mem between instructions "
-            << earliest_instruction->ToString() << " - "
-            << latest_instruction->ToString();
 
-    // The live range of this buffer is from the start time of the previous
-    // buffer that was in the alternate memory so that a buffer is allocated
-    // during the copy.
-    allocations->push_back(
-        absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
-            *prev_allocation, MemorySpace::kDefault,
-            kDefaultMemorySpaceDummyChunk, prev_allocation->start_time(),
-            end_time, earliest_instruction, latest_instruction));
+    // See if this interval would violate the asynchronous copy limit.
+    if (!ViolatesMaximumOutstandingAsyncCopies(prev_allocation->start_time(),
+                                               prev_allocation->end_time())) {
+      AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
+                   prev_allocation->start_time(), prev_allocation->end_time(),
+                   allocations);
+
+    } else {
+      VLOG(3) << "This violates the maximum async copies.";
+      // If the original interval violated the limit, try sub-intervals within
+      // this interval.
+      bool eviction_scheduled = false;
+      for (int64 time = prev_allocation->start_time();
+           time <= prev_allocation->end_time(); ++time) {
+        VLOG(3) << "Try evicting (" << time << ", " << time << ")";
+        if (!ViolatesMaximumOutstandingAsyncCopies(time, time)) {
+          VLOG(3) << "Eviction successful.";
+          AddAsyncCopy(*prev_allocation, MemorySpace::kDefault, kDummyChunk,
+                       time, time, allocations);
+          eviction_scheduled = true;
+          break;
+        }
+      }
+
+      if (!eviction_scheduled) {
+        // If the eviction couldn't be scheduled, then fail. This buffer will be
+        // kept in the default memory.
+        VLOG(3) << "Bailing: Could not evict " << use.ToString()
+                << " because we hit the limit of maximum asynchronous copies "
+                << "between "
+                << GetInstructionAt(prev_allocation->start_time())->ToString()
+                << " and "
+                << GetInstructionAt(prev_allocation->end_time())->ToString();
+        return false;
+      }
+    }
   } else if (prev_allocation != nullptr &&
              prev_allocation->memory_space() == MemorySpace::kDefault &&
              prev_allocation->instruction() == non_bitcast_operand) {
@@ -229,7 +286,7 @@ void AlternateMemoryBestFitHeap::FindAllocation(
   } else {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
-        kDefaultMemorySpaceDummyChunk, start_time, end_time));
+        kDummyChunk, start_time, end_time));
   }
 
   // Try partially placing the buffer in the alternate space. The time that is
@@ -252,35 +309,81 @@ void AlternateMemoryBestFitHeap::FindAllocation(
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", "
             << alternate_mem_interval.end << ")";
+    // If this additional asynchronous copy would violate the limit, try a
+    // different interval.
+    if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
+                                              alternate_mem_interval.end)) {
+      VLOG(4) << "This would violate the outstanding async copy limit.";
+      continue;
+    }
     ChunkCandidate chunk_candidate = FindChunkCandidate(alternate_mem_interval);
     // Check if the new heap size fits within limits.
     if (chunk_candidate.heap_size < max_size_in_bytes_) {
-      HloInstruction* earliest_instruction =
-          GetInstructionAt(alternate_mem_interval.start);
       VLOG(3) << "Move the buffer to alternate memory at "
               << alternate_mem_interval.start
               << ". Offset = " << chunk_candidate.chunk.offset
               << ", size = " << chunk_candidate.chunk.size
               << ", heap_size = " << chunk_candidate.heap_size;
-      VLOG(3) << "Copy to alternate mem between instructions "
-              << earliest_instruction->ToString() << " - "
-              << use.instruction->ToString();
-      CommitChunk(alternate_mem_interval, chunk_candidate);
+      AddToPendingChunks(alternate_mem_interval, chunk_candidate);
 
-      // Since copies couldn't be removed, create an allocation in the
-      // default memory space.
-      allocations->push_back(
-          absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
-              *allocations->back().get(), MemorySpace::kAlternate,
-              chunk_candidate.chunk, alternate_mem_interval.start, end_time,
-              earliest_instruction, use.instruction));
+      AddAsyncCopy(*allocations->back().get(), MemorySpace::kAlternate,
+                   chunk_candidate.chunk, alternate_mem_interval.start,
+                   end_time, allocations);
+
       allocations->back()->AddUse(use);
-      return;
+      return true;
     }
   }
 
   // If a copy wasn't inserted, then add this use to the latest allocation.
   allocations->back()->AddUse(use);
+  return true;
+}
+
+void AlternateMemoryBestFitHeap::AddAsyncCopy(
+    const MemorySpaceAssignment::Allocation& prev_allocation,
+    MemorySpace memory_space, Chunk chunk, int64 start_time, int64 end_time,
+    MemorySpaceAssignment::AllocationSequence* allocations) {
+  HloInstruction* earliest_instruction = GetInstructionAt(start_time);
+  HloInstruction* latest_instruction = GetInstructionAt(end_time);
+
+  VLOG(3) << "Copy to "
+          << (memory_space == MemorySpaceAssignment::MemorySpace::kDefault
+                  ? "default"
+                  : "alternate")
+          << " memory between instructions " << earliest_instruction->ToString()
+          << " - " << latest_instruction->ToString();
+
+  allocations->push_back(
+      absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
+          prev_allocation, memory_space, chunk, start_time, end_time,
+          earliest_instruction, latest_instruction));
+
+  // Register the additional async copy with the interval tree to keep track of
+  // the limit at any given time.
+  pending_async_copies_.emplace_back(start_time, end_time);
+}
+
+bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
+    int64 start_time, int64 end_time) const {
+  if (max_outstanding_async_copies_ < 0) {
+    return false;
+  }
+
+  // Count both the asynchronous copies in the interval tree as well as the
+  // pending asynchronous copies belonging to this buffer.
+  int64 num_async_copies =
+      async_copy_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
+          .size();
+
+  for (auto interval : pending_async_copies_) {
+    if (interval.second > start_time && interval.first < end_time) {
+      num_async_copies++;
+    }
+  }
+  // Add one because we are checking if adding an additional asynchronous copy
+  // would violate the limit.
+  return num_async_copies + 1 > max_outstanding_async_copies_;
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
@@ -332,7 +435,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
             << chunk_candidate.chunk.offset
             << ", size = " << chunk_candidate.chunk.size
             << ", heap_size = " << chunk_candidate.heap_size;
-    CommitChunk(alternate_mem_interval, chunk_candidate);
+    AddToPendingChunks(alternate_mem_interval, chunk_candidate);
 
     // If there was a previous allocation, the buffer location is the
     // same as the previous. Otherwise, it is the operand.
@@ -351,6 +454,22 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   return false;
 }
 
+/*static*/ int64 MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(
+    const HloModule& module) {
+  int64 max_copies = 0;
+  int64 current_copies = 0;
+  for (HloInstruction* instruction :
+       module.schedule().sequence(module.entry_computation()).instructions()) {
+    if (instruction->opcode() == HloOpcode::kCopyStart) {
+      current_copies++;
+    } else if (instruction->opcode() == HloOpcode::kCopyDone) {
+      current_copies--;
+    }
+    max_copies = std::max(max_copies, current_copies);
+  }
+  return max_copies;
+}
+
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(
     HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
@@ -358,7 +477,8 @@ MemorySpaceAssignment::Run(
     int64 alternate_memory_space_alignment_in_bytes,
     BufferValue::SizeFunction size_fn,
     AlternateMemoryBestFitHeap::IsAllowedInAlternateMemoryFunction
-        is_allowed_in_alternate_mem) {
+        is_allowed_in_alternate_mem,
+    int64 max_outstanding_async_copies) {
   CHECK(module->has_schedule());
   VLOG(4) << "Module before memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
@@ -372,7 +492,7 @@ MemorySpaceAssignment::Run(
       min_prefetch_interval, max_prefetch_interval, *alias_analysis,
       alternate_memory_space_alignment_in_bytes,
       GlobalDecreasingSizeBestFitHeap::Type::kSpatial,
-      is_allowed_in_alternate_mem);
+      is_allowed_in_alternate_mem, max_outstanding_async_copies);
 
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
                                         module->schedule(),
@@ -385,6 +505,8 @@ MemorySpaceAssignment::Run(
   VLOG(4) << "Module after memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
   TF_CHECK_OK(module->schedule().Verify());
+  VLOG(1) << "Maximum number of outstanding async copies: "
+          << CountMaximumOutstandingAsyncCopies(*module);
 
   return std::move(memory_space_assignment.preset_assignments_);
 }
