@@ -900,8 +900,12 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   // dependencies on the 'from' cluster and another dependency leads to a
   // merging of the clusters.
   //
-  // TODO(b/117085735): We probably want to handle the reciprocal of this case
-  // where a cluster is producing data for multiple devices.
+  // Example:
+  // Cluster0:GPU0 -> Cluster1:GPU0
+  //               -> Cluster2:GPU1
+  // Even if, Cluster0 and Cluster1 could be combined, it would harm parallelism
+  // of the model by delaying execution of Cluster2 until all of Cluster1 had
+  // finished, rather than them being independent.
   for (const auto& in_id :
        cycles_graph_.Predecessors(cluster_to.cycles_graph_node_id())) {
     const Cluster* cluster_in = GetClusterForCyclesGraphNode(in_id);
@@ -913,6 +917,34 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
       }
       TF_ASSIGN_OR_RETURN(devices_compatible,
                           AreDevicesCompatible(cluster_from, *cluster_in));
+      if (!devices_compatible) {
+        return true;
+      }
+    }
+  }
+
+  // Do the operation described above, also in reverse. Parallelism can also be
+  // ruined by a producer that is used by the same device and other devices.
+  // Prevent clustering with its consumers to allow the other devices to be
+  // unblocked as soon as possible.
+  //
+  // Example:
+  // Cluster0:GPU0 -> Cluster2:GPU0
+  // Cluster1:GPU1 /
+  // Even if, Cluster0 and Cluster2 could be combined, it would harm parallelism
+  // of the model by delaying execution of Cluster0 until all of Cluster1 had
+  // finished, rather than them being independent.
+  for (const auto& out_id :
+       cycles_graph_.Successors(cluster_from.cycles_graph_node_id())) {
+    const Cluster* cluster_out = GetClusterForCyclesGraphNode(out_id);
+    if (cluster_out) {
+      TF_ASSIGN_OR_RETURN(bool devices_compatible,
+                          AreDevicesCompatible(cluster_from, *cluster_out));
+      if (!devices_compatible) {
+        return true;
+      }
+      TF_ASSIGN_OR_RETURN(devices_compatible,
+                          AreDevicesCompatible(cluster_to, *cluster_out));
       if (!devices_compatible) {
         return true;
       }
