@@ -68,12 +68,17 @@ LinalgParametricIntNativeOpTrait<"ViewRanks", ranks>
 
 def ViewTraits : NativeOpTrait<"linalg::ViewTraits">;
 
+// The linalg 'LinalgLibraryInterface' provides access to the 'LinalgOp'
+// interface.
+def LinalgLibraryInterface : NativeOpInterface<"LinalgOp">;
+
 // Base Tablegen class for Linalg ops.
 // Linalg ops that correspond to library calls operate on linalg::View as their
 // first operands. These may be optionally followed by non-view operands
 // depending on the specific Linalg op.
 class LinalgLibraryBase_Op<string mnemonic, list<OpTrait> props>
-  : Op<Linalg_Dialect, mnemonic, !listconcat(props, [ViewTraits])> {
+  : Op<Linalg_Dialect, mnemonic,
+       !listconcat(props, [ViewTraits, LinalgLibraryInterface])> {
   let parser = [{ return parseLinalgLibraryOp(parser, result); }];
   let printer = [{ printLinalgLibraryOp(p, *this); }];
 }

@@ -55,12 +55,6 @@ namespace linalg {
 ///   name mangles into `linalg_matmul_viewxxf32_viewxxf32_viewxxf32_impl`
 std::string generateLibraryCallName(Operation *op);
 
-#define GET_OP_CLASSES
-#include "mlir/Linalg/IR/LinalgOps.h.inc"
-
-#define GET_OP_CLASSES
-#include "mlir/Linalg/IR/LinalgLibraryOps.h.inc"
-
 /// Returns the list of maps that map loops to operands of a Linalg op.
 /// The i-th affine map identifies loop indices to subscripts that are used when
 /// accessing the i-th operand.
@@ -79,78 +73,8 @@ std::string generateLibraryCallName(Operation *op);
 /// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
-
-/// A LinalgOp behaves like a base class for the Linalg operations that are
-/// defined in LinalgLibraryOps.td. The implementation does not use inheritance
-/// directly. Instead, a LinalgOp directly derives from Op, hides the `classof`
-/// method and dispatches to the appropriate LinalgLibraryOp.
-/// This allows writing generic passes, like tiling, for all current and future
-/// LinalgOps without requiring templating and dispatch in multiple places.
-class LinalgOp : public Op<LinalgOp> {
-public:
-  using Op::Op;
-
-  LinalgOp(Operation *op) : Op<LinalgOp>(op) {
-    impl = ModelDispatch<
-#define GET_OP_LIST
-#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
-        >::dispatch(op);
-  }
-
-  static bool classof(Operation *op) {
-    return ModelDispatch<
-#define GET_OP_LIST
-#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
-        >::classof(op);
-  }
-
-  unsigned getNumParallelLoops() {
-    return impl->getNumParallelLoops(getOperation());
-  }
-  unsigned getNumReductionLoops() {
-    return impl->getNumReductionLoops(getOperation());
-  }
-  unsigned getNumWindowLoops() {
-    return impl->getNumWindowLoops(getOperation());
-  }
-  unsigned getNumLoops() {
-    return getNumParallelLoops() + getNumReductionLoops() + getNumWindowLoops();
-  }
-  unsigned getNumInputs() { return impl->getNumInputs(getOperation()); }
-  unsigned getNumOutputs() { return impl->getNumOutputs(getOperation()); }
-  unsigned getNumInputsAndOutputs() {
-    return impl->getNumInputsAndOutputs(getOperation());
-  }
-  Value *getInput(unsigned i) { return impl->getInput(getOperation(), i); }
-  llvm::Optional<unsigned> getIndexOfInput(Value *view) {
-    return impl->getIndexOfInput(getOperation(), view);
-  }
-  ViewType getInputViewType(unsigned i) {
-    return impl->getInputViewType(getOperation(), i);
-  }
-  Operation::operand_range getInputs() {
-    return impl->getInputs(getOperation());
-  }
-  Value *getOutput(unsigned i) { return impl->getOutput(getOperation(), i); }
-  llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
-    return impl->getIndexOfOutput(getOperation(), view);
-  }
-  ViewType getOutputViewType(unsigned i) {
-    return impl->getOutputViewType(getOperation(), i);
-  }
-  Operation::operand_range getOutputs() {
-    return impl->getOutputs(getOperation());
-  }
-  Operation::operand_range getInputsAndOutputs() {
-    return impl->getInputsAndOutputs(getOperation());
-  }
-  LinalgOp create(OpBuilder &builder, Location loc, ArrayRef<Value *> operands,
-                  ArrayRef<NamedAttribute> attributes) {
-    return LinalgOp(impl->create(builder, loc, operands, attributes));
-  }
-
-private:
+namespace detail {
+struct LinalgOpInterfaceTraits {
   struct Concept {
     virtual ~Concept() = default;
     virtual unsigned getNumInputs(Operation *op) = 0;
@@ -175,20 +99,7 @@ private:
                               ArrayRef<NamedAttribute> attributes) = 0;
   };
 
-  /// The implementation is inspired from Sean Parent's concept-based
-  /// polymorphism. A key difference is that the set of classes erased is
-  /// statically known, which alleviates the need for using dynamic memory
-  /// allocation.
-  /// We use a zero-sized templated class `Model<ConcreteOp>` to emit the
-  /// virtual table and generate a singleton object for each instantiation of
-  /// this class.
-  /// We pay the cost of initialization once on construction (find which class
-  /// to dispatch to) and then a virtual dispatch on every call.
   template <typename ConcreteOp> struct Model : public Concept {
-    static Model<ConcreteOp> &instance() {
-      static Model<ConcreteOp> singleton;
-      return singleton;
-    }
     unsigned getNumInputs(Operation *op) override {
       return cast<ConcreteOp>(op).getNumInputs();
     }
@@ -243,28 +154,74 @@ private:
                                         attributes);
     }
   };
-  Concept *impl;
-
-  template <typename... Types> struct ModelDispatch;
-
-  template <typename First, typename... Rest>
-  struct ModelDispatch<First, Rest...> {
-    static bool classof(Operation *op) {
-      return isa<First>(op) || ModelDispatch<Rest...>::classof(op);
-    }
-    static Concept *dispatch(Operation *op) {
-      return isa<First>(op) ? &Model<First>::instance()
-                            : ModelDispatch<Rest...>::dispatch(op);
-    }
-  };
-
-  template <typename...> struct ModelDispatch {
-    static bool classof(Operation *op) { return false; }
-    static Concept *dispatch(Operation *op) {
-      llvm_unreachable("Invalid LinalgOp");
-    }
-  };
 };
+} // namespace detail
+
+/// A LinalgOp behaves like a base class for the Linalg operations that are
+/// defined in LinalgLibraryOps.td. The implementation does not use inheritance
+/// directly. Instead, a LinalgOp directly derives from Op, hides the `classof`
+/// method and dispatches to the appropriate LinalgLibraryOp.
+/// This allows writing generic passes, like tiling, for all current and future
+/// LinalgOps without requiring templating and dispatch in multiple places.
+class LinalgOp : public OpInterface<LinalgOp, detail::LinalgOpInterfaceTraits> {
+public:
+  using OpInterface<LinalgOp, detail::LinalgOpInterfaceTraits>::OpInterface;
+
+  unsigned getNumParallelLoops() {
+    return getImpl()->getNumParallelLoops(getOperation());
+  }
+  unsigned getNumReductionLoops() {
+    return getImpl()->getNumReductionLoops(getOperation());
+  }
+  unsigned getNumWindowLoops() {
+    return getImpl()->getNumWindowLoops(getOperation());
+  }
+  unsigned getNumLoops() {
+    return getNumParallelLoops() + getNumReductionLoops() + getNumWindowLoops();
+  }
+  unsigned getNumInputs() { return getImpl()->getNumInputs(getOperation()); }
+  unsigned getNumOutputs() { return getImpl()->getNumOutputs(getOperation()); }
+  unsigned getNumInputsAndOutputs() {
+    return getImpl()->getNumInputsAndOutputs(getOperation());
+  }
+  Value *getInput(unsigned i) { return getImpl()->getInput(getOperation(), i); }
+  llvm::Optional<unsigned> getIndexOfInput(Value *view) {
+    return getImpl()->getIndexOfInput(getOperation(), view);
+  }
+  ViewType getInputViewType(unsigned i) {
+    return getImpl()->getInputViewType(getOperation(), i);
+  }
+  Operation::operand_range getInputs() {
+    return getImpl()->getInputs(getOperation());
+  }
+  Value *getOutput(unsigned i) {
+    return getImpl()->getOutput(getOperation(), i);
+  }
+  llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
+    return getImpl()->getIndexOfOutput(getOperation(), view);
+  }
+  ViewType getOutputViewType(unsigned i) {
+    return getImpl()->getOutputViewType(getOperation(), i);
+  }
+  Operation::operand_range getOutputs() {
+    return getImpl()->getOutputs(getOperation());
+  }
+  Operation::operand_range getInputsAndOutputs() {
+    return getImpl()->getInputsAndOutputs(getOperation());
+  }
+  LinalgOp create(OpBuilder &builder, Location loc, ArrayRef<Value *> operands,
+                  ArrayRef<NamedAttribute> attributes) {
+    return LinalgOp(getImpl()->create(builder, loc, operands, attributes));
+  }
+};
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgOps.h.inc"
+
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgLibraryOps.h.inc"
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 
 } // namespace linalg
 } // namespace mlir
