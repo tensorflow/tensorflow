@@ -411,6 +411,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
     ],
