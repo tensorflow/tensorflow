@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/TranslateClParser.h"  // TF:local_config_mlir
@@ -31,7 +30,6 @@ static llvm::cl::opt<std::string> output_filename(
     llvm::cl::init("-"));
 
 int main(int argc, char** argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   // Add flags for all the registered translations.

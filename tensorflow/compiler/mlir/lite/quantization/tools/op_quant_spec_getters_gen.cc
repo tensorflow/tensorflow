@@ -97,7 +97,6 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 }
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram X(argc, argv);
   llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv);
   return TableGenMain(argv[0], &OpQuantSpecWriter);

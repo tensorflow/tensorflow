@@ -16,7 +16,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -100,7 +99,6 @@ static int PrintFunctionResultMapping(const std::string &result,
 }
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   // TODO(jpienaar): Revise the command line option parsing here.
   llvm::InitLLVM y(argc, argv);
 
