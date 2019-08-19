@@ -36,20 +36,18 @@ template <typename T> struct ViewType<T, 0> {
   unsigned long offset;
 };
 
-extern "C" void linalg_fill_viewf32_f32_impl(ViewType<float, 0> *X, float *pF) {
-  *(X->data + X->offset) = *pF;
+extern "C" void linalg_fill_viewf32_f32(ViewType<float, 0> *X, float f) {
+  *(X->data + X->offset) = f;
 }
 
-extern "C" void linalg_fill_viewxf32_f32_impl(ViewType<float, 1> *X,
-                                              float *pF) {
-  float f = *pF;
-  for (unsigned i = 0; i < X->sizes[0]; ++i) {
+extern "C" void linalg_fill_viewxf32_f32(ViewType<float, 1> *X, float f) {
+  for (unsigned i = 0; i < X->sizes[0]; ++i)
     *(X->data + X->offset + i * X->strides[0]) = f;
-  }
 }
 
-extern "C" void linalg_dot_viewxf32_viewxf32_viewf32_impl(
-    ViewType<float, 1> *X, ViewType<float, 1> *Y, ViewType<float, 0> *Z) {
+extern "C" void linalg_dot_viewxf32_viewxf32_viewf32(ViewType<float, 1> *X,
+                                                     ViewType<float, 1> *Y,
+                                                     ViewType<float, 0> *Z) {
   assert(X->strides[0] == 1);
   assert(Y->strides[0] == 1);
   assert(X->sizes[0] == Y->sizes[0] && "Expected X and Y of same size");
@@ -58,7 +56,7 @@ extern "C" void linalg_dot_viewxf32_viewxf32_viewf32_impl(
                  Y->data + Y->offset, Y->strides[0]);
 }
 
-extern "C" void linalg_matmul_viewxxf32_viewxxf32_viewxxf32_impl(
+extern "C" void linalg_matmul_viewxxf32_viewxxf32_viewxxf32(
     ViewType<float, 2> *A, ViewType<float, 2> *B, ViewType<float, 2> *C) {
   assert(A->strides[1] == B->strides[1]);
   assert(A->strides[1] == C->strides[1]);

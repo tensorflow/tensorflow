@@ -808,10 +808,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
                                 transformed.indices(), rewriter, getModule());
-    auto elementType = lowering.convertType(type.getElementType());
-
-    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, elementType,
-                                              ArrayRef<Value *>{dataPtr});
+    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, dataPtr);
     return matchSuccess();
   }
 };

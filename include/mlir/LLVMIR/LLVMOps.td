@@ -234,14 +234,12 @@ def LLVM_AllocaOp :
     $res = alloca;
   }];
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result, Type resultType, Value *arraySize,"
-    "unsigned alignment = 0",
+    "Builder *b, OperationState *result, Type resultType, Value *arraySize, "
+    "unsigned alignment",
     [{
-      if (!alignment)
+      if (alignment == 0)
         return build(b, result, resultType, arraySize, IntegerAttr());
-      auto *ctx = resultType.getContext();
-      auto align = IntegerAttr::get(IntegerType::get(64, ctx), alignment);
-      build(b, result, resultType, arraySize, align);
+      build(b, result, resultType, arraySize, b->getI64IntegerAttr(alignment));
   }]>];
   let parser = [{ return parseAllocaOp(parser, result); }];
   let printer = [{ printAllocaOp(p, *this); }];
@@ -262,6 +260,12 @@ def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
 }
 def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>,
                   LLVM_Builder<"$res = builder.CreateLoad($addr);"> {
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *addr",
+    [{
+      auto type = addr->getType().cast<LLVM::LLVMType>().getPointerElementTy();
+      build(b, result, type, addr);
+    }]>];
   let parser = [{ return parseLoadOp(parser, result); }];
   let printer = [{ printLoadOp(p, *this); }];
 }
@@ -344,6 +348,12 @@ def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
     $res = builder.CreateInsertValue($container, $value,
                                      extractPosition($position));
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *container, Value *value, "
+    "ArrayAttr position",
+    [{
+      build(b, result, container->getType(), container, value, position);
+    }]>];
   let parser = [{ return parseInsertValueOp(parser, result); }];
   let printer = [{ printInsertValueOp(p, *this); }];
 }
