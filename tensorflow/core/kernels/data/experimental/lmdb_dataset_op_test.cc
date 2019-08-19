@@ -61,8 +61,7 @@ class LMDBDatasetOpTest : public DatasetOpsTestBaseV2<LMDBDatasetParams> {
 
     // Step 3: Create a dataset kernel to test, passing in attributes of the
     // kernel.
-    TF_RETURN_IF_ERROR(
-        CreateLMDBDatasetOpKernel(*dataset_params, &dataset_kernel_));
+    TF_RETURN_IF_ERROR(MakeDatasetOpKernel(*dataset_params, &dataset_kernel_));
 
     // Step 4: Create a context in which the kernel will operate. This is where
     // the kernel gets initialized with its inputs
@@ -84,9 +83,11 @@ class LMDBDatasetOpTest : public DatasetOpsTestBaseV2<LMDBDatasetParams> {
     return Status::OK();
   }
 
- protected:
-  Status CreateLMDBDatasetOpKernel(const LMDBDatasetParams& dataset_params,
-                                   std::unique_ptr<OpKernel>* op_kernel) {
+  // Create instance of the kernel for `LMDBDataset`.
+  // Does not initialize or validate the filenames list, because filenames are
+  // inputs, not attributes.
+  Status MakeDatasetOpKernel(const LMDBDatasetParams& dataset_params,
+                             std::unique_ptr<OpKernel>* op_kernel) override {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(LMDBDatasetOp::kDatasetType),
         // Inputs
@@ -157,10 +158,6 @@ LMDBDatasetParams InvalidPathInMiddle() {
           /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})},
           /*node_name=*/kNodeName};
 }
-class ParameterizedGetNextTest
-    : public LMDBDatasetOpTest,
-      public ::testing::WithParamInterface<GetNextTestCase<LMDBDatasetParams>> {
-};
 
 std::vector<Tensor> StringsToTensors(const std::vector<string> strs) {
   std::vector<Tensor> ret;
@@ -202,15 +199,8 @@ std::vector<GetNextTestCase<LMDBDatasetParams>> GetNextTestCases() {
       {/*dataset_params=*/EmptyInput(), /*expected_outputs=*/{}}};
 }
 
-TEST_P(ParameterizedGetNextTest, GetNext) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(
-      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
-}
-
-INSTANTIATE_TEST_SUITE_P(LMDBDatasetOpTest, ParameterizedGetNextTest,
-                         ::testing::ValuesIn(GetNextTestCases()));
+ITERATOR_GET_NEXT_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                         GetNextTestCases());
 
 TEST_F(LMDBDatasetOpTest, InvalidPathAtStart) {
   auto dataset_params = InvalidPathAtStart();
@@ -248,57 +238,83 @@ TEST_F(LMDBDatasetOpTest, InvalidPathInMiddle) {
   EXPECT_EQ(get_next_status.code(), error::INVALID_ARGUMENT);
 }
 
-TEST_F(LMDBDatasetOpTest, DatasetNodeName) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
+std::vector<DatasetNodeNameTestCase<LMDBDatasetParams>>
+DatasetNodeNameTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_node_name=*/kNodeName}};
 }
 
-TEST_F(LMDBDatasetOpTest, DatasetTypeString) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(
-      CheckDatasetTypeString(name_utils::OpName(LMDBDatasetOp::kDatasetType)));
+DATASET_NODE_NAME_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                         DatasetNodeNameTestCases());
+
+std::vector<DatasetTypeStringTestCase<LMDBDatasetParams>>
+DatasetTypeStringTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_dataset_type_string=*/name_utils::OpName(
+               LMDBDatasetOp::kDatasetType)}};
 }
 
-TEST_F(LMDBDatasetOpTest, DatasetOutputDtypes) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_STRING, DT_STRING}));
+DATASET_TYPE_STRING_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                           DatasetTypeStringTestCases());
+
+std::vector<DatasetOutputDtypesTestCase<LMDBDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_output_dtypes=*/{DT_STRING, DT_STRING}}};
 }
 
-TEST_F(LMDBDatasetOpTest, DatasetOutputShapes) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputShapes(
-      {PartialTensorShape({}), PartialTensorShape({})}));
+DATASET_OUTPUT_DTYPES_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                             DatasetOutputDtypesTestCases());
+
+std::vector<DatasetOutputShapesTestCase<LMDBDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_output_shapes=*/{PartialTensorShape({}),
+                                       PartialTensorShape({})}}};
 }
 
-TEST_F(LMDBDatasetOpTest, Cardinality) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetCardinality(kUnknownCardinality));
+DATASET_OUTPUT_SHAPES_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                             DatasetOutputShapesTestCases());
+
+std::vector<CardinalityTestCase<LMDBDatasetParams>> CardinalityTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_cardinality=*/kUnknownCardinality}};
 }
 
-TEST_F(LMDBDatasetOpTest, IteratorOutputDtypes) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_STRING, DT_STRING}));
+DATASET_CARDINALITY_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                           CardinalityTestCases());
+
+std::vector<IteratorOutputDtypesTestCase<LMDBDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_output_dtypes=*/{DT_STRING, DT_STRING}}};
 }
 
-TEST_F(LMDBDatasetOpTest, IteratorOutputShapes) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputShapes(
-      {PartialTensorShape({}), PartialTensorShape({})}));
+ITERATOR_OUTPUT_DTYPES_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                              IteratorOutputDtypesTestCases());
+
+std::vector<IteratorOutputShapesTestCase<LMDBDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_output_shapes=*/{PartialTensorShape({}),
+                                       PartialTensorShape({})}}};
 }
 
-TEST_F(LMDBDatasetOpTest, IteratorOutputPrefix) {
-  auto dataset_params = SingleValidInput();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
-      LMDBDatasetOp::kDatasetType, kIteratorPrefix)));
+ITERATOR_OUTPUT_SHAPES_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                              IteratorOutputShapesTestCases());
+
+std::vector<IteratorPrefixTestCase<LMDBDatasetParams>>
+IteratorOutputPrefixTestCases() {
+  return {{/*dataset_params=*/SingleValidInput(),
+           /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
+               LMDBDatasetOp::kDatasetType, kIteratorPrefix)}};
 }
+
+ITERATOR_PREFIX_TEST_P(LMDBDatasetOpTest, LMDBDatasetParams,
+                       IteratorOutputPrefixTestCases());
+
+// No test of save and restore; save/restore functionality is not implemented
+// for this dataset.
 
 }  // namespace
 }  // namespace experimental
