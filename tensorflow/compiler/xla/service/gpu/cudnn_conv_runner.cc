@@ -91,19 +91,6 @@ Status RunCudnnConvForward(CudnnConvParams params,
   return Status::OK();
 }
 
-<<<<<<< HEAD
-  // in ROCm mode, the first call to run the convolution needs to trigger the
-  // code that calls miopenFind* API. That triggger is implicit, it is based
-  // on whether or not the AlgorithmConfig::algorithm is empty! So for the
-  // first call we need to ensure that the AlgorithmConfig::algorithm is
-  // empty. For all subsequent calls, we should use the value retrieved from
-  // the backend_config
-  if ((options.algo_override.has_value()) &&
-      (*options.algo_override == se::dnn::AlgorithmDesc())) {
-    algorithm = AlgorithmConfig();
-  } else if (options.algo_override.has_value()) {
-    algorithm = AlgorithmConfig(*options.algo_override);
-=======
 template <typename ElementType, typename BiasType, typename OutputType>
 Status RunCudnnConvForwardActivation(CudnnConvParams params,
                                      se::ScratchAllocator* scratch_allocator,
@@ -134,7 +121,6 @@ Status RunCudnnConvForwardActivation(CudnnConvParams params,
     // just pass in the output buffer, since it's handy and has the correct
     // size.
     side_input = output_buf;
->>>>>>> google_upstream/master
   }
 
   stream->ThenFusedConvolveWithAlgorithm(
@@ -237,7 +223,16 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   auto output_buf = se::DeviceMemory<OutputType>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-  if (options.algo_override) {
+  // in ROCm mode, the first call to run the convolution needs to trigger the
+  // code that calls miopenFind* API. That triggger is implicit, it is based
+  // on whether or not the AlgorithmConfig::algorithm is empty! So for the
+  // first call we need to ensure that the AlgorithmConfig::algorithm is
+  // empty. For all subsequent calls, we should use the value retrieved from
+  // the backend_config
+  if ((options.algo_override.has_value()) &&
+      (*options.algo_override == se::dnn::AlgorithmDesc())) {
+    algorithm = AlgorithmConfig();
+  } else if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
 

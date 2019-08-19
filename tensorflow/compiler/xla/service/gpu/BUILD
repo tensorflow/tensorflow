@@ -1120,7 +1120,6 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
@@ -1129,6 +1128,7 @@ cc_library(
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_compiler",
+        ":gpu_conv_algorithm_picker",
         ":gpu_layout_assignment",
         ":stream_executor_util",
         ":target_constants",
@@ -1154,37 +1154,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-<<<<<<< HEAD
-    ] + if_cuda_is_configured([
-        ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_padding_legalization",
-        ":cudnn_conv_rewriter",
-        ":cudnn_conv_pad_for_tensor_cores",
-        ":cudnn_fused_conv_rewriter",
-        ":cusolver_rewriter",
-        ":fusion_merger",
-        ":gemm_algorithm_picker",
-        ":gemm_rewriter",
-        ":gpu_compiler_impl",
-        ":gpu_constants",
-        ":gpu_copy_insertion",
-        ":gpu_executable",
-        ":gpu_hlo_schedule",
-        ":gpu_hlo_support_checker",
-        ":gpu_layout_assignment",
-        ":gpu_sanitize_constant_names",
-        ":gpu_scatter_expander",
-        ":instruction_fusion",
-        ":ir_emitter",
-        ":ir_emission_utils",
-        ":multi_output_fusion",
-        ":partition_assignment",
-        ":stream_assignment",
-        ":stream_executor_util",
-        ":target_constants",
-        "//tensorflow/core:cuda_libdevice_path",
-=======
->>>>>>> google_upstream/master
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/container:node_hash_map",
@@ -1195,8 +1164,7 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
-        # TODO(whchung@gmail.com): Enable in the subsequent PR.
-        # "amdgpu_compiler_registration.cc",
+        "amdgpu_compiler_registration.cc",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -1206,33 +1174,17 @@ cc_library(
 
 cc_library(
     name = "amdgpu_compiler_impl",
-<<<<<<< HEAD
-    srcs = if_rocm_is_configured([
-        "amdgpu_compiler.cc",
-    ]),
-    hdrs = if_rocm_is_configured([
-        "amdgpu_compiler.h"
-    ]),
-    deps = if_rocm_is_configured([
-        ":gpu_compiler_impl",
-        "//tensorflow/core/platform:rocm_rocdl_path",
-    ]),
-=======
     srcs = [
-        # TODO(whchung@gmail.com) : enable in the subsequent PR.
-        #"amdgpu_compiler.cc",
+        "amdgpu_compiler.cc",
     ],
     hdrs = [
-        # TODO(whchung@gmail.com): enable in the subsequent PR.
-        #"amdgpu_compiler.h"
+        "amdgpu_compiler.h"
     ],
     deps = [
-        # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
-        #":gpu_compiler_impl",
-        #":miopen_conv_algorithm_picker",
-        #"//tensorflow/core:rocm_rocdl_path",
+        ":gpu_compiler",
+        ":gpu_conv_algorithm_picker",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ],
->>>>>>> google_upstream/master
 )
 
 cc_library(

@@ -21,13 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
-#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-=======
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
->>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
@@ -35,16 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
