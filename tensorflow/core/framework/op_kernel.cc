@@ -1360,7 +1360,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     PrioritizedDeviceTypeVector* prioritized_device_types,
-    const DeviceNameUtils::ParsedName* local_device_name) {
+    const DeviceNameUtils::ParsedName* local_address_spec) {
   // TODO(zhifengc): Changes the callers (SimplePlacer and
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
@@ -1391,11 +1391,11 @@ Status SupportedDeviceTypesForNode(
     // The goal is to address the issue where a graph includes op (e.g. PyFunc)
     // whose kernel is known to a remote process but not to the current process.
     if (prioritized_device_types->empty() && !exists_attr_mismatch &&
-        local_device_name != nullptr) {
+        local_address_spec != nullptr) {
       DeviceNameUtils::ParsedName requested_device_name;
       DeviceNameUtils::ParseFullName(def.device(), &requested_device_name);
-      if (!DeviceNameUtils::IsSameAddressSpace(*local_device_name,
-                                               requested_device_name)) {
+      if (DeviceNameUtils::IsDifferentAddressSpace(*local_address_spec,
+                                                   requested_device_name)) {
         if (requested_device_name.has_type) {
           prioritized_device_types->push_back(
               std::make_pair(DeviceType(requested_device_name.type), 0));
