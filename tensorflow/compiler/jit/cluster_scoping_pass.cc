@@ -77,7 +77,7 @@ void SetXlaInternalScope(Node* node, StringPiece scope) {
 // purpose of discussion.  After adding scopes for both Stage and Unstage,
 // Node_Y will receive both scopes "unstage" and "stage", while Node_X receives
 // only scope "stage".  The semantic of scope "unstage" is preserved although
-// scope "stage" is later appended. As a result, Node_X and Node_Y will be put
+// scope "stage" is later appended.  As a result, Node_X and Node_Y will be put
 // into different clusters.
 //
 //                Unstage -> Node_Y (scope "unstage & stage")
