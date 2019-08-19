@@ -807,12 +807,14 @@ class TrtGraphConverterV2(object):
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
 
-     # Define an input function that returns input data, and executes the graph
-     # to build TRT engines. With TensorRT 5.1, different engines will be built
-     # (and saved later) for different input shapes to the TRTEngineOp.
+     # Define a generator function that yields input data, and use it to execute
+     # the graph to build TRT engines.
+     # With TensorRT 5.1, different engines will be built (and saved later) for
+     # different input shapes to the TRTEngineOp.
      def my_input_fn():
-       data = ...
-       return (data,)
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
 
      converter.build(input_fn=my_input_fn)  # Generate corresponding TRT engines
      converter.save(output_saved_model_dir)  # Generated engines will be saved.
@@ -837,24 +839,25 @@ class TrtGraphConverterV2(object):
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
 
-     # Define an input function that returns input data, and run INT8
+     # Define a generator function that yields input data, and run INT8
      # calibration with the data. All input data should have the same shape.
      # At the end of convert(), the calibration stats (e.g. range information)
      # will be saved and can be used to generate more TRT engines with different
      # shapes. Also, one TRT engine will be generated (with the same shape as
      # the calibration data) for save later.
-     def my_input_fn():
-       data = ...
-       return (data,)
+     def my_calibration_input_fn():
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
 
-     converter.convert(
-         num_calibration_runs=100, calibration_input_fn=my_input_fn)
+     converter.convert(calibration_input_fn=my_calibration_input_fn)
 
      # (Optional) Generate more TRT engines offline (same as the previous
      # option), to avoid the cost of generating them during inference.
      def my_input_fn():
-       data = ...
-       return (data,)
+       for _ in range(num_runs):
+         inp1, inp2 = ...
+         yield inp1, inp2
      converter.build(input_fn=my_input_fn)
 
      # Save the TRT engine and the engines.
@@ -930,19 +933,17 @@ class TrtGraphConverterV2(object):
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
-  def convert(self, num_calibration_runs=None, calibration_input_fn=None):
+  def convert(self, calibration_input_fn=None):
     """Convert the input SavedModel in 2.0 format.
 
     Args:
-      num_calibration_runs: number of runs of the graph with
-        calibration_input_fn during calibration.
-      calibration_input_fn: a function that returns input data as a list or
-        tuple, which will be used to execute the converted signature for
+      calibration_input_fn: a generator function that yields input data as a
+        list or tuple, which will be used to execute the converted signature for
         calibration. All the returned input data should have the same shape.
         Example:
         ```
         def input_fn():
-          return input1, input2, input3
+          yield input1, input2, input3
         ```
 
     Raises:
@@ -953,16 +954,12 @@ class TrtGraphConverterV2(object):
     """
     assert not self._converted
 
-    if (self._need_calibration and
-        (not num_calibration_runs or not calibration_input_fn)):
-      raise ValueError(
-          "Should specify num_calibration_runs and calibration_input_fn"
-          "because INT8 calibration is needed")
-    if (not self._need_calibration and
-        (num_calibration_runs or calibration_input_fn)):
-      raise ValueError(
-          "Should not specify num_calibration_runs or calibration_input_fn"
-          "because INT8 calibration is not needed")
+    if (self._need_calibration and not calibration_input_fn):
+      raise ValueError("Should specify calibration_input_fn because INT8 "
+                       "calibration is needed")
+    if (not self._need_calibration and calibration_input_fn):
+      raise ValueError("Should not specify calibration_input_fn because INT8 "
+                       "calibration is not needed")
 
     self._saved_model = load.load(self._input_saved_model_dir,
                                   self._input_saved_model_tags)
@@ -990,9 +987,8 @@ class TrtGraphConverterV2(object):
         self._converted_func.graph.structured_outputs)
 
     if self._need_calibration:
-      for _ in range(num_calibration_runs):
-        self._converted_func(
-            *map(ops.convert_to_tensor, calibration_input_fn()))
+      for inp in calibration_input_fn():
+        self._converted_func(*map(ops.convert_to_tensor, inp))
 
       def _save_calibration_table(node):
         calibration_table = gen_trt_ops.get_calibration_data_op(
@@ -1014,22 +1010,21 @@ class TrtGraphConverterV2(object):
 
     self._converted = True
 
-  def build(self, num_runs, input_fn):
+  def build(self, input_fn):
     """Run inference with converted graph in order to build TensorRT engines.
 
     Args:
-      num_runs: number of runs of the graph with input_fn.
-      input_fn: a function that returns input data as a list or tuple, which
-        will be used to execute the converted signature to generate TRT engines.
+      input_fn: a generator function that yields input data as a list or tuple,
+        which will be used to execute the converted signature to generate TRT
+        engines.
         Example:
         ```
         def input_fn():
-          return input1, input2, input3
+          yield input1, input2, input3
         ```
     """
-    for _ in range(num_runs):
-      self._converted_func(
-          *map(ops.convert_to_tensor, input_fn()))
+    for inp in input_fn():
+      self._converted_func(*map(ops.convert_to_tensor, inp))
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
