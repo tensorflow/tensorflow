@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::concat;
 using mkldnn::stream;
@@ -461,8 +461,14 @@ class MklConcatOp : public OpKernel {
               dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
           // Set the output format same as the most common format of inputs
           // to avoid layout conversions.
+          if (mkl_common_format == memory::format::blocked) {
+            VLOG(1) << "mkl_common_format == memory::format::blocked";
+            dst_md = MklDnnData<T>::CreateBlockedMemDesc(
+                dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
+          } else {
           dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
                                 mkl_common_format);
+          }
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
           // When memory::format::nc, dst_dims are already in MKL-DNN order
