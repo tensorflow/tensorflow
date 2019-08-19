@@ -33,7 +33,6 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
 
   std::vector<string> ins_v = str_util::Split(ins, ';');
-  std::unique_ptr<const NodeDef> new_node_def;
 
   InferenceContext::ShapeManager manager;
   std::vector<ShapeHandle> in_shapes;
