@@ -5501,7 +5501,11 @@ Status ConvertGraphDefToEngine(
   }
 
   // Build the network
-  VLOG(1) << "Starting engine conversion ";
+  if (VLOG_IS_ON(1)) {
+    string mode_str;
+    TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
+    VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
+  }
   Converter converter(trt_network.get(), precision_mode, use_calibration);
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
