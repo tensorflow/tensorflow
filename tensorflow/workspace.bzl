@@ -504,7 +504,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         strip_prefix = "curl-7.65.3",
         system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/curl.haxx.se/download/curl-7.65.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.65.3.tar.gz",
             "https://curl.haxx.se/download/curl-7.65.3.tar.gz",
         ],
     )
