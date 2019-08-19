@@ -41,8 +41,21 @@ cc_library(
 
 cc_library(
     name = "memory_management",
-    srcs = ["memory_management.cc"],
-    hdrs = ["memory_management.h"],
+    srcs = [
+        "memory_management.cc",
+        "memory_management/greedy_by_size_assignment.cc",
+        "memory_management/internal.cc",
+        "memory_management/min_cost_flow_assignment.cc",
+    ],
+    hdrs = [
+        "memory_management.h",
+        "memory_management/equality_assignment.h",
+        "memory_management/greedy_assignment.h",
+        "memory_management/greedy_by_size_assignment.h",
+        "memory_management/internal.h",
+        "memory_management/min_cost_flow_assignment.h",
+        "memory_management/naive_assignment.h",
+    ],
     deps = [
         ":shape",
         ":status",
