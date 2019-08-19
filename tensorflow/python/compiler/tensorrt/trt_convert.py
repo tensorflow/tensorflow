@@ -127,7 +127,7 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
-        # This option will always be set to True in TF 2.0.
+        # This option should be set to True in TF 2.0.
         "is_dynamic_op",
 
         # Max number of cached TRT engines in dynamic TRT ops. If the number of
@@ -157,7 +157,7 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
     precision_mode=TrtPrecisionMode.FP32,
     minimum_segment_size=3,
-    is_dynamic_op=False,
+    is_dynamic_op=True,
     maximum_cached_engines=1,
     use_calibration=True,
     max_batch_size=1)
@@ -216,8 +216,7 @@ def _check_trt_version_compatibility():
                     ".".join([str(x) for x in loaded_version]))
 
 
-def get_tensorrt_rewriter_config(
-    conversion_params=DEFAULT_TRT_CONVERSION_PARAMS, is_v2=False):
+def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
@@ -269,8 +268,8 @@ def get_tensorrt_rewriter_config(
     # Static mode (building TRT engine without executing the op) is deprecated
     # in TF 2.0. See TrtGraphConverterV2 for more details.
     if not conversion_params.is_dynamic_op:
-      tf_logging.warn("Option is_dynamic_op=False is deprecated in TF 2.0, "
-                      "resetting it to True.")
+      raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
+                       "please set it to True instead.")
     optimizer.parameter_map["is_dynamic_op"].b = True
   else:
     optimizer.parameter_map[
@@ -1015,7 +1014,6 @@ class TrtGraphConverterV2(object):
       num_runs: number of runs of the graph with input_fn.
       input_fn: a function that returns input data as a list or tuple, which
         will be used to execute the converted signature to generate TRT engines.
-        All the returned input data should have the same shape.
         Example:
         ```
         def input_fn():

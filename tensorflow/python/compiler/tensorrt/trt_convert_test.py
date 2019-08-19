@@ -419,54 +419,18 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    np_input1, np_input2 = self._RandomInput([4, 1, 1])
-
     # Create a model and save it.
     input_saved_model_dir = self.mkdtemp()
     root = self._GetModelForV2()
-    expected_output = root.run(np_input1, np_input2)
     save.save(root, input_saved_model_dir,
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
     converter = self._CreateConverterV2(
         input_saved_model_dir, is_dynamic_op=False)
-    converter.convert()
-
-    def _CheckFn(node):
-      # Attribute serialized_segment should be empty.
-      self.assertFalse(len(node.attr["serialized_segment"].s), node.name)
-
-    # Verify the converted GraphDef.
-    self._CheckTrtOps(converter._converted_func, _CheckFn)  # pylint: disable=protected-access
-
-    # Save the converted model with the statically-built engine inlined.
-    output_saved_model_dir = self.mkdtemp()
-    converter.save(output_saved_model_dir)
-    unexpected_asset_file = os.path.join(
-        output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
-    self.assertFalse(os.path.exists(unexpected_asset_file))
-
-    del converter
-    gc.collect()  # Force GC to destroy the TRT engine cache.
-
-    # Load and verify the converted model.
-    root_with_trt = load.load(output_saved_model_dir)
-    converted_signature = root_with_trt.signatures[_SAVED_MODEL_SIGNATURE_KEY]
-    self._CheckTrtOps(converted_signature, _CheckFn)
-    output_with_trt = converted_signature(
-        inp1=ops.convert_to_tensor(np_input1),
-        inp2=ops.convert_to_tensor(np_input2))
-    # The output of running the converted signature is a dict due to
-    # compatibility reasons with V1 SavedModel signature mechanism.
-    self.assertAllClose(
-        expected_output,
-        list(output_with_trt.values())[0],
-        atol=1e-6,
-        rtol=1e-6)
-
-    del root_with_trt
-    gc.collect()  # Force GC to destroy the TRT engine cache.
+    with self.assertRaisesRegexp(
+        ValueError, r"Option is_dynamic_op=False is not supported in TF 2.0"):
+      converter.convert()
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
@@ -490,8 +454,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
     # Convert and perform INT8 calibration
     input_fn = lambda: (np_input1, np_input2)
-    converter.convert(
-        num_calibration_runs=2, calibration_input_fn=input_fn)
+    converter.convert(num_calibration_runs=2, calibration_input_fn=input_fn)
 
     def _CheckFn(node):
       self.assertTrue(len(node.attr["calibration_data"].s), node.name)
@@ -560,7 +523,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     converter = self._CreateConverterV2(input_saved_model_dir)
     converter.convert()
     input_fn = lambda: (np_input1, np_input2)
-    converter.build(num_runs=1, input_fn=input_fn)  # Populate the TRT engine cache.
+    converter.build(
+        num_runs=1, input_fn=input_fn)  # Populate the TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
 
