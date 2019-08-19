@@ -1036,3 +1036,32 @@ func @special_float_values_in_tensors() {
   // CHECK: sparse<[{{\[}}1, 1, 0], [0, 1, 1]], [0xFFFFFFFF, 0x7F800001]>
   "foo"(){bar = sparse<[[1,1,0],[0,1,1]], [0xFFFFFFFF, 0x7F800001]> : tensor<2x2x2xf32>} : () -> ()
 }
+
+// Test parsing of an op with multiple region arguments, and without a
+// delimiter.
+
+// CHECK-LABEL: func @op_with_region_args
+func @op_with_region_args() {
+  // CHECK: "test.polyfor"() ( {
+  // CHECK-NEXT: ^bb{{.*}}(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
+  test.polyfor %i, %j, %k {
+    "foo"() : () -> ()
+  }
+  return
+}
+
+// Test allowing different name scopes for regions isolated from above.
+
+// CHECK-LABEL: func @op_with_passthrough_region_args
+func @op_with_passthrough_region_args() {
+  // CHECK: [[VAL:%.*]] = constant
+  // CHECK: "test.isolated_region"([[VAL]])
+  // CHECK-NEXT: ^{{.*}}([[ARG:%.*]]: index)
+  // CHECK-NEXT: "foo.consumer"([[ARG]]) : (index)
+
+  %0 = constant 10 : index
+  test.isolated_region %0 {
+    "foo.consumer"(%0) : (index) -> ()
+  }
+  return
+}

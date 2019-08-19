@@ -199,7 +199,8 @@ func @incomplete_for() {
 #map0 = (d0) -> (d0 floordiv 4)
 
 func @reference_to_iv_in_bound() {
-  // expected-error@+1 {{operand use before it's defined}}
+  // expected-error@+2 {{region entry argument '%i0' is already in use}}
+  // expected-note@+1 {{previously referenced here}}
   affine.for %i0 = #map0(%i0) to 10 {
   }
 }
@@ -396,8 +397,8 @@ func @undef() {
 // -----
 
 func @duplicate_induction_var() {
-  affine.for %i = 1 to 10 {   // expected-note {{previously defined here}}
-    affine.for %i = 1 to 10 { // expected-error {{redefinition of SSA value '%i'}}
+  affine.for %i = 1 to 10 {   // expected-note {{previously referenced here}}
+    affine.for %i = 1 to 10 { // expected-error {{region entry argument '%i' is already in use}}
     }
   }
   return
@@ -712,9 +713,10 @@ func @f(f32) {
 
 func @f(%m : memref<?x?xf32>) {
   affine.for %i0 = 0 to 42 {
-    // expected-error@+1 {{operand #2 does not dominate this use}}
+    // expected-note@+1 {{previously referenced here}}
     %x = load %m[%i0, %i1] : memref<?x?xf32>
   }
+  // expected-error@+1 {{region entry argument '%i1' is already in use}}
   affine.for %i1 = 0 to 42 {
   }
   return

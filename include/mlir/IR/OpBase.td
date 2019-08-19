@@ -1025,6 +1025,8 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative      : NativeOpTrait<"IsCommutative">;
+// Op is isolated from above.
+def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.

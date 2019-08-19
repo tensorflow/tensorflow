@@ -103,7 +103,7 @@ func @bad_alloc_wrong_dynamic_dim_count() {
 ^bb0:
   %0 = constant 7 : index
   // Test alloc with wrong number of dynamic dimensions.
-  %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{custom op 'alloc' dimension operand count does not equal memref dynamic dimension count}}
+  %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{op 'std.alloc' dimension operand count does not equal memref dynamic dimension count}}
   return
 }
 
@@ -165,7 +165,7 @@ func @calls(%arg0: i32) {
 
 func @func_with_ops(f32) {
 ^bb0(%a : f32):
-  %sf = addf %a, %a, %a : f32  // expected-error {{custom op 'addf' expected 2 operands}}
+  %sf = addf %a, %a, %a : f32  // expected-error {{custom op 'std.addf' expected 2 operands}}
 }
 
 // -----
