@@ -1070,6 +1070,19 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 
 //===----------------------------------------------------------------------===//
+// OpInterface definitions
+//===----------------------------------------------------------------------===//
+
+// NativeOpInterface corresponds to a specific 'OpInterface' class defined in
+// C++. The purpose to wrap around C++ symbol string with this class is to make
+// interfaces specified for ops in TableGen less alien and more integrated.
+class NativeOpInterface<string prop> : NativeOpTrait<""> {
+  // TODO(riverriddle) Remove when operation interfaces have their own trait
+  // subclass.
+  let trait = prop # "::Trait";
+}
+
+//===----------------------------------------------------------------------===//
 // Op definitions
 //===----------------------------------------------------------------------===//
 

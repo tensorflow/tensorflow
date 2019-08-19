@@ -101,3 +101,73 @@ InlinerInterface interface(ctx);
 if(!interface.isLegalToInline(...))
    ...
 ```
+
+### Operation Interfaces
+
+Operation interfaces, as the name suggests, are those registered at the
+Operation level. These interfaces provide an opaque view into derived
+operations, by providing a virtual interface that must be implemented. As an
+example, the `Linalg` dialect may implement an interface that provides general
+queries about some of the dialects library operations. These queries may provide
+things like: the number of parallel loops, the number of inputs and outputs,
+etc.
+
+Operation interfaces are defined by overriding the CRTP base class
+`OpInterface`. This class takes as a template parameter, a `Traits` class that
+defines a `Concept` and a `Model` class. These classes provide an implementation
+of concept-based polymorphism, where the Concept defines a set of virtual
+methods that are overridden by the Model that is templated on the concrete
+operation type. It is important to note that these classes should be pure in
+that they contain no non-static data members. Operations that wish to override
+this interface should add the provided trait `OpInterface<..>::Trait` upon
+registration.
+
+```c++
+struct ExampleOpInterfaceTraits {
+/// Define a base concept class that defines the virtual interface that needs
+/// to be overridden.
+struct Concept {
+  virtual ~Concept();
+  virtual unsigned getNumInputs(Operation *op) = 0;
+};
+
+/// Define a model class that specializes a concept on a given operation type.
+template <typename OpT>
+struct Model {
+  /// Override the method to dispatch on the concrete operation.
+  unsigned getNumInputs(Operation *op) final {
+    return llvm::cast<OpT>(op).getNumInputs();
+  }
+};
+};
+
+class ExampleOpInterface : public OpInterface<ExampleOpInterface,
+                                              ExampleOpInterfaceTraits> {
+public:
+  /// The interface dispatches to 'getImpl()', an instance of the concept.
+  unsigned getNumInputs() {
+    return getImpl()->getNumInputs(getOperation());
+  }
+};
+
+```
+
+Once the interface has been defined, it is registered to an operation by adding
+the provided trait `ExampleOpInterface::Trait`. Using this interface is just
+like using any other derived operation type, i.e. casting:
+
+```c++
+/// When defining the operation, the interface is registered via the nested
+/// 'Trait' class provided by the 'OpInterface<>' base class.
+class MyOp : public Op<MyOp, ExampleOpInterface::Trait> {
+public:
+  /// The definition of the interface method on the derived operation.
+  unsigned getNumInputs() { return ...; }
+};
+
+/// Later, we can query if a specific operation(like 'MyOp') overrides the given
+/// interface.
+Operation *op = ...;
+if (ExampleOpInterface example = dyn_cast<ExampleOpInterface>(op))
+ llvm::errs() << "num inputs = " << example.getNumInputs() << "\n";
+```
