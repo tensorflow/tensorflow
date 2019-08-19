@@ -146,7 +146,7 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
 
 // -----
 
-def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
+def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let summary = "Declare an execution mode for an entry point.";
 
   let description = [{
@@ -599,7 +599,7 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
 
 // -----
 
-def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
+def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
   let summary = "Return with no value from a function with void return type.";
 
   let description = [{
@@ -620,6 +620,38 @@ def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let verifier = [{ return verifyReturn(*this); }];
+}
+
+// -----
+
+def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
+  let summary = "Return a value from a function.";
+
+  let description = [{
+    Value is the value returned, by copy, and must match the Return Type
+    operand of the OpTypeFunction type of the OpFunction body this return
+    instruction is in.
+
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    return-value-op ::= `spv.ReturnValue` ssa-use `:` spirv-type
+    ```
+
+    For example:
+
+    ```
+    spv.ReturnValue %0 : f32
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_Type:$value
+  );
+
+  let results = (outs);
 }
 
 // -----

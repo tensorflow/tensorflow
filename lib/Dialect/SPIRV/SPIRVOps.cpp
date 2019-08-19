@@ -1042,14 +1042,48 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
-  auto funcOp = llvm::dyn_cast<FuncOp>(returnOp.getOperation()->getParentOp());
-  if (!funcOp)
-    return returnOp.emitOpError("must appear in a 'func' op");
-
+  auto funcOp = llvm::cast<FuncOp>(returnOp.getParentOp());
   auto numOutputs = funcOp.getType().getNumResults();
   if (numOutputs != 0)
     return returnOp.emitOpError("cannot be used in functions returning value")
            << (numOutputs > 1 ? "s" : "");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.ReturnValue
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseReturnValueOp(OpAsmParser *parser,
+                                      OperationState *state) {
+  OpAsmParser::OperandType retValInfo;
+  Type retValType;
+  return failure(
+      parser->parseOperand(retValInfo) || parser->parseColonType(retValType) ||
+      parser->resolveOperand(retValInfo, retValType, state->operands));
+}
+
+static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter *printer) {
+  *printer << spirv::ReturnValueOp::getOperationName() << ' ';
+  printer->printOperand(retValOp.value());
+  *printer << " : " << retValOp.value()->getType();
+}
+
+static LogicalResult verify(spirv::ReturnValueOp retValOp) {
+  auto funcOp = llvm::cast<FuncOp>(retValOp.getParentOp());
+  auto numFnResults = funcOp.getType().getNumResults();
+  if (numFnResults != 1)
+    return retValOp.emitOpError(
+               "returns 1 value but enclosing function requires ")
+           << numFnResults << " results";
+
+  auto operandType = retValOp.value()->getType();
+  auto fnResultType = funcOp.getType().getResult(0);
+  if (operandType != fnResultType)
+    return retValOp.emitOpError(" return value's type (")
+           << operandType << ") mismatch with function's result type ("
+           << fnResultType << ")";
 
   return success();
 }

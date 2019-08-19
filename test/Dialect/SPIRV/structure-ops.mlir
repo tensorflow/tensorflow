@@ -1,6 +1,18 @@
 // RUN: mlir-opt -split-input-file -verify-diagnostics %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
+// spv._address_of
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "GLSL450" {
+  spv.globalVariable !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input> @var
+  // expected-error @+1 {{op must appear in a 'func' block}}
+  %1 = spv._address_of @var : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
 
@@ -171,6 +183,6 @@ spv.module "Logical" "VulkanKHR" {
 //===----------------------------------------------------------------------===//
 
 func @module_end_not_in_module() -> () {
-  // expected-error @+1 {{can only be used in a 'spv.module' block}}
+  // expected-error @+1 {{op must appear in a 'spv.module' block}}
   spv._module_end
 }

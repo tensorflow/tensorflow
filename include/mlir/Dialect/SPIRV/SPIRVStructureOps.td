@@ -30,7 +30,7 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
-def SPV_AddressOfOp : SPV_Op<"_address_of", [NoSideEffect]> {
+def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let summary = "Get the address of a global variable.";
 
   let description = [{
@@ -66,7 +66,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [NoSideEffect]> {
   let hasOpcode = 0;
 }
 
-def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
+def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
   let summary = [{
     Declare an entry point, its execution model, and its interface.
   }];
@@ -122,7 +122,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
 }
 
 
-def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [ModuleOnly]> {
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
   let summary = [{
     Allocate an object in memory at module scope. The object is
     referenced using a symbol name.
@@ -264,7 +264,7 @@ def SPV_ModuleOp : SPV_Op<"module",
   }];
 }
 
-def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator, ModuleOnly]> {
+def SPV_ModuleEndOp : SPV_Op<"_module_end", [InModuleScope, Terminator]> {
   let summary = "The pseudo op that ends a SPIR-V module";
 
   let description = [{
