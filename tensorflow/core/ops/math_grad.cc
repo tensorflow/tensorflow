@@ -896,6 +896,12 @@ REGISTER_OP_GRADIENT("BatchMatMulV2", BatchMatMulV2Grad);
 
 // REGISTER_OP_GRADIENT("SparseMatMul", SparseMatMulGrad);
 
+Status BatchGemmGrad(const AttrSlice& attrs, FunctionDef* g) {
+  return MatMulGradCommon("BatchGemm", "adj_x", "adj_y", attrs, g,
+                          true /* enable_broadcasting */);
+}
+REGISTER_OP_GRADIENT("BatchGemm", BatchGemmGrad);
+
 // Comparison ops.
 REGISTER_OP_NO_GRADIENT("Less");
 REGISTER_OP_NO_GRADIENT("LessEqual");

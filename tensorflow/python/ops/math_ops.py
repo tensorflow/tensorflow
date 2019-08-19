@@ -152,7 +152,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
   tf.math.argmax(B,1) # [2, 2, 1]
   ```
-   
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -488,7 +488,7 @@ def complex(real, imag, name=None):
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
 
-  Raises: 
+  Raises:
     TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
@@ -2706,6 +2706,28 @@ def matmul(a,
       return gen_math_ops.mat_mul(
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
+
+@tf_export("linalg.batch_gemm", "batch_gemm")
+@dispatch.add_dispatch_support
+def batch_gemm(a,
+           b,
+           c,
+           transpose_a=False,
+           transpose_b=False,
+           alpha=0.0,
+           beta=0.0,
+           name=None):
+  with ops.name_scope(name, "BatchGemm", [a, b]) as name:
+    if context.executing_eagerly():
+      if not isinstance(a, (ops.EagerTensor, _resource_variable_type)):
+        a = ops.convert_to_tensor(a, name="a")
+      if not isinstance(b, (ops.EagerTensor, _resource_variable_type)):
+        b = ops.convert_to_tensor(b, name="b")
+    else:
+      a = ops.convert_to_tensor(a, name="a")
+      b = ops.convert_to_tensor(b, name="b")
+
+    return gen_math_ops.batch_gemm(a, b, c, adj_x=transpose_a, adj_y=transpose_b, alpha=alpha, beta=beta, name=name)
 
 @tf_export("linalg.matvec")
 def matvec(a,

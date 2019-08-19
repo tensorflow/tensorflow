@@ -3479,6 +3479,64 @@ op {
   }
 }
 op {
+  name: "BatchGemm"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "beta"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+}
+op {
   name: "BatchIFFT"
   input_arg {
     name: "input"
