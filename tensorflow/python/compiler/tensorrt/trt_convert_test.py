@@ -314,7 +314,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       input_saved_model_dir,
       input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
       precision_mode=trt_convert.TrtPrecisionMode.FP32,
-      max_batch_size=None,
+      is_dynamic_op=True,
       maximum_cached_engines=2):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
@@ -322,9 +322,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
             max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
             precision_mode=precision_mode,
-            is_dynamic_op=False if max_batch_size else True,
-            maximum_cached_engines=maximum_cached_engines,
-            max_batch_size=max_batch_size if max_batch_size else 1))
+            is_dynamic_op=is_dynamic_op,
+            maximum_cached_engines=maximum_cached_engines))
 
   def _CheckTrtOps(self, concrete_func, check_fn=None):
     graph_def = concrete_func.graph.as_graph_def()
@@ -423,7 +422,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     gc.collect()  # Force GC to destroy the TRT engine cache.
 
   @test_util.run_v2_only
-  def testTrtGraphConverter_StaticConversion_v2(self):
+  def testTrtGraphConverter_StaticConversionNotSupportedInV2(self):
     """Test case for trt_convert.TrtGraphConverter() using static mode."""
     if not is_tensorrt_enabled():
       return
@@ -438,11 +437,13 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
-    converter = self._CreateConverterV2(input_saved_model_dir, max_batch_size=4)
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, is_dynamic_op=False)
     converter.convert()
 
     def _CheckFn(node):
-      self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
+      # Attribute serialized_segment should be empty.
+      self.assertFalse(len(node.attr["serialized_segment"].s), node.name)
 
     # Verify the converted GraphDef.
     self._CheckTrtOps(converter._converted_func, _CheckFn)  # pylint: disable=protected-access
@@ -498,7 +499,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     # Convert and perform INT8 calibration
     input_map_fn = lambda: (np_input1, np_input2)
     converter.convert(
-        num_calibration_runs=2, calibration_input_map_fn=input_map_fn)
+        num_calibration_runs=2, calibration_input_fn=input_map_fn)
 
     def _CheckFn(node):
       self.assertTrue(len(node.attr["calibration_data"].s), node.name)

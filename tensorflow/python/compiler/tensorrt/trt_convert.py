@@ -128,6 +128,7 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
+        # This option will always be set to True in TF 2.0.
         "is_dynamic_op",
 
         # Max number of cached TRT engines in dynamic TRT ops. If the number of
@@ -148,6 +149,7 @@ TrtConversionParams = collections.namedtuple(
         "use_calibration",
 
         # Max size for the input batch.
+        # This option is deprecated in TF 2.0.
         "max_batch_size",
     ])
 
@@ -216,11 +218,12 @@ def _check_trt_version_compatibility():
 
 
 def get_tensorrt_rewriter_config(
-    conversion_params=DEFAULT_TRT_CONVERSION_PARAMS):
+    conversion_params=DEFAULT_TRT_CONVERSION_PARAMS, is_v2=False):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
     conversion_params: a TrtConversionParams instance.
+    is_v2: whether we're getting a RewriterConfig for TF 2.0.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -263,8 +266,17 @@ def get_tensorrt_rewriter_config(
       "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
   optimizer.parameter_map[
       "use_calibration"].b = conversion_params.use_calibration
-  optimizer.parameter_map["max_batch_size"].i = conversion_params.max_batch_size
-  optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+  if is_v2:
+    # Static mode (building TRT engine without executing the op) is deprecated
+    # in TF 2.0. See TrtGraphConverterV2 for more details.
+    if not conversion_params.is_dynamic_op:
+      tf_logging.warn("Option is_dynamic_op=False is deprecated in TF 2.0, "
+                      "resetting it to True.")
+    optimizer.parameter_map["is_dynamic_op"].b = True
+  else:
+    optimizer.parameter_map[
+        "max_batch_size"].i = conversion_params.max_batch_size
+    optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
   return rewriter_config_with_trt
 
 
@@ -763,32 +775,18 @@ class _TRTEngineResource(tracking.TrackableResource):
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
 
+  Note that in V2, is_dynamic_op=False is not supported, meaning TRT engines
+  will be built only when the corresponding TRTEngineOp is executed. But we
+  still provide a way to avoid the cost of building TRT engines during inference
+  (see more below).
+
   There are several ways to run the conversion:
 
-  1. FP32/FP16 precision, static mode (i.e. one TRT engine will be built for
-     each segment without executing the TRTEngineOp)
+  1. FP32/FP16 precision
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-         precision_mode='FP16',
-         is_dynamic_op=False)
-     converter = TrtGraphConverterV2(
-         input_saved_model_dir="my_dir", conversion_params=params)
-     converter.convert()
-     converter.save(output_saved_model_dir)  # Save the converted SavedModel.
-     ```
-
-     This saves the cost of building engines during inference, but also requires
-     that the input model has all tensor shapes fully specified (except for the
-     batch dimension).
-
-  2. FP32/FP16 precision, dynamic mode (i.e. TRT engines will be built only when
-     the corresponding TRTEngineOp is executed)
-
-     ```python
-     params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-         precision_mode='FP16',
-         is_dynamic_op=True)
+         precision_mode='FP16')
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
@@ -798,21 +796,20 @@ class TrtGraphConverterV2(object):
      In this case, no TRT engines will be built or saved in the converted
      SavedModel. But if input data is available during conversion, we can still
      build and save the TRT engines to reduce the cost during inference (see
-     option 3 below).
+     option 2 below).
 
-  3. FP32/FP16 precision, dynamic mode with pre-built engines
+  2. FP32/FP16 precision with pre-built engines
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
          precision_mode='FP16',
-         is_dynamic_op=True,
          # Set this to a large enough number so it can cache all the engines.
          maximum_cached_engines=16)
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
-     converted_func = converter.convert()
+     converter.convert()
      for data in my_input_data:
-       converted_func(my_input_data)  # Generate corresponding TRT engines.
+       converter.build(my_input_data)  # Generate corresponding TRT engines.
      converter.save(output_saved_model_dir)  # Generated engines will be saved.
      ```
 
@@ -821,31 +818,41 @@ class TrtGraphConverterV2(object):
      engines during inference but have access to input data that is similar to
      the one used in production (for example, that has the same input shapes).
      Also, the generated TRT engines is platform dependent, so we need to run
-     `converted_func` in an environment that is similar to production (e.g. with
+     `build()` in an environment that is similar to production (e.g. with
      same type of GPU).
 
-  4. INT8 precision with calibration, dynamic mode with pre-built engine
+  3. INT8 precision and calibration with pre-built engines
 
      ```python
      params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
          precision_mode='INT8',
-         is_dynamic_op=True,
          # Currently only one INT8 engine is supported in this mode.
          maximum_cached_engines=1,
          use_calibration=True)
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
-     converted_func = converter.convert()
 
-     # Run INT8 calibration.
+     # Define an input function that yields input data, and run INT8 calibration
+     # with the data. All input data should have the same shape. At the end of
+     # convert(), the calibration stats (e.g. range information) will be saved
+     # and can be used to generate more TRT engines with different shapes. Also,
+     # one TRT engine will be generated (with the same shape as the calibration
+     # data) for save later.
+     def my_input_map_fn():
+       data = ...
+       yield (data,)
+
+     converter.convert(
+         num_calibration_runs=100, calibration_input_fn=my_input_map_fn)
+
+     # (Optional) Generate more TRT engines offline to avoid the cost of
+     # generating them during inference.
      for data in my_input_data:
-       converted_func(my_input_data)
+       converter.build(my_input_data)
 
-     # Finalize the calibration, generate and save the TRT engine.
+     # Save the TRT engine and the engines.
      converter.save(output_saved_model_dir)
      ```
-
-     The steps are similar to option 3 for FP32/FP16 precisions.
   """
 
   def __init__(self,
@@ -897,7 +904,7 @@ class TrtGraphConverterV2(object):
       The optimized GraphDef.
     """
     rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params)
+        conversion_params=self._conversion_params, is_v2=True)
     grappler_session_config = config_pb2.ConfigProto()
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
         rewriter_config)
@@ -916,15 +923,19 @@ class TrtGraphConverterV2(object):
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
-  def convert(self, num_calibration_runs=None, calibration_input_map_fn=None):
+  def convert(self, num_calibration_runs=None, calibration_input_fn=None):
     """Convert the input SavedModel in 2.0 format.
 
     Args:
       num_calibration_runs: number of runs of the graph during calibration.
-      calibration_input_map_fn: a function that returns inputs for the converted
-        tf_function to be calibrated.
-        Example: ```
-        def input_map_fn(): return input1, input2, input3 ```
+      calibration_input_fn: a function that returns input data as a list or
+        tuple, which will be used to execute the converted signature for
+        calibration. All the returned input data should have the same shape.
+        Example:
+        ```
+        def input_map_fn():
+          return input1, input2, input3
+        ```
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -935,14 +946,14 @@ class TrtGraphConverterV2(object):
     assert not self._converted
 
     if (self._need_calibration and
-        (not num_calibration_runs or not calibration_input_map_fn)):
+        (not num_calibration_runs or not calibration_input_fn)):
       raise ValueError(
-          "Should specify num_calibration_runs and calibration_input_map_fn"
+          "Should specify num_calibration_runs and calibration_input_fn"
           "because INT8 calibration is needed")
     if (not self._need_calibration and
-        (num_calibration_runs or calibration_input_map_fn)):
+        (num_calibration_runs or calibration_input_fn)):
       raise ValueError(
-          "Should not specify num_calibration_runs or calibration_input_map_fn"
+          "Should not specify num_calibration_runs or calibration_input_fn"
           "because INT8 calibration is not needed")
 
     self._saved_model = load.load(self._input_saved_model_dir,
@@ -973,7 +984,7 @@ class TrtGraphConverterV2(object):
     if self._need_calibration:
       for _ in range(num_calibration_runs):
         self._converted_func(
-            *map(ops.convert_to_tensor, calibration_input_map_fn()))
+            *map(ops.convert_to_tensor, calibration_input_fn()))
 
       def _save_calibration_table(node):
         calibration_table = gen_trt_ops.get_calibration_data_op(
@@ -996,9 +1007,7 @@ class TrtGraphConverterV2(object):
     self._converted = True
 
   def build(self, *args, **kwargs):
-    """Run inference on graph in order to build a TensorRT engine
-
-       in the cahce of TRTEngineOp.
+    """Run inference with converted graph in order to build TensorRT engines.
 
     Returns:
       The output of the converted Function for the given inputs.
