@@ -1,5 +1,7 @@
 add_subdirectory(FxpMathOps)
 add_subdirectory(GPU)
+add_subdirectory(LLVMIR)
 add_subdirectory(LoopOps)
 add_subdirectory(QuantOps)
 add_subdirectory(SPIRV)
+add_subdirectory(StandardOps)

@@ -19,7 +19,7 @@
 // MLIR, and the LLVM IR dialect.  It also registers the dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -35,7 +35,7 @@
 using namespace mlir;
 using namespace mlir::LLVM;
 
-#include "mlir/LLVMIR/LLVMOpsEnums.cpp.inc"
+#include "mlir/Dialect/LLVMIR/LLVMOpsEnums.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // Printing/parsing for LLVM::CmpOp.
@@ -1163,7 +1163,7 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
   addTypes<LLVMType>();
   addOperations<
 #define GET_OP_LIST
-#include "mlir/LLVMIR/LLVMOps.cpp.inc"
+#include "mlir/Dialect/LLVMIR/LLVMOps.cpp.inc"
       >();
 
   // Support unknown operations because not all LLVM operations are registered.
@@ -1189,7 +1189,7 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
 LLVMDialect::~LLVMDialect() {}
 
 #define GET_OP_CLASSES
-#include "mlir/LLVMIR/LLVMOps.cpp.inc"
+#include "mlir/Dialect/LLVMIR/LLVMOps.cpp.inc"
 
 llvm::LLVMContext &LLVMDialect::getLLVMContext() { return impl->llvmContext; }
 llvm::Module &LLVMDialect::getLLVMModule() { return impl->module; }

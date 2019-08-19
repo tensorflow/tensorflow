@@ -21,11 +21,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/SDBM/SDBMExpr.h"
+#include "mlir/Dialect/SDBM/SDBMExpr.h"
 #include "SDBMExprDetail.h"
+#include "mlir/Dialect/SDBM/SDBMDialect.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
-#include "mlir/SDBM/SDBMDialect.h"
 
 #include "llvm/Support/raw_ostream.h"
 

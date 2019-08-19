@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -84,7 +84,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
-#include "mlir/StandardOps/Ops.cpp.inc"
+#include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
 }
 
@@ -2099,4 +2099,4 @@ OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "mlir/StandardOps/Ops.cpp.inc"
+#include "mlir/Dialect/StandardOps/Ops.cpp.inc"

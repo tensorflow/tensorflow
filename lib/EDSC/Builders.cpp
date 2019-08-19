@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/EDSC/Builders.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/StandardOps/Ops.h"
 
 #include "llvm/ADT/Optional.h"
 

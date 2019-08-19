@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_STANDARDOPS_OPS_H
-#define MLIR_STANDARDOPS_OPS_H
+#ifndef MLIR_DIALECT_STANDARDOPS_OPS_H
+#define MLIR_DIALECT_STANDARDOPS_OPS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -94,7 +94,7 @@ enum class CmpFPredicate {
 };
 
 #define GET_OP_CLASSES
-#include "mlir/StandardOps/Ops.h.inc"
+#include "mlir/Dialect/StandardOps/Ops.h.inc"
 
 /// This is a refinement of the "constant" op for the case where it is
 /// returning a float value of FloatType.
@@ -360,4 +360,4 @@ ParseResult parseDimAndSymbolList(OpAsmParser *parser,
 
 } // end namespace mlir
 
-#endif // MLIR_STANDARDOPS_OPS_H
+#endif // MLIR_DIALECT_STANDARDOPS_OPS_H

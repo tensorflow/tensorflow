@@ -23,8 +23,8 @@
 #include "linalg1/Common.h"
 #include "linalg1/Ops.h"
 #include "linalg1/Types.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Intrinsics.h"
-#include "mlir/StandardOps/Ops.h"
 
 using llvm::ArrayRef;
 using mlir::ConstantIndexOp;

@@ -1,4 +1,4 @@
-//===- NVVMDialect.h - MLIR NVVM IR dialect ---------------------*- C++ -*-===//
+//===- SDBMDialect.h - Dialect for striped DBMs -----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,30 +14,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// This file defines the NVVM IR dialect in MLIR, containing NVVM operations and
-// NVVM specific extensions to the LLVM type system.
-//
-//===----------------------------------------------------------------------===//
 
-#ifndef MLIR_LLVMIR_NVVMDIALECT_H_
-#define MLIR_LLVMIR_NVVMDIALECT_H_
+#ifndef MLIR_DIALECT_SDBM_SDBMDIALECT_H
+#define MLIR_DIALECT_SDBM_SDBMDIALECT_H
 
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
+#include "mlir/Support/StorageUniquer.h"
+
 namespace mlir {
-namespace NVVM {
+class MLIRContext;
 
-///// Ops /////
-#define GET_OP_CLASSES
-#include "mlir/LLVMIR/NVVMOps.h.inc"
-
-class NVVMDialect : public Dialect {
+class SDBMDialect : public Dialect {
 public:
-  explicit NVVMDialect(MLIRContext *context);
-};
+  SDBMDialect(MLIRContext *context) : Dialect(getDialectNamespace(), context) {}
 
-} // namespace NVVM
+  static StringRef getDialectNamespace() { return "sdbm"; }
+
+  /// Get the uniquer for SDBM expressions. This should not be used directly.
+  StorageUniquer &getUniquer() { return uniquer; }
+
+private:
+  StorageUniquer uniquer;
+};
 } // namespace mlir
 
-#endif /* MLIR_LLVMIR_NVVMDIALECT_H_ */
+#endif // MLIR_DIALECT_SDBM_SDBMDIALECT_H

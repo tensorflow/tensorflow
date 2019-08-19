@@ -18,9 +18,9 @@
 #ifndef LINALG1_LLVMINTRINSICS_H_
 #define LINALG1_LLVMINTRINSICS_H_
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 
 // Expose some LLVM IR instructions to declarative builders.
 namespace intrinsics {

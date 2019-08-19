@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/SDBM/SDBM.h"
+#include "mlir/Dialect/SDBM/SDBM.h"
+#include "mlir/Dialect/SDBM/SDBMDialect.h"
+#include "mlir/Dialect/SDBM/SDBMExpr.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/SDBM/SDBMDialect.h"
-#include "mlir/SDBM/SDBMExpr.h"
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/DenseSet.h"

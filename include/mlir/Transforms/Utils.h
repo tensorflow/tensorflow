@@ -25,8 +25,8 @@
 #ifndef MLIR_TRANSFORMS_UTILS_H
 #define MLIR_TRANSFORMS_UTILS_H
 
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 

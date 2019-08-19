@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 using namespace mlir;
 
 // Static initialization for standard op dialect registration.

@@ -23,13 +23,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
@@ -72,7 +72,7 @@ static ParseResult parseNVVMSpecialRegisterOp(OpAsmParser *parser,
 NVVMDialect::NVVMDialect(MLIRContext *context) : Dialect("nvvm", context) {
   addOperations<
 #define GET_OP_LIST
-#include "mlir/LLVMIR/NVVMOps.cpp.inc"
+#include "mlir/Dialect/LLVMIR/NVVMOps.cpp.inc"
       >();
 
   // Support unknown operations because not all NVVM operations are registered.
@@ -80,7 +80,7 @@ NVVMDialect::NVVMDialect(MLIRContext *context) : Dialect("nvvm", context) {
 }
 
 #define GET_OP_CLASSES
-#include "mlir/LLVMIR/NVVMOps.cpp.inc"
+#include "mlir/Dialect/LLVMIR/NVVMOps.cpp.inc"
 
 static DialectRegistration<NVVMDialect> nvvmDialect;
 

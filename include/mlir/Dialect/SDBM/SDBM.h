@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef INCLUDE_MLIR_IR_SDBM_H
-#define INCLUDE_MLIR_IR_SDBM_H
+#ifndef MLIR_DIALECT_SDBM_SDBM_H
+#define MLIR_DIALECT_SDBM_SDBM_H
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
@@ -203,4 +203,4 @@ private:
 
 } // namespace mlir
 
-#endif // INCLUDE_MLIR_IR_SDBM_H
+#endif // MLIR_DIALECT_SDBM_SDBM_H

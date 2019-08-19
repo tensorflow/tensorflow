@@ -25,9 +25,9 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/RegionUtils.h"
 

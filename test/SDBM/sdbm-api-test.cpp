@@ -17,10 +17,10 @@
 
 // RUN: mlir-sdbm-api-test | FileCheck %s
 
+#include "mlir/Dialect/SDBM/SDBM.h"
+#include "mlir/Dialect/SDBM/SDBMDialect.h"
+#include "mlir/Dialect/SDBM/SDBMExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/SDBM/SDBM.h"
-#include "mlir/SDBM/SDBMDialect.h"
-#include "mlir/SDBM/SDBMExpr.h"
 
 #include "llvm/Support/raw_ostream.h"
 
