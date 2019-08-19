@@ -562,6 +562,18 @@ def TestValidOp : TEST_Op<"valid", [Terminator]>,
 // Test region argument list parsing.
 //===----------------------------------------------------------------------===//
 
+def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
+  let summary =  "isolated region operation";
+  let description = [{
+    Test op with an isolated region, to test passthrough region arguments. Each
+    argument is of index type.
+  }];
+
+  let arguments = (ins Index:$input);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
 def PolyForOp : TEST_Op<"polyfor">
 {
   let summary =  "polyfor operation";
