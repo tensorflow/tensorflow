@@ -66,9 +66,25 @@ void SetXlaInternalScope(Node* node, StringPiece scope) {
 }
 
 // NB! We append a new scope as suffix to the _XlaInternalScope attribute
-// instead of overriding the old value.  In this way, we respect the original
-// scopes.  In other words, appending X to Y creates the conjunction of the
-// scopes X and Y (i.e, X & Y in effect).
+// instead of overriding the old value.  In other words, appending scope B to
+// scope A creates the conjunction of the scopes A and B (i.e, A & B) and,
+// in effect, the node gets both the old and new scopes.  As a unique scope
+// disallows a node being merged with nodes in other scopes, the scope
+// conjunction preserves the semantic of the old scope (i.e., the node still
+// cannot be merged with the previously incompatible nodes.)
+//
+// For example, the below case should be rare in practice but can serve for the
+// purpose of discussion.  After adding scopes for both Stage and Unstage,
+// Node_Y will receive both scopes "unstage" and "stage", while Node_X receives
+// only scope "stage".  The semantic of scope "unstage" is preserved although
+// scope "stage" is later appended. As a result, Node_X and Node_Y will be put
+// into different clusters.
+//
+//                Unstage -> Node_Y (scope "unstage & stage")
+//                              |
+//                              V
+//  Node_X (scope "stage") -> Stage
+//
 void AddOrAppendXlaInternalScope(Node* node, absl::string_view suffix) {
   string updated_scope;
   absl::optional<string> cur_scope = GetXlaInternalScope(node);
