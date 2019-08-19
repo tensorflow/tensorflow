@@ -178,3 +178,12 @@ func @vect(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
   %2 = llvm.shufflevector %arg0, %arg0 [0 : i32, 0 : i32, 0 : i32, 0 : i32, 7 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
   return
 }
+
+// CHECK-LABEL: @alloca
+func @alloca(%size : !llvm.i64) {
+  //      CHECK: llvm.alloca %{{.*}} x !llvm.i32 : (!llvm.i64) -> !llvm<"i32*">
+  llvm.alloca %size x !llvm.i32 {alignment = 0} : (!llvm.i64) -> (!llvm<"i32*">)
+  // CHECK-NEXT: llvm.alloca %{{.*}} x !llvm.i32 {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"i32*">
+  llvm.alloca %size x !llvm.i32 {alignment = 8} : (!llvm.i64) -> (!llvm<"i32*">)
+  llvm.return
+}
