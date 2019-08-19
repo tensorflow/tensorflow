@@ -19,13 +19,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-const char kFrontendAttributesAttribute[] = "_XlaFrontendAttributes";
-}  // namespace
+const char kXlaFrontendAttributesAttrName[] = "_XlaFrontendAttributes";
 
 xla::StatusOr<absl::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
-  const AttrValue *attr = attrs.Find(kFrontendAttributesAttribute);
+  const AttrValue* attr = attrs.Find(kXlaFrontendAttributesAttrName);
   if (attr == nullptr) {
     return xla::StatusOr<absl::optional<xla::FrontendAttributes>>(
         absl::nullopt);
