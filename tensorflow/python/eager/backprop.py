@@ -940,7 +940,8 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor (or list of tensors) to be differentiated.
+      target: a list or nested structure of Tensors or Variables to be
+        differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of
