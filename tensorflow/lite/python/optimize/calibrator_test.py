@@ -80,7 +80,7 @@ class CalibratorTest(test_util.TensorFlowTestCase):
 
   def test_invalid_model_buffer(self):
     float_model = b'\0' * 100
-    with self.assertRaisesWithRegexpMatch(ValueError,
+    with self.assertRaisesRegex(ValueError,
                                           'Failed to parse the model'):
       _calibrator.Calibrator(float_model)
 
@@ -109,7 +109,7 @@ class CalibratorTest(test_util.TensorFlowTestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 2, 2, 3), dtype=np.float32)]
 
-    with self.assertRaisesWithRegexpMatch(ValueError, 'Dimension mismatch'):
+    with self.assertRaisesRegex(ValueError, 'Dimension mismatch'):
       quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
                                        constants.FLOAT, False)
 
