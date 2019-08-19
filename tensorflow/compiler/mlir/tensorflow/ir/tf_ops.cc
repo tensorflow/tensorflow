@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #include <algorithm>
+#include <functional>
+#include <numeric>
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -94,6 +96,10 @@ static bool AreCastCompatible(Type a, Type b) {
 static Type getElementTypeOrSelf(Operation *op) {
   if (op->getNumResults() != 1) return {};
   return getElementTypeOrSelf(op->getResult(0));
+}
+
+static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
+  return dim_or_rank == -1;
 }
 
 namespace {
@@ -611,23 +617,60 @@ static LogicalResult Verify(ReshapeOp op) {
 
 void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
                       Value *shape) {
-  auto etype = tensor->getType().cast<ShapedType>().getElementType();
+  auto ttype = tensor->getType().cast<ShapedType>();
+  auto etype = ttype.getElementType();
+
+  auto unranked = [builder, etype, result, shape, tensor]() {
+    return ReshapeOp::build(builder, result, builder->getTensorType(etype),
+                            tensor, shape);
+  };
+
+  // If tensor is unranked then we have no info about output of shape.
+  if (!ttype.hasRank()) return unranked();
+
   DenseIntElementsAttr attr_shape;
   if (matchPattern(shape, m_Constant(&attr_shape))) {
     llvm::SmallVector<int64_t, 4> const_shape;
-    if (attr_shape.isSplat()) {
-      const_shape.assign(attr_shape.getNumElements(),
-                         (*attr_shape.begin()).getSExtValue());
-    } else {
-      const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape) const_shape.push_back(dim.getSExtValue());
+    const_shape.reserve(attr_shape.getNumElements());
+
+    // Detect if reshape output shape is folded.
+    bool flatten = false;
+    int unknown_index = -1;
+    // The product of constant shape argument excluding unknown dimension.
+    int64_t product_cshape = 1;
+    for (auto e : llvm::enumerate(attr_shape)) {
+      int64_t val = e.value().getSExtValue();
+      if (IsUnknownDimOrRank(val)) {
+        if (flatten) {
+          mlir::emitError(result->location)
+              << "only one unknown dimension allowed";
+          return;
+        }
+        flatten = true;
+        unknown_index = e.index();
+      } else {
+        product_cshape *= val;
+      }
+      const_shape.push_back(val);
+    }
+
+    // Compute the value of the uknown dimension.
+    if (flatten) {
+      // Compute number of elements in tensor shape.
+      auto tshape = ttype.getShape();
+      int64_t product_tshape = std::accumulate(tshape.begin(), tshape.end(), 1,
+                                               std::multiplies<int64_t>());
+      // Set the unknown dimension such that total number of elements remain
+      // constant.
+      // Note: The case where the ratio is not integral, and so the total size
+      // of reshape not constant, is checked in verify function.
+      const_shape[unknown_index] = product_tshape / product_cshape;
     }
     return ReshapeOp::build(builder, result,
                             builder->getTensorType(const_shape, etype), tensor,
                             shape);
   }
-  return ReshapeOp::build(builder, result, builder->getTensorType(etype),
-                          tensor, shape);
+  return unranked();
 }
 
 //===----------------------------------------------------------------------===//
