@@ -318,7 +318,6 @@ def random_crop(value, size, seed=None, name=None):
               s = array_ops.shape(t)
               paddings = [[0, m - s[i]] for (i, m) in enumerate(max_in_dims)]
               return array_ops.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
-
           tmp = []
           for ch in range(value.shape[2].value):
               v0 = pad_up_to(value[:, :, ch], [size_dim[0], size_dim[1]], 0)
