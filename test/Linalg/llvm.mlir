@@ -7,8 +7,27 @@ func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
   return
 }
 // CHECK-LABEL: func @buffer_size
-//       CHECK:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ float*, i64 }">
+//       CHECK:   llvm.extractvalue %{{.*}}[2] : !llvm<"{ i8*, float*, i64 }">
 //  CHECK-NEXT:   llvm.add {{.*}}, {{.*}} : !llvm.i64
+
+func @buffer_alloc_aligned(%arg0: index) {
+  %s = linalg.buffer_alloc %arg0 {alignment=16} : !linalg.buffer<?xf32>
+  return
+}
+// CHECK-LABEL: func @buffer_alloc_aligned
+//       CHECK:    %[[c4:.*]] = llvm.constant(4 : index) : !llvm.i64
+//       CHECK:    %[[m:.*]] = llvm.mul %arg0, %[[c4]] : !llvm.i64
+//       CHECK:    %[[c1:.*]] = llvm.constant(1 : index) : !llvm.i64
+//       CHECK:    %[[c16:.*]] = llvm.constant(16 : index) : !llvm.i64
+//       CHECK:    %[[a:.*]] = llvm.add %[[m]], %[[c16]] : !llvm.i64
+//       CHECK:    %[[s:.*]] = llvm.sub %[[a]], %[[c1]] : !llvm.i64
+//       CHECK:    %[[alloc:.*]] = llvm.call @malloc(%[[s]]) : (!llvm.i64) -> !llvm<"i8*">
+// aligning `ptr` on `align` is done computing the address `ptr + (align - ptr % align) % align`.
+//       CHECK:    %[[cast:.*]] = llvm.ptrtoint %[[alloc]] : !llvm<"i8*"> to !llvm.i64
+//       CHECK:    %[[rem:.*]] = llvm.urem %[[cast]], %[[c16]] : !llvm.i64
+//       CHECK:    %[[drem:.*]] = llvm.sub %[[c16]], %[[rem]] : !llvm.i64
+//       CHECK:    %[[off:.*]] = llvm.urem %[[drem]], %[[c16]] : !llvm.i64
+//       CHECK:    llvm.getelementptr %{{.*}}[%[[off]]] : (!llvm<"i8*">, !llvm.i64) -> !llvm<"i8*">
 
 func @range(%arg0: index) {
   %c0 = constant 0 : index
@@ -32,7 +51,7 @@ func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   llvm.constant(1 : index) : !llvm.i64
 //  CHECK-NEXT:   llvm.alloca {{.*}} x !llvm<"{ float*, i64, [1 x i64], [1 x i64] }"> {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
 //       CHECK:   llvm.load %{{.*}} : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
-//  CHECK-NEXT:   llvm.extractvalue %{{.*}}[0] : !llvm<"{ float*, i64 }">
+//  CHECK-NEXT:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ i8*, float*, i64 }">
 //  CHECK-NEXT:   llvm.bitcast {{.*}} : !llvm<"float*"> to !llvm<"float*">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   llvm.constant(0 : index) : !llvm.i64

@@ -8,7 +8,7 @@ func @range(%arg0: index, %arg1: index, %arg2: index) {
   return
 }
 // CHECK-LABEL: func @range(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:  %{{.*}} = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
+//  CHECK-NEXT:  linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) -> index {
   %0 = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
@@ -17,20 +17,27 @@ func @buffer_size(%arg0: !linalg.buffer<?xf32>) -> index {
 // CHECK-LABEL: func @buffer_size
 //       CHECK:   linalg.buffer_size {{.*}} : !linalg.buffer<?xf32>
 
-
 func @buffer(%arg0: index, %arg1: index) {
   %0 = muli %arg0, %arg0 : index
   %1 = linalg.buffer_alloc %0 : !linalg.buffer<?xvector<4xi8>>
-  %2 = linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
-  linalg.buffer_dealloc %2 : !linalg.buffer<17xvector<4xi8>>
+  %2 = linalg.buffer_alloc %0 {alignment = 16} : !linalg.buffer<?xvector<4xi8>>
+  %3 = linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
+  %4 = linalg.buffer_alloc {alignment = 32} : !linalg.buffer<17xvector<4xi8>>
+  linalg.buffer_dealloc %4 : !linalg.buffer<17xvector<4xi8>>
+  linalg.buffer_dealloc %3 : !linalg.buffer<17xvector<4xi8>>
+  linalg.buffer_dealloc %2 : !linalg.buffer<?xvector<4xi8>>
   linalg.buffer_dealloc %1 : !linalg.buffer<?xvector<4xi8>>
   return
 }
 // CHECK-LABEL: func @buffer(%{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:  %{{.*}} = muli %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:  %{{.*}} = linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
-//  CHECK-NEXT:  %{{.*}} = linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
+//  CHECK-NEXT:  muli %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} {alignment = 16 : i64} : !linalg.buffer<?xvector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_alloc : !linalg.buffer<17xvector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_alloc {alignment = 32 : i64} : !linalg.buffer<17xvector<4xi8>>
 //  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<17xvector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<17xvector<4xi8>>
+//  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
 //  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xvector<4xi8>>
 
 func @view_fun(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
@@ -52,15 +59,15 @@ func @views(%arg0: index, %arg1: index, %arg2: index, %arg3: index, %arg4: index
   return
 }
 // CHECK-LABEL: func @views(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:  %{{.*}} = muli %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:  %{{.*}} = linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
-//  CHECK-NEXT:  %{{.*}} = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
-//  CHECK-NEXT:  %{{.*}} = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
-//  CHECK-NEXT:  %{{.*}} = linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-//  CHECK-NEXT:  %{{.*}} = linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-//  CHECK-NEXT:  %{{.*}} = linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, index, !linalg.range, !linalg.view<?xf32>
-//  CHECK-NEXT:  %{{.*}} = linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, index, index, !linalg.view<f32>
-//  CHECK-NEXT:  %{{.*}} = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xvector<4x4xf32>>
+//  CHECK-NEXT:  muli %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:  linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
+//  CHECK-NEXT:  linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
+//  CHECK-NEXT:  linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+//  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+//  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
+//  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, index, !linalg.range, !linalg.view<?xf32>
+//  CHECK-NEXT:  linalg.slice %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>, index, index, !linalg.view<f32>
+//  CHECK-NEXT:  linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : !linalg.buffer<?xf32> -> !linalg.view<?x?xvector<4x4xf32>>
 //  CHECK-NEXT:  linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xf32>
 
 func @ops(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<?xf32>, %arg3: !linalg.view<f32>) {
@@ -81,8 +88,8 @@ func @dim(%arg0: !linalg.view<?x?xf32>) {
   return
 }
 // CHECK-LABEL: func @dim(%{{.*}}: !linalg.view<?x?xf32>) {
-//  CHECK-NEXT:   %{{.*}} = linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
-//  CHECK-NEXT:   %{{.*}} = linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
+//  CHECK-NEXT:   linalg.dim %{{.*}}, 1 : !linalg.view<?x?xf32>
+//  CHECK-NEXT:   linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
 //  CHECK-NEXT:   linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xf32>
 
 func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
@@ -99,13 +106,13 @@ func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
   return
 }
 // CHECK-LABEL: func @linalg_for(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
-//  CHECK-NEXT:   loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-//  CHECK-NEXT:     loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
-//  CHECK-NEXT:       %{{.*}} = cmpi "slt", %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       %{{.*}} = cmpi "sge", %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : index
-//  CHECK-NEXT:       loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:   loop.for %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:     loop.for %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:       cmpi "slt", %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       select %{{.*}}, %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       cmpi "sge", %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       select %{{.*}}, %{{.*}}, %{{.*}} : index
+//  CHECK-NEXT:       loop.for %{{.*}} to %{{.*}} step %{{.*}} {
 
 func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
   linalg.fill(%arg0, %arg1) : !linalg.view<?xf32>, f32
@@ -157,8 +164,8 @@ func @subview(%arg0: !linalg.view<?x?xvector<3x4xi4>>) {
   return
 }
 // CHECK-LABEL: func @subview(%{{.*}}: !linalg.view<?x?xvector<3x4xi4>>) {
-//       CHECK:   %{{.*}} = constant 0 : index
-//       CHECK:   %{{.*}} = linalg.subview %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] : !linalg.view<?x?xvector<3x4xi4>>
+//       CHECK:   constant 0 : index
+//       CHECK:   linalg.subview %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] : !linalg.view<?x?xvector<3x4xi4>>
 
 func @const_buffer_view(%arg0: index, %arg1: index, %arg2: index) {
   %c0 = linalg.buffer_alloc : !linalg.buffer<17xf32>

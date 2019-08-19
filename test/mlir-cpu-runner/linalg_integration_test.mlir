@@ -7,7 +7,7 @@
 func @alloc_filled_f32(%s : index, %f : f32) -> !linalg.buffer<?xf32> {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  %buf = linalg.buffer_alloc %s : !linalg.buffer<?xf32>
+  %buf = linalg.buffer_alloc %s {alignment = 256} : !linalg.buffer<?xf32>
   %R = linalg.range %c0:%s:%c1 : !linalg.range
   %V = linalg.view %buf[%R] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
   linalg.fill(%V, %f) : !linalg.view<?xf32>, f32

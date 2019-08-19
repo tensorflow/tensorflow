@@ -68,8 +68,10 @@ using llvm_load = ValueBuilder<LLVM::LoadOp>;
 using llvm_store = OperationBuilder<LLVM::StoreOp>;
 using llvm_select = ValueBuilder<LLVM::SelectOp>;
 using mul = ValueBuilder<mlir::LLVM::MulOp>;
+using ptrtoint = ValueBuilder<mlir::LLVM::PtrToIntOp>;
 using sub = ValueBuilder<mlir::LLVM::SubOp>;
 using undef = ValueBuilder<mlir::LLVM::UndefOp>;
+using urem = ValueBuilder<mlir::LLVM::URemOp>;
 using llvm_alloca = ValueBuilder<LLVM::AllocaOp>;
 using llvm_return = OperationBuilder<LLVM::ReturnOp>;
 
@@ -99,12 +101,14 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   //
   // template <typename Elem, size_t Rank>
   // struct {
+  //   void *baseAlloc;
   //   Elem *ptr;
   //   int64_t size;
   // };
   if (auto bufferType = t.dyn_cast<BufferType>()) {
+    auto voidPtrTy = LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     auto ptrTy = getPtrToElementType(bufferType, lowering);
-    return LLVMType::getStructTy(ptrTy, int64Ty);
+    return LLVMType::getStructTy(voidPtrTy, ptrTy, int64Ty);
   }
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
@@ -151,8 +155,9 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   return Type();
 }
 
-static constexpr int kPtrPosInBuffer = 0;
-static constexpr int kSizePosInBuffer = 1;
+static constexpr int kBasePtrPosInBuffer = 0;
+static constexpr int kPtrPosInBuffer = 1;
+static constexpr int kSizePosInBuffer = 2;
 static constexpr int kPtrPosInView = 0;
 static constexpr int kOffsetPosInView = 1;
 static constexpr int kSizePosInView = 2;
@@ -215,13 +220,33 @@ public:
             : operands[0];
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
+    Value *one = nullptr, *align = nullptr;
+    if (allocOp.alignment().hasValue()) {
+      one = constant(int64Ty,
+                     rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+      align =
+          constant(int64Ty, rewriter.getIntegerAttr(
+                                rewriter.getIndexType(),
+                                allocOp.alignment().getValue().getSExtValue()));
+      allocSize = sub(add(allocSize, align), one);
+    }
+
     Value *allocated =
         llvm_call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
             .getOperation()
             ->getResult(0);
-    allocated = bitcast(elementPtrType, allocated);
+    Value *data = allocated;
+    if (allocOp.alignment().hasValue()) {
+      // offset = (align - (ptr % align))% align
+      Value *offset =
+          urem(sub(align, urem(ptrtoint(int64Ty, allocated), align)), align);
+      data = gep(voidPtrTy, allocated, offset);
+    }
+    data = bitcast(elementPtrType, data);
     Value *desc = undef(bufferDescriptorTy);
     desc = insertvalue(bufferDescriptorTy, desc, allocated,
+                       positionAttr(rewriter, kBasePtrPosInBuffer));
+    desc = insertvalue(bufferDescriptorTy, desc, data,
                        positionAttr(rewriter, kPtrPosInBuffer));
     desc = insertvalue(bufferDescriptorTy, desc, size,
                        positionAttr(rewriter, kSizePosInBuffer));
@@ -252,18 +277,12 @@ public:
       module.push_back(freeFunc);
     }
 
-    // Get MLIR types for extracting element pointer.
-    auto deallocOp = cast<BufferDeallocOp>(op);
-    auto elementPtrTy =
-        getPtrToElementType(deallocOp.getBufferType(), lowering);
-
     // Emit MLIR for buffer_dealloc.
     BufferDeallocOpOperandAdaptor adaptor(operands);
     edsc::ScopedContext context(rewriter, op->getLoc());
-    Value *casted =
-        bitcast(voidPtrTy, extractvalue(elementPtrTy, adaptor.buffer(),
-                                        positionAttr(rewriter, 0)));
-    llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
+    Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
+                               positionAttr(rewriter, kBasePtrPosInBuffer));
+    llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
