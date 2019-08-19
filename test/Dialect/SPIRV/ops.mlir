@@ -117,19 +117,6 @@ func @access_chain_invalid_accessing_type(%index0 : i32) -> () {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
-  spv.globalVariable !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input> @var1
-  func @access_chain() -> () {
-    %0 = spv.constant 1: i32
-    %1 = spv._address_of @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
-    // CHECK: spv.AccessChain {{.*}}[{{.*}}, {{.*}}] : !spv.ptr<!spv.struct<f32, !spv.array<4 x f32>>, Input>
-    %2 = spv.AccessChain %1[%0, %0] : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
-    spv.Return
-  }
-}
-
-// -----
-
 //===----------------------------------------------------------------------===//
 // spv.CompositeExtractOp
 //===----------------------------------------------------------------------===//
@@ -275,88 +262,6 @@ func @composite_extract_result_type_mismatch(%arg0: !spv.array<4xf32>) -> i32 {
 // -----
 
 //===----------------------------------------------------------------------===//
-// spv.EntryPoint
-//===----------------------------------------------------------------------===//
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   // CHECK: spv.EntryPoint "GLCompute" @do_nothing
-   spv.EntryPoint "GLCompute" @do_nothing
-}
-
-spv.module "Logical" "VulkanKHR" {
-   spv.globalVariable !spv.ptr<f32, Input> @var2
-   spv.globalVariable !spv.ptr<f32, Output> @var3
-   func @do_something(%arg0 : !spv.ptr<f32, Input>, %arg1 : !spv.ptr<f32, Output>) -> () {
-     %1 = spv.Load "Input" %arg0 : f32
-     spv.Store "Output" %arg1, %1 : f32
-     spv.Return
-   }
-   // CHECK: spv.EntryPoint "GLCompute" @do_something, @var2, @var3
-   spv.EntryPoint "GLCompute" @do_something, @var2, @var3
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   // expected-error @+1 {{invalid kind of constant specified}}
-   spv.EntryPoint "GLCompute" "do_nothing"
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   // expected-error @+1 {{function 'do_something' not found in 'spv.module'}}
-   spv.EntryPoint "GLCompute" @do_something
-}
-
-/// TODO(ravishankarm) : Add a test that verifies an error is thrown
-/// when interface entries of EntryPointOp are not
-/// spv.Variables. There is currently no other op that has a spv.ptr
-/// return type
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     // expected-error @+1 {{op must appear in a 'spv.module' block}}
-     spv.EntryPoint "GLCompute" @do_something
-   }
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   spv.EntryPoint "GLCompute" @do_nothing
-   // expected-error @+1 {{duplicate of a previous EntryPointOp}}
-   spv.EntryPoint "GLCompute" @do_nothing
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   spv.EntryPoint "GLCompute" @do_nothing
-   // expected-error @+1 {{custom op 'spv.EntryPoint' invalid execution_model attribute specification: "ContractionOff"}}
-   spv.EntryPoint "ContractionOff" @do_nothing
-}
-
-// -----
-
-//===----------------------------------------------------------------------===//
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//
 
@@ -387,74 +292,6 @@ spv.module "Logical" "VulkanKHR" {
    spv.EntryPoint "GLCompute" @do_nothing
    // expected-error @+1 {{custom op 'spv.ExecutionMode' invalid execution_mode attribute specification: "GLCompute"}}
    spv.ExecutionMode @do_nothing "GLCompute", 3, 4, 5
-}
-
-// -----
-
-//===----------------------------------------------------------------------===//
-// spv.globalVariable
-//===----------------------------------------------------------------------===//
-
-spv.module "Logical" "VulkanKHR" {
-  // CHECK: spv.globalVariable !spv.ptr<f32, Input> @var0
-  spv.globalVariable !spv.ptr<f32, Input> @var0
-}
-
-// TODO: Fix test case after initialization with constant is addressed
-// spv.module "Logical" "VulkanKHR" {
-//   %0 = spv.constant 4.0 : f32
-//   // CHECK1: spv.Variable init(%0) : !spv.ptr<f32, Private>
-//   spv.globalVariable !spv.ptr<f32, Private> @var1 init(%0)
-// }
-
-spv.module "Logical" "VulkanKHR" {
-  // CHECK: spv.globalVariable !spv.ptr<f32, Uniform> @var0 bind(1, 2)
-  spv.globalVariable !spv.ptr<f32, Uniform> @var0 bind(1, 2)
-}
-
-// TODO: Fix test case after initialization with constant is addressed
-// spv.module "Logical" "VulkanKHR" {
-//   %0 = spv.constant 4.0 : f32
-//   // CHECK1: spv.globalVariable !spv.ptr<f32, Private> @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
-//   spv.globalVariable !spv.ptr<f32, Private> @var1 initializer(%0) {binding = 5 : i32} :
-// }
-
-spv.module "Logical" "VulkanKHR" {
-  // CHECK: spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var1 built_in("GlobalInvocationID")
-  spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var1 built_in("GlobalInvocationID")
-  // CHECK: spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 built_in("GlobalInvocationID")
-  spv.globalVariable !spv.ptr<vector<3xi32>, Input> @var2 {built_in = "GlobalInvocationID"}
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-  // expected-error @+1 {{expected spv.ptr type}}
-  spv.globalVariable f32 @var0
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-  // expected-error @+1 {{op initializer must be result of a spv.globalVariable op}}
-  spv.globalVariable !spv.ptr<f32, Private> @var0 initializer(@var1)
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-  // expected-error @+1 {{storage class cannot be 'Generic'}}
-  spv.globalVariable !spv.ptr<f32, Generic> @var0
-}
-
-// -----
-
-spv.module "Logical" "VulkanKHR" {
-  func @foo() {
-    // expected-error @+1 {{op must appear in a 'spv.module' block}}
-    spv.globalVariable !spv.ptr<f32, Input> @var0
-    spv.Return
-  }
 }
 
 // -----
@@ -750,7 +587,7 @@ func @aligned_load_incorrect_attributes() -> () {
 // -----
 
 spv.module "Logical" "VulkanKHR" {
-  spv.globalVariable !spv.ptr<f32, Input> @var0
+  spv.globalVariable @var0 : !spv.ptr<f32, Input>
   // CHECK_LABEL: @simple_load
   func @simple_load() -> () {
     // CHECK: spv.Load "Input" {{%.*}} : f32
@@ -1011,7 +848,7 @@ func @aligned_store_incorrect_attributes(%arg0 : f32) -> () {
 // -----
 
 spv.module "Logical" "VulkanKHR" {
-  spv.globalVariable !spv.ptr<f32, Input> @var0
+  spv.globalVariable @var0 : !spv.ptr<f32, Input>
   func @simple_store(%arg0 : f32) -> () {
     %0 = spv._address_of @var0 : !spv.ptr<f32, Input>
     // CHECK: spv.Store  "Input" {{%.*}}, {{%.*}} : f32

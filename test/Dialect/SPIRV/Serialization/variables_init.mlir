@@ -2,10 +2,10 @@
 
 func @spirv_variables() -> () {
   spv.module "Logical" "VulkanKHR" {
-    // CHECK:         spv.globalVariable !spv.ptr<f32, Input> @var1
-    // CHECK-NEXT:    spv.globalVariable !spv.ptr<f32, Input> @var2 initializer(@var1) bind(1, 0)
-    spv.globalVariable !spv.ptr<f32, Input> @var1
-    spv.globalVariable !spv.ptr<f32, Input> @var2 initializer(@var1) bind(1, 0)
+    // CHECK:         spv.globalVariable @var1 : !spv.ptr<f32, Input>
+    // CHECK-NEXT:    spv.globalVariable @var2 initializer(@var1) bind(1, 0) : !spv.ptr<f32, Input>
+    spv.globalVariable @var1 : !spv.ptr<f32, Input>
+    spv.globalVariable @var2 initializer(@var1) bind(1, 0) : !spv.ptr<f32, Input>
   }
   return
 }
