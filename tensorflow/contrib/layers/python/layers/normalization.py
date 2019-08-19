@@ -94,7 +94,10 @@ def instance_norm(inputs,
   inputs = ops.convert_to_tensor(inputs)
   inputs_shape = inputs.shape
   inputs_rank = inputs.shape.ndims
-  # Cast `inputs` array to float64 if machine is big endian
+  # For big endian, precision difference in last decimal values getting in 
+  # float32 Vs float64 data type is causing normalization_test failure. 
+  # The cast to float64 will calculate mean and variance correctly while 
+  # normalization of `inputs` tensor.
   if sys.byteorder == "big" and inputs.dtype.base_dtype == dtypes.float32:
       inputs = math_ops.cast(inputs, dtypes.float64)
 
