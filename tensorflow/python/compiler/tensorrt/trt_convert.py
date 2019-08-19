@@ -808,8 +808,15 @@ class TrtGraphConverterV2(object):
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
      converter.convert()
-     for data in my_input_data:
-       converter.build(my_input_data)  # Generate corresponding TRT engines.
+
+     # Define an input function that returns input data, and executes the graph
+     # to build TRT engines. With TensorRT 5.1, different engines will be built
+     # (and saved later) for different input shapes to the TRTEngineOp.
+     def my_input_fn():
+       data = ...
+       return (data,)
+
+     converter.build(input_fn=my_input_fn)  # Generate corresponding TRT engines
      converter.save(output_saved_model_dir)  # Generated engines will be saved.
      ```
 
@@ -832,23 +839,25 @@ class TrtGraphConverterV2(object):
      converter = TrtGraphConverterV2(
          input_saved_model_dir="my_dir", conversion_params=params)
 
-     # Define an input function that yields input data, and run INT8 calibration
-     # with the data. All input data should have the same shape. At the end of
-     # convert(), the calibration stats (e.g. range information) will be saved
-     # and can be used to generate more TRT engines with different shapes. Also,
-     # one TRT engine will be generated (with the same shape as the calibration
-     # data) for save later.
-     def my_input_map_fn():
+     # Define an input function that returns input data, and run INT8
+     # calibration with the data. All input data should have the same shape.
+     # At the end of convert(), the calibration stats (e.g. range information)
+     # will be saved and can be used to generate more TRT engines with different
+     # shapes. Also, one TRT engine will be generated (with the same shape as
+     # the calibration data) for save later.
+     def my_input_fn():
        data = ...
-       yield (data,)
+       return (data,)
 
      converter.convert(
-         num_calibration_runs=100, calibration_input_fn=my_input_map_fn)
+         num_calibration_runs=100, calibration_input_fn=my_input_fn)
 
-     # (Optional) Generate more TRT engines offline to avoid the cost of
-     # generating them during inference.
-     for data in my_input_data:
-       converter.build(my_input_data)
+     # (Optional) Generate more TRT engines offline (same as the previous
+     # option), to avoid the cost of generating them during inference.
+     def my_input_fn():
+       data = ...
+       return (data,)
+     converter.build(input_fn=my_input_fn)
 
      # Save the TRT engine and the engines.
      converter.save(output_saved_model_dir)
@@ -927,13 +936,14 @@ class TrtGraphConverterV2(object):
     """Convert the input SavedModel in 2.0 format.
 
     Args:
-      num_calibration_runs: number of runs of the graph during calibration.
+      num_calibration_runs: number of runs of the graph with
+        calibration_input_fn during calibration.
       calibration_input_fn: a function that returns input data as a list or
         tuple, which will be used to execute the converted signature for
         calibration. All the returned input data should have the same shape.
         Example:
         ```
-        def input_map_fn():
+        def input_fn():
           return input1, input2, input3
         ```
 
@@ -1006,19 +1016,23 @@ class TrtGraphConverterV2(object):
 
     self._converted = True
 
-  def build(self, *args, **kwargs):
+  def build(self, num_runs, input_fn):
     """Run inference with converted graph in order to build TensorRT engines.
 
-    Returns:
-      The output of the converted Function for the given inputs.
+    Args:
+      num_runs: number of runs of the graph with input_fn.
+      input_fn: a function that returns input data as a list or tuple, which
+        will be used to execute the converted signature to generate TRT engines.
+        All the returned input data should have the same shape.
+        Example:
+        ```
+        def input_fn():
+          return input1, input2, input3
+        ```
     """
-    args_tensor = [ops.convert_to_tensor(arg) for arg in args]
-    kwargs_tensor = {k: ops.convert_to_tensor(v) for k, v in kwargs.items()}
-    try:
-      return self._converted_func(*args_tensor, **kwargs_tensor)
-    except OpError:
-      print("Failure in execution of function with input args {}"
-            "and kwargs {}".format(args_tensor, kwargs_tensor))
+    for _ in range(num_runs):
+      self._converted_func(
+          *map(ops.convert_to_tensor, input_fn()))
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.

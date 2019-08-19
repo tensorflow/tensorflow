@@ -377,13 +377,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertFalse(os.path.exists(unexpected_asset_file))
 
     # Run the converted function to populate the engine cache.
-    output_with_trt = converter.build(np_input1, np_input2)
-    self.assertEqual(1, len(output_with_trt))
-    self.assertAllClose(
-        expected_output,
-        list(output_with_trt.values())[0],
-        atol=1e-6,
-        rtol=1e-6)
+    input_fn = lambda: (np_input1, np_input2)
+    converter.build(num_runs=1, input_fn=input_fn)
 
     # Save the converted model again with serialized engine cache.
     output_saved_model_dir = self.mkdtemp()
@@ -497,9 +492,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         maximum_cached_engines=3)
 
     # Convert and perform INT8 calibration
-    input_map_fn = lambda: (np_input1, np_input2)
+    input_fn = lambda: (np_input1, np_input2)
     converter.convert(
-        num_calibration_runs=2, calibration_input_fn=input_map_fn)
+        num_calibration_runs=2, calibration_input_fn=input_fn)
 
     def _CheckFn(node):
       self.assertTrue(len(node.attr["calibration_data"].s), node.name)
@@ -508,7 +503,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self._CheckTrtOps(converter._converted_func, _CheckFn)  # pylint: disable=protected-access
 
     # Build another engine with different batch size.
-    converter.build(*self._RandomInput([5, 1, 1]))
+    input_fn = lambda: self._RandomInput([5, 1, 1])
+    converter.build(num_runs=1, input_fn=input_fn)
 
     # Save the converted model.
     # TODO(laigd): check that it should contain two engines.
@@ -566,7 +562,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     # Run TRT conversion.
     converter = self._CreateConverterV2(input_saved_model_dir)
     converter.convert()
-    converter.build(np_input1, np_input2)  # Populate the TRT engine cache.
+    input_fn = lambda: (np_input1, np_input2)
+    converter.build(num_runs=1, input_fn=input_fn)  # Populate the TRT engine cache.
     output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
 
