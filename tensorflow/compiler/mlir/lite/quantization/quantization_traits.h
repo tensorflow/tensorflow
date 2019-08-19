@@ -15,12 +15,11 @@ limitations under the License.
 
 // This file defines the op traits used in the MLIR TensorFlow Lite dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_IR_QUANTIZATION_TRAITS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_IR_QUANTIZATION_TRAITS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace OpTrait {
@@ -124,4 +123,4 @@ class NoQuantizableResult
 }  // namespace OpTrait
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_IR_QUANTIZATION_TRAITS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_

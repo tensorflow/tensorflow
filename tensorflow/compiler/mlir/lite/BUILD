@@ -26,8 +26,8 @@ filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
         "ir/tfl_ops.td",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@local_config_mlir//:OpBaseTdFiles",
-        "@local_config_mlir//:QuantizationOpsTdFiles",
     ],
 )
 
@@ -163,14 +163,11 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
-        # TODO(fengliuai): move this file into ./quantization dir
-        "ir/quantization_traits.h",
         "ir/tfl_ops.h",
         "ir/tfl_traits.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
-        # TODO(fengliuai): remove this dependence.
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_utils.h",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_traits.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -279,18 +276,6 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_native_cc_binary(
-    name = "op_quant_spec_getters_gen",
-    srcs = [
-        "tools/op_quant_spec_getters_gen.cc",
-    ],
-    deps = [
-        "@llvm//:support",
-        "@llvm//:tablegen",
-        "@local_config_mlir//:TableGen",
-    ],
-)
-
 filegroup(
     name = "generated_op_quant_spec_getters",
     srcs = [
@@ -301,17 +286,16 @@ filegroup(
 genrule(
     name = "op_quant_spec_getters_inc",
     srcs = [
-        "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        ":ir/tfl_ops.td",
+        "ir/tfl_ops.td",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
         "utils/generated_op_quant_spec_getters.inc",
     ],
-    cmd = ("$(location :op_quant_spec_getters_gen) " +
+    cmd = ("$(location //tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen) " +
            "-I external/local_config_mlir/include " +
            "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = [":op_quant_spec_getters_gen"],
+    tools = ["//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen"],
 )
 
 # Library with tensorflow Lite dialect static initialization.
@@ -343,9 +327,8 @@ tf_native_cc_binary(
 genrule(
     name = "operator_writer_inc",
     srcs = [
-        "@local_config_mlir//:include/mlir/Dialect/QuantOps/QuantPredicates.td",
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        ":ir/tfl_ops.td",
+        "ir/tfl_ops.td",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
         "operator_writers.inc",
