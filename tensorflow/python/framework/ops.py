@@ -365,7 +365,7 @@ class Tensor(_TensorLike):
   }
 
   # Whether to allow hashing or numpy-style equality
-  _USE_EQUALITY = False
+  _USE_EQUALITY = tf2.enabled()
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
