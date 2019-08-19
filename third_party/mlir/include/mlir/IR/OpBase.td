@@ -807,6 +807,13 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
+def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+                          "dictionary of named attribute values"> {
+  let storageType = [{ DictionaryAttr }];
+  let returnType = [{ DictionaryAttr }];
+  let convertFromStorage = "$_self";
+}
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
