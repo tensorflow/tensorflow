@@ -30,6 +30,21 @@ include "mlir/IR/OpBase.td"
 
 def Linalg_Dialect : Dialect {
   let name = "linalg";
+  let description = [{
+    The Linalg dialect groups together a set of types and operations that are
+    useful to implement a "linear algebra"-like abstraction where ops can lower
+    to scalar load/store and operations or to more general library calls.
+
+    The Linalg dialect adopts a convention that is similar to BLAS when
+    offloading operations to fast library implementations: pass a non-owning
+    pointer to input and output data with additional metadata. This convention
+    is also found in libraries such as MKL, OpenBLAS, cuBLAS, cuDNN, etc.. and
+    more generally at interface points across language boundaries (e.g. C++ /
+    Python).
+
+    Generally, Linalg passes non-owning pointers to View data structures to
+    precompiled library calls linked externally.
+  }];
 }
 
 // Whether a type is a BufferType.
