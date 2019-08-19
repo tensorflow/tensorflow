@@ -70,7 +70,7 @@ std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
   return result;
 }
 
-void GetDeviceWorkDimsSizes(cl_device_id id, int* result) {
+void GetDeviceWorkDimsSizes(cl_device_id id, int3* result) {
   int dims_count =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS);
   if (dims_count < 3) {
@@ -84,9 +84,9 @@ void GetDeviceWorkDimsSizes(cl_device_id id, int* result) {
     return;
   }
   // dims_count must be at least 3 according to spec
-  result[0] = limits[0];
-  result[1] = limits[1];
-  result[2] = limits[2];
+  result->x = limits[0];
+  result->y = limits[1];
+  result->z = limits[2];
 }
 
 OpenCLVersion ParseCLVersion(const std::string& version) {
@@ -276,7 +276,7 @@ DeviceInfo::DeviceInfo(cl_device_id id)
     image_array_max_layers =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_ARRAY_SIZE);
   }
-  GetDeviceWorkDimsSizes(id, max_work_items_sizes);
+  GetDeviceWorkDimsSizes(id, &max_work_group_sizes);
 }
 
 bool DeviceInfo::SupportsTextureArray() const {

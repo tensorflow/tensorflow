@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
@@ -74,7 +75,7 @@ struct DeviceInfo {
   int image2d_max_height;
   int image_buffer_max_size;
   int image_array_max_layers;
-  int max_work_items_sizes[3];
+  int3 max_work_group_sizes;
 
   AdrenoInfo adreno_info;
 };

@@ -32,6 +32,7 @@ cc_library(
         ":opencl_wrapper",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
         "@com_google_absl//absl/strings",
     ],
 )
