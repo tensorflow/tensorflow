@@ -22,7 +22,7 @@
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
-#include "mlir/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 
 using namespace mlir;
 

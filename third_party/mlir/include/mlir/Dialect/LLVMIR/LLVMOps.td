@@ -23,7 +23,7 @@
 #else
 #define LLVMIR_OPS
 
-include "mlir/LLVMIR/LLVMOpBase.td"
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 
 // Base class for LLVM operations.  All operations get an "llvm." prefix in
 // their name automatically.  LLVM operations have either zero or one result,

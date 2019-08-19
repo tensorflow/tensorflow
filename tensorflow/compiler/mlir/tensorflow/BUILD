@@ -70,7 +70,7 @@ gentbl(
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -94,7 +94,7 @@ gentbl(
     td_file = "ir/tf_device_ops.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 

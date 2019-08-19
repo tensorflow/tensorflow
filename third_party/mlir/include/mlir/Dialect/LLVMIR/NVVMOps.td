@@ -23,7 +23,7 @@
 #else
 #define NVVMIR_OPS
 
-include "mlir/LLVMIR/LLVMOpBase.td"
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 
 def NVVM_Dialect : Dialect {
   let name = "nvvm";

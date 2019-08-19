@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TARGET_LLVMDIALECT_H_
-#define MLIR_TARGET_LLVMDIALECT_H_
+#ifndef MLIR_DIALECT_LLVMIR_LLVMDIALECT_H_
+#define MLIR_DIALECT_LLVMIR_LLVMDIALECT_H_
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
@@ -34,7 +34,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 
-#include "mlir/LLVMIR/LLVMOpsEnums.h.inc"
+#include "mlir/Dialect/LLVMIR/LLVMOpsEnums.h.inc"
 
 namespace llvm {
 class Type;
@@ -145,7 +145,7 @@ private:
 
 ///// Ops /////
 #define GET_OP_CLASSES
-#include "mlir/LLVMIR/LLVMOps.h.inc"
+#include "mlir/Dialect/LLVMIR/LLVMOps.h.inc"
 
 class LLVMDialect : public Dialect {
 public:
@@ -177,4 +177,4 @@ private:
 } // end namespace LLVM
 } // end namespace mlir
 
-#endif // MLIR_TARGET_LLVMDIALECT_H_
+#endif // MLIR_DIALECT_LLVMIR_LLVMDIALECT_H_

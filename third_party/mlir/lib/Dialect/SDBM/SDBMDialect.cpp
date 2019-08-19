@@ -15,6 +15,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/SDBM/SDBMDialect.h"
+#include "mlir/Dialect/SDBM/SDBMDialect.h"
 
 static mlir::DialectRegistration<mlir::SDBMDialect> SDBMDialect;

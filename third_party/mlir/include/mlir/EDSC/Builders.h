@@ -24,8 +24,8 @@
 #define MLIR_EDSC_BUILDERS_H_
 
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/VectorOps/VectorOps.h"
 

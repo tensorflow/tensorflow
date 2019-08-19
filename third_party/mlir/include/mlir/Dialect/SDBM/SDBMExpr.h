@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_SDBMEXPR_H
-#define MLIR_IR_SDBMEXPR_H
+#ifndef MLIR_DIALECT_SDBM_SDBMEXPR_H
+#define MLIR_DIALECT_SDBM_SDBMEXPR_H
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -527,4 +527,4 @@ template <> struct DenseMapInfo<mlir::SDBMConstantExpr> {
 };
 } // namespace llvm
 
-#endif // MLIR_IR_SDBMEXPR_H
+#endif // MLIR_DIALECT_SDBM_SDBMEXPR_H

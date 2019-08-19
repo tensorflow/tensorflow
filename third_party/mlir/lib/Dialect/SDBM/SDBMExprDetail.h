@@ -23,7 +23,7 @@
 #ifndef MLIR_IR_SDBMEXPRDETAIL_H
 #define MLIR_IR_SDBMEXPRDETAIL_H
 
-#include "mlir/SDBM/SDBMExpr.h"
+#include "mlir/Dialect/SDBM/SDBMExpr.h"
 #include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {

@@ -235,7 +235,7 @@ gentbl(
 filegroup(
     name = "StdOpsTdFiles",
     srcs = [
-        "include/mlir/StandardOps/Ops.td",
+        "include/mlir/Dialect/StandardOps/Ops.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -245,15 +245,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/StandardOps/Ops.h.inc",
+            "include/mlir/Dialect/StandardOps/Ops.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/StandardOps/Ops.cpp.inc",
+            "include/mlir/Dialect/StandardOps/Ops.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/StandardOps/Ops.td",
+    td_file = "include/mlir/Dialect/StandardOps/Ops.td",
     td_srcs = [
         ":StdOpsTdFiles",
     ],
@@ -310,15 +310,15 @@ cc_library(
 cc_library(
     name = "SDBM",
     srcs = [
-        "lib/SDBM/SDBM.cpp",
-        "lib/SDBM/SDBMDialect.cpp",
-        "lib/SDBM/SDBMExpr.cpp",
-        "lib/SDBM/SDBMExprDetail.h",
+        "lib/Dialect/SDBM/SDBM.cpp",
+        "lib/Dialect/SDBM/SDBMDialect.cpp",
+        "lib/Dialect/SDBM/SDBMExpr.cpp",
+        "lib/Dialect/SDBM/SDBMExprDetail.h",
     ],
     hdrs = [
-        "include/mlir/SDBM/SDBM.h",
-        "include/mlir/SDBM/SDBMDialect.h",
-        "include/mlir/SDBM/SDBMExpr.h",
+        "include/mlir/Dialect/SDBM/SDBM.h",
+        "include/mlir/Dialect/SDBM/SDBMDialect.h",
+        "include/mlir/Dialect/SDBM/SDBMExpr.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -361,10 +361,10 @@ cc_library(
 cc_library(
     name = "StandardOps",
     srcs = [
-        "lib/StandardOps/Ops.cpp",
+        "lib/Dialect/StandardOps/Ops.cpp",
     ],
     hdrs = [
-        "include/mlir/StandardOps/Ops.h",
+        "include/mlir/Dialect/StandardOps/Ops.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -378,7 +378,7 @@ cc_library(
 # Library with standard dialect static initialization.
 cc_library(
     name = "StandardDialectRegistration",
-    srcs = ["lib/StandardOps/DialectRegistration.cpp"],
+    srcs = ["lib/Dialect/StandardOps/DialectRegistration.cpp"],
     copts = ["-std=c++14"],
     deps = [
         ":IR",
@@ -465,12 +465,12 @@ cc_library(
 cc_library(
     name = "LLVMDialect",
     srcs = [
-        "include/mlir/LLVMIR/LLVMOps.cpp.inc",
-        "include/mlir/LLVMIR/LLVMOps.h.inc",
-        "lib/LLVMIR/IR/LLVMDialect.cpp",
+        "include/mlir/Dialect/LLVMIR/LLVMOps.cpp.inc",
+        "include/mlir/Dialect/LLVMIR/LLVMOps.h.inc",
+        "lib/Dialect/LLVMIR/IR/LLVMDialect.cpp",
     ],
     hdrs = [
-        "include/mlir/LLVMIR/LLVMDialect.h",
+        "include/mlir/Dialect/LLVMIR/LLVMDialect.h",
     ],
     copts = ["-std=c++14"],
     includes = ["include"],
@@ -557,8 +557,8 @@ cc_library(
 filegroup(
     name = "LLVMOpsTdFiles",
     srcs = [
-        "include/mlir/LLVMIR/LLVMOpBase.td",
-        "include/mlir/LLVMIR/LLVMOps.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOps.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -630,23 +630,23 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/LLVMIR/LLVMOps.h.inc",
+            "include/mlir/Dialect/LLVMIR/LLVMOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/LLVMIR/LLVMOps.cpp.inc",
+            "include/mlir/Dialect/LLVMIR/LLVMOps.cpp.inc",
         ),
         (
             "-gen-enum-decls",
-            "include/mlir/LLVMIR/LLVMOpsEnums.h.inc",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsEnums.h.inc",
         ),
         (
             "-gen-enum-defs",
-            "include/mlir/LLVMIR/LLVMOpsEnums.cpp.inc",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsEnums.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/LLVMIR/LLVMOps.td",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMOps.td",
     td_srcs = [
         ":LLVMOpsTdFiles",
     ],
@@ -657,11 +657,11 @@ gentbl(
     tbl_outs = [
         (
             "-gen-llvmir-conversions",
-            "include/mlir/LLVMIR/LLVMConversions.inc",
+            "include/mlir/Dialect/LLVMIR/LLVMConversions.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/LLVMIR/LLVMOps.td",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMOps.td",
     td_srcs = [
         ":LLVMOpsTdFiles",
     ],
@@ -670,12 +670,12 @@ gentbl(
 cc_library(
     name = "NVVMDialect",
     srcs = [
-        "include/mlir/LLVMIR/NVVMOps.cpp.inc",
-        "include/mlir/LLVMIR/NVVMOps.h.inc",
-        "lib/LLVMIR/IR/NVVMDialect.cpp",
+        "include/mlir/Dialect/LLVMIR/NVVMOps.cpp.inc",
+        "include/mlir/Dialect/LLVMIR/NVVMOps.h.inc",
+        "lib/Dialect/LLVMIR/IR/NVVMDialect.cpp",
     ],
     hdrs = [
-        "include/mlir/LLVMIR/NVVMDialect.h",
+        "include/mlir/Dialect/LLVMIR/NVVMDialect.h",
     ],
     copts = ["-std=c++14"],
     includes = ["include"],
@@ -695,8 +695,8 @@ cc_library(
 filegroup(
     name = "NVVMOpsTdFiles",
     srcs = [
-        "include/mlir/LLVMIR/LLVMOpBase.td",
-        "include/mlir/LLVMIR/NVVMOps.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/LLVMIR/NVVMOps.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -706,15 +706,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/LLVMIR/NVVMOps.h.inc",
+            "include/mlir/Dialect/LLVMIR/NVVMOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/LLVMIR/NVVMOps.cpp.inc",
+            "include/mlir/Dialect/LLVMIR/NVVMOps.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/LLVMIR/NVVMOps.td",
+    td_file = "include/mlir/Dialect/LLVMIR/NVVMOps.td",
     td_srcs = [
         ":NVVMOpsTdFiles",
     ],
@@ -725,11 +725,11 @@ gentbl(
     tbl_outs = [
         (
             "-gen-llvmir-conversions",
-            "include/mlir/LLVMIR/NVVMConversions.inc",
+            "include/mlir/Dialect/LLVMIR/NVVMConversions.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/LLVMIR/NVVMOps.td",
+    td_file = "include/mlir/Dialect/LLVMIR/NVVMOps.td",
     td_srcs = [
         ":NVVMOpsTdFiles",
     ],

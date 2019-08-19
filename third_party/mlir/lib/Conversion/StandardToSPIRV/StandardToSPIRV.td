@@ -16,7 +16,7 @@
 
 #ifdef STANDARD_OPS
 #else
-include "mlir/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
 #endif // STANDARD_OPS
 
 #ifdef SPIRV_OPS

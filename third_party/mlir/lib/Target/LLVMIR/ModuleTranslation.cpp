@@ -22,9 +22,9 @@
 
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -202,7 +202,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return position;
   };
 
-#include "mlir/LLVMIR/LLVMConversions.inc"
+#include "mlir/Dialect/LLVMIR/LLVMConversions.inc"
 
   // Emit function calls.  If the "callee" attribute is present, this is a
   // direct function call and we also need to look up the remapped function
