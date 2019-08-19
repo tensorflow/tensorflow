@@ -54,8 +54,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
       if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeOpTrait>(&t)) {
         auto trait = opTrait->getTrait();
         // We only handle TFL specific native op traits.
-        if (!trait.startswith("TFL::")) continue;
-        trait.consume_front("TFL::");
+        if (!trait.consume_front("OpTrait::TFL::")) continue;
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";

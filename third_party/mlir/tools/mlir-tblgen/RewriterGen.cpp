@@ -649,9 +649,10 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   // special cases listed below, we need to supply types for all results
   // when building an op.
   bool isSameOperandsAndResultType =
-      resultOp.hasTrait("SameOperandsAndResultType");
-  bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
-  bool useFirstAttr = resultOp.hasTrait("FirstAttrDerivedResultType");
+      resultOp.hasTrait("OpTrait::SameOperandsAndResultType");
+  bool isBroadcastable =
+      resultOp.hasTrait("OpTrait::BroadcastableTwoOperandsOneResult");
+  bool useFirstAttr = resultOp.hasTrait("OpTrait::FirstAttrDerivedResultType");
   bool usePartialResults = valuePackName != resultValue;
 
   if (isSameOperandsAndResultType || isBroadcastable || useFirstAttr ||
