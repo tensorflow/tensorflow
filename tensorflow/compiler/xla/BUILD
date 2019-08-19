@@ -63,6 +63,7 @@ cc_library(
     hdrs = ["bit_cast.h"],
     visibility = [":friends"],
     deps = [
+        ":types",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",

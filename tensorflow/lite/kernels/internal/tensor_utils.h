@@ -153,8 +153,13 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector);
 
 // Batch vector initialization with another vector.
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector);
+template <typename T>
+void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
+                             T* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(vector, v_size, batch_vector + b * v_size);
+  }
+}
 
 // Apply sigmoid to elements of a vector.
 void ApplySigmoidToVector(const float* vector, int v_size, float* result);
@@ -163,14 +168,8 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result);
 void ApplyActivationToVector(const float* vector, int v_size,
                              TfLiteFusedActivation activation, float* result);
 
-// Copy vector to another vector.
-void CopyVector(const float* vector, int v_size, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
-
-// Fill vector with 0.f.
-void ZeroVector(float* vector, int v_size);
 
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,

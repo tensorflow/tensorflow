@@ -468,17 +468,16 @@ class TPUClusterResolver(ClusterResolver):
 
   def _fetch_cloud_tpu_metadata(self):
     """Returns the TPU metadata object from the TPU Get API call."""
-    res = []
     try:
       full_name = 'projects/%s/locations/%s/nodes/%s' % (
           self._project, self._zone, compat.as_text(self._tpu))
       service = self._tpu_service()
       request = service.projects().locations().nodes().get(name=full_name)
-      res = request.execute()
-    except:  # pylint: disable=bare-except
-      pass
-    finally:
-      return res  # pylint: disable=lost-exception
+      return request.execute()
+    except Exception as e:
+      raise ValueError("Could not lookup TPU metadata from name '%s'. Please "
+                       "doublecheck the tpu argument in the TPUClusterResolver "
+                       "constructor. Exception: %s" % (self._tpu, e))
 
   def num_accelerators(self,
                        task_type=None,

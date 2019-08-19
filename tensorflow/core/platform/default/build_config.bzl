@@ -826,13 +826,3 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ]
-
-def tf_env_time_srcs():
-    return select({
-        "//tensorflow:windows": [
-            "windows/env_time.cc",
-        ],
-        "//conditions:default": [
-            "posix/env_time.cc",
-        ],
-    })

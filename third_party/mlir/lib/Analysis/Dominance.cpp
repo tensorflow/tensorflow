@@ -45,7 +45,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Operation *op) {
       // Don't compute dominance if the region is empty.
       if (region.empty())
         continue;
-      auto opDominance = llvm::make_unique<base>();
+      auto opDominance = std::make_unique<base>();
       opDominance->recalculate(region);
       dominanceInfos.try_emplace(&region, std::move(opDominance));
     }

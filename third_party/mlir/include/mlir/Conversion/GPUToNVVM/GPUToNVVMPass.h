@@ -17,11 +17,13 @@
 #ifndef MLIR_CONVERSION_GPUTONVVM_GPUTONVVMPASS_H_
 #define MLIR_CONVERSION_GPUTONVVM_GPUTONVVMPASS_H_
 
+#include <memory>
+
 namespace mlir {
 struct FunctionPassBase;
 
 /// Creates a pass that lowers GPU dialect operations to NVVM counterparts.
-FunctionPassBase *createLowerGpuOpsToNVVMOpsPass();
+std::unique_ptr<FunctionPassBase> createLowerGpuOpsToNVVMOpsPass();
 
 } // namespace mlir
 

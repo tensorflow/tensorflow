@@ -304,7 +304,8 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
 
   auto options = DefaultOptions();
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType dt) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType dt,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -357,7 +358,8 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
 
   auto options = DefaultOptions();
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType dt) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType dt,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1080,7 +1082,8 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
   auto options = DefaultOptions();
   // Sets the representation function to return a non-default layout.
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType type,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1118,7 +1121,8 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
   auto options = DefaultOptions();
   // Sets the representation function to return a non-default layout.
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType type,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1252,7 +1256,8 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType type,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
     return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
@@ -1322,7 +1327,8 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
   options.shape_representation_fn =
-      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+      [](const TensorShape& shape, DataType type,
+         bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
     return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});

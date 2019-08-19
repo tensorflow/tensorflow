@@ -978,9 +978,9 @@ class PForConfig(object):
     # This may be set to the number of iterations.
     self._maybe_iters = None
     # Map from output placeholder to the unvectorized tensor.
-    self._reduce_concat_map = {}
+    self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
     # Reverse map of `self._reduce_concat_map`.
-    self._reverse_reduce_concat_map = {}
+    self._reverse_reduce_concat_map = object_identity.ObjectIdentityDictionary()
 
   def _has_reductions(self):
     """True if some reductions where performed by loop body."""
@@ -1381,7 +1381,7 @@ class PFor(object):
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
-          if y == y_op:
+          if y is y_op:
             new_outputs = new_op
           else:
             new_outputs = [wrap(x, False) for x in new_op.outputs]
@@ -1532,7 +1532,7 @@ def _channel_flatten_input(x, data_format):
   """
 
   graph = ops.get_default_graph()
-  cache_key = (graph, x, data_format)
+  cache_key = (graph, x.experimental_ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
     if data_format == b"NCHW":
@@ -2427,6 +2427,14 @@ def _convert_addn(pfor_input):
   # AddN does not support broadcasting.
   pfor_input.stack_inputs()
   return wrap(math_ops.add_n([x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("Cross")
+def _convert_cross(pfor_input):
+  pfor_input.stack_inputs()
+  a = pfor_input.stacked_input(0)
+  b = pfor_input.stacked_input(1)
+  return wrap(math_ops.cross(a, b), True)
 
 
 @RegisterPFor("BiasAddGrad")

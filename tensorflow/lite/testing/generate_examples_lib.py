@@ -2808,6 +2808,33 @@ def make_space_to_depth_tests(options):
 
 
 @register_make_test_function()
+def make_depth_to_space_tests(options):
+  """Make a set of tests to do depth_to_space."""
+
+  test_parameters = [{
+      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
+      "input_shape": [[2, 3, 4, 16]],
+      "block_size": [2, 4],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.depth_to_space(input_tensor, block_size=parameters["block_size"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
 def make_space_to_batch_nd_tests(options):
   """Make a set of tests to do space_to_batch_nd."""
 

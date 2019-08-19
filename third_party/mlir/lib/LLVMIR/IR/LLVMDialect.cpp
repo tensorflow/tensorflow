@@ -131,7 +131,10 @@ static void printAllocaOp(OpAsmPrinter *p, AllocaOp &op) {
                                   op.getContext());
 
   *p << op.getOperationName() << ' ' << *op.arraySize() << " x " << elemTy;
-  p->printOptionalAttrDict(op.getAttrs());
+  if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
+    p->printOptionalAttrDict(op.getAttrs());
+  else
+    p->printOptionalAttrDict(op.getAttrs(), {"alignment"});
   *p << " : " << funcTy;
 }
 

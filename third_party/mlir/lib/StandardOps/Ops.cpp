@@ -262,14 +262,15 @@ static LogicalResult verify(AllocOp op) {
 
   unsigned numSymbols = 0;
   if (!memRefType.getAffineMaps().empty()) {
-    AffineMap affineMap = memRefType.getAffineMaps()[0];
     // Store number of symbols used in affine map (used in subsequent check).
+    AffineMap affineMap = memRefType.getAffineMaps()[0];
     numSymbols = affineMap.getNumSymbols();
   }
-  unsigned numDynamicDims = memRefType.getNumDynamicDims();
+
   // Check that the total number of operands matches the number of symbols in
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
+  unsigned numDynamicDims = memRefType.getNumDynamicDims();
   if (op.getOperation()->getNumOperands() != numDynamicDims + numSymbols)
     return op.emitOpError(
         "operand count does not equal dimension plus symbol operand count");
@@ -510,8 +511,7 @@ static void print(OpAsmPrinter *p, CallIndirectOp op) {
   *p << "call_indirect ";
   p->printOperand(op.getCallee());
   *p << '(';
-  auto operandRange = op.getOperands();
-  p->printOperands(++operandRange.begin(), operandRange.end());
+  p->printOperands(op.getArgOperands());
   *p << ')';
   p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
   *p << " : " << op.getCallee()->getType();
@@ -1029,10 +1029,8 @@ static void print(OpAsmPrinter *p, ConstantOp &op) {
   p->printAttribute(op.getValue());
 
   // If the value is a symbol reference, print a trailing type.
-  if (op.getValue().isa<SymbolRefAttr>()) {
-    *p << " : ";
-    p->printType(op.getType());
-  }
+  if (op.getValue().isa<SymbolRefAttr>())
+    *p << " : " << op.getType();
 }
 
 static ParseResult parseConstantOp(OpAsmParser *parser,
@@ -1316,7 +1314,7 @@ OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
   // Don't fold if it would overflow.
   bool overflow;
   auto result = lhs.getValue().sdiv_ov(rhs.getValue(), overflow);
-  return overflow ? IntegerAttr{} : IntegerAttr::get(lhs.getType(), result);
+  return overflow ? IntegerAttr() : IntegerAttr::get(lhs.getType(), result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1332,11 +1330,11 @@ OpFoldResult DivIUOp::fold(ArrayRef<Attribute> operands) {
     return {};
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue()) {
+  auto rhsValue = rhs.getValue();
+  if (rhsValue.isNullValue())
     return {};
-  }
 
-  return IntegerAttr::get(lhs.getType(), lhs.getValue().udiv(rhs.getValue()));
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().udiv(rhsValue));
 }
 
 // ---------------------------------------------------------------------------
@@ -1353,13 +1351,10 @@ void DmaStartOp::build(Builder *builder, OperationState *result,
   result->addOperands(srcIndices);
   result->addOperands(destMemRef);
   result->addOperands(destIndices);
-  result->addOperands(numElements);
-  result->addOperands(tagMemRef);
+  result->addOperands({numElements, tagMemRef});
   result->addOperands(tagIndices);
-  if (stride) {
-    result->addOperands(stride);
-    result->addOperands(elementsPerStride);
-  }
+  if (stride)
+    result->addOperands({stride, elementsPerStride});
 }
 
 void DmaStartOp::print(OpAsmPrinter *p) {
@@ -1416,18 +1411,17 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
     return failure();
 
   // Parse optional stride and elements per stride.
-  if (parser->parseTrailingOperandList(strideInfo)) {
+  if (parser->parseTrailingOperandList(strideInfo))
     return failure();
-  }
-  if (!strideInfo.empty() && strideInfo.size() != 2) {
+
+  bool isStrided = strideInfo.size() == 2;
+  if (!strideInfo.empty() && !isStrided) {
     return parser->emitError(parser->getNameLoc(),
                              "expected two stride related operands");
   }
-  bool isStrided = strideInfo.size() == 2;
 
   if (parser->parseColonTypeList(types))
     return failure();
-
   if (types.size() != 3)
     return parser->emitError(parser->getNameLoc(), "fewer/more types expected");
 
@@ -1442,34 +1436,32 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperands(tagIndexInfos, indexType, result->operands))
     return failure();
 
-  if (!types[0].isa<MemRefType>())
+  auto memrefType0 = types[0].dyn_cast<MemRefType>();
+  if (!memrefType0)
     return parser->emitError(parser->getNameLoc(),
                              "expected source to be of memref type");
 
-  if (!types[1].isa<MemRefType>())
+  auto memrefType1 = types[1].dyn_cast<MemRefType>();
+  if (!memrefType1)
     return parser->emitError(parser->getNameLoc(),
                              "expected destination to be of memref type");
 
-  if (!types[2].isa<MemRefType>())
+  auto memrefType2 = types[2].dyn_cast<MemRefType>();
+  if (!memrefType2)
     return parser->emitError(parser->getNameLoc(),
                              "expected tag to be of memref type");
 
   if (isStrided) {
-    if (parser->resolveOperand(strideInfo[0], indexType, result->operands) ||
-        parser->resolveOperand(strideInfo[1], indexType, result->operands))
+    if (parser->resolveOperands(strideInfo, indexType, result->operands))
       return failure();
   }
 
   // Check that source/destination index list size matches associated rank.
-  if (static_cast<int64_t>(srcIndexInfos.size()) !=
-          types[0].cast<MemRefType>().getRank() ||
-      static_cast<int64_t>(dstIndexInfos.size()) !=
-          types[1].cast<MemRefType>().getRank())
+  if (static_cast<int64_t>(srcIndexInfos.size()) != memrefType0.getRank() ||
+      static_cast<int64_t>(dstIndexInfos.size()) != memrefType1.getRank())
     return parser->emitError(parser->getNameLoc(),
                              "memref rank not equal to indices count");
-
-  if (static_cast<int64_t>(tagIndexInfos.size()) !=
-      types[2].cast<MemRefType>().getRank())
+  if (static_cast<int64_t>(tagIndexInfos.size()) != memrefType2.getRank())
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
@@ -1478,9 +1470,8 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
 
 LogicalResult DmaStartOp::verify() {
   // DMAs from different memory spaces supported.
-  if (getSrcMemorySpace() == getDstMemorySpace()) {
+  if (getSrcMemorySpace() == getDstMemorySpace())
     return emitOpError("DMA should be between different memory spaces");
-  }
 
   if (getNumOperands() != getTagMemRefRank() + getSrcMemRefRank() +
                               getDstMemRefRank() + 3 + 1 &&
@@ -1511,7 +1502,6 @@ void DmaWaitOp::build(Builder *builder, OperationState *result,
 
 void DmaWaitOp::print(OpAsmPrinter *p) {
   *p << "dma_wait ";
-  // Print operands.
   p->printOperand(getTagMemRef());
   *p << '[';
   p->printOperands(getTagIndices());
@@ -1542,12 +1532,12 @@ ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperand(numElementsInfo, indexType, result->operands))
     return failure();
 
-  if (!type.isa<MemRefType>())
+  auto memrefType = type.dyn_cast<MemRefType>();
+  if (!memrefType)
     return parser->emitError(parser->getNameLoc(),
                              "expected tag to be of memref type");
 
-  if (static_cast<int64_t>(tagIndexInfos.size()) !=
-      type.cast<MemRefType>().getRank())
+  if (static_cast<int64_t>(tagIndexInfos.size()) != memrefType.getRank())
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
@@ -1626,7 +1616,8 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
   }
 
   // If this is an elements attribute, query the value at the given indices.
-  if (auto elementsAttr = aggregate.dyn_cast<ElementsAttr>())
+  auto elementsAttr = aggregate.dyn_cast<ElementsAttr>();
+  if (elementsAttr && elementsAttr.isValidIndex(indices))
     return elementsAttr.getValue(indices);
   return {};
 }
@@ -1765,7 +1756,6 @@ static ParseResult parseRankOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
   Type type;
   Type indexType = parser->getBuilder().getIndexType();
-
   return failure(parser->parseOperand(operandInfo) ||
                  parser->parseColonType(type) ||
                  parser->resolveOperand(operandInfo, type, result->operands) ||
@@ -1775,10 +1765,8 @@ static ParseResult parseRankOp(OpAsmParser *parser, OperationState *result) {
 OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   // Constant fold rank when the rank of the tensor is known.
   auto type = getOperand()->getType();
-  if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
-    int64_t rank = tensorType.getRank();
-    return IntegerAttr::get(IndexType::get(getContext()), rank);
-  }
+  if (auto tensorType = type.dyn_cast<RankedTensorType>())
+    return IntegerAttr::get(IndexType::get(getContext()), tensorType.getRank());
   return IntegerAttr();
 }
 
@@ -1792,21 +1780,20 @@ OpFoldResult RemISOp::fold(ArrayRef<Attribute> operands) {
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
   if (!rhs)
     return {};
+  auto rhsValue = rhs.getValue();
 
   // x % 1 = 0
-  if (rhs.getValue().isOneValue())
-    return IntegerAttr::get(rhs.getType(),
-                            APInt(rhs.getValue().getBitWidth(), 0));
+  if (rhsValue.isOneValue())
+    return IntegerAttr::get(rhs.getType(), APInt(rhsValue.getBitWidth(), 0));
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue())
+  if (rhsValue.isNullValue())
     return {};
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   if (!lhs)
     return {};
-
-  return IntegerAttr::get(lhs.getType(), lhs.getValue().srem(rhs.getValue()));
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().srem(rhsValue));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1819,21 +1806,20 @@ OpFoldResult RemIUOp::fold(ArrayRef<Attribute> operands) {
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
   if (!rhs)
     return {};
+  auto rhsValue = rhs.getValue();
 
   // x % 1 = 0
-  if (rhs.getValue().isOneValue())
-    return IntegerAttr::get(rhs.getType(),
-                            APInt(rhs.getValue().getBitWidth(), 0));
+  if (rhsValue.isOneValue())
+    return IntegerAttr::get(rhs.getType(), APInt(rhsValue.getBitWidth(), 0));
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue())
+  if (rhsValue.isNullValue())
     return {};
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   if (!lhs)
     return {};
-
-  return IntegerAttr::get(lhs.getType(), lhs.getValue().urem(rhs.getValue()));
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().urem(rhsValue));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1851,13 +1837,11 @@ static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
 
 static void print(OpAsmPrinter *p, ReturnOp op) {
   *p << "return";
-  if (op.getNumOperands() > 0) {
+  if (op.getNumOperands() != 0) {
     *p << ' ';
-    p->printOperands(op.operand_begin(), op.operand_end());
+    p->printOperands(op.getOperands());
     *p << " : ";
-    interleave(
-        op.operand_begin(), op.operand_end(),
-        [&](Value *e) { p->printType(e->getType()); }, [&]() { *p << ", "; });
+    interleaveComma(op.getOperandTypes(), *p);
   }
 }
 
@@ -1898,7 +1882,6 @@ static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Type type;
-
   if (parser->parseOperandList(ops, 3) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))

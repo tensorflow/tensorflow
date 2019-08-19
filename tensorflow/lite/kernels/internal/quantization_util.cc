@@ -313,16 +313,18 @@ void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
                                               reverse_scaling_left_shift);
 }
 
-int CalculateInputRadius(int input_integer_bits, int input_left_shift) {
+int CalculateInputRadius(int input_integer_bits, int input_left_shift,
+                         int total_signed_bits) {
 #ifdef TFLITE_EMULATE_FLOAT
   int64_t result = (1 << input_integer_bits) - 1;
-  result <<= (31 - input_integer_bits);
+  result <<= (total_signed_bits - input_integer_bits);
   result >>= input_left_shift;
   return result;
 #else   // TFLITE_EMULATE_FLOAT
-  const double max_input_rescaled = 1.0 * ((1 << input_integer_bits) - 1) *
-                                    (1ll << (31 - input_integer_bits)) /
-                                    (1ll << input_left_shift);
+  const double max_input_rescaled =
+      1.0 * ((1 << input_integer_bits) - 1) *
+      (1ll << (total_signed_bits - input_integer_bits)) /
+      (1ll << input_left_shift);
   // Tighten bound using floor.  Suppose that we could use the exact value.
   // After scaling the difference, the result would be at the maximum.  Thus we
   // must ensure that our value has lower magnitude.

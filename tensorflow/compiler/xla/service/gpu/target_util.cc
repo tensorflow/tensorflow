@@ -92,7 +92,11 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
               [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
+<<<<<<< HEAD
                                               {b_->getInt32(1)}, {U32}, U64, {},
+=======
+                                              {b_->getInt32(2)}, {U32}, U64, {},
+>>>>>>> google_upstream/master
                                               b_);
               }};
     }
@@ -226,9 +230,16 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   if (target_triple.isNVPTX()) {
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+<<<<<<< HEAD
     llvm::Intrinsic::ID* llvm_intrinsic_id_ptr;
     if ((llvm_intrinsic_id_ptr = absl::get_if<llvm::Intrinsic::ID>(
              &gpu_intrinsic_id.amdgpu_intrinsic_or_function))) {
+=======
+    llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
+        absl::get_if<llvm::Intrinsic::ID>(
+            &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
+    if (llvm_intrinsic_id_ptr) {
+>>>>>>> google_upstream/master
       llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
     } else {
       std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =

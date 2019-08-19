@@ -2,35 +2,37 @@
   <img src="https://www.tensorflow.org/images/tf_logo_social.png">
 </div>
 
------------------
-
-
 | **`Documentation`** |
 |-----------------|
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-**TensorFlow** is an open source software library for numerical computation
-using data flow graphs. The graph nodes represent mathematical operations, while
-the graph edges represent the multidimensional data arrays (tensors) that flow
-between them. This flexible architecture enables you to deploy computation to
-one or more CPUs or GPUs in a desktop, server, or mobile device without
-rewriting code. TensorFlow also includes
-[TensorBoard](https://github.com/tensorflow/tensorboard), a data visualization
-toolkit.
+[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
+for machine learning. It has a comprehensive, flexible ecosystem of
+[tools](https://www.tensorflow.org/resources/tools),
+[libraries](https://www.tensorflow.org/resources/libraries-extensions), and
+[community](https://www.tensorflow.org/community) resources that lets
+researchers push the state-of-the-art in ML and developers easily build and
+deploy ML powered applications.
 
-TensorFlow was originally developed by researchers and engineers
-working on the Google Brain team within Google's Machine Intelligence Research
-organization for the purposes of conducting machine learning and deep neural
-networks research.  The system is general enough to be applicable in a wide
-variety of other domains, as well.
+TensorFlow was originally developed by researchers and engineers working on the
+Google Brain team within Google's Machine Intelligence Research organization for
+the purposes of conducting machine learning and deep neural networks research.
+The system is general enough to be applicable in a wide variety of other
+domains, as well.
 
-TensorFlow provides stable Python and C APIs as well as non-guaranteed backwards
-compatible API's for C++, Go, Java, JavaScript, and Swift.
+TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
+and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
+non-guaranteed backwards compatible API for
+[other languages](https://www.tensorflow.org/api_docs).
 
-Keep up to date with release announcements and security updates by
-subscribing to
+Keep up-to-date with release announcements and security updates by subscribing
+to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
+See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
+## Install
+
+<<<<<<< HEAD
 **Tensorflow ROCm port**
 This project is based on TensorFlow 1.14.0. It has been verified to work with the latest ROCm2.6 release.
 Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
@@ -50,31 +52,30 @@ pip3 install --user tensorflow-rocm --upgrade
 For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
 
 ## Installation
+=======
+See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
+[pip package](https://www.tensorflow.org/install/pip), to
+[enable GPU support](https://www.tensorflow.org/install/gpu), use a
+[Docker container](https://www.tensorflow.org/install/docker), and
+[build from source](https://www.tensorflow.org/install/source).
+>>>>>>> google_upstream/master
 
 To install the current release for CPU-only:
 
 ```
-pip install tensorflow
+$ pip install tensorflow
 ```
 
-Use the GPU package for CUDA-enabled GPU cards:
+Use the GPU package for
+[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu):
 
 ```
-pip install tensorflow-gpu
+$ pip install tensorflow-gpu
 ```
 
-*See [Installing TensorFlow](https://www.tensorflow.org/install) for detailed
-instructions, and how to build from source.*
-
-People who are a little more adventurous can also try our nightly binaries:
-
-**Nightly pip packages** * We are pleased to announce that TensorFlow now offers
-nightly pip packages under the
+*Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) project on PyPi.
-Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
-environment to install the nightly TensorFlow build. We support CPU and GPU
-packages on Linux, Mac, and Windows.
+[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) packages on PyPi.*
 
 #### *Try your first TensorFlow program*
 
@@ -92,8 +93,8 @@ $ python
 'Hello, TensorFlow!'
 ```
 
-Learn more examples about how to do specific tasks in TensorFlow at the
-[tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
+For more examples, see the
+[TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 
@@ -134,8 +135,13 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 Build Type                                                                        | Status                                                                                                                                                                                        | Artifacts
 --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------
+<<<<<<< HEAD
 **Linux AMD ROCm GPU** Nightly                                                     | [![Build Status](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly/badge/icon)](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly)                                       | [Nightly](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly/lastSuccessfulBuild/)
 **Linux AMD ROCm GPU** Stable Release                                              | [![Build Status](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/badge/icon)](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/)                       | [Release](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/lastSuccessfulBuild/)
+=======
+**Linux AMD ROCm GPU** Nightly                                                    | [![Build Status](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly/badge/icon)](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly)                                                  | [Nightly](http://ml-ci.amd.com:21096/job/tensorflow-rocm-nightly/lastSuccessfulBuild/)
+**Linux AMD ROCm GPU** Stable Release                                             | [![Build Status](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/badge/icon)](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/)                                                 | [Release](http://ml-ci.amd.com:21096/job/tensorflow-rocm-release/lastSuccessfulBuild/)
+>>>>>>> google_upstream/master
 **Linux s390x** Nightly                                                           | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/badge/icon)](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/)                                                             | [Nightly](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/)
 **Linux s390x CPU** Stable Release                                                | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_Release_Build/badge/icon)](https://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_Release_Build/)                                      | [Release](https://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_Release_Build/)
 **Linux ppc64le CPU** Nightly                                                     | [![Build Status](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Build/badge/icon)](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Build/)                                       | [Nightly](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Nightly_Artifact/)
@@ -146,20 +152,23 @@ Build Type                                                                      
 **Linux CPU with Intel® MKL-DNN** <br> **Supports Python 2.7, 3.4, 3.5, and 3.6** | [![Build Status](https://tensorflow-ci.intel.com/job/tensorflow-mkl-build-release-whl/badge/icon)](https://tensorflow-ci.intel.com/job/tensorflow-mkl-build-release-whl/lastStableBuild)      | [1.13.1 pypi](https://pypi.org/project/intel-tensorflow/)
 **Red Hat® Enterprise Linux® 7.6 CPU & GPU** <br> Python 2.7, 3.6                 | [![Build Status](https://jenkins-tensorflow.apps.ci.centos.org/buildStatus/icon?job=tensorflow-rhel7-3.6&build=2)](https://jenkins-tensorflow.apps.ci.centos.org/job/tensorflow-rhel7-3.6/2/) | [1.13.1 pypi](https://tensorflow.pypi.thoth-station.ninja/index/)
 
-## For more information
+## Resources
 
-*   [TensorFlow Website](https://www.tensorflow.org)
-*   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
-*   [TensorFlow Model Zoo](https://github.com/tensorflow/models)
+*   [TensorFlow.org](https://www.tensorflow.org)
+*   [TensorFlow tutorials](https://www.tensorflow.org/tutorials/)
+*   [TensorFlow official models](https://github.com/tensorflow/models/tree/master/official)
+*   [TensorFlow examples](https://github.com/tensorflow/examples)
+*   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
+*   [TensorFlow blog](https://blog.tensorflow.org)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
-*   [TensorFlow Blog](https://blog.tensorflow.org)
-*   [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
-*   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
-*   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
-*   [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+*   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
+*   [TensorFlow roadmap](https://www.tensorflow.org/community/roadmap)
+*   [TensorFlow white papers](https://www.tensorflow.org/about/bib)
+*   [TensorBoard visualization toolkit](https://github.com/tensorflow/tensorboard)
 
-Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
+Learn more about the
+[TensorFlow community](https://www.tensorflow.org/community) and how to
+[contribute](https://www.tensorflow.org/community/contribute).
 
 ## License
 

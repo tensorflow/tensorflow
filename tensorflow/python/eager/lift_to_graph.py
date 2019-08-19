@@ -305,8 +305,8 @@ def lift_to_graph(tensors,
   # ends in the initializer. We copy those to the outermost graph and
   # build the initialization op there.
   with graph.as_default():
-    op_map.update({i: i for i in variable_init_tensors
-                  })  # Pass through variables.
+    for i in variable_init_tensors:
+      op_map[i] = i
     source_ops = set()
     # Add the sources in the same order as the original graph.
     for s in internal_captures:

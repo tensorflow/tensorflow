@@ -186,7 +186,7 @@ struct Transpose<SYCLDevice, T, conjugate> {
 };
 
 template <bool conjugate>
-struct Transpose<SYCLDevice, string, conjugate> {
+struct Transpose<SYCLDevice, tstring, conjugate> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     LOG(FATAL) << "DT_STRING not supported on SYCL device.";
@@ -194,7 +194,7 @@ struct Transpose<SYCLDevice, string, conjugate> {
 };
 
 // Explicit instantiation.
-template struct Transpose<SYCLDevice, string, false>;
+template struct Transpose<SYCLDevice, tstring, false>;
 
 INSTANTIATE(SYCLDevice)
 #undef INSTANTIATE

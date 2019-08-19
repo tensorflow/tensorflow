@@ -151,13 +151,6 @@ class Compiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  // Optimizes a HLO module group, a set of module which runs concurrently on
-  // multiple devices potentially communicating data between the modules.
-  virtual Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group,
-      absl::Span<se::StreamExecutor* const> executors,
-      se::DeviceMemoryAllocator* device_allocator) = 0;
-
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses

@@ -473,6 +473,14 @@ tf_module {
     argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'h\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BlockLSTMGradV2"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'i\', \'cs\', \'f\', \'o\', \'ci\', \'co\', \'h\', \'cs_grad\', \'h_grad\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "BlockLSTMV2"
+    argspec: "args=[\'seq_len_max\', \'x\', \'cs_prev\', \'h_prev\', \'w\', \'wci\', \'wcf\', \'wco\', \'b\', \'cell_clip\', \'use_peephole\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "BoostedTreesAggregateStats"
     argspec: "args=[\'node_ids\', \'gradients\', \'hessians\', \'feature\', \'max_splits\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -573,6 +581,10 @@ tf_module {
     argspec: "args=[\'tree_ensemble_handle\', \'feature_ids\', \'node_ids\', \'gains\', \'thresholds\', \'left_node_contribs\', \'right_node_contribs\', \'max_depth\', \'learning_rate\', \'pruning_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BoostedTreesUpdateEnsembleV2"
+    argspec: "args=[\'tree_ensemble_handle\', \'feature_ids\', \'dimension_ids\', \'node_ids\', \'gains\', \'thresholds\', \'left_node_contribs\', \'right_node_contribs\', \'split_types\', \'max_depth\', \'learning_rate\', \'pruning_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BroadcastArgs"
     argspec: "args=[\'s0\', \'s1\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -658,15 +670,15 @@ tf_module {
   }
   member_method {
     name: "CollectiveBcastRecv"
-    argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
   }
   member_method {
     name: "CollectiveBcastSend"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
   }
   member_method {
     name: "CollectiveGather"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'None\'], "
   }
   member_method {
     name: "CollectivePermute"
@@ -674,7 +686,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveReduce"
-    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\', \'communication_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'auto\', \'None\'], "
   }
   member_method {
     name: "CombinedNonMaxSuppression"
@@ -890,7 +902,7 @@ tf_module {
   }
   member_method {
     name: "DatasetToGraph"
-    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "DatasetToSingleElement"
@@ -1090,7 +1102,7 @@ tf_module {
   }
   member_method {
     name: "EagerPyFunc"
-    argspec: "args=[\'input\', \'token\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'token\', \'Tout\', \'is_async\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "EditDistance"

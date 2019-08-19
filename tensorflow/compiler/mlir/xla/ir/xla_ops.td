@@ -146,6 +146,17 @@ def XLA_ConvertOp : XLA_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
+def XLA_ExpOp: XLA_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Exponential operator";
+
+  let description = [{
+    Returns `e^(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 def XLA_NegOp: XLA_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Negation operator";
 
@@ -655,7 +666,7 @@ def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
     }
 
     for (int i = 0; i != dimensionsSize; ++i) {
-      auto dimIndex = dimensions.getValue(i).cast<IntegerAttr>().getInt();
+      auto dimIndex = dimensions.getValue<int64_t>(i);
       if (dimIndex >= resultRank) {
         return emitOpError(
             llvm::formatv("broadcast_dimensions contains invalid value {0} for "
@@ -1016,8 +1027,8 @@ def XLA_PadOp: XLA_Op<"pad",
 
     for (int i = 0, e = input_shape.size(); i < e; i++) {
       int expected_output = input_shape[i]
-          + padding_low.getValue(i).cast<IntegerAttr>().getInt()
-          + padding_high.getValue(i).cast<IntegerAttr>().getInt();
+          + padding_low.getValue<IntegerAttr>(i).getInt()
+          + padding_high.getValue<IntegerAttr>(i).getInt();
       if (expected_output != output_shape[i]) {
         return emitOpError(llvm::formatv("Expected output shape ({0}) and "
             "output shape ({1}) should match.",
@@ -1049,6 +1060,8 @@ def XLA_TransposeOp: XLA_Op<"transpose",
     ElementsAttr:$permutation
   );
   let results = (outs XLA_Tensor);
+
+  let hasFolder = 1;
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
@@ -1086,7 +1099,7 @@ def XLA_TransposeOp: XLA_Op<"transpose",
 
     auto expectedShape = SmallVector<int64_t, 10>(operandRank);
     for (int i = 0; i != operandRank; ++i) {
-      auto permutedDim = permutation().getValue(i).cast<IntegerAttr>().getInt();
+      auto permutedDim = permutation().getValue<IntegerAttr>(i).getInt();
       expectedShape[i] = operandType.getDimSize(permutedDim);
     }
 

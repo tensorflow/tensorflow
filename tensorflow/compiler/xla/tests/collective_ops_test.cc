@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+<<<<<<< HEAD
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+=======
+>>>>>>> google_upstream/master
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"

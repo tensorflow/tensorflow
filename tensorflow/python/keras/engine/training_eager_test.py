@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -288,6 +291,62 @@ class CorrectnessTest(keras_parameterized.TestCase):
     layer = HasLoss()
     layer(1.)  # Plain-value inputs are only valid in eager mode.
     self.assertEqual(1, len(layer.losses))
+
+  @parameterized.named_parameters([
+      ('_None', contextlib.contextmanager(lambda: iter([None])), 0., 4.),
+      ('_0', lambda: keras.backend.learning_phase_scope(0), 4., 4.),
+      ('_1', lambda: keras.backend.learning_phase_scope(1), 0., 0.),
+  ])
+  def test_nested_model_learning_phase(self, nested_scope_fn,
+                                       expected_training_loss,
+                                       expected_validation_loss):
+    """Tests that learning phase is correctly set in an intermediate layer."""
+
+    def _make_unregularized_model():
+      inputs = keras.Input((4,))
+      # Zero out activations when `training=True`.
+      x = keras.layers.Dropout(1. - 1. / (1 << 24))(inputs)
+      x = keras.layers.Dense(
+          10,
+          activation='relu',
+          trainable=False,
+          bias_initializer='zeros',
+          kernel_initializer='ones')(
+              x)  # Just sum together all the activations.
+      outputs = keras.layers.Dense(3)(x)
+      return keras.Model(inputs, outputs)
+
+    def _regularize_model(unregularized_model):
+      inputs = keras.Input(unregularized_model.inputs[0].shape[1:])
+      with nested_scope_fn():
+        logits = unregularized_model(inputs)
+      outputs = keras.activations.softmax(logits)
+      model = keras.Model(inputs, outputs)
+      # Regularize the most recent activations of a post-dropout layer.
+      sample_activations = unregularized_model.get_layer(
+          index=-2).get_output_at(-1)
+      regularization_loss = keras.backend.mean(sample_activations)
+      model.add_loss(regularization_loss)
+      model.add_metric(
+          regularization_loss, aggregation='mean', name='regularization_loss')
+      return model
+
+    # Make and compile models.
+    model = _regularize_model(_make_unregularized_model())
+    model.compile('sgd', 'sparse_categorical_crossentropy')
+    # Prepare fake data.
+    x = np.ones((20, 4)).astype(np.float32)
+    y = np.random.randint(0, 3, size=(20,)).astype(np.int64)
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
+    evaluation_results = dict(zip(model.metrics_names, model.evaluate(dataset)))
+    # Rate of dropout depends on the learning phase.
+    self.assertEqual(evaluation_results['regularization_loss'],
+                     expected_validation_loss)
+    history = model.fit(dataset, epochs=2, validation_data=dataset).history
+    self.assertAllEqual(history['regularization_loss'],
+                        [expected_training_loss] * 2)
+    self.assertAllEqual(history['val_regularization_loss'],
+                        [expected_validation_loss] * 2)
 
 
 if __name__ == '__main__':

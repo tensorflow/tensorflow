@@ -144,7 +144,12 @@ def replicate(dataset, devices):
   if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
-  graph_def = dataset._as_serialized_graph()  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  with ops.colocate_with(dataset._variant_tensor):
+    dataset = dataset._apply_options()
+    stateful_whitelist = dataset.options().experimental_stateful_whitelist
+    graph_def = dataset._as_serialized_graph(
+        stateful_whitelist=stateful_whitelist)
   datasets = {}
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)

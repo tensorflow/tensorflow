@@ -373,8 +373,8 @@ struct LowerVectorTransfersPass
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createLowerVectorTransfersPass() {
-  return new LowerVectorTransfersPass();
+std::unique_ptr<FunctionPassBase> mlir::createLowerVectorTransfersPass() {
+  return std::make_unique<LowerVectorTransfersPass>();
 }
 
 static PassRegistration<LowerVectorTransfersPass>

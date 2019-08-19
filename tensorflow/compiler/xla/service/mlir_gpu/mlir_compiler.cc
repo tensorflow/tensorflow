@@ -51,24 +51,16 @@ StatusOr<std::unique_ptr<HloModule>> MlirCompiler::RunHloPasses(
     se::DeviceMemoryAllocator* device_allocator) {
   // Until we find a reason to do something different, run the same passes
   // that the normal GPU backend runs.
-  TF_RETURN_IF_ERROR(xla::gpu::impl::OptimizeHloModule(
-      module.get(), stream_exec, device_allocator));
-
-  TF_RETURN_IF_ERROR(
-      xla::gpu::impl::PrepareHloModuleForIrEmitting(module.get()));
+  gpu::NVPTXCompiler xla_compiler;
+  TF_RETURN_IF_ERROR(xla_compiler.OptimizeHloModule(module.get(), stream_exec,
+                                                    device_allocator));
+  TF_RETURN_IF_ERROR(xla_compiler.PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Not yet implemented in MLIR compiler");
-}
-
-Status MlirCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group,
-    absl::Span<se::StreamExecutor* const> executors,
     se::DeviceMemoryAllocator* device_allocator) {
   return Unimplemented("Not yet implemented in MLIR compiler");
 }

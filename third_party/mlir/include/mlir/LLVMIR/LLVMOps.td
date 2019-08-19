@@ -220,14 +220,39 @@ def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
 
 // Memory-related operations.
-def LLVM_AllocaOp : LLVM_OneResultOp<"alloca">,
-                    Arguments<(ins LLVM_Type:$arraySize)> {
+def LLVM_AllocaOp :
+    LLVM_OneResultOp<"alloca">,
+    Arguments<(ins LLVM_Type:$arraySize, OptionalAttr<I64Attr>:$alignment)> {
   string llvmBuilder = [{
-    $res = builder.CreateAlloca($_resultType->getPointerElementType(),
-                                $arraySize);
+    auto *alloca = builder.CreateAlloca(
+      $_resultType->getPointerElementType(), $arraySize);
+    if ($alignment.hasValue()) {
+      auto align = $alignment.getValue().getZExtValue();
+      if (align != 0)
+        alloca->setAlignment(align);
+    }
+    $res = alloca;
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Type resultType, Value *arraySize,"
+    "unsigned alignment = 0",
+    [{
+      if (!alignment)
+        return build(b, result, resultType, arraySize, IntegerAttr());
+      auto *ctx = resultType.getContext();
+      auto align = IntegerAttr::get(IntegerType::get(64, ctx), alignment);
+      build(b, result, resultType, arraySize, align);
+  }]>];
   let parser = [{ return parseAllocaOp(parser, result); }];
   let printer = [{ printAllocaOp(p, *this); }];
+  let verifier = [{
+    if (alignment().hasValue()) {
+      auto align = alignment().getValue().getSExtValue();
+      if (align < 0)
+        return emitOpError("expected positive alignment");
+    }
+    return success();
+  }];
 }
 def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
                  Arguments<(ins LLVM_Type:$base, Variadic<LLVM_Type>:$indices)>,
@@ -497,5 +522,22 @@ def LLVM_ConstantOp
   let parser = [{ return parseConstantOp(parser, result); }];
   let printer = [{ printConstantOp(p, *this); }];
 }
+
+// Operations that correspond to LLVM intrinsics. With MLIR operation set being
+// extendable, there is no reason to introduce a hard boundary between "core"
+// operations and intrinsics.
+
+def LLVM_fmuladd : LLVM_Op<"fmuladd", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::fmuladd,
+        {$a->getType(), $b->getType(), $c->getType()});
+    $res = builder.CreateCall(fn, {$a, $b, $c});
+  }];
+}
+
 
 #endif // LLVMIR_OPS

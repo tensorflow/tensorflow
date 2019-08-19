@@ -21,7 +21,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_rnn_ops
 
 
-@ops.RegisterGradient("BlockLSTM")
 def _block_lstm_grad(op, *grads):
   """Gradient for the BlockLSTM op."""
   seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b = op.inputs
@@ -50,3 +49,7 @@ def _block_lstm_grad(op, *grads):
        use_peephole=op.get_attr("use_peephole"))
   return (None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
           wco_grad, b_grad)
+
+
+ops.RegisterGradient("BlockLSTM")(_block_lstm_grad)
+ops.RegisterGradient("BlockLSTMV2")(_block_lstm_grad)

@@ -52,13 +52,13 @@ class SummaryScalarOp : public OpKernel {
     Summary s;
     for (int i = 0; i < Ttags.size(); i++) {
       Summary::Value* v = s.add_value();
-      v->set_tag(Ttags(i));
+      v->set_tag(string(Ttags(i)));  // NOLINT
       v->set_simple_value(float(Tvalues(i)));
     }
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 
   // If there's only one tag, include it in the error message
@@ -102,12 +102,12 @@ class SummaryHistoOp : public OpKernel {
 
     Summary s;
     Summary::Value* v = s.add_value();
-    v->set_tag(tags.scalar<string>()());
+    v->set_tag(string(tags.scalar<tstring>()()));  // NOLINT
     histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 
@@ -164,7 +164,7 @@ class SummaryMergeOp : public OpKernel {
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 

@@ -457,9 +457,18 @@ public:
   /// with static shape.
   ShapedType getType() const;
 
-  /// Return the value at the given index. If index does not refer to a valid
-  /// element, then a null attribute is returned.
+  /// Return the value at the given index. The index is expected to refer to a
+  /// valid element.
   Attribute getValue(ArrayRef<uint64_t> index) const;
+
+  /// Return the value of type 'T' at the given index, where 'T' corresponds to
+  /// an Attribute type.
+  template <typename T> T getValue(ArrayRef<uint64_t> index) const {
+    return getValue(index).template cast<T>();
+  }
+
+  /// Return if the given 'index' refers to a valid element in this attribute.
+  bool isValidIndex(ArrayRef<uint64_t> index) const;
 
   /// Returns the number of elements held by this attribute.
   int64_t getNumElements() const;
@@ -635,6 +644,21 @@ public:
               data, isSplat, dataIndex) {}
   };
 
+  /// A utility iterator that allows walking over the internal bool values.
+  class BoolElementIterator
+      : public detail::DenseElementIndexedIteratorImpl<BoolElementIterator,
+                                                       bool, bool, bool> {
+  public:
+    /// Accesses the bool value at this iterator position.
+    bool operator*() const;
+
+  private:
+    friend DenseElementsAttr;
+
+    /// Constructs a new iterator.
+    BoolElementIterator(DenseElementsAttr attr, size_t dataIndex);
+  };
+
   /// A utility iterator that allows walking over the internal raw APInt values.
   class IntElementIterator
       : public detail::DenseElementIndexedIteratorImpl<IntElementIterator,
@@ -647,7 +671,7 @@ public:
     friend DenseElementsAttr;
 
     /// Constructs a new iterator.
-    IntElementIterator(DenseElementsAttr attr, size_t index);
+    IntElementIterator(DenseElementsAttr attr, size_t dataIndex);
 
     /// The bitwidth of the element type.
     size_t bitWidth;
@@ -674,13 +698,35 @@ public:
   /// values are the same.
   bool isSplat() const;
 
-  /// If this attribute corresponds to a splat, then get the splat value.
-  /// Otherwise, return null.
-  Attribute getSplatValue() const;
+  /// Return the splat value for this attribute. This asserts that the attribute
+  /// corresponds to a splat.
+  Attribute getSplatValue() const { return getSplatValue<Attribute>(); }
+  template <typename T>
+  typename std::enable_if<!std::is_base_of<Attribute, T>::value ||
+                              std::is_same<Attribute, T>::value,
+                          T>::type
+  getSplatValue() const {
+    assert(isSplat() && "expected the attribute to be a splat");
+    return *getValues<T>().begin();
+  }
+  /// Return the splat value for derived attribute element types.
+  template <typename T>
+  typename std::enable_if<std::is_base_of<Attribute, T>::value &&
+                              !std::is_same<Attribute, T>::value,
+                          T>::type
+  getSplatValue() const {
+    return getSplatValue().template cast<T>();
+  }
 
-  /// Return the value at the given index. If index does not refer to a valid
-  /// element, then a null attribute is returned.
-  Attribute getValue(ArrayRef<uint64_t> index) const;
+  /// Return the value at the given index. The 'index' is expected to refer to a
+  /// valid element.
+  Attribute getValue(ArrayRef<uint64_t> index) const {
+    return getValue<Attribute>(index);
+  }
+  template <typename T> T getValue(ArrayRef<uint64_t> index) const {
+    // Skip to the element corresponding to the flattened index.
+    return *std::next(getValues<T>().begin(), getFlattenedIndex(index));
+  }
 
   /// Return the held element values as a range of integer or floating-point
   /// values.
@@ -705,6 +751,29 @@ public:
   }
   AttributeElementIterator attr_value_begin() const;
   AttributeElementIterator attr_value_end() const;
+
+  /// Return the held element values a range of T, where T is a derived
+  /// attribute type.
+  template <typename T>
+  using DerivedAttributeElementIterator =
+      llvm::mapped_iterator<AttributeElementIterator, T (*)(Attribute)>;
+  template <typename T, typename = typename std::enable_if<
+                            std::is_base_of<Attribute, T>::value &&
+                            !std::is_same<Attribute, T>::value>::type>
+  llvm::iterator_range<DerivedAttributeElementIterator<T>> getValues() const {
+    auto castFn = [](Attribute attr) { return attr.template cast<T>(); };
+    return llvm::map_range(getAttributeValues(),
+                           static_cast<T (*)(Attribute)>(castFn));
+  }
+
+  /// Return the held element values as a range of bool. The element type of
+  /// this attribute must be of integer type of bitwidth 1.
+  llvm::iterator_range<BoolElementIterator> getBoolValues() const;
+  template <typename T, typename = typename std::enable_if<
+                            std::is_same<T, bool>::value>::type>
+  llvm::iterator_range<BoolElementIterator> getValues() const {
+    return getBoolValues();
+  }
 
   /// Return the held element values as a range of APInts. The element type of
   /// this attribute must be of integer type.
@@ -784,6 +853,10 @@ protected:
   /// the current attribute. This method is used to verify specific type
   /// invariants that the templatized 'getValues' method cannot.
   bool isValidIntOrFloat(int64_t dataEltSize, bool isInt) const;
+
+  /// Returns the 1 dimenional flattened index from the given multi-dimensional
+  /// index.
+  uint64_t getFlattenedIndex(ArrayRef<uint64_t> index) const;
 };
 
 /// An attribute that represents a reference to a dense float vector or tensor
@@ -849,8 +922,8 @@ public:
 
   StringRef getValue() const;
 
-  /// Return the value at the given index. If index does not refer to a valid
-  /// element, then a null attribute is returned.
+  /// Return the value at the given index. The 'index' is expected to refer to a
+  /// valid element.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Decodes the attribute value using dialect-specific decoding hook.
@@ -899,7 +972,8 @@ public:
 
   DenseElementsAttr getValues() const;
 
-  /// Return the value of the element at the given index.
+  /// Return the value of the element at the given index. The 'index' is
+  /// expected to refer to a valid element.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.

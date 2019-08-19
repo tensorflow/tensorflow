@@ -22,6 +22,7 @@ filegroup(
 cc_library(
     name = "tf_mlir_opt_main",
     srcs = ["tf_mlir_opt_main.cc"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",

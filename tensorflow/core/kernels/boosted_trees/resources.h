@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_RESOURCES_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -25,6 +26,7 @@ namespace tensorflow {
 // Forward declaration for proto class TreeEnsemble
 namespace boosted_trees {
 class TreeEnsemble;
+class Node;
 }  // namespace boosted_trees
 
 // A StampedResource is a resource that has a stamp token associated with it.
@@ -105,12 +107,17 @@ class BoostedTreesEnsembleResource : public StampedResource {
   // Adds new tree with one node to the ensemble and sets node's value to logits
   int32 AddNewTreeWithLogits(const float weight, const float logits);
 
-  // Grows the tree by adding a split and leaves.
-  void AddBucketizedSplitNode(const int32 tree_id, const int32 node_id,
-                              const int32 feature_id, const int32 threshold,
-                              const float gain, const float left_contrib,
-                              const float right_contrib, int32* left_node_id,
-                              int32* right_node_id);
+  // Grows the tree by adding a bucketized split and leaves.
+  void AddBucketizedSplitNode(
+      const int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      int32* left_node_id, int32* right_node_id);
+
+  // Grows the tree by adding a categorical split and leaves.
+  void AddCategoricalSplitNode(
+      const int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      int32* left_node_id, int32* right_node_id);
 
   // Retrieves tree weights and returns as a vector.
   // It involves a copy, so should be called only sparingly (like once per
@@ -166,6 +173,11 @@ class BoostedTreesEnsembleResource : public StampedResource {
   protobuf::Arena arena_;
   mutex mu_;
   boosted_trees::TreeEnsemble* tree_ensemble_;
+
+  boosted_trees::Node* AddLeafNodes(
+      int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      int32* left_node_id, int32* right_node_id);
 };
 
 }  // namespace tensorflow

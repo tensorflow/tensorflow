@@ -96,7 +96,7 @@ class DenseFeaturesTest(test.TestCase):
       # additional variables
       _ = dense_features(features)
       self.assertEqual(1, len(variables))
-      self.assertEqual(variables[0], dense_features.variables[0])
+      self.assertIs(variables[0], dense_features.variables[0])
 
   def test_feature_column_dense_features_gradient(self):
     with context.eager_mode():

@@ -1082,7 +1082,7 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
 /// Create an instance of LLVMTypeConverter in the given context.
 static std::unique_ptr<LLVMTypeConverter>
 makeStandardToLLVMTypeConverter(MLIRContext *context) {
-  return llvm::make_unique<LLVMTypeConverter>(context);
+  return std::make_unique<LLVMTypeConverter>(context);
 }
 
 namespace {
@@ -1132,14 +1132,15 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-ModulePassBase *mlir::createConvertToLLVMIRPass() {
-  return new LLVMLoweringPass;
+std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
+  return std::make_unique<LLVMLoweringPass>();
 }
 
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
                                 LLVMTypeConverterMaker typeConverterMaker) {
-  return new LLVMLoweringPass(patternListFiller, typeConverterMaker);
+  return std::make_unique<LLVMLoweringPass>(patternListFiller,
+                                            typeConverterMaker);
 }
 
 static PassRegistration<LLVMLoweringPass>

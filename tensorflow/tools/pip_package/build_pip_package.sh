@@ -227,6 +227,7 @@ function usage() {
   echo ""
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
+  echo "    --cpu                 build tensorflow_cpu"
   echo "    --gpu                 build tensorflow_gpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
   echo "    --rocm                build tensorflow_rocm"
@@ -239,6 +240,10 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   GPU_BUILD=0
+<<<<<<< HEAD
+=======
+  PROJECT_NAME_CPU=0
+>>>>>>> google_upstream/master
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
   SRCDIR=""
@@ -252,6 +257,15 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--gpu" ]]; then
       GPU_BUILD=1
+    elif [[ "$1" == "--cpu" ]]; then
+      # Check that --gpu has not been passed.
+      if [[ ${GPU_BUILD} == "1" ]]; then
+        echo "Specifying both --cpu and --gpu to build_pip_package is not allowed."
+        usage
+        exit 1
+      fi
+
+      PROJECT_NAME_CPU=1
     elif [[ "$1" == "--gpudirect" ]]; then
       PKG_NAME_FLAG="--project_name tensorflow_gpudirect"
     elif [[ "$1" == "--rocm" ]]; then
@@ -303,12 +317,22 @@ function main() {
     PKG_NAME_FLAG="--project_name tf_nightly_gpu"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${ROCM_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_rocm"
+<<<<<<< HEAD
+=======
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${PROJECT_NAME_CPU} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_cpu"
+>>>>>>> google_upstream/master
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_gpu"
   elif [[ ${ROCM_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_rocm"
+<<<<<<< HEAD
+=======
+  elif [[ ${PROJECT_NAME_CPU} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_cpu"
+>>>>>>> google_upstream/master
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"

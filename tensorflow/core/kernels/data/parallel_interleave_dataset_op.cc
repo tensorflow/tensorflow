@@ -704,7 +704,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
-        string error_message;
+        tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(ErrorMessageKey(key_prefix, idx),
                                               &error_message));
         *status = Status(code, error_message);

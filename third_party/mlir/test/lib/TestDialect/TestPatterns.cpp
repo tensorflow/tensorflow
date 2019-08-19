@@ -247,6 +247,9 @@ static llvm::cl::opt<TestLegalizePatternDriver::ConversionMode>
             clEnumValN(TestLegalizePatternDriver::ConversionMode::Partial,
                        "partial", "Perform a partial conversion")));
 
-static mlir::PassRegistration<TestLegalizePatternDriver> legalizer_pass(
-    "test-legalize-patterns", "Run test dialect legalization patterns",
-    [] { return new TestLegalizePatternDriver(legalizerConversionMode); });
+static mlir::PassRegistration<TestLegalizePatternDriver>
+    legalizer_pass("test-legalize-patterns",
+                   "Run test dialect legalization patterns", [] {
+                     return std::make_unique<TestLegalizePatternDriver>(
+                         legalizerConversionMode);
+                   });

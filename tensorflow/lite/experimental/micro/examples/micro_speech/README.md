@@ -205,7 +205,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -452,7 +452,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     ```
     make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
     ```
-4.  Go to the location of the generated project. The generated project is usally
+4.  Go to the location of the generated project. The generated project is usually
     in `tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
 5.  Create a mbed project using the generated files: `mbed new .`
 6.  Change the project setting to use C++ 11 rather than C++ 14 using:
@@ -481,8 +481,8 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     ```
 9.  Look at helpful resources from NXP website such as [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf) and [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
     to understand information about the board.
-10. Connect USB cable to micro USB port. When ethernet port is face towards you,
-    The micro USB port is left of the ethernet port.
+10. Connect the USB cable to the micro USB port. When the Ethernet port is
+    facing towards you, the micro USB port is left of the Ethernet port.
 11.  To compile and flash in a single step, add the `--flash` option:
 
     ```
@@ -539,13 +539,13 @@ them.
 
 ```
 python tensorflow/tensorflow/examples/speech_commands/wav_to_features.py \
---input_wav=/content/speech_dataset/yes/f2e59fea_nohash_1.wav \
---output_c_file=/content/yes_features_data.cc \
+--input_wav=/tmp/speech_dataset/yes/f2e59fea_nohash_1.wav \
+--output_c_file=/tmp/yes_features_data.cc \
 --window_stride=20 --preprocess=average --quantize=1
 
 python tensorflow/tensorflow/examples/speech_commands/wav_to_features.py \
---input_wav=/content/speech_dataset/no/f9643d42_nohash_4.wav \
---output_c_file=/content/no_features_data.cc \
+--input_wav=/tmp/speech_dataset/no/f9643d42_nohash_4.wav \
+--output_c_file=/tmp/no_features_data.cc \
 --window_stride=20 --preprocess=average --quantize=1
 ```
 
@@ -618,7 +618,7 @@ The next step is to create a TensorFlow Lite file from the frozen graph:
 
 ```
 toco \
---graph_def_file=/content/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
+--graph_def_file=/tmp/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
 --input_shapes=1,1960 --input_arrays=Reshape_1 --output_arrays='labels_softmax' \
 --inference_type=QUANTIZED_UINT8 --mean_values=0 --std_dev_values=9.8077
 ```

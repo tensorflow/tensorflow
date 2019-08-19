@@ -1141,10 +1141,14 @@ void OpEmitter::genVerifier() {
 
   genRegionVerifier(body);
 
-  if (hasCustomVerify)
-    body << codeInit->getValue() << "\n";
-  else
+  if (hasCustomVerify) {
+    FmtContext fctx;
+    fctx.addSubst("cppClass", opClass.getClassName());
+    auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
+    body << "  " << tgfmt(printer, &fctx);
+  } else {
     body << "  return mlir::success();\n";
+  }
 }
 
 void OpEmitter::genOperandResultVerifier(OpMethodBody &body,

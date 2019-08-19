@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import Affine
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -461,13 +462,14 @@ class AffineBijectorTest(test.TestCase):
   def testNoBatchMultivariateRaisesWhenSingular(self):
     with self.cached_session():
       mu = [1., -1]
-      bijector = Affine(
-          shift=mu,
-          # Has zero on the diagonal.
-          scale_diag=[0., 1],
-          validate_args=True)
-      with self.assertRaisesOpError("diagonal part must be non-zero"):
-        bijector.forward([1., 1.]).eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "diagonal part must be non-zero"):
+        _ = Affine(
+            shift=mu,
+            # Has zero on the diagonal.
+            scale_diag=[0., 1],
+            validate_args=True)
+        # Error detected statically; don't need to run the op.
 
   def _makeScale(self,
                  x,

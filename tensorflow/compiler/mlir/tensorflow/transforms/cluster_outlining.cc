@@ -128,8 +128,8 @@ void ClusterOutliningPass::runOnModule() {
 
 }  // namespace
 
-ModulePassBase* CreateClusterOutliningPass() {
-  return new ClusterOutliningPass();
+std::unique_ptr<ModulePassBase> CreateClusterOutliningPass() {
+  return std::make_unique<ClusterOutliningPass>();
 }
 
 static PassRegistration<ClusterOutliningPass> pass(

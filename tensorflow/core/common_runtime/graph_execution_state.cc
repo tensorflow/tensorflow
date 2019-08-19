@@ -610,7 +610,7 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_device= */ nullptr,
+                /* default_local_device= */ nullptr,
                 session_options_ == nullptr ||
                     session_options_->config.allow_soft_placement(),
                 session_options_ != nullptr &&

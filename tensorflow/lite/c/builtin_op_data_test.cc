@@ -56,6 +56,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteReshapeParams reshape_params;
   TfLiteSkipGramParams skip_gram_params;
   TfLiteSpaceToDepthParams space_to_depth_params;
+  TfLiteDepthToSpaceParams depth_to_space_params;
   TfLiteCastParams cast_params;
   TfLiteCombinerType combiner_type = kTfLiteCombinerTypeSqrtn;
   TfLiteEmbeddingLookupSparseParams lookup_sparse_params;

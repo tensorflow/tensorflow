@@ -67,9 +67,10 @@ class LARSOptimizerTest(test.TestCase):
           g_norm = np.linalg.norm(grad_np.flatten(), ord=2)
           trust_ratio = eeta * w_norm / (g_norm + wd_np * w_norm + ep_np)
           scaled_lr = lr_np * trust_ratio
+          grad_np = grad_np + wd_np * var_np
 
-          vel_np = m_np * vel_np + grad_np
-          var_np -= scaled_lr * vel_np
+          vel_np = m_np * vel_np + scaled_lr * grad_np
+          var_np -= vel_np
 
           self.assertAllClose(var_np, post_var)
           self.assertAllClose(vel_np, post_vel)
@@ -115,9 +116,10 @@ class LARSOptimizerTest(test.TestCase):
             g_norm = np.linalg.norm(grad_np.flatten(), ord=2)
             trust_ratio = eeta * w_norm / (g_norm + wd_np * w_norm + ep_np)
             scaled_lr = lr_np * trust_ratio
+            grad_np = grad_np + wd_np * var_np
 
-            vel_np = m_np * vel_np + grad_np
-            var_np -= scaled_lr * vel_np
+            vel_np = m_np * vel_np + scaled_lr * grad_np
+            var_np -= vel_np
 
             self.assertAllClose(var_np, post_var)
             self.assertAllClose(vel_np, post_vel)
