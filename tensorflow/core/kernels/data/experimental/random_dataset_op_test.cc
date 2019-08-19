@@ -77,8 +77,7 @@ class RandomDatasetOpTest : public DatasetOpsTestBaseV2<RandomDatasetParams> {
 
     // Step 3: Create a dataset kernel to test, passing in attributes of the
     // kernel.
-    TF_RETURN_IF_ERROR(
-        CreateRandomDatasetOpKernel(*dataset_params, &dataset_kernel_));
+    TF_RETURN_IF_ERROR(MakeDatasetOpKernel(*dataset_params, &dataset_kernel_));
 
     // Step 4: Create a context in which the kernel will operate. This is where
     // the kernel gets initialized with its inputs
@@ -100,12 +99,11 @@ class RandomDatasetOpTest : public DatasetOpsTestBaseV2<RandomDatasetParams> {
     return Status::OK();
   }
 
- protected:
   // Creates a new `RandomDataset` op kernel.
   // Doesn't initialize the random seeds because they are inputs, not
   // attributes.
-  Status CreateRandomDatasetOpKernel(const RandomDatasetParams& dataset_params,
-                                     std::unique_ptr<OpKernel>* op_kernel) {
+  Status MakeDatasetOpKernel(const RandomDatasetParams& dataset_params,
+                             std::unique_ptr<OpKernel>* op_kernel) override {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(RandomDatasetOp::kDatasetType),
         // Inputs
@@ -184,64 +182,86 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(
         std::vector<GetNextTestCase<RandomDatasetParams>>(GetNextTestCases())));
 
-TEST_F(RandomDatasetOpTest, DatasetNodeName) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
+std::vector<DatasetNodeNameTestCase<RandomDatasetParams>>
+DatasetNodeNameTestCases() {
+  return {{/*dataset_params=*/FortyTwo(), /*expected_node_name=*/kNodeName}};
 }
 
-TEST_F(RandomDatasetOpTest, DatasetTypeString) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetTypeString(
-      name_utils::OpName(RandomDatasetOp::kDatasetType)));
+DATASET_NODE_NAME_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                         DatasetNodeNameTestCases());
+
+std::vector<DatasetTypeStringTestCase<RandomDatasetParams>>
+DatasetTypeStringTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_dataset_type_string=*/name_utils::OpName(
+               RandomDatasetOp::kDatasetType)}};
 }
 
-TEST_F(RandomDatasetOpTest, DatasetOutputDtypes) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
+DATASET_TYPE_STRING_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                           DatasetTypeStringTestCases());
+
+std::vector<DatasetOutputDtypesTestCase<RandomDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {
+      {/*dataset_params=*/FortyTwo(), /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-TEST_F(RandomDatasetOpTest, DatasetOutputShapes) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
+DATASET_OUTPUT_DTYPES_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                             DatasetOutputDtypesTestCases());
+
+std::vector<DatasetOutputShapesTestCase<RandomDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_F(RandomDatasetOpTest, Cardinality) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetCardinality(kInfiniteCardinality));
+DATASET_OUTPUT_SHAPES_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                             DatasetOutputShapesTestCases());
+
+std::vector<CardinalityTestCase<RandomDatasetParams>> CardinalityTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_cardinality=*/kInfiniteCardinality}};
 }
 
-TEST_F(RandomDatasetOpTest, IteratorOutputDtypes) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
+DATASET_CARDINALITY_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                           CardinalityTestCases());
+
+std::vector<IteratorOutputDtypesTestCase<RandomDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {
+      {/*dataset_params=*/FortyTwo(), /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-TEST_F(RandomDatasetOpTest, IteratorOutputShapes) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
+ITERATOR_OUTPUT_DTYPES_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                              IteratorOutputDtypesTestCases());
+
+std::vector<IteratorOutputShapesTestCase<RandomDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_F(RandomDatasetOpTest, IteratorOutputPrefix) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
-      RandomDatasetOp::kDatasetType, kIteratorPrefix)));
+ITERATOR_OUTPUT_SHAPES_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                              IteratorOutputShapesTestCases());
+
+std::vector<IteratorPrefixTestCase<RandomDatasetParams>>
+IteratorOutputPrefixTestCases() {
+  return {{/*dataset_params=*/FortyTwo(),
+           /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
+               RandomDatasetOp::kDatasetType, kIteratorPrefix)}};
 }
 
-TEST_F(RandomDatasetOpTest, IteratorSaveAndRestore) {
-  auto dataset_params = FortyTwo();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      kIteratorPrefix,
-      /*expected_outputs=*/GenerateExpectedData(42, 42, kCount),
-      /*breakpoints=*/{2, 5, 8}));
+ITERATOR_PREFIX_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                       IteratorOutputPrefixTestCases());
+
+std::vector<IteratorSaveAndRestoreTestCase<RandomDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/FortyTwo(), /*breakpoints=*/{2, 5, 8},
+           /*expected_outputs=*/GenerateExpectedData(42, 42, kCount)}};
 }
+
+ITERATOR_SAVE_AND_RESTORE_TEST_P(RandomDatasetOpTest, RandomDatasetParams,
+                                 IteratorSaveAndRestoreTestCases());
 
 }  // namespace
 }  // namespace experimental
