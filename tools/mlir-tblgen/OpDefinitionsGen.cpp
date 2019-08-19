@@ -402,10 +402,8 @@ void Class::writeDefTo(raw_ostream &os) const {
 OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
     : Class(name), extraClassDeclaration(extraClassDeclaration) {}
 
-// Adds the given trait to this op. Prefixes "OpTrait::" to `trait` implicitly.
-void OpClass::addTrait(Twine trait) {
-  traits.push_back(("OpTrait::" + trait).str());
-}
+// Adds the given trait to this op.
+void OpClass::addTrait(Twine trait) { traits.push_back(trait.str()); }
 
 void OpClass::writeDeclTo(raw_ostream &os) const {
   os << "class " << className << " : public Op<" << className;
@@ -649,7 +647,8 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
   const int numVariadicOperands = op.getNumVariadicOperands();
   const int numNormalOperands = numOperands - numVariadicOperands;
 
-  if (numVariadicOperands > 1 && !op.hasTrait("SameVariadicOperandSize")) {
+  if (numVariadicOperands > 1 &&
+      !op.hasTrait("OpTrait::SameVariadicOperandSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic operands but no "
                                  "specification over their sizes");
   }
@@ -712,7 +711,8 @@ void OpEmitter::genNamedResultGetters() {
   // If we have more than one variadic results, we need more complicated logic
   // to calculate the value range for each result.
 
-  if (numVariadicResults > 1 && !op.hasTrait("SameVariadicResultSize")) {
+  if (numVariadicResults > 1 &&
+      !op.hasTrait("OpTrait::SameVariadicResultSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic results but no "
                                  "specification over their sizes");
   }
@@ -868,9 +868,9 @@ void OpEmitter::genBuilder() {
   //    use the first operand or attribute's type as all result types
   // to facilitate different call patterns.
   if (op.getNumVariadicResults() == 0) {
-    if (op.hasTrait("SameOperandsAndResultType"))
+    if (op.hasTrait("OpTrait::SameOperandsAndResultType"))
       genUseOperandAsResultTypeBuilder();
-    if (op.hasTrait("FirstAttrDerivedResultType"))
+    if (op.hasTrait("OpTrait::FirstAttrDerivedResultType"))
       genUseAttrAsResultTypeBuilder();
   }
 }
@@ -1224,19 +1224,20 @@ void OpEmitter::genTraits() {
   // Add return size trait.
   if (numVariadicResults != 0) {
     if (numResults == numVariadicResults)
-      opClass.addTrait("VariadicResults");
+      opClass.addTrait("OpTrait::VariadicResults");
     else
-      opClass.addTrait("AtLeastNResults<" + Twine(numResults - 1) + ">::Impl");
+      opClass.addTrait("OpTrait::AtLeastNResults<" + Twine(numResults - 1) +
+                       ">::Impl");
   } else {
     switch (numResults) {
     case 0:
-      opClass.addTrait("ZeroResult");
+      opClass.addTrait("OpTrait::ZeroResult");
       break;
     case 1:
-      opClass.addTrait("OneResult");
+      opClass.addTrait("OpTrait::OneResult");
       break;
     default:
-      opClass.addTrait("NResults<" + Twine(numResults) + ">::Impl");
+      opClass.addTrait("OpTrait::NResults<" + Twine(numResults) + ">::Impl");
       break;
     }
   }
@@ -1253,20 +1254,20 @@ void OpEmitter::genTraits() {
   // Add operand size trait.
   if (numVariadicOperands != 0) {
     if (numOperands == numVariadicOperands)
-      opClass.addTrait("VariadicOperands");
+      opClass.addTrait("OpTrait::VariadicOperands");
     else
-      opClass.addTrait("AtLeastNOperands<" + Twine(numOperands - 1) +
+      opClass.addTrait("OpTrait::AtLeastNOperands<" + Twine(numOperands - 1) +
                        ">::Impl");
   } else {
     switch (numOperands) {
     case 0:
-      opClass.addTrait("ZeroOperands");
+      opClass.addTrait("OpTrait::ZeroOperands");
       break;
     case 1:
-      opClass.addTrait("OneOperand");
+      opClass.addTrait("OpTrait::OneOperand");
       break;
     default:
-      opClass.addTrait("NOperands<" + Twine(numOperands) + ">::Impl");
+      opClass.addTrait("OpTrait::NOperands<" + Twine(numOperands) + ">::Impl");
       break;
     }
   }

@@ -996,7 +996,7 @@ class OpTrait;
 // purpose to wrap around C++ symbol string with this class is to make
 // traits specified for ops in TableGen less alien and more integrated.
 class NativeOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // ParamNativeOpTrait corresponds to the template-parameterized traits in the
@@ -1012,7 +1012,7 @@ class ParamNativeOpTrait<string prop, string params>
 // affects op definition generator internals, like how op builders and
 // operand/attribute/result getters are generated.
 class GenInternalOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // PredOpTrait is an op trait implemented by way of a predicate on the op.
