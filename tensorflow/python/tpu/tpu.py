@@ -161,6 +161,23 @@ def core(num):
   return "device:TPU_REPLICATED_CORE:{}".format(num)
 
 
+def _enclosing_tpu_context_and_graph():
+  """Returns the TPUReplicateContext and its associated graph."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, TPUReplicateContext):
+        return context_, graph
+      context_ = context_.outer_context
+    graph = getattr(graph, "outer_graph", None)
+  raise ValueError("get_replicated_var_handle() called without "
+                   "TPUReplicateContext. This shouldn't happen. Please file "
+                   "a bug.")
+
+
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
@@ -228,14 +245,15 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     # so the TPUReplicatedInput nodes go inside the TPUReplicateContext scope
     # instead.
 
-    # pylint: disable=protected-access
-    graph = ops.get_default_graph()
-    saved_context = graph._get_control_flow_context()
-    graph._set_control_flow_context(self.outer_context)
-    handle = tpu_ops.tpu_replicated_input(
-        [v.handle for v in vars_], name=name + "/handle")
-    graph._set_control_flow_context(saved_context)
-    # pylint: enable=protected-access
+    _, graph = _enclosing_tpu_context_and_graph()
+    with graph.as_default():
+      # pylint: disable=protected-access
+      saved_context = graph._get_control_flow_context()
+      graph._set_control_flow_context(self.outer_context)
+      handle = tpu_ops.tpu_replicated_input(
+          [v.handle for v in vars_], name=name + "/handle")
+      graph._set_control_flow_context(saved_context)
+      # pylint: enable=protected-access
     self._replicated_vars[name] = handle
     return handle
 
