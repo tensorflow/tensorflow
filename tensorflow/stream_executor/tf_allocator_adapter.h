@@ -30,7 +30,10 @@ namespace stream_executor {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class TfAllocatorAdapter : public DeviceMemoryAllocator {
  public:
-  TfAllocatorAdapter(const Platform *platform, tensorflow::Allocator *wrapped);
+  // stream: a Stream on which the allocator can only be used. If non-null, the
+  // allocator can not be used on any other stream.
+  TfAllocatorAdapter(const Platform *platform, tensorflow::Allocator *wrapped,
+                     Stream *stream = nullptr);
   ~TfAllocatorAdapter() override;
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
@@ -47,8 +50,11 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
+  Stream *GetStream() const override { return stream_; }
+
  private:
   tensorflow::Allocator *wrapped_;
+  Stream *stream_;
 };
 
 // Adapter class that wraps per-device TF allocators as an XLA allocator.
