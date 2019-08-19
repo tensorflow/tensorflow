@@ -163,7 +163,7 @@ class SliceTest(test.TestCase):
                              strides=[1, 1, 1, 1, 1],
                              padding="VALID")
       slice_t = array_ops.slice(conv_t, [0, 1, 1, 1, 0], [1, 1, 1, 1, 8])
-      result = self.evaluate(slice_t.eval)
+      result = self.evaluate(slice_t)
       expected = [6.047066, 1.1073351, -1.4765838, -4.126741,
                   7.0414743, 4.248739, 0.9407949, -3.58128]
       self.assertAllClose(expected, result.flatten(), rtol=1e-6)
