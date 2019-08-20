@@ -109,6 +109,7 @@ def _is_namedtuple(instance, strict=False):
 
 # See the swig file (util.i) for documentation.
 _is_mapping = _pywrap_tensorflow.IsMapping
+_is_mapping_view = _pywrap_tensorflow.IsMappingView
 _is_attrs = _pywrap_tensorflow.IsAttrs
 _is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
 _is_type_spec = _pywrap_tensorflow.IsTypeSpec
@@ -141,6 +142,9 @@ def _sequence_like(instance, args):
       return d
     else:
       return instance_type((key, result[key]) for key in instance)
+  if _is_mapping_view(instance):
+    # We can't directly construct mapping views, so we create a list instead
+    return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
@@ -1325,3 +1329,4 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
 
 _pywrap_tensorflow.RegisterType("Mapping", _collections_abc.Mapping)
 _pywrap_tensorflow.RegisterType("Sequence", _collections_abc.Sequence)
+_pywrap_tensorflow.RegisterType("MappingView", _collections_abc.MappingView)
