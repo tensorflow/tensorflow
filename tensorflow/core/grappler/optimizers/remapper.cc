@@ -272,13 +272,7 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-#ifndef INTEL_MKL
-  // Temporarily disable Matmul fusions if MKL is enabled.
-  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
-#else
-  return false;
-#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
@@ -1221,14 +1215,13 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   const NodeDef& activation = graph->node(matched.activation);
 
   VLOG(2) << "Fuse " << activation.op() << " with FusedBatchNorm:"
-          << " activation=" << activation.name() << " side_input="
-          << (matched.side_input != kMissingIndex
-                  ? graph->node(matched.side_input).name()
-                  : "<none>")
-          << " invalidated="
-          << (matched.invalidated != kMissingIndex
-                  ? graph->node(matched.invalidated).name()
-                  : "<none>")
+          << " activation=" << activation.name()
+          << " side_input=" << (matched.side_input != kMissingIndex
+                                    ? graph->node(matched.side_input).name()
+                                    : "<none>")
+          << " invalidated=" << (matched.invalidated != kMissingIndex
+                                     ? graph->node(matched.invalidated).name()
+                                     : "<none>")
           << " fused_batch_norm=" << fused_batch_norm.name();
 
   // Replace FusedBatchNorm with _FusedBatchNormEx + <SideInput> + <Activation>.
