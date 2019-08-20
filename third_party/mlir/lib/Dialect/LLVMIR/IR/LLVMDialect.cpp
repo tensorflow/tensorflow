@@ -1281,11 +1281,13 @@ LLVMType LLVMType::getArrayElementType() {
 unsigned LLVMType::getArrayNumElements() {
   return getUnderlyingType()->getArrayNumElements();
 }
+bool LLVMType::isArrayTy() { return getUnderlyingType()->isArrayTy(); }
 
 /// Vector type utilities.
 LLVMType LLVMType::getVectorElementType() {
   return get(getContext(), getUnderlyingType()->getVectorElementType());
 }
+bool LLVMType::isVectorTy() { return getUnderlyingType()->isVectorTy(); }
 
 /// Function type utilities.
 LLVMType LLVMType::getFunctionParamType(unsigned argIdx) {
@@ -1299,6 +1301,7 @@ LLVMType LLVMType::getFunctionResultType() {
       getContext(),
       llvm::cast<llvm::FunctionType>(getUnderlyingType())->getReturnType());
 }
+bool LLVMType::isFunctionTy() { return getUnderlyingType()->isFunctionTy(); }
 
 /// Pointer type utilities.
 LLVMType LLVMType::getPointerTo(unsigned addrSpace) {
@@ -1310,11 +1313,13 @@ LLVMType LLVMType::getPointerTo(unsigned addrSpace) {
 LLVMType LLVMType::getPointerElementTy() {
   return get(getContext(), getUnderlyingType()->getPointerElementType());
 }
+bool LLVMType::isPointerTy() { return getUnderlyingType()->isPointerTy(); }
 
 /// Struct type utilities.
 LLVMType LLVMType::getStructElementType(unsigned i) {
   return get(getContext(), getUnderlyingType()->getStructElementType(i));
 }
+bool LLVMType::isStructTy() { return getUnderlyingType()->isStructTy(); }
 
 /// Utilities used to generate floating point types.
 LLVMType LLVMType::getDoubleTy(LLVMDialect *dialect) {
