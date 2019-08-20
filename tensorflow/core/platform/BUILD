@@ -221,6 +221,18 @@ cc_library(
 )
 
 cc_library(
+    name = "str_util",
+    srcs = ["str_util.cc"],
+    hdrs = ["str_util.h"],
+    deps = [
+        ":logging",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     deps = [
@@ -358,6 +370,7 @@ filegroup(
             "jpeg.h",
             "png.h",
             "stringprintf.h",
+            "str_util.h",
             "**/cuda.h",
             "**/rocm.h",
             "**/stream_executor.h",
@@ -390,6 +403,7 @@ filegroup(
             "platform_strings.cc",
             "protobuf.cc",
             "stringprintf.cc",
+            "str_util.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],

@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/str_util.h"
 
 #include <vector>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
