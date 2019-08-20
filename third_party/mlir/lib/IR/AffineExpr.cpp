@@ -341,7 +341,7 @@ static AffineExpr simplifyAdd(AffineExpr lhs, AffineExpr rhs) {
 
   // Process lrhs, which is 'expr floordiv c'.
   AffineBinaryOpExpr lrBinOpExpr = lrhs.dyn_cast<AffineBinaryOpExpr>();
-  if (!lrBinOpExpr)
+  if (!lrBinOpExpr || lrBinOpExpr.getKind() != AffineExprKind::FloorDiv)
     return nullptr;
 
   auto llrhs = lrBinOpExpr.getLHS();
