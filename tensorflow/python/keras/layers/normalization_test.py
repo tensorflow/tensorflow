@@ -516,6 +516,34 @@ def _run_layernorm_correctness_test(layer, dtype='float32', fused=False):
   np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
   np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
+def _run_fused_layernorm_correctness_test(layer, axis, dtype='float32'):
+  model_ref = keras.models.Sequential()
+  norm = layer(axis=axis, input_shape=(2, 2, 2), fused=False)
+  model_ref.add(norm)
+  model_ref.compile(
+      loss='mse',
+      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+      run_eagerly=testing_utils.should_run_eagerly(),
+      experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+  # centered on 5.0, variance 10.0
+  x = (np.random.normal(loc=5.0, scale=10.0, size=(1000, 2, 2, 2))
+       .astype(dtype))
+  model_ref.fit(x, x, epochs=4, verbose=0)
+  out_ref = model_ref.predict(x, batch_size=1000)
+  
+  model = keras.models.Sequential()
+  norm = layer(axis=axis, input_shape=(2, 2, 2), fused=True)
+  model.add(norm)
+  model.compile(
+      loss='mse',
+      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+      run_eagerly=testing_utils.should_run_eagerly(),
+      experimental_run_tf_function=testing_utils.should_run_tf_function())
+  model.fit(x, x, epochs=4, verbose=0)
+  out = model.predict(x, batch_size=1000)
+
+  np.testing.assert_allclose(out_ref, out, atol=1e-1)
 
 class LayerNormalizationTest(keras_parameterized.TestCase):
 
@@ -632,6 +660,15 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
       with ops.device(device):
         _run_layernorm_correctness_test(
             normalization.LayerNormalization, dtype='float32', fused=fused)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_fused_layernorm_correctness(self):
+    if not tf_test_util.is_gpu_available():
+        self.skipTest('No GPU available')
+    device = "/gpu:0"
+    with ops.device(device):
+       _run_fused_layernorm_correctness_test(
+           normalization.LayerNormalization, [-2, -1], dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_mixed_precision(self):

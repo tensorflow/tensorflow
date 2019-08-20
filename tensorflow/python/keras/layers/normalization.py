@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -951,17 +952,23 @@ class LayerNormalization(Layer):
     self.supports_masking = True
     self.fused = fused
 
-  def _raise_if_fused_cannot_be_used(self):
+  def _raise_if_fused_cannot_be_used(self, ndims):
     """Raises a ValueError if fused implementation cannot be used.
 
-    Check if the axis is contiguous. It is possible to squeeze the dims to
-    NCHW-friendly when the axis is contiguous.
+    Check if the axis is contiguous and can be collapsed into the last axis.
     """
     axis = sorted(self.axis)
-    for i in range(1, len(axis)):
-      if axis[i] - axis[i-1] > 1:
-        raise ValueError('Passing fused=True is only supported when axis is '
-                         'contigous')
+    err = False
+    if axis[-1] - axis[0] != len(axis) - 1:
+        err = True
+
+    if axis[-1] != ndims-1:
+      err = True
+
+    if err:
+      raise ValueError('Passing fused=True is only supported when axis is '
+                       'contiguous and can be collapsed into the last '
+                       'dimension')
 
   def build(self, input_shape):
     ndims = len(input_shape)
@@ -983,7 +990,7 @@ class LayerNormalization(Layer):
       raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
 
     if self.fused:
-      self._raise_if_fused_cannot_be_used()
+      self._raise_if_fused_cannot_be_used(ndims)
 
     param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
@@ -1017,20 +1024,21 @@ class LayerNormalization(Layer):
     input_shape = inputs.shape
     ndims = len(input_shape)
 
+    # Broadcasting only necessary for norm where the axis is not just
+    # the last dimension
+    broadcast_shape = [1] * ndims
+    for dim in self.axis:
+      broadcast_shape[dim] = input_shape.dims[dim].value
+    def _broadcast(v):
+      if (v is not None and len(v.shape) != ndims and
+          self.axis != [ndims - 1]):
+        return array_ops.reshape(v, broadcast_shape)
+      return v
+
     if not self.fused:
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
-      # Broadcasting only necessary for norm where the axis is not just
-      # the last dimension
-      broadcast_shape = [1] * ndims
-      for dim in self.axis:
-        broadcast_shape[dim] = input_shape.dims[dim].value
-      def _broadcast(v):
-        if (v is not None and len(v.shape) != ndims and
-            self.axis != [ndims - 1]):
-          return array_ops.reshape(v, broadcast_shape)
-        return v
       scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
       # Compute layer normalization using the batch_normalization function.
@@ -1042,30 +1050,27 @@ class LayerNormalization(Layer):
           scale=scale,
           variance_epsilon=self.epsilon)
     else:
-      # Squeeze self.axis to C in NCHW of squeezed_shape 
-      squeezed_shape = [1] * 4
+      # Collapse dims before self.axis, and dims in self.axis
+      pre_dim, in_dim = (None, None)
       axis = sorted(self.axis)
+      tensor_shape = array_ops.shape(inputs)
       for dim in range(0, ndims):
-        dim_val = input_shape.dims[dim].value
+        dim_tensor = tensor_shape[dim]
         if dim < axis[0]:
-          squeezed_shape[0] = ((squeezed_shape[0] * dim_val) if dim_val and
-                               squeezed_shape[0] != -1 else -1)
+          pre_dim = dim_tensor if pre_dim is None else (pre_dim * dim_tensor)
         elif dim in axis:
-          squeezed_shape[1] *= dim_val
-        else:
-          squeezed_shape[2] = ((squeezed_shape[2] * dim_val) if dim_val and
-                               squeezed_shape[2] != -1 else -1)
+          in_dim = dim_tensor if in_dim is None else (in_dim * dim_tensor)
+      
+      squeezed_shape = [1, pre_dim, in_dim, 1]
+      data_format = 'NCHW'
 
-      axis_dim_val = squeezed_shape[1]
-      squeezed_shape = ops.convert_to_tensor(squeezed_shape)
       inputs = array_ops.reshape(inputs, squeezed_shape)
 
-      def _set_tensor(t, val, dtype, shape):
-        if (t is None):
-          return K.constant(val, dtype=dtype, shape=shape)
-        return t
-      scale = _set_tensor(self.gamma, 1.0, inputs.dtype, [axis_dim_val])
-      offset = _set_tensor(self.beta, 0.0, inputs.dtype, [axis_dim_val])
+      def _set_const_tensor(val, dtype, shape):
+        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
+
+      scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
+      offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(
@@ -1073,11 +1078,16 @@ class LayerNormalization(Layer):
           scale=scale,
           offset=offset,
           epsilon=self.epsilon,
-          data_format='NCHW')
+          data_format=data_format)
 
-      original_shape = [x if x else -1 for x in input_shape.as_list()]
-      original_shape = ops.convert_to_tensor(original_shape)
-      outputs = array_ops.reshape(outputs, original_shape)
+      outputs = array_ops.reshape(outputs, tensor_shape)
+
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+      if scale is not None:
+        outputs = outputs * scale
+      if offset is not None:
+        outputs = outputs + offset
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)
