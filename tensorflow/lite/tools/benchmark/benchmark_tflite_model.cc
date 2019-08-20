@@ -354,6 +354,23 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
       FillRandomValue<float>(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
+    } else if (t->type == kTfLiteFloat16) {
+      t_data.bytes = sizeof(TfLiteFloat16) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+#if __GNUC__ && \
+    (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
+      // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
+      FillRandomValue<TfLiteFloat16>(
+          t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
+            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+            TfLiteFloat16 f16_placeholder_value;
+            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+            return f16_placeholder_value;
+          });
+#else
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+                        << " of type FLOAT16 on this platform.";
+#endif
     } else if (t->type == kTfLiteInt64) {
       t_data.bytes = sizeof(int64_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
@@ -407,6 +424,9 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     if (t->type == kTfLiteFloat32) {
       std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
                   inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteFloat16) {
+      std::memcpy(interpreter_->typed_tensor<TfLiteFloat16>(i),
+                  inputs_data_[j].data.f16, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt64) {
       std::memcpy(interpreter_->typed_tensor<int64_t>(i),
                   inputs_data_[j].data.i64, inputs_data_[j].bytes);
