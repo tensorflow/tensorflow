@@ -2123,6 +2123,35 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
   let hasOptions = 1;
 }
 
+def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
+    NoSideEffect,
+    TFL_SameOperandsAndResultsScale,
+    PredOpTrait<"input and output must have same element type",
+      TCresVTEtIsSameAsOp<0, 0>>
+  ]> {
+  let summary = "DepthToSpace operator";
+
+  let description = [{
+    Rearranges data from depth into blocks of spatial data.
+    This is the reverse transformation of SpaceToDepth. More specifically,
+    this op outputs a copy of the input tensor where values from the `depth`
+    dimension are moved in spatial blocks to the `height` and `width`
+    dimensions. The attr `block_size` indicates the input block size and how
+    the data is moved.
+   }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$input,
+    I32Attr:$block_size
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 

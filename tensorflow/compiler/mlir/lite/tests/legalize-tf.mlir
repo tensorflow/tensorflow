@@ -1075,3 +1075,12 @@ func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
   // CHECK-LABEL: exp
   // CHECK: "tfl.exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
 }
+
+func @depth_to_space(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
+  %0 = "tf.DepthToSpace"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+  return %0 : tensor<1x2x2x1xf32>
+
+  // CHECK-LABEL: depth_to_space
+  // CHECK: %[[ARG:.*]]: tensor<1x1x1x4xf32>
+  // CHECK: "tfl.depth_to_space"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+}
