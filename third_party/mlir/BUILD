@@ -180,8 +180,8 @@ filegroup(
 filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
-        "include/mlir/AffineOps/AffineOps.td",
-        "include/mlir/AffineOps/AffineOpsBase.td",
+        "include/mlir/Dialect/AffineOps/AffineOps.td",
+        "include/mlir/Dialect/AffineOps/AffineOpsBase.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -191,15 +191,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/AffineOps/AffineOps.h.inc",
+            "include/mlir/Dialect/AffineOps/AffineOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/AffineOps/AffineOps.cpp.inc",
+            "include/mlir/Dialect/AffineOps/AffineOps.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/AffineOps/AffineOps.td",
+    td_file = "include/mlir/Dialect/AffineOps/AffineOps.td",
     td_srcs = [
         ":AffineOpsTdFiles",
     ],
@@ -277,10 +277,10 @@ cc_library(
 cc_library(
     name = "AffineOps",
     srcs = [
-        "lib/AffineOps/AffineOps.cpp",
+        "lib/Dialect/AffineOps/AffineOps.cpp",
     ],
     hdrs = [
-        "include/mlir/AffineOps/AffineOps.h",
+        "include/mlir/Dialect/AffineOps/AffineOps.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -295,7 +295,7 @@ cc_library(
 # Library with affine dialect static initialization.
 cc_library(
     name = "AffineDialectRegistration",
-    srcs = ["lib/AffineOps/DialectRegistration.cpp"],
+    srcs = ["lib/Dialect/AffineOps/DialectRegistration.cpp"],
     copts = ["-std=c++14"],
     deps = [
         ":AffineOps",

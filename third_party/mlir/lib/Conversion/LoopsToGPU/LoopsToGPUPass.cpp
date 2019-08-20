@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Pass/Pass.h"
 

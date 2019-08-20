@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"

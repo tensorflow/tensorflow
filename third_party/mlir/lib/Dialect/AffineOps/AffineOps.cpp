@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
@@ -41,7 +41,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
   addOperations<AffineApplyOp, AffineDmaStartOp, AffineDmaWaitOp, AffineLoadOp,
                 AffineStoreOp,
 #define GET_OP_LIST
-#include "mlir/AffineOps/AffineOps.cpp.inc"
+#include "mlir/Dialect/AffineOps/AffineOps.cpp.inc"
                 >();
 }
 
@@ -1761,4 +1761,4 @@ void AffineStoreOp::getCanonicalizationPatterns(
 }
 
 #define GET_OP_CLASSES
-#include "mlir/AffineOps/AffineOps.cpp.inc"
+#include "mlir/Dialect/AffineOps/AffineOps.cpp.inc"
