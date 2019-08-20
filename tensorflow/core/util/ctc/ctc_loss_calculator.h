@@ -117,6 +117,8 @@ Status CTCLossCalculator<T>::CalculateLoss(
     bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
     VectorOut* loss, std::vector<MatrixOut>* gradients,
     DeviceBase::CpuWorkerThreads* workers) const {
+  using Eigen::numext::log;
+
   auto num_time_steps = inputs.size();
 
   if (loss == nullptr) {
@@ -371,6 +373,8 @@ template <typename TT>
 void CTCLossCalculator<TT>::CalculateForwardVariables(
     const std::vector<int>& l_prime, const Matrix& y, bool ctc_merge_repeated,
     Matrix* log_alpha) const {
+  using Eigen::numext::log;
+
   // Number of cols is the number of time steps = number of cols in target
   // after the output delay.
   log_alpha->setConstant(kLogZero<TT>::val);
@@ -430,6 +434,8 @@ void CTCLossCalculator<TT>::CalculateBackwardVariables(
   // Matrix log_beta =
   //    Matrix::Constant(l_prime.size(), y.cols() - output_delay_,
   // kLogZero);
+  using Eigen::numext::log;
+
   log_beta->setConstant(kLogZero<TT>::val);
   int T = log_beta->cols();
   int U = l_prime.size();
