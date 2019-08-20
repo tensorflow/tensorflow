@@ -261,8 +261,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  // Skip 'fusion' instruction if it is an equivalent of convert
-  // downcast an any of its user write more memory.
+  // Postpone 'fusion' instruction if we think fusing it later will be better.
   if (postpone_ &&
       absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
         return PostponeFusion(*fusion, *user);

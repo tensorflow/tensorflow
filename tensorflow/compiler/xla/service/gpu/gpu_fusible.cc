@@ -452,16 +452,8 @@ bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
   return true;
 }
 
-// We can't get optimal fusion group by being always greedy.  Here we
-// determine some fusion that we want to postpone to later.  Currently
-// we want to postpone the merge of downcast convert in its consumer
-// to allow fusing it into its producer later when possible.
-// As MOF fusion is done only late in the fusion, we postpone in those case.
-// This also check that some cases we want to fuse early and doesn't postpone
-// them.
 bool PostponeFusion(const HloInstruction& producer,
                     const HloInstruction& consumer) {
-  // Step 1. See if this is a downcast or equivalent operation.
   bool downcast_try_to_postpone = false;
   auto is_downcast = [](const HloInstruction& instr) {
     return instr.opcode() == HloOpcode::kConvert &&
@@ -469,10 +461,7 @@ bool PostponeFusion(const HloInstruction& producer,
                ShapeUtil::ByteSizeOf(instr.shape());
   };
 
-  // It is more efficient to fuse downcast convert in the producer
-  // then the consumer.
-  // Here a downcast convert can be one convert operation
-  // or a fusion with one input and one output that lower the memory output.
+  // Step 1. See if this is a downcast or equivalent operation.
   if (is_downcast(producer)) {
     // If the consumer is also a downcast, we should merge them early
     // as this is the equivalent of a bigger downcast.
@@ -487,18 +476,12 @@ bool PostponeFusion(const HloInstruction& producer,
     } else {
       downcast_try_to_postpone = true;
     }
+  // Handle the case of the downcast inside a fusion.
   } else if (producer.IsLoopFusion() &&
              is_downcast(*producer.fused_instructions_computation()
                               ->root_instruction()) &&
              producer.operands().size() == 1) {
     downcast_try_to_postpone = true;
-  } else if (producer.IsLoopFusion() && producer.operands().size() == 1) {
-    auto root = producer.fused_instructions_computation()->root_instruction();
-    if (root->opcode() == HloOpcode::kConvert &&
-        ShapeUtil::ByteSizeOf(producer.operand(0)->shape()) >
-            ShapeUtil::ByteSizeOf(producer.shape())) {
-      downcast_try_to_postpone = true;
-    }
   }
   if (!downcast_try_to_postpone) {
     VLOG(4) << "No operation to postpone, producer: " << producer.ToString()
@@ -512,8 +495,8 @@ bool PostponeFusion(const HloInstruction& producer,
     return false;
   }
 
-  // As the fusion pipeline run until fixed point, we do not do a
-  // cycle detection here.
+  // As the fusion pipeline run until fixed point, we do need to check
+  // for possible cycles in the graph.
 
   return true;
 }

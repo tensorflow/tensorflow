@@ -101,12 +101,21 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
                                             const HloInstruction& consumer);
 
-// Should the fusion of Producer-Consumer be done?
+// Should fusion of Producer-Consumer be done when generating
+// multi-output fusion?
 bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
-// Some fusion cases that we want to postpone to the MOF fusion phase for
-// efficiency.
+// It is impossible to get optimal fusion group by being greedy.
+// Here we determine some cases that we want to postpone to later.
+// The caller site of this function should only call it in the first iteration
+// of the fixed point fusion pipeline.
+// This give a fall back if postponed case isn't fused in later phase.
+// Currently we only postpone some case of downcast convert.
+// If we do not do this, it would get fused first on its consumer.
+// It is more efficient to fuse it to its producer.
+// Currently we expect the downcast to be fusible in the MOF pass.
+// Otherwise we do not postpone it.
 bool PostponeFusion(const HloInstruction& producer,
                     const HloInstruction& consumer);
 }  // namespace gpu
