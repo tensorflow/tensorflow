@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
@@ -64,6 +65,10 @@ Status AssignObjectsToTensors(
       return EqualityAssignment(usage_records, assignment);
     case MemoryStrategy::GREEDY:
       return GreedyAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_BY_BREADTH:
+      return GreedyByBreadthAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_BY_SIZE:
+      return GreedyBySizeDistPriorityAssignment(usage_records, assignment);
     case MemoryStrategy::MINCOSTFLOW:
       return MinCostFlowAssignment(usage_records, assignment);
     default:

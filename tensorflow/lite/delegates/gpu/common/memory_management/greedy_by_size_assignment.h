@@ -42,6 +42,34 @@ Status GreedyBySizeAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     OffsetsAssignment* assignment);
 
+// Assigns given tensors to shared objects, using the following greedy
+// algorithm:
+// - We have tensor usage records of all intermideate tensors as an input. Each
+// record consists of tensor size, first and last tasks, that use it. Let's call
+// [first_task..last_task] a tensor usage interval;
+// - Distance between two usage intervals is the absoulte difference between
+// closest tasks in their intervals. If two usage intervals don't intersect,
+// than the distance between them is positive;
+// - Calculate positional maximums vector, e.g. the vector of lower bounds on
+// size of each shared object;
+// - For each tensor find the rightmost positional maximum, that is greater or
+// equal, than current tensor's size (call it position);
+// - Iterate through all tensors in non-decreasing order of their
+// SizeDistPriority (described above);
+// - For every such tensor, assign it to the object, that already has tensor,
+// which usage interval has the smallest existing positive distance to the
+// current tensor's usage interval (this distance and object id are already
+// precalculated in its SizeDistPriority record). Size of the chosen object can
+// possible increase;
+// - If there are several such objects, use the largest one;
+// - If there are no suitable shared objects, assign current tensor to the new
+// object with size equal to current tensor's size;
+// - Modify SizeDistPriority records of tensors, that haven't been assigned yet,
+// to reflect distance changes after that assignment.
+Status GreedyBySizeDistPriorityAssignment(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    ObjectsAssignment<size_t>* assignment);
+
 }  // namespace gpu
 }  // namespace tflite
 

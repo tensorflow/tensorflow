@@ -98,8 +98,13 @@ enum class MemoryStrategy {
   GREEDY,
 
   // Greedy by size strategy uses greedy algorithm, iterating through all the
-  // tensors in
-  // non-increasing of their size, to reuse memory from tensors, that
+  // tasks in non-increasing of their breadth, and calculating allocations for
+  // tensors used in these tasks. By breadth of the task we understand sum of
+  // sizes of all tensors in its TaskProfile.
+  GREEDY_BY_BREADTH,
+
+  // Greedy by size strategy uses greedy algorithm, iterating through all the
+  // tensors in non-increasing of their size, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY_BY_SIZE,
 

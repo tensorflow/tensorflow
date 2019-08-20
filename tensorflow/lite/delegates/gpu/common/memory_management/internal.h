@@ -23,11 +23,17 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 
 const size_t kNotAssigned = std::numeric_limits<size_t>::max();
+
+// TaskProfile is a vector with information about all intermediate tensors, that
+// should exist in memory during the executon of the task. Elements of the
+// vector must be sorted in non-increasing order of corresponding tensors sizes.
+using TaskProfile = std::vector<TensorUsageWithIndex<size_t>>;
 
 // Size of object, that covers both input objects (2-dimensional case).
 bool IsCoveringObject(const uint2& first_object, const uint2& second_object);
@@ -70,6 +76,14 @@ struct QueueRecord {
   TaskId last_task;
   size_t object_id;
 };
+
+// Returns a vector that contains TaskProfile for each task.
+std::vector<TaskProfile> CalculateTaskProfiles(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records);
+
+// Iterates over all task profiles to calculate maximum at each position.
+std::vector<size_t> CalculatePositionalMaximums(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records);
 
 }  // namespace gpu
 }  // namespace tflite

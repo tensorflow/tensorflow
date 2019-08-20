@@ -43,6 +43,7 @@ cc_library(
     name = "memory_management",
     srcs = [
         "memory_management.cc",
+        "memory_management/greedy_by_breadth_assignment.cc",
         "memory_management/greedy_by_size_assignment.cc",
         "memory_management/internal.cc",
         "memory_management/min_cost_flow_assignment.cc",
@@ -51,6 +52,7 @@ cc_library(
         "memory_management.h",
         "memory_management/equality_assignment.h",
         "memory_management/greedy_assignment.h",
+        "memory_management/greedy_by_breadth_assignment.h",
         "memory_management/greedy_by_size_assignment.h",
         "memory_management/internal.h",
         "memory_management/min_cost_flow_assignment.h",
@@ -202,6 +204,15 @@ cc_library(
 cc_test(
     name = "memory_management_test",
     srcs = ["memory_management_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_management_internal_test",
+    srcs = ["memory_management/internal_test.cc"],
     deps = [
         ":memory_management",
         "@com_google_googletest//:gtest_main",
