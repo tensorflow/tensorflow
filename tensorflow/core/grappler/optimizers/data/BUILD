@@ -477,6 +477,19 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "unbatch_and_batch_fusion_test",
+    srcs = ["unbatch_and_batch_fusion_test.cc"],
+    deps = [
+        ":graph_utils",
+        ":unbatch_and_batch_fusion",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
 cc_library(
     name = "map_and_filter_fusion",
     srcs = ["map_and_filter_fusion.cc"],
