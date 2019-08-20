@@ -694,6 +694,7 @@ cc_library(
         ":device_memory",
         ":device_memory_allocator",
         ":platform",
+        ":stream_executor_headers",
         "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
