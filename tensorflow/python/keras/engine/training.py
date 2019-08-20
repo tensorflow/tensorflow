@@ -494,10 +494,7 @@ class Model(network.Network):
                        '`iter(dataset)`.')
 
     # Experiment training loop with default DS path.
-    if (context.executing_eagerly()
-        and self._experimental_run_tf_function
-        and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+    if context.executing_eagerly() and self._experimental_run_tf_function:
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:

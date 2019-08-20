@@ -300,7 +300,6 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
-        # TODO(scottzhu): Handle TPUStrategy training loop
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -441,7 +440,6 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(
           model, callbacks, use_sample, verbose, mode):
-        # TODO(scottzhu): Handle TPUStrategy training loop
         with training_context.on_epoch(0, mode) as epoch_logs:
           model.reset_metrics()
           result = run_one_epoch(
