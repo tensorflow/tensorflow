@@ -29,7 +29,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 class SliceTest(test.TestCase):
@@ -148,20 +147,24 @@ class SliceTest(test.TestCase):
         self.assertAllEqual(slice_val, inp[lo:hi])
 
   def test3Dimension(self):
-    with self.session() as sess:
+    with self.session():
       input_shape = [8, 16, 16, 16, 8]
       total_input_size = 1
       for s in input_shape:
         total_input_size *= s
-      inputs = [i * 1.0 / total_input_size for i in range(1, total_input_size + 1)]
-      a = constant_op.constant(inputs, shape=input_shape, dtype=dtypes.float32)
+      inputs = [i * 1.0 / total_input_size for i in range(1, total_input_size
+          + 1)]
+      a = constant_op.constant(inputs, shape=input_shape,
+              dtype=dtypes.float32)
 
       filter_shape = [1, 1, 1, 8, 8]
       total_filter_size = 1
       for s in filter_shape:
         total_filter_size *= s
-      filters = [i * 1.0 / total_filter_size for i in range(1, total_filter_size + 1)]
-      f = constant_op.constant(filters, shape=filter_shape, dtype=dtypes.float32)
+      filters = [i * 1.0 / total_filter_size for i in range(1, 
+          total_filter_size + 1)]
+      f = constant_op.constant(filters, shape=filter_shape,
+             dtype=dtypes.float32)
 
       conv_t = nn_ops.conv3d(a,
                              filter=f,
