@@ -447,18 +447,18 @@ void CTCLossCalculator<TT>::CalculateBackwardVariables(
       // Begin (GravesTh) Eq 7.15
       // Add in the u, t + 1 term.
       if (ctc_merge_repeated || l_prime[u] == blank_index_) {
-        log_beta->coeffRef(u, t) =
-            LogSumExp(log_beta->coeff(u, t),
-                      log_beta->coeff(u, t + 1) +
-                          log(y(l_prime[u], output_delay_ + t + 1)));
+        log_beta->coeffRef(u, t) = LogSumExp(
+            log_beta->coeff(u, t),
+            log_beta->coeff(u, t + 1) +
+                static_cast<TT>(log(y(l_prime[u], output_delay_ + t + 1))));
       }
 
       // Add in the u + 1, t + 1 term.
       if (u + 1 < U) {
-        log_beta->coeffRef(u, t) =
-            LogSumExp(log_beta->coeff(u, t),
-                      log_beta->coeff(u + 1, t + 1) +
-                          log(y(l_prime[u + 1], output_delay_ + t + 1)));
+        log_beta->coeffRef(u, t) = LogSumExp(
+            log_beta->coeff(u, t),
+            log_beta->coeff(u + 1, t + 1) +
+                static_cast<TT>(log(y(l_prime[u + 1], output_delay_ + t + 1))));
       }
 
       // Add in the u + 2, t + 1 term if l_prime(u) != blank or l_prime(u+2).
@@ -470,7 +470,8 @@ void CTCLossCalculator<TT>::CalculateBackwardVariables(
           log_beta->coeffRef(u, t) =
               LogSumExp(log_beta->coeff(u, t),
                         log_beta->coeff(u + 2, t + 1) +
-                            log(y(l_prime[u + 2], output_delay_ + t + 1)));
+                            static_cast<TT>(
+                                log(y(l_prime[u + 2], output_delay_ + t + 1))));
         }
       }  // End (GravesTh) Eq. 7.15
     }
