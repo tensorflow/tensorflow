@@ -390,15 +390,21 @@ class Concatenation
   }
 };
 
-class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
+class DepthToSpace
+    : public BuiltinOperator<DepthToSpaceOperator,
+                             ::tflite::DepthToSpaceOptions,
+                             ::tflite::BuiltinOptions_DepthToSpaceOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Int("block_size", op.block_size);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateDepthToSpaceOptions(*builder, op.block_size);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
-    op->block_size = m["block_size"].AsInt64();
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->block_size = options.block_size();
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
@@ -496,6 +502,10 @@ class FullyConnected
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // 2 inputs (no bias) use case is supported starting from version 6.
+    if (op_signature.op->inputs.size() == 2) {
+      return 6;
+    }
     // `keep_num_dims` is supported at verison 5.
     if (fc_op.keep_num_dims) {
       return 5;
@@ -2474,6 +2484,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kSoftmax));
   ops.push_back(MakeUnique<SpaceToDepth>(
       ::tflite::BuiltinOperator_SPACE_TO_DEPTH, OperatorType::kSpaceToDepth));
+  ops.push_back(MakeUnique<DepthToSpace>(
+      ::tflite::BuiltinOperator_DEPTH_TO_SPACE, OperatorType::kDepthToSpace));
   ops.push_back(
       MakeUnique<Svdf>(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
   ops.push_back(MakeUnique<Transpose>(::tflite::BuiltinOperator_TRANSPOSE,
@@ -2563,8 +2575,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<SimpleOperator<MatrixSetDiagOperator>>(
       "MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag));
   // Custom Operators.
-  ops.push_back(
-      MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
   ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",

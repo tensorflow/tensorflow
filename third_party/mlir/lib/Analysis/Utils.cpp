@@ -25,8 +25,8 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
@@ -449,7 +449,7 @@ static void findInstPosition(Operation *op, Block *limitBlock,
     // rely on linear scans.
     int instPosInBlock = std::distance(block->begin(), op->getIterator());
     positions->push_back(instPosInBlock);
-    op = block->getContainingOp();
+    op = block->getParentOp();
     block = op->getBlock();
   }
   std::reverse(positions->begin(), positions->end());
@@ -913,7 +913,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     }
 
     // Compute the memref region symbolic in any IVs enclosing this block.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {

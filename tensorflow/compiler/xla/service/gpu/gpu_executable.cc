@@ -81,11 +81,12 @@ void GpuExecutable::ComputeThunkAnnotations() {
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
-    thunk_annotations_[thunk] = absl::StrFormat(
-        "%s:#tf_op=%s,hlo_op=%s,hlo_module=%s#",
-        hlo->ToStringWithCanonicalNameMap(HloPrintOptions::Canonical(),
-                                          &canonical_name_map),
-        hlo->metadata().op_name(), hlo->name(), hlo->GetModule()->name());
+    thunk_annotations_[thunk] =
+        absl::StrFormat("%s:#tf_op=%s:%s,hlo_op=%s,hlo_module=%s#",
+                        hlo->ToStringWithCanonicalNameMap(
+                            HloPrintOptions::Canonical(), &canonical_name_map),
+                        hlo->metadata().op_name(), hlo->metadata().op_type(),
+                        hlo->name(), hlo->GetModule()->name());
   }
 }
 
@@ -195,10 +196,11 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
-  // Make sure kernels are completed before deallocating temporary buffers.
+  // Make sure kernels are completed before deallocating temporary buffers or
+  // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (block_host_until_done) {
+  if (do_profile || block_host_until_done) {
     Status block_status = main_stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
@@ -244,8 +246,14 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
+  if (executor->platform_kind() == se::PlatformKind::kCuda &&
+      module_spec.cuda_ptx_in_memory() == nullptr) {
+    // No custom PTX => no globals.
+    return &module_globals_.emplace(executor, std::move(globals)).first->second;
+  }
+
   se::ModuleHandle module_handle;
-  executor->LoadModule(module_spec, &module_handle);
+  TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {

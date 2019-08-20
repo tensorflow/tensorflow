@@ -60,7 +60,7 @@ const char kRewrite[] = " ";
 Tensor GetTestTensor(int batch) {
   const int sz = TF_ARRAYSIZE(lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = lines[i % sz];
   }

@@ -27,10 +27,10 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
 using namespace mlir;
@@ -82,11 +82,11 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   std::unique_ptr<DominanceInfo> domInfo;
   std::unique_ptr<PostDominanceInfo> postDomInfo;
   if (domInstFilter)
-    domInfo = llvm::make_unique<DominanceInfo>(
+    domInfo = std::make_unique<DominanceInfo>(
         domInstFilter->getParentOfType<FuncOp>());
 
   if (postDomInstFilter)
-    postDomInfo = llvm::make_unique<PostDominanceInfo>(
+    postDomInfo = std::make_unique<PostDominanceInfo>(
         postDomInstFilter->getParentOfType<FuncOp>());
 
   // The ops where memref replacement succeeds are replaced with new ones.
@@ -242,11 +242,8 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
     // Create the new operation.
     auto *repOp = builder.createOperation(state);
-    // Replace old memref's deferencing op's uses.
-    unsigned r = 0;
-    for (auto *res : opInst->getResults()) {
-      res->replaceAllUsesWith(repOp->getResult(r++));
-    }
+    opInst->replaceAllUsesWith(repOp);
+
     // Collect and erase at the end since one of these op's could be
     // domInstFilter or postDomInstFilter as well!
     opsToErase.push_back(opInst);

@@ -53,6 +53,18 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 // Type Parsing
 //===----------------------------------------------------------------------===//
 
+// Forward declarations.
+template <typename ValTy>
+static Optional<ValTy> parseAndVerify(SPIRVDialect const &dialect, Location loc,
+                                      StringRef spec);
+template <>
+Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect, Location loc,
+                                    StringRef spec);
+
+template <>
+Optional<uint64_t> parseAndVerify(SPIRVDialect const &dialect, Location loc,
+                                  StringRef spec);
+
 // Parses "<number> x" from the beginning of `spec`.
 static bool parseNumberX(StringRef &spec, int64_t &number) {
   spec = spec.ltrim();
@@ -150,7 +162,8 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
 //                | vector-type
 //                | spirv-type
 //
-// array-type ::= `!spv.array<` integer-literal `x` element-type `>`
+// array-type ::= `!spv.array<` integer-literal `x` element-type
+//                (`[` integer-literal `]`)? `>`
 static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
                            Location loc) {
   if (!spec.consume_front("array<") || !spec.consume_back(">")) {
@@ -171,11 +184,37 @@ static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
     return Type();
   }
 
+  ArrayType::LayoutInfo layoutInfo = 0;
+  size_t lastLSquare;
+
+  // Handle case when element type is not a trivial type
+  auto lastRDelimiter = spec.rfind('>');
+  if (lastRDelimiter != StringRef::npos) {
+    lastLSquare = spec.find('[', lastRDelimiter);
+  } else {
+    lastLSquare = spec.rfind('[');
+  }
+
+  if (lastLSquare != StringRef::npos) {
+    auto layoutSpec = spec.substr(lastLSquare);
+    auto layout =
+        parseAndVerify<ArrayType::LayoutInfo>(dialect, loc, layoutSpec);
+    if (!layout) {
+      return Type();
+    }
+
+    if (!(layoutInfo = layout.getValue())) {
+      emitError(loc, "ArrayStride must be greater than zero");
+      return Type();
+    }
+    spec = spec.substr(0, lastLSquare);
+  }
+
   Type elementType = parseAndVerifyType(dialect, spec, loc);
   if (!elementType)
     return Type();
 
-  return ArrayType::get(elementType, count);
+  return ArrayType::get(elementType, count, layoutInfo);
 }
 
 // TODO(ravishankarm) : Reorder methods to be utilities first and parse*Type
@@ -267,18 +306,17 @@ Optional<Type> parseAndVerify<Type>(SPIRVDialect const &dialect, Location loc,
 }
 
 template <>
-Optional<spirv::StructType::LayoutInfo>
-parseAndVerify(SPIRVDialect const &dialect, Location loc, StringRef spec) {
+Optional<uint64_t> parseAndVerify(SPIRVDialect const &dialect, Location loc,
+                                  StringRef spec) {
   uint64_t offsetVal = std::numeric_limits<uint64_t>::max();
   if (!spec.consume_front("[")) {
     emitError(loc, "expected '[' while parsing layout specification in '")
         << spec << "'";
     return llvm::None;
   }
+  spec = spec.trim();
   if (spec.consumeInteger(10, offsetVal)) {
-    emitError(
-        loc,
-        "expected unsigned integer to specify offset of member in struct: '")
+    emitError(loc, "expected unsigned integer to specify layout information: '")
         << spec << "'";
     return llvm::None;
   }
@@ -292,7 +330,7 @@ parseAndVerify(SPIRVDialect const &dialect, Location loc, StringRef spec) {
         << spec << "'";
     return llvm::None;
   }
-  return spirv::StructType::LayoutInfo{offsetVal};
+  return offsetVal;
 }
 
 // Functor object to parse a comma separated list of specs. The function
@@ -530,8 +568,11 @@ Type SPIRVDialect::parseType(StringRef spec, Location loc) const {
 //===----------------------------------------------------------------------===//
 
 static void print(ArrayType type, llvm::raw_ostream &os) {
-  os << "array<" << type.getNumElements() << " x " << type.getElementType()
-     << ">";
+  os << "array<" << type.getNumElements() << " x " << type.getElementType();
+  if (type.hasLayout()) {
+    os << " [" << type.getArrayStride() << "]";
+  }
+  os << ">";
 }
 
 static void print(RuntimeArrayType type, llvm::raw_ostream &os) {

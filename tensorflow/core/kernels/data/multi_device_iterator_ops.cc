@@ -644,7 +644,7 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &string_handle_t));
-    string_handle_t->scalar<string>()() =
+    string_handle_t->scalar<tstring>()() =
         resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
   }
 };
@@ -675,7 +675,7 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
     ResourceHandle resource_handle;
     OP_REQUIRES(
         ctx,
-        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
         errors::InvalidArgument(
             "Could not parse string_handle as a valid ResourceHandle"));
 

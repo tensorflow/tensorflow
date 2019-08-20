@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 
 #include <stdlib.h>
-#include <strings.h>
+#include <string.h>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "tensorflow/c/c_api.h"

@@ -100,8 +100,9 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Add an entry block to an empty function, and set up the block arguments
-  /// to match the signature of the function.
-  void addEntryBlock();
+  /// to match the signature of the function. The newly inserted entry block is
+  /// returned.
+  Block *addEntryBlock();
 
 private:
   // This trait needs access to `getNumFuncArguments` and `verifyType` hooks

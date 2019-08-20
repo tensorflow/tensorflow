@@ -18,12 +18,19 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectHooks.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Regex.h"
+
 using namespace mlir;
+using namespace detail;
+
+//===----------------------------------------------------------------------===//
+// Dialect Registration
+//===----------------------------------------------------------------------===//
 
 // Registry for all dialect allocation functions.
 static llvm::ManagedStatic<SmallVector<DialectAllocatorFunction, 8>>
@@ -61,8 +68,12 @@ void mlir::registerAllDialects(MLIRContext *context) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Dialect
+//===----------------------------------------------------------------------===//
+
 Dialect::Dialect(StringRef name, MLIRContext *context)
-    : name(name), context(context), allowUnknownOps(false) {
+    : name(name), context(context) {
   assert(isValidNamespace(name) && "invalid dialect namespace");
   registerDialect(context);
 }
@@ -88,6 +99,12 @@ Attribute Dialect::parseAttribute(StringRef attrData, Type type,
 
 /// Parse a type registered to this dialect.
 Type Dialect::parseType(StringRef tyData, Location loc) const {
+  // If this dialect allows unknown types, then represent this with OpaqueType.
+  if (allowsUnknownTypes()) {
+    auto ns = Identifier::get(getNamespace(), getContext());
+    return OpaqueType::get(ns, tyData, getContext());
+  }
+
   emitError(loc) << "dialect '" << getNamespace()
                  << "' provides no type parsing hook";
   return Type();
@@ -100,4 +117,34 @@ bool Dialect::isValidNamespace(StringRef str) {
     return true;
   llvm::Regex dialectNameRegex("^[a-zA-Z_][a-zA-Z_0-9\\$]*$");
   return dialectNameRegex.match(str);
+}
+
+/// Register a set of dialect interfaces with this dialect instance.
+void Dialect::addInterface(std::unique_ptr<DialectInterface> interface) {
+  auto it = registeredInterfaces.try_emplace(interface->getID(),
+                                             std::move(interface));
+  (void)it;
+  assert(it.second && "interface kind has already been registered");
+}
+
+//===----------------------------------------------------------------------===//
+// Dialect Interface
+//===----------------------------------------------------------------------===//
+
+DialectInterface::~DialectInterface() {}
+
+DialectInterfaceCollectionBase::DialectInterfaceCollectionBase(
+    MLIRContext *ctx, ClassID *interfaceKind) {
+  for (auto *dialect : ctx->getRegisteredDialects())
+    if (auto *interface = dialect->getRegisteredInterface(interfaceKind))
+      interfaces.try_emplace(dialect, interface);
+}
+
+DialectInterfaceCollectionBase::~DialectInterfaceCollectionBase() {}
+
+/// Get the interface for the dialect of given operation, or null if one
+/// is not registered.
+const DialectInterface *
+DialectInterfaceCollectionBase::getInterfaceFor(Operation *op) const {
+  return interfaces.lookup(op->getDialect());
 }

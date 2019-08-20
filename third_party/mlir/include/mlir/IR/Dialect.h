@@ -25,6 +25,7 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class DialectInterface;
 class OpBuilder;
 class Type;
 
@@ -57,7 +58,12 @@ public:
   /// Returns true if this dialect allows for unregistered operations, i.e.
   /// operations prefixed with the dialect namespace but not registered with
   /// addOperation.
-  bool allowsUnknownOperations() const { return allowUnknownOps; }
+  bool allowsUnknownOperations() const { return unknownOpsAllowed; }
+
+  /// Return true if this dialect allows for unregistered types, i.e., types
+  /// prefixed with the dialect namespace but not registered with addType.
+  /// These are represented with OpaqueType.
+  bool allowsUnknownTypes() const { return unknownTypesAllowed; }
 
   //===--------------------------------------------------------------------===//
   // Constant Hooks
@@ -162,6 +168,21 @@ public:
     return success();
   }
 
+  //===--------------------------------------------------------------------===//
+  // Interfaces
+  //===--------------------------------------------------------------------===//
+
+  /// Lookup an interface for the given ID if one is registered, otherwise
+  /// nullptr.
+  const DialectInterface *getRegisteredInterface(ClassID *interfaceID) {
+    auto it = registeredInterfaces.find(interfaceID);
+    return it != registeredInterfaces.end() ? it->getSecond().get() : nullptr;
+  }
+  template <typename InterfaceT> const InterfaceT *getRegisteredInterface() {
+    return static_cast<const InterfaceT *>(
+        getRegisteredInterface(InterfaceT::getInterfaceID()));
+  }
+
 protected:
   /// The constructor takes a unique namespace for this dialect as well as the
   /// context to bind to.
@@ -226,8 +247,23 @@ protected:
     }
   };
 
-  // Enable support for unregistered operations.
-  void allowUnknownOperations(bool allow = true) { allowUnknownOps = allow; }
+  /// Enable support for unregistered operations.
+  void allowUnknownOperations(bool allow = true) { unknownOpsAllowed = allow; }
+
+  /// Enable support for unregistered types.
+  void allowUnknownTypes(bool allow = true) { unknownTypesAllowed = allow; }
+
+  /// Register a dialect interface with this dialect instance.
+  void addInterface(std::unique_ptr<DialectInterface> interface);
+
+  /// Register a set of dialect interfaces with this dialect instance.
+  template <typename T, typename T2, typename... Tys> void addInterfaces() {
+    addInterfaces<T>();
+    addInterfaces<T2, Tys...>();
+  }
+  template <typename T> void addInterfaces() {
+    addInterface(std::make_unique<T>(this));
+  }
 
 private:
   // Register a symbol(e.g. type) with its given unique class identifier.
@@ -246,10 +282,18 @@ private:
   /// This is the context that owns this Dialect object.
   MLIRContext *context;
 
-  /// Flag that toggles if this dialect supports unregistered operations, i.e.
-  /// operations prefixed with the dialect namespace but not registered with
-  /// addOperation.
-  bool allowUnknownOps;
+  /// Flag that specifies whether this dialect supports unregistered operations,
+  /// i.e. operations prefixed with the dialect namespace but not registered
+  /// with addOperation.
+  bool unknownOpsAllowed = false;
+
+  /// Flag that specifies whether this dialect allows unregistered types, i.e.
+  /// types prefixed with the dialect namespace but not registered with addType.
+  /// These types are represented with OpaqueType.
+  bool unknownTypesAllowed = false;
+
+  /// A collection of registered dialect interfaces.
+  DenseMap<ClassID *, std::unique_ptr<DialectInterface>> registeredInterfaces;
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;

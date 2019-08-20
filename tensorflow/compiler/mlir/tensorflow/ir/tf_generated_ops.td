@@ -727,6 +727,51 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes exponential of x element-wise.  \\(y = e^x\\).
+  }];
+
+  let description = [{
+This function computes the exponential of every element in the input tensor.
+  i.e. `exp(x)` or `e^(x)`, where `x` is the input tensor.
+  `e` denotes Euler's number and is approximately equal to 2.718281.
+  Output is positive for any real input.
+
+  ```python
+  x = tf.constant(2.0)
+  tf.math.exp(x) ==> 7.389056
+
+  x = tf.constant([2.0, 8.0])
+  tf.math.exp(x) ==> array([7.389056, 2980.958], dtype=float32)
+  ```
+
+  For complex numbers, the exponential value is calculated as follows:
+
+  ```
+  e^(x+iy) = e^x * e^iy = e^x * (cos y + i sin y)
+  ```
+
+  Let's consider complex number 1+1j as an example.
+  e^1 * (cos 1 + i sin 1) = 2.7182818284590 * (0.54030230586+0.8414709848j)
+
+  ```python
+  x = tf.constant(1 + 1j)
+  tf.math.exp(x) ==> 1.4686939399158851+2.2873552871788423j
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ExpandDimsOp : TF_Op<"ExpandDims", [NoSideEffect]> {
   let summary = "Inserts a dimension of 1 into a tensor's shape.";
 
@@ -939,6 +984,32 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_FloorModOp : TF_Op<"FloorMod", [Broadcastable, NoSideEffect]>,
+                    WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+  }];
+
+  let description = [{
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$x,
+    TF_FpOrI32OrI64Tensor:$y
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_FusedBatchNormOp : TF_Op<"FusedBatchNorm", [NoSideEffect]> {
   let summary = "Batch normalization.";
 
@@ -972,6 +1043,39 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect]> {
+  let summary = "Batch normalization.";
+
+  let description = [{
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$x,
+    F32Tensor:$scale,
+    F32Tensor:$offset,
+    F32Tensor:$mean,
+    F32Tensor:$variance,
+
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<BoolAttr, "true">:$is_training
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
@@ -2743,6 +2847,25 @@ select(condition, t, e) ==> [[1, 2],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
+  let summary = "";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    TF_Tensor:$t,
+    TF_Tensor:$e
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_ShapeOp : TF_Op<"Shape", [NoSideEffect]> {
   let summary = "Returns the shape of a tensor.";
 
@@ -2842,6 +2965,23 @@ whose values are extracted from 'input' starting at the offsets in
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns a copy of the input tensor.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
@@ -3516,6 +3656,30 @@ num_elements: optional. If not -1, the number of elements in the list.
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
+  let summary = "Constructs a tensor by tiling a given tensor.";
+
+  let description = [{
+This operation creates a new tensor by replicating `input` `multiples` times.
+The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
+and the values of `input` are replicated `multiples[i]` times along the 'i'th
+dimension. For example, tiling `[a b c d]` by `[2]` produces
+`[a b c d a b c d]`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$multiples
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {

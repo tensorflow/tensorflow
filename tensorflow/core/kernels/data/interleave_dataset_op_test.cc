@@ -184,71 +184,71 @@ TestCase TestCase4() {
 
 // test case 5: cycle_length = 2, block_length = 2.
 TestCase TestCase5() {
-  return {
-      /*input_tensors*/
-      {CreateTensor<string>(TensorShape{3, 3, 1},
-                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
-      /*func*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_STRING}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-      /*cycle_length*/
-      CreateTensor<int64>(TensorShape({}), {2}),
-      /*block_length*/
-      CreateTensor<int64>(TensorShape({}), {2}),
-      /*expected_outputs*/
-      ConvertToTensorVec<string>({"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({1})},
-      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-      /*breakpoints*/ {0, 4, 11}};
+  return {/*input_tensors*/
+          {CreateTensor<tstring>(TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e",
+                                                        "f", "g", "h", "i"})},
+          /*func*/
+          MakeTensorSliceDatasetFunc(
+              DataTypeVector({DT_STRING}),
+              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+          /*cycle_length*/
+          CreateTensor<int64>(TensorShape({}), {2}),
+          /*block_length*/
+          CreateTensor<int64>(TensorShape({}), {2}),
+          /*expected_outputs*/
+          ConvertToTensorVec<tstring>(
+              {"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({1})},
+          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+          /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 6: cycle_length = 2, block_length = 3.
 TestCase TestCase6() {
-  return {
-      /*input_tensors*/
-      {CreateTensor<string>(TensorShape{3, 3, 1},
-                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
-      /*func*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_STRING}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-      /*cycle_length*/
-      CreateTensor<int64>(TensorShape({}), {2}),
-      /*block_length*/
-      CreateTensor<int64>(TensorShape({}), {3}),
-      /*expected_outputs*/
-      ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({1})},
-      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-      /*breakpoints*/ {0, 4, 11}};
+  return {/*input_tensors*/
+          {CreateTensor<tstring>(TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e",
+                                                        "f", "g", "h", "i"})},
+          /*func*/
+          MakeTensorSliceDatasetFunc(
+              DataTypeVector({DT_STRING}),
+              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+          /*cycle_length*/
+          CreateTensor<int64>(TensorShape({}), {2}),
+          /*block_length*/
+          CreateTensor<int64>(TensorShape({}), {3}),
+          /*expected_outputs*/
+          ConvertToTensorVec<tstring>(
+              {"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({1})},
+          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+          /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 7: cycle_length = 2, block_length = 5.
 TestCase TestCase7() {
-  return {
-      /*input_tensors*/
-      {CreateTensor<string>(TensorShape{3, 3, 1},
-                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
-      /*func*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_STRING}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-      /*cycle_length*/
-      CreateTensor<int64>(TensorShape({}), {2}),
-      /*block_length*/
-      CreateTensor<int64>(TensorShape({}), {5}),
-      /*expected_outputs*/
-      ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({1})},
-      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-      /*breakpoints*/ {0, 4, 11}};
+  return {/*input_tensors*/
+          {CreateTensor<tstring>(TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e",
+                                                        "f", "g", "h", "i"})},
+          /*func*/
+          MakeTensorSliceDatasetFunc(
+              DataTypeVector({DT_STRING}),
+              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+          /*cycle_length*/
+          CreateTensor<int64>(TensorShape({}), {2}),
+          /*block_length*/
+          CreateTensor<int64>(TensorShape({}), {5}),
+          /*expected_outputs*/
+          ConvertToTensorVec<tstring>(
+              {"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({1})},
+          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+          /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 8: cycle_length = 0, block_length = 5.
@@ -568,43 +568,6 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(interleave_dataset);
 
   EXPECT_EQ(interleave_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedInterleaveDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> interleave_dataset_kernel;
-  TF_ASSERT_OK(CreateInterleaveDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &interleave_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor cycle_length = test_case.cycle_length;
-  Tensor block_length = test_case.block_length;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
-       TensorValue(&block_length)});
-  std::unique_ptr<OpKernelContext> interleave_dataset_context;
-  TF_ASSERT_OK(CreateInterleaveDatasetContext(
-      interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
-  DatasetBase *interleave_dataset;
-  TF_ASSERT_OK(CreateDataset(interleave_dataset_kernel.get(),
-                             interleave_dataset_context.get(),
-                             &interleave_dataset));
-  core::ScopedUnref scoped_unref(interleave_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(interleave_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedInterleaveDatasetOpTest, IteratorOutputDtypes) {

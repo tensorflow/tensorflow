@@ -66,7 +66,9 @@ public:
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
-  void addPass(FunctionPassBase *pass) { passes.emplace_back(pass); }
+  void addPass(std::unique_ptr<FunctionPassBase> pass) {
+    passes.push_back(std::move(pass));
+  }
 
   /// Returns the number of passes held by this executor.
   size_t size() const { return passes.size(); }
@@ -94,7 +96,9 @@ public:
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
-  void addPass(ModulePassBase *pass) { passes.emplace_back(pass); }
+  void addPass(std::unique_ptr<ModulePassBase> pass) {
+    passes.push_back(std::move(pass));
+  }
 
   static bool classof(const PassExecutor *pe) {
     return pe->getKind() == Kind::ModuleExecutor;

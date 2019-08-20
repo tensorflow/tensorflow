@@ -45,7 +45,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Operation *op) {
       // Don't compute dominance if the region is empty.
       if (region.empty())
         continue;
-      auto opDominance = llvm::make_unique<base>();
+      auto opDominance = std::make_unique<base>();
       opDominance->recalculate(region);
       dominanceInfos.try_emplace(&region, std::move(opDominance));
     }
@@ -70,7 +70,7 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(Block *a, Block *b) {
   if (regionA != regionB) {
     Operation *bAncestor;
     do {
-      bAncestor = regionB->getContainingOp();
+      bAncestor = regionB->getParentOp();
       // If 'bAncestor' is the top level region, then 'a' is a block that post
       // dominates 'b'.
       if (!bAncestor || !bAncestor->getBlock())

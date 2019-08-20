@@ -213,8 +213,8 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output("split_infos",
                                                      TensorShape({size_output}),
                                                      &output_splits_t));
-    tensorflow::TTypes<string>::Vec output_splits =
-        output_splits_t->vec<string>();
+    tensorflow::TTypes<tstring>::Vec output_splits =
+        output_splits_t->vec<tstring>();
 
     if (num_elements == 0) {
       return;
@@ -529,8 +529,8 @@ class BuildSparseInequalitySplitsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 "split_infos", TensorShape({num_elements}),
                                 &output_splits_t));
-    tensorflow::TTypes<string>::Vec output_splits =
-        output_splits_t->vec<string>();
+    tensorflow::TTypes<tstring>::Vec output_splits =
+        output_splits_t->vec<tstring>();
     SplitBuilderState state(context);
     // For each tree node that needs to be split.
     for (int root_idx = 0; root_idx < num_elements; ++root_idx) {
@@ -780,8 +780,8 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output("split_infos",
                                                      TensorShape({size_output}),
                                                      &output_splits_t));
-    tensorflow::TTypes<string>::Vec output_splits =
-        output_splits_t->vec<string>();
+    tensorflow::TTypes<tstring>::Vec output_splits =
+        output_splits_t->vec<tstring>();
     if (num_elements == 0) {
       return;
     }

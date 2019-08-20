@@ -48,6 +48,27 @@ from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
 
 
+def random_gamma(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(shape, 1.0)
+
+
+def random_gamma_with_alpha_beta(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(
+      shape, alpha=[[1.], [3.], [5.], [6.]], beta=[[3., 4.]])
+
+
+def random_poisson_v2(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, 1.0)
+
+
+def random_poisson_v2_with_lam(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, [12.2, 3.3])
+
+
+def fill(shape):  # pylint: disable=invalid-name
+  return array_ops.fill(shape, 1.0)
+
+
 class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
@@ -592,6 +613,46 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     g = GetOptimizedGraph()
     self.assertLen([n for n in g.node if n.op == "TensorListPushBack"], 1)
 
+  def _assertNotAccumulated(self, while_op, index):
+    """Asserts that `while_op` input at `index` is not accumulated."""
+    body_graph = while_v2._get_graph(while_op, "body")
+    placeholder = body_graph.inputs[index]
+    self.assertNotIn("TensorListPushBack",
+                     [op.type for op in placeholder.consumers()])
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testDoNotOutputLoopCounterAsIntermediate(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    v = constant_op.constant(5.0, name="v")
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+    # Skip over Identity.
+    while_op = r.op.inputs[0].op
+    self._assertNotAccumulated(while_op, 0)
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testDoNotOutputLoopInvariantAsIntermediate(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+
+    def GetInputIndex(op, tensor):
+      for index, inp in enumerate(op.inputs):
+        if inp is tensor:
+          return index
+
+    v = constant_op.constant(5.0, name="v")
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+    # Skip over Identity.
+    while_op = r.op.inputs[0].op
+    # We can't directly use while_op.inputs.index() because Tensors are not
+    # hashshable.
+    index = GetInputIndex(while_op, v)
+    self._assertNotAccumulated(while_op, index)
+
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
     x = constant_op.constant(2.)
@@ -844,14 +905,25 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       # Computing the gradient again shouldn't rewrite while_op again.
       self.assertLen(while_op.outputs, 4)
 
+  @parameterized.named_parameters(
+      ("RandomUniform", random_ops.random_uniform, [5, 3]),
+      ("RandomNormal", random_ops.random_normal, [5, 3]),
+      ("ParameterizedTruncatedNormal",
+       random_ops.parameterized_truncated_normal, [5, 3]),
+      ("TruncatedNormal", random_ops.truncated_normal, [5, 3]),
+      ("RandomGamma", random_gamma, [5, 3]),
+      ("RandomPoissonV2", random_poisson_v2, [5, 3]),
+      ("RandomGammaWithAlphaBeta", random_gamma_with_alpha_beta, [5, 3, 4, 2]),
+      ("RandomPoissonV2WithLam", random_poisson_v2_with_lam, [5, 3, 2]),
+  )
   @test_util.run_deprecated_v1
-  def testRandomUniformShape(self):
+  def testRandomOpsShape(self, random_fn, expected_shape):
     shape = constant_op.constant([3])
 
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
-      u = random_ops.random_uniform(shape_extended)
-      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      u = random_fn(shape_extended)
+      assert u.shape.as_list() == expected_shape, str(u.shape.as_list())
       return i + 1, u
 
     _, _ = while_loop_v2(
@@ -859,7 +931,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         body=Body,
         loop_vars=[
             0,
-            array_ops.zeros([5, 3], dtype=dtypes.float32),
+            array_ops.zeros(expected_shape, dtype=dtypes.float32),
         ])
 
   @test_util.run_deprecated_v1
@@ -869,7 +941,31 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
       u = array_ops.reshape(u, [-1])
+      assert u.shape.as_list() == [60], str(u.shape.as_list())
       u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
+
+  @parameterized.named_parameters(
+      ("Zeros", array_ops.zeros),
+      ("Ones", array_ops.ones),
+      ("Fill", fill),
+  )
+  @test_util.run_deprecated_v1
+  def testFillOpsShape(self, fill_fn):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = fill_fn(shape_extended)
       assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
       return i + 1, u
 

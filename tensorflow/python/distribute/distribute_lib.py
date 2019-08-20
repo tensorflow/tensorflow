@@ -97,8 +97,11 @@ from __future__ import print_function
 
 import copy
 import enum  # pylint: disable=g-bad-import-order
+import json
+import os
 import threading
 import weakref
+
 import six
 
 from tensorflow.python.autograph.core import ag_ctx
@@ -123,6 +126,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -841,7 +845,12 @@ class Strategy(object):
           return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
-      denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      if v.shape.rank == 1:
+        # TODO(b/139422050): Currently tf.shape is not supported in TPU dynamic
+        # padder, use tf.size instead to workaround if the rank is 1.
+        denom = array_ops.size(v, out_type=dtypes.int64)
+      else:
+        denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -943,6 +952,20 @@ class Strategy(object):
 
   def __copy__(self):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
+
+  def _in_multi_worker_mode(self):
+    """Method to infer if this `Strategy` is working in multi-worker settings.
+
+    Experimental. Signature and implementation are subject to change.
+
+    Returns:
+      Whether this strategy indicates working in multi-worker settings.
+    """
+    # TODO(b/137857865): Check for whether it is multi_worker_mode should not
+    # rely on TF_CONFIG environment variable.
+    tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
+    cluster_spec = server_lib.ClusterSpec(tf_config.get("cluster", {}))
+    return tf_config and "master" not in cluster_spec.jobs
 
 
 # TF v1.x version has additional deprecated APIs

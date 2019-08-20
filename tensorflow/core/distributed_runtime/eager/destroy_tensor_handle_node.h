@@ -35,7 +35,7 @@ class DestroyTensorHandleNode : public tensorflow::EagerNode {
 
   Status Run() override {
     EnqueueResponse* response = new EnqueueResponse;
-    eager_client_->StreamingEnqueueAsync(
+    return eager_client_->StreamingEnqueueAsync(
         request_.get(), response, [response](const tensorflow::Status& s) {
           if (!s.ok()) {
             LOG(WARNING) << "Ignoring an error encountered when deleting "
@@ -44,7 +44,6 @@ class DestroyTensorHandleNode : public tensorflow::EagerNode {
           }
           delete response;
         });
-    return Status::OK();
   }
 
   void Abort(Status status) override {}

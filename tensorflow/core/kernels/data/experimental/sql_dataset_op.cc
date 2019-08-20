@@ -103,6 +103,8 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

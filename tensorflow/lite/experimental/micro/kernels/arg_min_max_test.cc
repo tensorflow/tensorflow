@@ -24,31 +24,6 @@ namespace tflite {
 namespace testing {
 namespace {
 
-#define TFLMICRO_CREATE_TENSOR(type_name, type_t, tftype, field)    \
-  inline TfLiteTensor Create##type_name##Tensor(                    \
-      const type_t* data, TfLiteIntArray* dims, const char* name) { \
-    TfLiteTensor result;                                            \
-    result.type = tftype;                                           \
-    result.data.field = const_cast<type_t*>(data);                  \
-    result.dims = dims;                                             \
-    result.params = {};                                             \
-    result.allocation_type = kTfLiteMemNone;                        \
-    result.bytes = ElementCount(*dims) * sizeof(type_t);            \
-    result.allocation = nullptr;                                    \
-    result.name = name;                                             \
-    return result;                                                  \
-  }                                                                 \
-  inline TfLiteTensor Create##type_name##Tensor(                    \
-      std::initializer_list<type_t> data, TfLiteIntArray* dims,     \
-      const char* name) {                                           \
-    return Create##type_name##Tensor(data.begin(), dims, name);     \
-  }
-
-TFLMICRO_CREATE_TENSOR(Int32, int32_t, kTfLiteInt32, i32)
-TFLMICRO_CREATE_TENSOR(Int64, int64_t, kTfLiteInt64, i64)
-
-#undef TFLMICRO_CREATE_TENSOR
-
 // If expected output is empty, the test is expected to fail.
 void TestArgMinMax(TfLiteTensor* input_tensor, TfLiteTensor* axis_tensor,
                    TfLiteTensor* output_tensor,
@@ -123,10 +98,10 @@ TF_LITE_MICRO_TEST(GetMaxArgFloat) {
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 1, 4});
   auto input_tensor = tflite::testing::CreateFloatTensor(
       {0.1, 0.9, 0.7, 0.3}, input_dims, "input_tensor");
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -145,10 +120,27 @@ TF_LITE_MICRO_TEST(GetMaxArgUInt8) {
       F2Q(7., input_min, input_max), F2Q(3., input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
+      output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
+      "output_tensor");
+  tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
+                                 {1});
+}
+
+TF_LITE_MICRO_TEST(GetMaxArgInt8) {
+  int32_t output_data[1];
+  TfLiteIntArray* input_dims =
+      tflite::testing::IntArrayFromInitializer({4, 1, 1, 1, 4});
+  std::initializer_list<int8_t> input_data = {1, 9, 7, 3};
+  auto input_tensor = tflite::testing::CreateTensor<int8_t, kTfLiteInt8>(
+      input_data, input_dims, "input_tensor");
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
+      {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
+      "axis_tensor");
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -167,10 +159,10 @@ TF_LITE_MICRO_TEST(GetMaxArgInt32) {
       F2Q32(7, input_min, input_max), F2Q32(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantized32Tensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -191,10 +183,10 @@ TF_LITE_MICRO_TEST(GetMaxArgMulDimensions) {
       F2Q(7, input_min, input_max), F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -215,10 +207,10 @@ TF_LITE_MICRO_TEST(GetMaxArgNegativeAxis) {
       F2Q(7, input_min, input_max), F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {-2}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 4}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -239,10 +231,10 @@ TF_LITE_MICRO_TEST(GetMaxArgOutput64) {
       F2Q(7, input_min, input_max),  F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt64Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int64_t, kTfLiteInt64>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -263,10 +255,10 @@ TF_LITE_MICRO_TEST(GetMaxArgAxis64) {
       F2Q(7, input_min, input_max),  F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt64Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int64_t, kTfLiteInt64>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -279,10 +271,10 @@ TF_LITE_MICRO_TEST(GetMinArgFloat) {
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 1, 4});
   auto input_tensor = tflite::testing::CreateFloatTensor(
       {0.1, 0.9, 0.7, 0.3}, input_dims, "input_tensor");
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -303,10 +295,27 @@ TF_LITE_MICRO_TEST(GetMinArgUInt8) {
       F2Q(7.0, input_min, input_max), F2Q(3.0, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
+      output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
+      "output_tensor");
+  tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
+                                 {0}, true);
+}
+
+TF_LITE_MICRO_TEST(GetMinArgInt8) {
+  int32_t output_data[1];
+  TfLiteIntArray* input_dims =
+      tflite::testing::IntArrayFromInitializer({4, 1, 1, 1, 4});
+  std::initializer_list<int8_t> input_data = {1, 9, 7, 3};
+  auto input_tensor = tflite::testing::CreateTensor<int8_t, kTfLiteInt8>(
+      input_data, input_dims, "input_tensor");
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
+      {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
+      "axis_tensor");
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -327,10 +336,10 @@ TF_LITE_MICRO_TEST(GetMinArgMulDimensions) {
       F2Q(7, input_min, input_max), F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -351,10 +360,10 @@ TF_LITE_MICRO_TEST(GetMinArgOutput64) {
       F2Q(7, input_min, input_max),  F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt32Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt64Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int64_t, kTfLiteInt64>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,
@@ -375,10 +384,10 @@ TF_LITE_MICRO_TEST(GetMinArgAxis64) {
       F2Q(7, input_min, input_max),  F2Q(3, input_min, input_max)};
   auto input_tensor = tflite::testing::CreateQuantizedTensor(
       input_data, input_dims, "input_tensor", input_min, input_max);
-  auto axis_tensor = tflite::testing::CreateInt64Tensor(
+  auto axis_tensor = tflite::testing::CreateTensor<int64_t, kTfLiteInt64>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
-  auto output_tensor = tflite::testing::CreateInt32Tensor(
+  auto output_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       output_data, tflite::testing::IntArrayFromInitializer({3, 1, 1, 2}),
       "output_tensor");
   tflite::testing::TestArgMinMax(&input_tensor, &axis_tensor, &output_tensor,

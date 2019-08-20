@@ -21,8 +21,8 @@ set -e
 cd /tmp
 
 rm -rf arduino-cli*
-curl -L -O "https://downloads.arduino.cc/arduino-cli/arduino-cli-latest-linux64.tar.bz2"
-tar xjf arduino-cli-latest-linux64.tar.bz2
+curl -L -O "https://github.com/arduino/arduino-cli/releases/download/0.4.0/arduino-cli_0.4.0_Linux_64bit.tar.gz"
+tar xzf arduino-cli_0.4.0_Linux_64bit.tar.gz
 
 /tmp/arduino-cli core update-index
 /tmp/arduino-cli core install arduino:mbed

@@ -229,3 +229,6 @@ some additional parameters as detailed below.
 *   `option_benchmark_run_delay`: `float` (default=-1.0) \
     The delay between two consecutive runs of benchmarking performance options
     in seconds.
+*   `random_shuffle_benchmark_runs`: `bool` (default=true) \
+    Whether to perform all benchmark runs, each of which has different
+    performance options, in a random order.

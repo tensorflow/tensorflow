@@ -29,6 +29,10 @@ bool IsNumericSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32;
 }
 
+bool IsLogicalSupportedType(const TfLiteType type) {
+  return type == kTfLiteBool;
+}
+
 typedef bool (*IsSupportedType)(TfLiteType);
 template <IsSupportedType>
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -65,8 +69,41 @@ inline TfLiteStatus EvalNumeric(TfLiteContext* context, TfLiteNode* node,
   return EvalImpl<float>(context, node, float_func, kTfLiteFloat32);
 }
 
+inline TfLiteStatus EvalLogical(TfLiteContext* context, TfLiteNode* node,
+                                bool bool_func(bool)) {
+  return EvalImpl<bool>(context, node, bool_func, kTfLiteBool);
+}
+
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::abs);
+}
+
+TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::sin);
+}
+
+TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::cos);
+}
+
+TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::log);
+}
+
+TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, std::sqrt);
+}
+
+TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, [](float f) { return 1.f / std::sqrt(f); });
+}
+
+TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, [](float f) { return f * f; });
+}
+
+TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalLogical(context, node, [](bool v) { return !v; });
 }
 
 }  // namespace
@@ -79,6 +116,63 @@ TfLiteRegistration* Register_ABS() {
       elementwise::AbsEval};
   return &r;
 }
+
+TfLiteRegistration* Register_SIN() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::SinEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_COS() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::CosEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOG() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::LogEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_SQRT() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::SqrtEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_RSQRT() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::RsqrtEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_SQUARE() {
+  static TfLiteRegistration r = {
+      /* init */ nullptr, /* free */ nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::SquareEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOGICAL_NOT() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsLogicalSupportedType>,
+      elementwise::LogicalNotEval};
+  return &r;
+}
+
 }  // namespace micro
 }  // namespace ops
 }  // namespace tflite

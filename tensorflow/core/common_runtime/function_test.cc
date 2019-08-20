@@ -1848,17 +1848,17 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
   TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.rendezvous->Unref();
 }
 

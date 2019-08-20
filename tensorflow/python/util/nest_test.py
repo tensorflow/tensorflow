@@ -437,6 +437,16 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     self.assertEqual(7, nest.map_structure(lambda x, y: x + y, 3, 4))
 
+    structure3 = collections.defaultdict(list)
+    structure3["a"] = [1, 2, 3, 4]
+    structure3["b"] = [2, 3, 4, 5]
+
+    expected_structure3 = collections.defaultdict(list)
+    expected_structure3["a"] = [2, 3, 4, 5]
+    expected_structure3["b"] = [3, 4, 5, 6]
+    self.assertEqual(expected_structure3,
+                     nest.map_structure(lambda x: x + 1, structure3))
+
     # Empty structures
     self.assertEqual((), nest.map_structure(lambda x: x + 1, ()))
     self.assertEqual([], nest.map_structure(lambda x: x + 1, []))

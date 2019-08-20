@@ -371,10 +371,16 @@ std::string VariableAccessor::GetConstDeclarations() const {
   // with index.
   std::string declarations;
   for (const auto& variable : name_to_variable_) {
+    // Skip shared variables.
+    const std::string& variable_name = variable.second.name;
+    if (shared_variables_.find(variable_name) != shared_variables_.end()) {
+      continue;
+    }
+
     const auto& value = variable.second.value;
     if (IsVariableLength(value)) {
       absl::StrAppend(&declarations, "const ", GetVariableType(value), " ",
-                      variable.second.name, "[] = ");
+                      variable_name, "[] = ");
       GetValue(value, &declarations);
       absl::StrAppend(&declarations, ";\n");
     }

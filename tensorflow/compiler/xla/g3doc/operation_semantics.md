@@ -1385,7 +1385,7 @@ as `batch_dims`.
 
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
-The `operand.rank` must equal the sume of `offset_dims.size` and
+The `operand.rank` must equal the sum of `offset_dims.size` and
 `collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
@@ -2532,6 +2532,11 @@ arguments to the slice operation.
 :                 :                     : respective `start_indices` value for :
 :                 :                     : the dimension and less than or equal :
 :                 :                     : to the size of the dimension.        :
+| `strides`      | `ArraySlice<int64>` | List of N integers that decides the   |
+:                 :                     : input stride of the slice.  The slice :
+:                 :                     : picks every `strides[d]` element in  :
+:                 :                     : dimension `d`.                       :
+
 
 1-dimensional example:
 

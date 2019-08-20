@@ -621,7 +621,7 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   strings::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!GetNodeAttrSimple(n, "T", &dt)) {
+    if (!TryGetNodeAttr(n, "T", &dt)) {
       dt = DT_INVALID;
     }
     if (!n.device().empty()) {
@@ -1389,7 +1389,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttrSimple(ndef, kFuncAttr, &forward_func_attrs)) {
+  if (!TryGetNodeAttr(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1434,7 +1434,7 @@ template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttrSimple(AttrSlice(&fdef->attr()), attr, value)) {
+  if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
     return Status::OK();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");

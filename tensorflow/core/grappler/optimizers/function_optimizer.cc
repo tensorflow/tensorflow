@@ -146,8 +146,7 @@ class FakeDevice : public Device {
 bool MarkedNoSpecialize(const FunctionDef& fdef) {
   const auto attr = AttrSlice(&fdef.attr());
   bool nospecialize = false;
-  return GetNodeAttrSimple(attr, kNoSpecializeAttr, &nospecialize) &&
-         nospecialize;
+  return TryGetNodeAttr(attr, kNoSpecializeAttr, &nospecialize) && nospecialize;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -787,7 +786,7 @@ using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 // Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  bool found = GetNodeAttrSimple(n->attrs(), attr_name, &match);
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
   return found && match;
 }
 

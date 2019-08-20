@@ -128,7 +128,7 @@ TEST(BufferMapTest, SetFromTfLiteString) {
   buffer_map.SetFromTfLite(0, t.get());
   ASSERT_TRUE(buffer_map.HasTensor(0));
 
-  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+  EXPECT_THAT(GetTensorData<tensorflow::tstring>(buffer_map.GetTensor(0)),
               ElementsAre("", "", "", "str1", "", ""));
 
   // Also check details of the tensor.
@@ -162,7 +162,7 @@ TEST(BufferMapTest, SetFromTfLiteStringTwice) {
   buffer_map.SetFromTfLite(0, t1.get());
   buffer_map.SetFromTfLite(0, t2.get());
 
-  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+  EXPECT_THAT(GetTensorData<tensorflow::tstring>(buffer_map.GetTensor(0)),
               ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
 }
 

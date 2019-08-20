@@ -52,6 +52,9 @@ public:
   AffineMap(const AffineMap &other) : map(other.map) {}
   AffineMap &operator=(const AffineMap &other) = default;
 
+  /// Returns a zero result affine map with no dimensions or symbols: () -> ().
+  static AffineMap get(MLIRContext *context);
+
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        ArrayRef<AffineExpr> results);
 
@@ -141,6 +144,9 @@ public:
 
 private:
   ImplType *map;
+
+  static AffineMap getImpl(unsigned dimCount, unsigned symbolCount,
+                           ArrayRef<AffineExpr> results, MLIRContext *context);
 };
 
 // Make AffineExpr hashable.

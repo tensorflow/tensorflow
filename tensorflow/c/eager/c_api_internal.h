@@ -293,7 +293,18 @@ struct TFE_CancellationManager {
 };
 
 struct TFE_Executor {
-  tensorflow::EagerExecutor executor;
+  explicit TFE_Executor(bool async)
+      : owned_executor(new tensorflow::EagerExecutor(async)) {}
+
+  explicit TFE_Executor(tensorflow::EagerExecutor* executor)
+      : owned_executor(nullptr), unowned_executor(executor) {}
+
+  tensorflow::EagerExecutor* executor() {
+    return owned_executor == nullptr ? unowned_executor : owned_executor.get();
+  }
+
+  std::unique_ptr<tensorflow::EagerExecutor> owned_executor;
+  tensorflow::EagerExecutor* unowned_executor;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

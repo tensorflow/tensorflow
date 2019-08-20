@@ -109,7 +109,7 @@ TEST_F(SummaryFileWriterTest, WriteTensor) {
       "string_tensor_test",
       [](SummaryWriterInterface* writer) {
         Tensor hello(DT_STRING, TensorShape({}));
-        hello.scalar<string>()() = "hello";
+        hello.scalar<tstring>()() = "hello";
         TF_RETURN_IF_ERROR(writer->WriteTensor(
             2, hello, "name", SummaryMetadata().SerializeAsString()));
         TF_RETURN_IF_ERROR(writer->Flush());

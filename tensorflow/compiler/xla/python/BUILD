@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
-load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 
 package(
@@ -169,9 +169,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "device",
-    srcs = ["device.cc"],
-    hdrs = ["device.h"],
+    name = "device_state",
+    srcs = ["device_state.cc"],
+    hdrs = ["device_state.h"],
     deps = [
         ":event_pool",
         ":semaphore",
@@ -190,7 +190,7 @@ cc_library(
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
-        ":device",
+        ":device_state",
         ":shared_device_buffer",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
@@ -239,7 +239,7 @@ cc_library(
     ],
 )
 
-tf_pybind_extension(
+pybind_extension(
     name = "xla_extension",
     srcs = [
         "xla.cc",

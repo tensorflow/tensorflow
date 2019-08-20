@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_COMMON_H_
 
-#include <cstddef>
+#include <algorithm>
 #include <cstdint>
+#include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
@@ -214,7 +217,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 #if RUY_PLATFORM(NEON)
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx512)
 #endif
 

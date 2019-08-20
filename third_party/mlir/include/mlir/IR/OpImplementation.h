@@ -260,6 +260,9 @@ public:
   /// Parse a `]` token if present.
   virtual ParseResult parseOptionalRSquare() = 0;
 
+  /// Parse a `...` token if present;
+  virtual ParseResult parseOptionalEllipsis() = 0;
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
@@ -300,6 +303,14 @@ public:
   /// Parse a named dictionary into 'result' if it is present.
   virtual ParseResult
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Identifier Parsing
+  //===--------------------------------------------------------------------===//
+
+  virtual ParseResult
+  parseSymbolName(StringAttr &result, StringRef attrName,
+                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Operand Parsing
@@ -400,18 +411,24 @@ public:
 
   /// Parses a region. Any parsed blocks are appended to "region" and must be
   /// moved to the op regions after the op is created. The first block of the
-  /// region takes "arguments" of types "argTypes".
+  /// region takes "arguments" of types "argTypes". If "enableNameShadowing" is
+  /// set to true, the argument names are allowed to shadow the names of other
+  /// existing SSA values defined above the region scope. "enableNameShadowing"
+  /// can only be set to true for regions attached to operations that are
+  /// "IsolatedFromAbove".
   virtual ParseResult parseRegion(Region &region,
                                   ArrayRef<OperandType> arguments,
-                                  ArrayRef<Type> argTypes) = 0;
+                                  ArrayRef<Type> argTypes,
+                                  bool enableNameShadowing = false) = 0;
 
   /// Parses a region if present.
   virtual ParseResult parseOptionalRegion(Region &region,
                                           ArrayRef<OperandType> arguments,
-                                          ArrayRef<Type> argTypes) = 0;
+                                          ArrayRef<Type> argTypes,
+                                          bool enableNameShadowing = false) = 0;
 
-  /// Parse a region argument.  Region arguments define new values; so this also
-  /// checks if values with the same name have not been defined yet.
+  /// Parse a region argument, this argument is resolved when calling
+  /// 'parseRegion'.
   virtual ParseResult parseRegionArgument(OperandType &argument) = 0;
 
   /// Parse zero or more region arguments with a specified surrounding

@@ -259,6 +259,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   }
 
   OpKernelContext::Params params;
+  params.is_eager = true;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;

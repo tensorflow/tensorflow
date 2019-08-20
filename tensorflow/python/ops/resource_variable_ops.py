@@ -540,9 +540,6 @@ class BaseResourceVariable(variables.VariableV1):
     return self._initial_value
 
   @property
-  @deprecated(
-      None,
-      "Apply a constraint manually following the optimizer update step.")
   def constraint(self):
     """Returns the constraint function associated with this variable.
 

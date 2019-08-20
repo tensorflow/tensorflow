@@ -574,24 +574,28 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {
-  auto* executor = new TFE_Executor;
-  if (is_async) {
-    executor->executor.EnableAsync();
-  }
-  return executor;
+  return new TFE_Executor(is_async);
 }
 
 void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
 
+bool TFE_ExecutorIsAsync(TFE_Executor* executor) {
+  return executor->executor()->Async();
+}
+
 void TFE_ExecutorWaitForAllPendingNodes(TFE_Executor* executor,
                                         TF_Status* status) {
-  status->status = executor->executor.WaitForAllPendingNodes();
+  status->status = executor->executor()->WaitForAllPendingNodes();
+}
+
+void TFE_ExecutorClearError(TFE_Executor* executor) {
+  executor->executor()->ClearError();
 }
 
 void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
-  ctx->context->SetExecutorForThread(&executor->executor);
+  ctx->context->SetExecutorForThread(executor->executor());
 }
 
-void TFE_ContextClearExecutorForThread(TFE_Context* ctx) {
-  ctx->context->ClearExecutorForThread();
+TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
+  return new TFE_Executor(ctx->context->Executor());
 }

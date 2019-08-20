@@ -1392,7 +1392,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_oss",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1577,19 +1580,12 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "training_v2_utils_test",
-    size = "medium",
-    srcs = ["engine/training_v2_utils_test.py"],
-    additional_deps = [
+py_library(
+    name = "model_subclassing_test_util",
+    srcs = ["model_subclassing_test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
     ],
 )
 
@@ -1598,6 +1594,25 @@ tf_py_test(
     size = "medium",
     srcs = ["model_subclassing_test.py"],
     additional_deps = [
+        ":model_subclassing_test_util",
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "model_subclassing_compiled_test",
+    size = "medium",
+    srcs = ["model_subclassing_compiled_test.py"],
+    additional_deps = [
+        ":model_subclassing_test_util",
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",

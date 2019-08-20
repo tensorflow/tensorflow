@@ -29,6 +29,7 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@local_config_nccl//:nccl",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

@@ -434,6 +434,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:annotation",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -443,7 +444,19 @@ tf_cuda_library(
     hdrs = ["python_traceme.h"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cuda_library(
+    name = "python_scoped_annotation",
+    hdrs = ["python_scoped_annotation.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "//tensorflow/core/platform:annotation",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )

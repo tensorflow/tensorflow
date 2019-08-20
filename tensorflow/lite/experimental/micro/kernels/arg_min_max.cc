@@ -66,9 +66,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
         case kTfLiteUInt8:
           TF_LITE_ARG_MIN_MAX(uint8_t, int32_t, int32_t);
           break;
+        case kTfLiteInt8:
+          TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int32_t);
+          break;
         default:
           context->ReportError(context,
-                               "Only float32, uint8 are "
+                               "Only float32, uint8 and int8 are "
                                "supported currently, got %s.",
                                TfLiteTypeGetName(input->type));
           return kTfLiteError;

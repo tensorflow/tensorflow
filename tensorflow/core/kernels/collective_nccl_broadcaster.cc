@@ -48,12 +48,14 @@ void NcclBroadcaster::Run(StatusCallback done) {
     NcclManager::instance()->AddBroadcastSend(
         std::move(participant),
         {std::move(nccl_collective_key), num_local_devices, num_global_devices,
-         col_params_->group.runtime_details.communicator_key});
+         col_params_->group.runtime_details.communicator_key,
+         col_params_->source_rank});
   } else {
     NcclManager::instance()->AddBroadcastRecv(
         std::move(participant),
         {std::move(nccl_collective_key), num_local_devices, num_global_devices,
-         col_params_->group.runtime_details.communicator_key});
+         col_params_->group.runtime_details.communicator_key,
+         col_params_->source_rank});
   }
   {
     // `WaitForDependencies` may block if the collective instances on which this

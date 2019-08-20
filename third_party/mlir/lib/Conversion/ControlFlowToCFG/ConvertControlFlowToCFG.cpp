@@ -22,12 +22,12 @@
 
 #include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -266,8 +266,7 @@ void ControlFlowToCFGPass::runOnFunction() {
   populateLoopToStdConversionPatterns(patterns, &getContext());
   ConversionTarget target(getContext());
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns))))
+  if (failed(applyPartialConversion(getFunction(), target, patterns)))
     signalPassFailure();
 }
 

@@ -31,9 +31,9 @@ namespace {
 
 /// Pattern to convert a kernel function in GPU dialect (a FuncOp with the
 /// attribute gpu.kernel) within a spv.module.
-class KernelFnConversion final : public SPIRVFnLowering {
+class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
 public:
-  using SPIRVFnLowering::SPIRVFnLowering;
+  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
@@ -47,12 +47,14 @@ KernelFnConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   auto funcOp = cast<FuncOp>(op);
   FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
-    return succeeded(lowerFunction(funcOp, operands, rewriter, newFuncOp))
+    return succeeded(lowerFunction(funcOp, operands, &typeConverter, rewriter,
+                                   newFuncOp))
                ? matchSuccess()
                : matchFailure();
   }
 
-  if (failed(lowerAsEntryFunction(funcOp, operands, rewriter, newFuncOp))) {
+  if (failed(lowerAsEntryFunction(funcOp, operands, &typeConverter, rewriter,
+                                  newFuncOp))) {
     return matchFailure();
   }
   newFuncOp.getOperation()->removeAttr(Identifier::get(
@@ -101,18 +103,19 @@ void GPUToSPIRVPass::runOnModule() {
   }
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVTypeConverter typeConverter(context);
-  SPIRVEntryFnTypeConverter entryFnConverter(context);
+  SPIRVBasicTypeConverter basicTypeConverter(context);
+  SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
-  patterns.insert<KernelFnConversion>(context, typeConverter, entryFnConverter);
+  patterns.insert<KernelFnConversion>(context, typeConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>(
-      [&](FuncOp Op) { return typeConverter.isSignatureLegal(Op.getType()); });
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp Op) {
+    return basicTypeConverter.isSignatureLegal(Op.getType());
+  });
 
-  if (failed(applyFullConversion(spirvModules, target, std::move(patterns),
+  if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
   }

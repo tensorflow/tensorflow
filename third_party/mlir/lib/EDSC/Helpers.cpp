@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/EDSC/Helpers.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::edsc;

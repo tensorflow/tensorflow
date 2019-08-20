@@ -31,9 +31,9 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/MapVector.h"
@@ -162,12 +162,12 @@ struct AffineDataCopyGeneration
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-FunctionPassBase *mlir::createAffineDataCopyGenerationPass(
+std::unique_ptr<FunctionPassBase> mlir::createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
     int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
-  return new AffineDataCopyGeneration(slowMemorySpace, fastMemorySpace,
-                                      tagMemorySpace, minDmaTransferSize,
-                                      fastMemCapacityBytes);
+  return std::make_unique<AffineDataCopyGeneration>(
+      slowMemorySpace, fastMemorySpace, tagMemorySpace, minDmaTransferSize,
+      fastMemCapacityBytes);
 }
 
 // Info comprising stride and number of elements transferred every stride.
@@ -249,7 +249,7 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
 
 static InFlightDiagnostic LLVM_ATTRIBUTE_UNUSED
 emitRemarkForBlock(Block &block) {
-  return block.getContainingOp()->emitRemark();
+  return block.getParentOp()->emitRemark();
 }
 
 /// Generates a point-wise copy from/to `memref' to/from `fastMemRef' and
@@ -743,7 +743,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(region->compute(opInst, copyDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
@@ -872,7 +872,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
   if (totalCopyBuffersSizeInBytes > fastMemCapacityBytes) {
     StringRef str = "Total size of all copy buffers' for this block "
                     "exceeds fast memory capacity\n";
-    block->getContainingOp()->emitError(str);
+    block->getParentOp()->emitError(str);
   }
 
   return totalCopyBuffersSizeInBytes;

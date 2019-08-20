@@ -237,13 +237,14 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked  (optional, defaults to `None`).
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
-      `recurrent_dropout` is used.
+      `recurrent_dropout` is used  (optional, defaults to `None`).
     initial_state: List of initial state tensors to be passed to the first
-      call of the cell.
+      call of the cell  (optional, defaults to `None` which causes creation
+      of zero-filled initial state tensors).
   """
 
   def __init__(self,
@@ -306,7 +307,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias and
-        reset_after)
+        reset_after and ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # GRU does not support constants. Ignore it during process.
@@ -825,13 +826,14 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked (optional, defaults to `None`).
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
-      `recurrent_dropout` is used.
+      `recurrent_dropout` is used (optional, defaults to `None`).
     initial_state: List of initial state tensors to be passed to the first
-      call of the cell.
+      call of the cell (optional, defaults to `None` which causes creation
+      of zero-filled initial state tensors).
   """
 
   def __init__(self,
@@ -896,7 +898,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     ]
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
-        recurrent_dropout == 0 and not unroll and use_bias)
+        recurrent_dropout == 0 and not unroll and use_bias and
+        ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.

@@ -84,10 +84,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_COMMON_H_
 
 #include <cstdint>
+
 #include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
@@ -107,7 +111,7 @@ template <>
 struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
   using Type = std::int8_t;
 };
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 template <>
 struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
   using Type = std::int8_t;
@@ -167,7 +171,7 @@ RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 #if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
 #endif
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx512)
 #endif
 

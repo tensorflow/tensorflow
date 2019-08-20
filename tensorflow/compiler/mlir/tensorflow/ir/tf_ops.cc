@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #include <algorithm>
+#include <functional>
+#include <numeric>
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -33,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -96,6 +98,10 @@ static Type getElementTypeOrSelf(Operation *op) {
   return getElementTypeOrSelf(op->getResult(0));
 }
 
+static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
+  return dim_or_rank == -1;
+}
+
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -132,7 +138,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
                                      PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
-      if (cst.getValue({}).cast<BoolAttr>().getValue()) {
+      if (cst.getValue<BoolAttr>({}).getValue()) {
         rewriter.replaceOp(op, llvm::None);
         return matchSuccess();
       }
@@ -579,7 +585,7 @@ static LogicalResult Verify(ReshapeOp op) {
   unsigned numByShape = 1;
   unsigned unknownDimCount = 0;
   for (int i = 0, e = rankByShape; i != e; ++i) {
-    auto num = shapeCstAttr.getValue(i).cast<IntegerAttr>().getInt();
+    auto num = shapeCstAttr.getValue<IntegerAttr>(i).getInt();
     // The dimension size value can be -1, and that the real size needs to
     // be computed so that the total size remains constant. At most one
     // component of shape can be -1.
@@ -611,23 +617,60 @@ static LogicalResult Verify(ReshapeOp op) {
 
 void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
                       Value *shape) {
-  auto etype = tensor->getType().cast<ShapedType>().getElementType();
+  auto ttype = tensor->getType().cast<ShapedType>();
+  auto etype = ttype.getElementType();
+
+  auto unranked = [builder, etype, result, shape, tensor]() {
+    return ReshapeOp::build(builder, result, builder->getTensorType(etype),
+                            tensor, shape);
+  };
+
+  // If tensor is unranked then we have no info about output of shape.
+  if (!ttype.hasRank()) return unranked();
+
   DenseIntElementsAttr attr_shape;
   if (matchPattern(shape, m_Constant(&attr_shape))) {
     llvm::SmallVector<int64_t, 4> const_shape;
-    if (attr_shape.isSplat()) {
-      const_shape.assign(attr_shape.getType().getNumElements(),
-                         (*attr_shape.begin()).getSExtValue());
-    } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
-      for (auto dim : attr_shape) const_shape.push_back(dim.getSExtValue());
+    const_shape.reserve(attr_shape.getNumElements());
+
+    // Detect if reshape output shape is folded.
+    bool flatten = false;
+    int unknown_index = -1;
+    // The product of constant shape argument excluding unknown dimension.
+    int64_t product_cshape = 1;
+    for (auto e : llvm::enumerate(attr_shape)) {
+      int64_t val = e.value().getSExtValue();
+      if (IsUnknownDimOrRank(val)) {
+        if (flatten) {
+          mlir::emitError(result->location)
+              << "only one unknown dimension allowed";
+          return;
+        }
+        flatten = true;
+        unknown_index = e.index();
+      } else {
+        product_cshape *= val;
+      }
+      const_shape.push_back(val);
+    }
+
+    // Compute the value of the uknown dimension.
+    if (flatten) {
+      // Compute number of elements in tensor shape.
+      auto tshape = ttype.getShape();
+      int64_t product_tshape = std::accumulate(tshape.begin(), tshape.end(), 1,
+                                               std::multiplies<int64_t>());
+      // Set the unknown dimension such that total number of elements remain
+      // constant.
+      // Note: The case where the ratio is not integral, and so the total size
+      // of reshape not constant, is checked in verify function.
+      const_shape[unknown_index] = product_tshape / product_cshape;
     }
     return ReshapeOp::build(builder, result,
                             builder->getTensorType(const_shape, etype), tensor,
                             shape);
   }
-  return ReshapeOp::build(builder, result, builder->getTensorType(etype),
-                          tensor, shape);
+  return unranked();
 }
 
 //===----------------------------------------------------------------------===//
@@ -757,10 +800,10 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
     llvm::SmallVector<int64_t, 4> const_shape;
     if (attr_shape.isSplat()) {
       const_shape.assign(
-          attr_shape.getType().getNumElements(),
+          attr_shape.getNumElements(),
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
+      const_shape.reserve(attr_shape.getNumElements());
       for (auto dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
@@ -787,14 +830,22 @@ void TruncateDivOp::getCanonicalizationPatterns(
 static LogicalResult Verify(WhileOp op) {
   auto module = op.getParentOfType<ModuleOp>();
   auto condFn = module.lookupSymbol<FuncOp>(op.cond());
+  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
+  if (!condFn) {
+    return op.emitOpError("cond refers to an undefined function : ")
+           << op.cond();
+  }
+  if (!bodyFn) {
+    return op.emitOpError("body refers to an undefined function : ")
+           << op.body();
+  }
+
   auto condFuncType = condFn.getType();
+  auto bodyFuncType = bodyFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
     return op.emitOpError("requires cond function to have exactly one result");
-
-  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
-  auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
   SmallVector<Type, 4> results(op.getResultTypes());

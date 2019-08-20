@@ -29,6 +29,7 @@ limitations under the License.
 %unignore tensorflow::profiler::PythonTraceMe::Enter;
 %unignore tensorflow::profiler::PythonTraceMe::Exit;
 %unignore tensorflow::profiler::PythonTraceMe::~PythonTraceMe;
+%unignore tensorflow::profiler::PythonTraceMe::IsEnabled;
 
 %include "tensorflow/core/profiler/internal/python_traceme.h"
 

@@ -883,13 +883,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       root = cycle(root, 1, signatures=root.use_v.get_concrete_function())
     func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
-    self.assertIn(root.v.handle, func_captures)
-    self.assertIn(root.v1.handle, func_captures)
+    self.assertTrue(any(root.v.handle is t for t in func_captures))
+    self.assertTrue(any(root.v1.handle is t for t in func_captures))
     signature_captures = root.signatures[
         "serving_default"].graph.external_captures
     self.assertLen(signature_captures, 2)
-    self.assertIn(root.v.handle, signature_captures)
-    self.assertIn(root.v1.handle, signature_captures)
+    self.assertTrue(any(root.v.handle is t for t in signature_captures))
+    self.assertTrue(any(root.v1.handle is t for t in signature_captures))
 
   def test_concrete_function_arg_names(self, cycles):
 
@@ -1709,7 +1709,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertAllClose(2., imported.f(constant_op.constant(1.)))
 
-  def test_ragged_no_signature(self, cycles):
+  def test_ragged(self, cycles):
 
     @def_function.function(input_signature=[
         ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
@@ -1720,10 +1720,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     obj = tracking.AutoTrackable()
     obj.f = f
 
-    imported = cycle(obj, cycles, signatures={})
+    imported1 = cycle(obj, cycles, signatures={})
     rt = ragged_factory_ops.constant([[1, 2], [3]])
-    self.assertAllEqual(imported.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported1.f(rt), [[2, 3], [4]])
 
+    imported2 = cycle(obj, cycles)
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 @parameterized.named_parameters(
@@ -1756,7 +1759,7 @@ class KerasLoadTest(test.TestCase, parameterized.TestCase):
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
     model.compile(optimizer="adam", loss="mse", run_eagerly=True,
-                  experiment_run_tf_function=True)
+                  experimental_run_tf_function=True)
     model.fit(model_input, constant_op.constant([[3.]]))
     loaded = cycle(model, cycles)
     loaded._default_save_signature(model_input)

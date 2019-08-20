@@ -72,8 +72,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_TUNE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TUNE_H_
 
-#include <cstdint>
-
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/time.h"

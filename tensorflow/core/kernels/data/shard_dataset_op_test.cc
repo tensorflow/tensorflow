@@ -497,47 +497,6 @@ TEST_P(ParameterizedShardDatasetOpTest, Cardinality) {
   EXPECT_EQ(shard_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedShardDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::unique_ptr<OpKernel> shard_dataset_kernel;
-  TF_ASSERT_OK(CreateShardDatasetOpKernel(
-      test_case.require_non_empty, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &shard_dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_dataset_param.start, test_case.range_dataset_param.end,
-      test_case.range_dataset_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-
-  Tensor num_shards = test_case.num_shards;
-  Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
-                                             TensorValue(&num_shards),
-                                             TensorValue(&index)});
-  std::unique_ptr<OpKernelContext> shard_dataset_context;
-  TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
-                                         &shard_dataset_context));
-
-  DatasetBase* shard_dataset;
-  TF_ASSERT_OK(CreateDataset(shard_dataset_kernel.get(),
-                             shard_dataset_context.get(), &shard_dataset));
-  core::ScopedUnref scoped_unref_batch_dataset(shard_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(shard_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedShardDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

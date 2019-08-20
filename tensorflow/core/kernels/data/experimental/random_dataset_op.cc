@@ -76,6 +76,8 @@ class RandomDatasetOp : public DatasetOpKernel {
 
     int64 Cardinality() const override { return kInfiniteCardinality; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

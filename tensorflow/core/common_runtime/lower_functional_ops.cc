@@ -40,14 +40,14 @@ constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
 // Checks if boolean attribute is defined and it's value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  bool found = GetNodeAttrSimple(n->attrs(), attr_name, &match);
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
   return found && match;
 }
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
   string match;
-  bool found = GetNodeAttrSimple(n->attrs(), attr_name, &match);
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
   return found && !match.empty();
 }
 

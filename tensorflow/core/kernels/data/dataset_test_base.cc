@@ -141,7 +141,7 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
     TF_CALL_NUMBER_TYPES(CASE);
-    TF_CALL_string(CASE);
+    TF_CALL_tstring(CASE);
     TF_CALL_uint32(CASE);
     TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
@@ -293,6 +293,25 @@ Status DatasetOpsTestBase::MakeRangeDataset(
   return Status::OK();
 }
 
+// Create a `RangeDataset` dataset as a variant tensor.
+Status DatasetOpsTestBase::MakeRangeDataset(
+    const RangeDatasetParams& range_dataset_params, Tensor* range_dataset) {
+  GraphConstructorOptions graph_opts;
+  graph_opts.allow_internal_ops = true;
+  graph_opts.expect_device_spec = false;
+  TF_RETURN_IF_ERROR(RunFunction(
+      test::function::MakeRangeDataset(),
+      /*attrs*/
+      {{RangeDatasetOp::kOutputTypes, range_dataset_params.output_dtypes},
+       {RangeDatasetOp::kOutputShapes, range_dataset_params.output_shapes}},
+      /*inputs*/
+      {range_dataset_params.start, range_dataset_params.stop,
+       range_dataset_params.step},
+      graph_opts,
+      /*rets*/ {range_dataset}));
+  return Status::OK();
+}
+
 // Create a `TakeDataset` dataset as a variant tensor.
 Status DatasetOpsTestBase::MakeTakeDataset(
     const Tensor& input_dataset, int64 count,
@@ -321,6 +340,16 @@ Status DatasetOpsTestBase::CreateOpKernel(
                                                 allocator_, flr_, node_def,
                                                 TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CreateDatasetContext(
+    OpKernel* const dateset_kernel,
+    gtl::InlinedVector<TensorValue, 4>* const inputs,
+    std::unique_ptr<OpKernelContext>* dataset_context) {
+  TF_RETURN_IF_ERROR(CheckOpKernelInput(*dateset_kernel, *inputs));
+  TF_RETURN_IF_ERROR(
+      CreateOpKernelContext(dateset_kernel, inputs, dataset_context));
   return Status::OK();
 }
 
@@ -560,86 +589,14 @@ Status DatasetOpsTestBase::AddDatasetInput(
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::CheckDatasetNodeName(
-    const DatasetBase& dataset, const string& expected_dataset_node_name) {
-  EXPECT_EQ(dataset.node_name(), expected_dataset_node_name);
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetTypeString(
-    const DatasetBase& dataset, const string& expected_dataset_type_string) {
-  EXPECT_EQ(dataset.type_string(), expected_dataset_type_string);
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetOutputDtypes(
-    const DatasetBase& dataset, const DataTypeVector& expected_output_dtypes) {
-  TF_EXPECT_OK(
-      VerifyTypesMatch(dataset.output_dtypes(), expected_output_dtypes));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetOutputShapes(
-    const DatasetBase& dataset,
-    const std::vector<PartialTensorShape>& expected_output_shapes) {
-  TF_EXPECT_OK(
-      VerifyShapesCompatible(dataset.output_shapes(), expected_output_shapes));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetCardinality(const DatasetBase& dataset,
-                                                   int64 expected_cardinality) {
-  EXPECT_EQ(dataset.Cardinality(), expected_cardinality);
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetSave(const DatasetBase& dataset) {
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_EXPECT_OK(dataset.Save(serialization_context.get(), &writer));
-  TF_RETURN_IF_ERROR(writer.Flush());
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckDatasetIsStateful(const DatasetBase& dataset,
-                                                  bool expected_stateful) {
-  EXPECT_EQ(dataset.IsStateful(), expected_stateful);
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckIteratorOutputDtypes(
-    const IteratorBase& iterator,
-    const DataTypeVector& expected_output_dtypes) {
-  TF_EXPECT_OK(
-      VerifyTypesMatch(iterator.output_dtypes(), expected_output_dtypes));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckIteratorOutputShapes(
-    const IteratorBase& iterator,
-    const std::vector<PartialTensorShape>& expected_output_shapes) {
-  TF_EXPECT_OK(
-      VerifyShapesCompatible(iterator.output_shapes(), expected_output_shapes));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::CheckIteratorPrefix(
-    const IteratorBase& iterator, const string& expected_iterator_prefix) {
-  EXPECT_EQ(iterator.prefix(), expected_iterator_prefix);
-  return Status::OK();
-}
-
 Status DatasetOpsTestBase::CheckIteratorGetNext(
-    IteratorBase* iterator, IteratorContext* iterator_context,
     const std::vector<Tensor>& expected_outputs, bool compare_order) {
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_RETURN_IF_ERROR(
-        iterator->GetNext(iterator_context, &next, &end_of_sequence));
+        iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 
@@ -648,13 +605,63 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::CheckDatasetNodeName(
+    const string& expected_dataset_node_name) {
+  EXPECT_EQ(dataset_->node_name(), expected_dataset_node_name);
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckDatasetTypeString(
+    const string& expected_type_str) {
+  EXPECT_EQ(dataset_->type_string(), expected_type_str);
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckDatasetOutputDtypes(
+    const DataTypeVector& expected_output_dtypes) {
+  TF_EXPECT_OK(
+      VerifyTypesMatch(dataset_->output_dtypes(), expected_output_dtypes));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckDatasetOutputShapes(
+    const std::vector<PartialTensorShape>& expected_output_shapes) {
+  TF_EXPECT_OK(VerifyShapesCompatible(dataset_->output_shapes(),
+                                      expected_output_shapes));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckDatasetCardinality(int expected_cardinality) {
+  EXPECT_EQ(dataset_->Cardinality(), expected_cardinality);
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckIteratorOutputDtypes(
+    const DataTypeVector& expected_output_dtypes) {
+  TF_EXPECT_OK(
+      VerifyTypesMatch(iterator_->output_dtypes(), expected_output_dtypes));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckIteratorOutputShapes(
+    const std::vector<PartialTensorShape>& expected_output_shapes) {
+  TF_EXPECT_OK(VerifyShapesCompatible(iterator_->output_shapes(),
+                                      expected_output_shapes));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckIteratorPrefix(
+    const string& expected_iterator_prefix) {
+  EXPECT_EQ(iterator_->prefix(), expected_iterator_prefix);
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
-    const DatasetBase& dataset, IteratorContext* iterator_context,
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints) {
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(
-      dataset.MakeIterator(iterator_context, iterator_prefix, &iterator));
+      dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -667,12 +674,12 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_RETURN_IF_ERROR(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_context, &reader, iterator_prefix,
-                                 dataset, &iterator));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
+                                 *dataset_, &iterator));
 
     while (cur_iteration <= breakpoint) {
-      TF_RETURN_IF_ERROR(
-          iterator->GetNext(iterator_context, &out_tensors, &end_of_sequence));
+      TF_RETURN_IF_ERROR(iterator->GetNext(iterator_ctx_.get(), &out_tensors,
+                                           &end_of_sequence));
       if (!end_of_sequence) {
         EXPECT_NE(expected_outputs_it, expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));

@@ -310,6 +310,21 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "inject_prefetch_test",
+    srcs = ["inject_prefetch_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":inject_prefetch",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
 cc_library(
     name = "latency_all_edges",
     srcs = ["latency_all_edges.cc"],

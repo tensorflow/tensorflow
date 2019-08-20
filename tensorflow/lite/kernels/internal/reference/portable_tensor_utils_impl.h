@@ -113,14 +113,8 @@ void PortableApplyActivationToVector(const float* vector, int v_size,
                                      TfLiteFusedActivation activation,
                                      float* result);
 
-// Copy vector to another vector.
-void PortableCopyVector(const float* vector, int v_size, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
-
-// Fill vector with 0.f.
-void PortableZeroVector(float* vector, int v_size);
 
 // Multiply all elements of vector with a scalar.
 void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,

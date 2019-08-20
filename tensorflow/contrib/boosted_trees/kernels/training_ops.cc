@@ -468,7 +468,7 @@ class GrowTreeEnsembleOp : public OpKernel {
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
       const auto& partition_ids = partition_ids_list[handler_id].vec<int32>();
       const auto& gains = gains_list[handler_id].vec<float>();
-      const auto& splits = splits_list[handler_id].vec<string>();
+      const auto& splits = splits_list[handler_id].vec<tstring>();
       OP_REQUIRES(context, partition_ids.size() == gains.size(),
                   errors::InvalidArgument(
                       "Inconsistent partition Ids and gains tensors: ",
@@ -502,7 +502,7 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Find best split per partition going through every feature candidate.
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
       const auto& gains = gains_list[handler_id].vec<float>();
-      const auto& splits = splits_list[handler_id].vec<string>();
+      const auto& splits = splits_list[handler_id].vec<tstring>();
       OP_REQUIRES(context, gains.size() == 1,
                   errors::InvalidArgument(
                       "Gains size must be one for oblivious weak learner: ",

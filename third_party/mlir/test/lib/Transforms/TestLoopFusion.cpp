@@ -24,9 +24,9 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopFusionUtils.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -58,8 +58,8 @@ struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createTestLoopFusionPass() {
-  return new TestLoopFusion;
+std::unique_ptr<FunctionPassBase> mlir::createTestLoopFusionPass() {
+  return std::make_unique<TestLoopFusion>();
 }
 
 // Gathers all AffineForOps in 'block' at 'currLoopDepth' in 'depthToLoops'.

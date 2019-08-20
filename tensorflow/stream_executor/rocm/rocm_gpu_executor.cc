@@ -230,8 +230,8 @@ static string GetBinaryDir(bool strip_exe) {
   return exe_path;
 }
 
-bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                            KernelBase* kernel) {
+port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
+                                    KernelBase* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
   const string* kernelname;
@@ -243,8 +243,8 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   }
 
   if (on_disk_spec != nullptr) {
-    LOG(WARNING) << "loading ROCM kernel from disk is not supported";
-    return false;
+    return port::InternalError(
+        "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
 
@@ -254,20 +254,18 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
 
     if (module == nullptr) {
       if (!GpuDriver::LoadHsaco(context_, hsaco, &module)) {
-        LOG(ERROR) << "failed to load HSACO\n";
-        return false;
+        return port::InternalError("Failed to load HSACO");
       }
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
-    LOG(WARNING) << "no method of loading ROCM kernel provided";
-    return false;
+    return port::InternalError("No method of loading ROCM kernel provided");
   }
 
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     rocm_kernel->gpu_function_ptr())) {
-    return false;
+    return port::InternalError("Failed getting module function");
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -280,7 +278,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   }
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
-  return true;
+  return port::Status::OK();
 }
 
 bool GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
@@ -295,9 +293,10 @@ bool GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
   return true;
 }
 
-bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                         const BlockDim& block_dims, const KernelBase& kernel,
-                         const KernelArgsArrayBase& args) {
+port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                 const BlockDim& block_dims,
+                                 const KernelBase& kernel,
+                                 const KernelArgsArrayBase& args) {
   CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
@@ -339,18 +338,10 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs.data(),
                     HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
 
-  if (!GpuDriver::LaunchKernel(
-          GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config)) {
-    LOG(ERROR) << "failed to launch ROCM kernel with args: "
-               << args.number_of_arguments()
-               << "; thread dim: " << thread_dims.ToString()
-               << "; block dim: " << block_dims.ToString();
-    return false;
-  }
-
-  return true;
+  return GpuDriver::LaunchKernel(
+      GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y, block_dims.z,
+      thread_dims.x, thread_dims.y, thread_dims.z,
+      args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
@@ -372,8 +363,8 @@ int GpuExecutor::CompareOccupancy(int* initial_blocks,
   return 0;
 }
 
-bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
-                             ModuleHandle* module_handle) {
+port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
+                                     ModuleHandle* module_handle) {
   // In GpuExecutor we store the pointer to the  HSACO binary  as
   // ModuleHandle::id().
   hipModule_t hip_module = nullptr;
@@ -383,25 +374,24 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     if (!LoadModuleFromHsaco(
             reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
             &hip_module)) {
-      return false;
+      return port::InternalError("Failed loading module from HSACO");
     }
     *module_handle = ModuleHandle(const_cast<void*>(
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
-    return true;
+    return port::Status::OK();
   } else {
-    LOG(ERROR) << "No HSACO binary found \n";
-    return false;
+    return port::InternalError("No HASCO binary found");
   }
 }
 
-bool GpuExecutor::LoadModuleFromCuBin(const char* cubin, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
+                                              hipModule_t* module) {
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromCuBin)";
-  return false;
 }
 
-bool GpuExecutor::LoadModuleFromPtx(const char* ptx, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx,
+                                            hipModule_t* module) {
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromPtx)";
-  return false;
 }
 
 bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {

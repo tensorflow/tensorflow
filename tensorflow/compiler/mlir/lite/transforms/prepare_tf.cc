@@ -48,9 +48,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -64,6 +64,18 @@ namespace TFL {
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
+
+// Returns the first result type of the given `op`.
+Type GetFirstResultType(Operation *op) { return *op->result_type_begin(); }
+// TODO(antiagainst): We need overload functions of the above to facilitate
+// changes brought by declarative rewrite rules. Remove this post variadic
+// operand support is improved.
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::TransposeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::ReshapeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(Value *val) { return val->getType(); }
 
 // Prepare TF operations in functions for subsequent legalization.
 struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
@@ -195,7 +207,7 @@ struct ConvertTFConvOp : public RewritePattern {
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return matchFailure();
 
-    auto state = llvm::make_unique<ConvertTFConvOpMatchState>();
+    auto state = std::make_unique<ConvertTFConvOpMatchState>();
 
     state->stride_height = height;
     state->stride_width = width;
@@ -388,20 +400,23 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
+  patterns.clear();
   TFL::populateWithGenerated(&getContext(), &patterns);
   patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       &getContext());
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-FunctionPassBase *CreatePrepareTFPass() { return new PrepareTFPass(); }
+std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
+}
 
 static PassRegistration<PrepareTFPass> pass(
     "tfl-prepare-tf", "Prepare TF for legalization to TensorFlow Lite dialect");

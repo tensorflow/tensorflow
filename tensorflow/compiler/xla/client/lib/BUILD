@@ -296,6 +296,8 @@ cc_library(
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
     deps = [
+        ":arithmetic",
+        ":constants",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",

@@ -284,7 +284,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
     if (item.has_operation()) {
       TF_RETURN_IF_ERROR(
           ExecuteOp(item.operation(), context->Context(), queue_response));
-    } else {
+    } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
           item.handle_to_decref());
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
@@ -293,6 +293,8 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
           executor->Async()
               ? context->Context()->Executor()->Add(std::move(node))
               : node->Run());
+    } else {
+      TF_RETURN_IF_ERROR(SendTensor(item.send_tensor(), context->Context()));
     }
   }
 
@@ -383,6 +385,33 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
 
   context->Context()->RemoteMgr()->AddOperationOutputs(tensors,
                                                        request->op_id());
+
+  return Status::OK();
+}
+
+Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
+                                    EagerContext* eager_context) {
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> tensors;
+  for (const auto& tensor_proto : send_tensor.tensors()) {
+    Tensor tensor;
+    if (!tensor.FromProto(tensor_proto)) {
+      return errors::InvalidArgument("Unable to parse tensor proto");
+    }
+
+    TensorHandle* tensor_handle = nullptr;
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
+    TensorHandle* copied_handle = nullptr;
+    Device* device;
+    TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
+        send_tensor.device_name().c_str(), &device));
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, eager_context,
+                                         eager_context->Executor(), device,
+                                         false, &copied_handle));
+    tensors.push_back(copied_handle);
+    tensor_handle->Unref();
+  }
+
+  eager_context->RemoteMgr()->AddOperationOutputs(tensors, send_tensor.op_id());
 
   return Status::OK();
 }

@@ -43,7 +43,7 @@ class ArrayTest(PForTestCase):
       outputs = []
       x_i = array_ops.gather(x, i)
       for y in [x, x_i]:
-        axes = [0, 2, -1] if y == x else [0]
+        axes = [0, 2, -1] if y is x else [0]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
           outputs.append(array_ops.gather(y, i, axis=axis))

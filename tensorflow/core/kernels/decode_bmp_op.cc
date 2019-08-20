@@ -54,7 +54,7 @@ class DecodeBmpOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Start decoding image to get shape details
-    const StringPiece input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<tstring>()();
 
     OP_REQUIRES(context, (32 <= input.size()),
                 errors::InvalidArgument("Incomplete bmp content, requires at "

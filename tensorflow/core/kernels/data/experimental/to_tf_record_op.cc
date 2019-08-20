@@ -122,7 +122,7 @@ class ToTFRecordOp : public AsyncOpKernel {
 
             if (!end_of_sequence) {
               OP_REQUIRES_OK_ASYNC(
-                  ctx, writer->WriteRecord(components[0].scalar<string>()()),
+                  ctx, writer->WriteRecord(components[0].scalar<tstring>()()),
                   done);
             }
             components.clear();

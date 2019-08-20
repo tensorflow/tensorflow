@@ -273,5 +273,25 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual(results, range(10))
 
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          combinations.combine(reshuffle=[True, False], seed=[None, 42])))
+  def testReshuffleSeparateTransformations(self, reshuffle, seed):
+    dataset = dataset_ops.Dataset.range(10)
+
+    first_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      first_epoch.append(elem.numpy())
+
+    second_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      second_epoch.append(elem.numpy())
+
+    self.assertEqual(first_epoch != second_epoch, seed is None)
+
+
 if __name__ == "__main__":
   test.main()

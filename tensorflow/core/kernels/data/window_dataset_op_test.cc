@@ -574,49 +574,6 @@ TEST_P(ParameterizedWindowDatasetOpTest, Cardinality) {
   EXPECT_EQ(dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedWindowDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::unique_ptr<OpKernel> window_dataset_kernel;
-  TF_ASSERT_OK(CreateWindowDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &window_dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_data_param.start, test_case.range_data_param.end,
-      test_case.range_data_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  Tensor size = test_case.size;
-  Tensor shift = test_case.shift;
-  Tensor stride = test_case.stride;
-  Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&range_dataset_tensor), TensorValue(&size),
-       TensorValue(&shift), TensorValue(&stride),
-       TensorValue(&drop_remainder)});
-
-  std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
-  TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
-                                          &window_dataset_op_ctx));
-  DatasetBase* dataset;
-  TF_ASSERT_OK(CreateDataset(window_dataset_kernel.get(),
-                             window_dataset_op_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref_dataset(dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedWindowDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

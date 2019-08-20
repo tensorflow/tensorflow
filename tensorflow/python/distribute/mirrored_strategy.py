@@ -342,7 +342,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the future.
+  To use `MirroredStrategy` with multiple workers, please refer to
+  `tf.distribute.MultiWorkerMirroredStrategy`.
 
   Args:
     devices: a list of device strings.  If `None`, all available GPUs are used.

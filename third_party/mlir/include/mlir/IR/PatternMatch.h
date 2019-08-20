@@ -402,6 +402,7 @@ public:
   PatternListT::iterator end() { return patterns.end(); }
   PatternListT::const_iterator begin() const { return patterns.begin(); }
   PatternListT::const_iterator end() const { return patterns.end(); }
+  void clear() { patterns.clear(); }
 
   //===--------------------------------------------------------------------===//
   // Pattern Insertion
@@ -421,7 +422,7 @@ public:
     // FIXME: In c++17 this can be simplified by using 'fold expressions'.
     using dummy = int[];
     (void)dummy{
-        0, (patterns.emplace_back(llvm::make_unique<Ts>(arg, args...)), 0)...};
+        0, (patterns.emplace_back(std::make_unique<Ts>(arg, args...)), 0)...};
   }
 
 private:
@@ -435,7 +436,7 @@ private:
 class RewritePatternMatcher {
 public:
   /// Create a RewritePatternMatcher with the specified set of patterns.
-  explicit RewritePatternMatcher(OwningRewritePatternList &patterns);
+  explicit RewritePatternMatcher(const OwningRewritePatternList &patterns);
 
   /// Try to match the given operation to a pattern and rewrite it. Return
   /// true if any pattern matches.
@@ -456,7 +457,8 @@ private:
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
 ///
-bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &&patterns);
+bool applyPatternsGreedily(Operation *op,
+                           const OwningRewritePatternList &patterns);
 
 } // end namespace mlir
 

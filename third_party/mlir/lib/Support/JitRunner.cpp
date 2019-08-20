@@ -26,13 +26,13 @@
 #include "mlir/Support/JitRunner.h"
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/ExecutionEngine/MemRefUtils.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -40,6 +40,7 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassNameParser.h"
@@ -47,7 +48,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Support/TargetSelect.h"
@@ -262,7 +262,6 @@ static Error compileAndExecuteSingleFloatReturnFunction(
 int mlir::JitRunnerMain(
     int argc, char **argv,
     llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   initializeLLVM();
@@ -308,8 +307,19 @@ int mlir::JitRunnerMain(
     if (failed(mlirTransformer(m.get())))
       return EXIT_FAILURE;
 
+  auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+  if (!tmBuilderOrError) {
+    llvm::errs() << "Failed to create a JITTargetMachineBuilder for the host\n";
+    return EXIT_FAILURE;
+  }
+  auto tmOrError = tmBuilderOrError->createTargetMachine();
+  if (!tmOrError) {
+    llvm::errs() << "Failed to create a TargetMachine for the host\n";
+    return EXIT_FAILURE;
+  }
+
   auto transformer = mlir::makeLLVMPassesTransformer(
-      passes, optLevel, /*targetMachine=*/nullptr, optPosition);
+      passes, optLevel, /*targetMachine=*/tmOrError->get(), optPosition);
   auto error = mainFuncType.getValue() == "f32"
                    ? compileAndExecuteSingleFloatReturnFunction(
                          m.get(), mainFuncName.getValue(), transformer)

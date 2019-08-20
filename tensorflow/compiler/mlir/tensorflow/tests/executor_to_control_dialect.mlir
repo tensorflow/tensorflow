@@ -61,9 +61,6 @@ func @LoopTest() {
 // CHECK-NEXT:   %[[SINK:[0-9]*]] = "_tf.NextIteration.sink"(%[[ADD]]#0, %[[CT]]) {T = "tfdtype$DT_INT32", device = "", id = 0 : i64, name = "while/NextIteration"} : (tensor<*xi32>, !_tf.control) -> !_tf.control
 // CHECK-NEXT:   return
 
-
-
-
 // CHECK-LABEL: func @multiple_ops_region
 func @multiple_ops_region(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) {
   tf_executor.graph {
@@ -85,3 +82,18 @@ func @multiple_ops_region(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) {
 // CHECK-NEXT: %[[ADD2:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD1]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add2"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT: %[[ADD3:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD2]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add3"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
 // CHECK-NEXT: %[[ADD4:[0-9]*]]:2 = "_tf.Add"(%arg0, %arg1, %[[ADD3]]#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Add4"} : (tensor<*xi32>, tensor<i32>, !_tf.control) -> (tensor<*xi32>, !_tf.control)
+
+// CHECK-LABEL: func @switchN(
+func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %fetches = tf_executor.graph {
+
+// CHECK: [[S1:%.*]]:6 = "_tf._SwitchN"(%arg1, %arg0) {num_outs = 5 : i64}
+     %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
+
+// CHECK: "_tf._SwitchN"(%arg1, %arg0, [[S1]]#5) {num_outs = 12 : i64}
+     %2:13 = tf_executor.SwitchN %arg1, %arg0 of 12 (%1#5) : tensor<*xf32>
+
+     tf_executor.fetch %2#0 : tensor<*xf32>
+  }
+  return %fetches : tensor<*xf32>
+}

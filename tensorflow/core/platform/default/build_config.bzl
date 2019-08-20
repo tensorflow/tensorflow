@@ -624,6 +624,12 @@ def tf_additional_libdevice_deps():
 def tf_additional_libdevice_srcs():
     return ["default/cuda_libdevice_path.cc"]
 
+def tf_additional_rocdl_deps():
+    return ["@local_config_rocm//rocm:rocm_headers"]
+
+def tf_additional_rocdl_srcs():
+    return ["default/rocm_rocdl_path.cc"]
+
 def tf_additional_test_deps():
     return []
 
@@ -821,12 +827,12 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/strings",
     ]
 
-def tf_env_time_srcs():
-    return select({
-        "//tensorflow:windows": [
-            "windows/env_time.cc",
-        ],
-        "//conditions:default": [
-            "posix/env_time.cc",
-        ],
-    })
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]

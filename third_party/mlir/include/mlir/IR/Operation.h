@@ -116,10 +116,9 @@ public:
   /// Set the source location the operation was defined or derived from.
   void setLoc(Location loc) { location = loc; }
 
-  /// Returns the region to which the instruction belongs, which can be a
-  /// function body region or a region that belongs to another operation.
-  /// Returns nullptr if the instruction is unlinked.
-  Region *getContainingRegion() const;
+  /// Returns the region to which the instruction belongs. Returns nullptr if
+  /// the instruction is unlinked.
+  Region *getParentRegion();
 
   /// Returns the closest surrounding operation that contains this operation
   /// or nullptr if this is a top-level operation.
@@ -136,6 +135,25 @@ public:
 
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);
+
+  /// Replace all uses of results of this operation with the provided 'values'.
+  template <typename ValuesT,
+            typename = decltype(std::declval<ValuesT>().begin())>
+  void replaceAllUsesWith(ValuesT &&values) {
+    assert(std::distance(values.begin(), values.end()) == getNumResults() &&
+           "expected 'values' to correspond 1-1 with the number of results");
+
+    auto valueIt = values.begin();
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(*(valueIt++));
+  }
+
+  /// Replace all uses of results of this operation with results of 'op'.
+  void replaceAllUsesWith(Operation *op) {
+    assert(getNumResults() == op->getNumResults());
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(op->getResult(i));
+  }
 
   /// Destroys this operation and its subclass data.
   void destroy();

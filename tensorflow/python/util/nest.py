@@ -34,6 +34,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections as _collections
+
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
@@ -131,7 +133,14 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in instance)
+    instance_type = type(instance)
+    if instance_type == _collections.defaultdict:
+      d = _collections.defaultdict(instance.default_factory)
+      for key in instance:
+        d[key] = result[key]
+      return d
+    else:
+      return instance_type((key, result[key]) for key in instance)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):

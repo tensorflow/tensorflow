@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_TEST_UTILS_H_
 
 #include <cstdarg>
+#include <cstdint>
 #include <initializer_list>
 #include <limits>
 
@@ -72,6 +73,11 @@ inline uint8_t F2Q(const float value, const float min, const float max) {
   return result;
 }
 
+// Converts a float value into a signed eight-bit quantized value.
+inline int8_t F2QS(const float value, const float min, const float max) {
+  return F2Q(value, min, max) + std::numeric_limits<int8_t>::min();
+}
+
 // Converts a float value into a signed thirty-two-bit quantized value.
 inline int32_t F2Q32(const float value, const float min, const float max) {
   return static_cast<int32_t>((value - ZeroPointFromMinMax<int32_t>(min, max)) /
@@ -123,6 +129,44 @@ inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
   return CreateFloatTensor(data.begin(), dims, name);
 }
 
+inline TfLiteTensor CreateInt32Tensor(const int32_t* data, TfLiteIntArray* dims,
+                                      const char* name) {
+  TfLiteTensor result;
+  result.type = kTfLiteInt32;
+  result.data.i32 = const_cast<int32_t*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int32_t);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateInt32Tensor(std::initializer_list<int32_t> data,
+                                      TfLiteIntArray* dims, const char* name) {
+  return CreateInt32Tensor(data.begin(), dims, name);
+}
+
+inline TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
+                                     const char* name) {
+  TfLiteTensor result;
+  result.type = kTfLiteBool;
+  result.data.b = const_cast<bool*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(bool);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
+                                     TfLiteIntArray* dims, const char* name) {
+  return CreateBoolTensor(data.begin(), dims, name);
+}
+
 inline TfLiteTensor CreateQuantizedTensor(const uint8_t* data,
                                           TfLiteIntArray* dims,
                                           const char* name, float min,
@@ -147,6 +191,29 @@ inline TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
   return CreateQuantizedTensor(data.begin(), dims, name, min, max);
 }
 
+inline TfLiteTensor CreateQuantizedInt8Tensor(const int8_t* data,
+                                              TfLiteIntArray* dims,
+                                              const char* name, float min,
+                                              float max) {
+  TfLiteTensor result;
+  result.type = kTfLiteInt8;
+  result.data.int8 = const_cast<int8_t*>(data);
+  result.dims = dims;
+  result.params = {ScaleFromMinMax<int8_t>(min, max),
+                   ZeroPointFromMinMax<int8_t>(min, max)};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int8_t);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateQuantizedInt8Tensor(
+    std::initializer_list<int8_t> data, TfLiteIntArray* dims, const char* name,
+    float min, float max) {
+  return CreateQuantizedInt8Tensor(data.begin(), dims, name, min, max);
+}
+
 inline TfLiteTensor CreateQuantized32Tensor(const int32_t* data,
                                             TfLiteIntArray* dims,
                                             const char* name, float min,
@@ -169,6 +236,29 @@ inline TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
                                             const char* name, float min,
                                             float max) {
   return CreateQuantized32Tensor(data.begin(), dims, name, min, max);
+}
+
+template <typename input_type = int32_t,
+          TfLiteType tensor_input_type = kTfLiteInt32>
+inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
+                                 const char* name) {
+  TfLiteTensor result;
+  result.type = tensor_input_type;
+  result.data.raw = reinterpret_cast<char*>(const_cast<input_type*>(data));
+  result.dims = dims;
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(input_type);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = true;
+  return result;
+}
+
+template <typename input_type = int32_t,
+          TfLiteType tensor_input_type = kTfLiteInt32>
+inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
+                                 TfLiteIntArray* dims, const char* name) {
+  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name);
 }
 
 // Do a simple string comparison for testing purposes, without requiring the

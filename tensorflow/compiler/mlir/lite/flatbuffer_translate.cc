@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
@@ -48,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
@@ -899,6 +899,8 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
     operand_indices = tfl.GetStatefulOperands();
   } else if (auto tfl =
                  llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
+  } else if (auto tfl = llvm::dyn_cast<mlir::TFL::SVDFOp>(op)) {
     operand_indices = tfl.GetStatefulOperands();
   }
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();

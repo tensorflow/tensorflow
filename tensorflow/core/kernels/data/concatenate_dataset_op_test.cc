@@ -357,39 +357,6 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, Cardinality) {
   EXPECT_EQ(concatenate_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_F(ConcatenateDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = SameShapeTestCase();
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(test_case.input_tensors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(test_case.expected_output_dtypes,
-                                              test_case.expected_output_shapes,
-                                              &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *concatenate_dataset;
-  TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
-                             &concatenate_dataset));
-  core::ScopedUnref scoped_unref(concatenate_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(concatenate_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedConcatenateDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

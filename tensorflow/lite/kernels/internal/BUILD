@@ -167,6 +167,16 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "raspberry_pi_with_neon",
+    define_values = {
+        "raspberry_pi_with_neon": "true",
+    },
+    values = {
+        "cpu": "armeabi",
+    },
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -194,6 +204,7 @@ cc_library(
         "optimized/integer_ops/depthwise_conv.h",
         "optimized/integer_ops/depthwise_conv_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/softmax.h",
@@ -347,8 +358,10 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
+        "reference/ceil.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
@@ -369,9 +382,12 @@ cc_library(
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
         "reference/maximum_minimum.h",
+        "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
         "reference/svdf.h",
@@ -407,8 +423,10 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
+        "reference/ceil.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
@@ -417,9 +435,12 @@ cc_library(
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
         "reference/maximum_minimum.h",
+        "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
     ],
@@ -615,6 +636,9 @@ cc_library(
         ":ios_arm64": [
             ":neon_tensor_utils",
         ],
+        ":raspberry_pi_with_neon": [
+            ":neon_tensor_utils",
+        ],
         ":ios_x86_64": [
             ":sse_tensor_utils",
         ],
@@ -763,6 +787,19 @@ cc_test(
         ":reference_base",
         ":test_util",
         "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "strided_slice_logic_test",
+    timeout = "moderate",
+    srcs = [
+        "strided_slice_logic_test.cc",
+    ],
+    shard_count = 4,
+    deps = [
+        ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -26,8 +26,8 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include <algorithm>
@@ -88,8 +88,8 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
-FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
-  return new MemRefDataFlowOpt();
+std::unique_ptr<FunctionPassBase> mlir::createMemRefDataFlowOptPass() {
+  return std::make_unique<MemRefDataFlowOpt>();
 }
 
 // This is a straightforward implementation not optimized for speed. Optimize
@@ -204,7 +204,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(AffineLoadOp loadOp) {
 
   // Perform the actual store to load forwarding.
   Value *storeVal = cast<AffineStoreOp>(lastWriteStoreOp).getValueToStore();
-  loadOp.getResult()->replaceAllUsesWith(storeVal);
+  loadOp.replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp.getMemRef());
   // Record this to erase later.

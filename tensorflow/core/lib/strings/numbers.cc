@@ -18,6 +18,7 @@ limitations under the License.
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
@@ -25,11 +26,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "double-conversion/double-conversion.h"
-
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

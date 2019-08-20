@@ -22,10 +22,10 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/Serialization.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Translation.h"
 #include "llvm/ADT/StringRef.h"
@@ -40,8 +40,7 @@ Block *createOneBlockFunction(Builder builder, ModuleOp module) {
   auto fn = FuncOp::create(builder.getUnknownLoc(), "spirv_module", fnType);
   module.push_back(fn);
 
-  fn.addEntryBlock();
-  auto *block = &fn.front();
+  auto *block = fn.addEntryBlock();
   OpBuilder(block).create<ReturnOp>(builder.getUnknownLoc());
 
   return block;

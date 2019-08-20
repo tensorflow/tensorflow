@@ -569,46 +569,6 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Cardinality) {
             test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedParallelInterleaveDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> parallel_interleave_dataset_kernel;
-  TF_ASSERT_OK(CreateParallelInterleaveDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &parallel_interleave_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor),
-       TensorValue(&test_case.cycle_length),
-       TensorValue(&test_case.block_length), TensorValue(&test_case.sloppy),
-       TensorValue(&test_case.buffer_output_elements),
-       TensorValue(&test_case.prefetch_input_elements)});
-  std::unique_ptr<OpKernelContext> parallel_interleave_dataset_context;
-  TF_ASSERT_OK(CreateParallelInterleaveDatasetContext(
-      parallel_interleave_dataset_kernel.get(), &inputs,
-      &parallel_interleave_dataset_context));
-  DatasetBase* parallel_interleave_dataset;
-  TF_ASSERT_OK(CreateDataset(parallel_interleave_dataset_kernel.get(),
-                             parallel_interleave_dataset_context.get(),
-                             &parallel_interleave_dataset));
-  core::ScopedUnref scoped_unref_dataset(parallel_interleave_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(
-      parallel_interleave_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedParallelInterleaveDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

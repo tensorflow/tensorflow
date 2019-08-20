@@ -28,6 +28,8 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -36,11 +38,9 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -146,6 +146,8 @@ using llvm::dbgs;
 using llvm::SetVector;
 
 using namespace mlir;
+using vector::VectorTransferReadOp;
+using vector::VectorTransferWriteOp;
 
 using functional::makePtrDynCaster;
 using functional::map;
@@ -764,9 +766,9 @@ void MaterializeVectorsPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *
+std::unique_ptr<FunctionPassBase>
 mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
-  return new MaterializeVectorsPass(vectorSize);
+  return std::make_unique<MaterializeVectorsPass>(vectorSize);
 }
 
 static PassRegistration<MaterializeVectorsPass>

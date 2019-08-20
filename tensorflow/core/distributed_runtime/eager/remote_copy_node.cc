@@ -157,7 +157,7 @@ Status RemoteCopyNode::StartSend() {
     EnqueueResponse* response = new EnqueueResponse;
     // If StartRecv fails very quickly, `this` can be destroyed before the
     // callback below is executed. So, we can't capture `this`.
-    eager_client->StreamingEnqueueAsync(
+    return eager_client->StreamingEnqueueAsync(
         &request, response, [response, captured_state](const Status& s) {
           captured_state->SetSendStatus(s);
           if (!s.ok()) {
@@ -165,7 +165,6 @@ Status RemoteCopyNode::StartSend() {
           }
           delete response;
         });
-    return Status::OK();
   }
 }
 
@@ -210,7 +209,7 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
   EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
-  eager_client->StreamingEnqueueAsync(
+  return eager_client->StreamingEnqueueAsync(
       &request, response,
       [captured_state, response, recv_device](const Status& s) {
         if (s.ok()) {
@@ -228,8 +227,6 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
         }
         delete response;
       });
-
-  return Status::OK();
 }
 
 Status RemoteCopyNode::StartRecv() {
@@ -271,7 +268,56 @@ Status RemoteCopyNode::StartRecv() {
   }
 }
 
+Status RemoteCopyNode::StartRemoteSendTensor() {
+  EnqueueRequest request;
+  uint64 context_id = ctx_->GetContextId();
+  request.set_context_id(context_id);
+  auto* send_tensor = request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(recv_op_id_);
+  send_tensor->set_device_name(recv_device_->name());
+
+  // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
+  // copy it to the CPU before copying it out.
+  // TODO(b/110044833): this is currently slow, but can be fixed by making
+  // tensor handles aware of more than one device.
+  // TODO(fishx): Make CopyToDevice asynchronous.
+  Tensor tensor;
+  TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, ctx_->HostCPU(), &tensor));
+  tensor.AsProtoTensorContent(send_tensor->add_tensors());
+
+  eager::EagerClient* eager_client;
+  Status status = ctx_->GetClient(recv_device_, &eager_client);
+  if (!status.ok()) {
+    captured_state_->dst()->Poison(status);
+    return status;
+  }
+  EnqueueResponse* response = new EnqueueResponse;
+  const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
+  captured_state->SetSrcShape(tensor.shape());
+  Device* recv_device = recv_device_;
+  return eager_client->StreamingEnqueueAsync(
+      &request, response,
+      [captured_state, response, recv_device](const Status& s) {
+        if (s.ok()) {
+          Status status = captured_state->dst()->SetRemoteShape(
+              captured_state->GetSrcShape(), recv_device);
+          if (!status.ok()) {
+            LOG(ERROR) << "Ignoring an error encountered when setting remote "
+                          "shape of tensor received by SendTensor rpc: "
+                       << status.ToString();
+          }
+        } else {
+          captured_state->dst()->Poison(s);
+        }
+        delete response;
+      });
+}
+
 Status RemoteCopyNode::Run() {
+  if (ctx_->UseSendTensorRPC() && send_device_->IsLocal() &&
+      !recv_device_->IsLocal()) {
+    return StartRemoteSendTensor();
+  }
   Status s = StartSend();
   if (!s.ok()) {
     Abort(s);

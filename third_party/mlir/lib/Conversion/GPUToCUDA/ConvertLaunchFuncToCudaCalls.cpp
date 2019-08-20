@@ -25,12 +25,12 @@
 #include "mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -111,7 +111,8 @@ private:
   Value *allocatePointer(OpBuilder &builder, Location loc) {
     auto one = builder.create<LLVM::ConstantOp>(loc, getInt32Type(),
                                                 builder.getI32IntegerAttr(1));
-    return builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(), one);
+    return builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(), one,
+                                          /*alignment=*/0);
   }
 
   void declareCudaFunctions(Location loc);
@@ -233,13 +234,13 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
   auto arraySize = builder.create<LLVM::ConstantOp>(
       loc, getInt32Type(),
       builder.getI32IntegerAttr(launchOp.getNumKernelOperands()));
-  auto array =
-      builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(), arraySize);
+  auto array = builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(),
+                                              arraySize, /*alignment=*/0);
   for (int idx = 0, e = launchOp.getNumKernelOperands(); idx < e; ++idx) {
     auto operand = launchOp.getKernelOperand(idx);
     auto llvmType = operand->getType().cast<LLVM::LLVMType>();
-    auto memLocation =
-        builder.create<LLVM::AllocaOp>(loc, llvmType.getPointerTo(), one);
+    auto memLocation = builder.create<LLVM::AllocaOp>(
+        loc, llvmType.getPointerTo(), one, /*alignment=*/1);
     builder.create<LLVM::StoreOp>(loc, operand, memLocation);
     auto casted =
         builder.create<LLVM::BitcastOp>(loc, getPointerType(), memLocation);
@@ -267,8 +268,8 @@ Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
   auto kernelNameSize = builder.create<LLVM::ConstantOp>(
       loc, getInt32Type(),
       builder.getI32IntegerAttr(kernelFunction.getName().size() + 1));
-  auto kernelName =
-      builder.create<LLVM::AllocaOp>(loc, getPointerType(), kernelNameSize);
+  auto kernelName = builder.create<LLVM::AllocaOp>(
+      loc, getPointerType(), kernelNameSize, /*alignment=*/1);
   for (auto byte : llvm::enumerate(kernelFunction.getName())) {
     auto index = builder.create<LLVM::ConstantOp>(
         loc, getInt32Type(), builder.getI32IntegerAttr(byte.index()));
@@ -382,8 +383,9 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   launchOp.erase();
 }
 
-mlir::ModulePassBase *mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
-  return new GpuLaunchFuncToCudaCallsPass();
+std::unique_ptr<mlir::ModulePassBase>
+mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
+  return std::make_unique<GpuLaunchFuncToCudaCallsPass>();
 }
 
 static PassRegistration<GpuLaunchFuncToCudaCallsPass>

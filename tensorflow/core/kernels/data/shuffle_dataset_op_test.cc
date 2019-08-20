@@ -606,51 +606,6 @@ TEST_P(ParameterizedShuffleDatasetOpTest, Cardinality) {
   EXPECT_EQ(dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedShuffleDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  Tensor count = test_case.count;
-  int64 count_value = count.flat<int64>()(0);
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(
-      CreateDatasetOpKernel(count_value, test_case.reshuffle_each_iteration,
-                            test_case.expected_output_dtypes,
-                            test_case.expected_output_shapes, &dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_data_param.start, test_case.range_data_param.end,
-      test_case.range_data_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  Tensor buffer_size = test_case.buffer_size;
-  Tensor seed = test_case.seed;
-  Tensor seed2 = test_case.seed2;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
-       TensorValue(&seed), TensorValue(&seed2)});
-  if (count_value != 1) inputs.push_back(TensorValue(&count));
-
-  std::unique_ptr<OpKernelContext> dataset_context;
-  TF_ASSERT_OK(
-      CreateDatasetContext(dataset_kernel.get(), &inputs, &dataset_context));
-  DatasetBase* dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_context.get(), &dataset));
-  core::ScopedUnref scoped_unref_dataset(dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

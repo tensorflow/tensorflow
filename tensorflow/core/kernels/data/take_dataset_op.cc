@@ -71,7 +71,9 @@ int64 TakeDataset::Cardinality() const {
   return std::min(n, count_);
 }
 
-bool TakeDataset::IsStateful() const { return input_->IsStateful(); }
+Status TakeDataset::CheckExternalState() const {
+  return input_->CheckExternalState();
+}
 
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:

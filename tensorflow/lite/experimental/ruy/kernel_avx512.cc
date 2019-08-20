@@ -13,10 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstdint>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#include <immintrin.h>  // IWYU pragma: keep
+#endif
 
 namespace ruy {
 
@@ -349,7 +357,6 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
-  RUY_DCHECK_EQ(16, 16);
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;

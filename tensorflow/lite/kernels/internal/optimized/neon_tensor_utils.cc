@@ -33,14 +33,13 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
+// aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#define TFLITE_USE_STD_ALIGN
+#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+#define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
-
-#ifdef TFLITE_USE_STD_ALIGN
-#include <stdalign.h>
 #endif
 
 namespace tflite {
@@ -54,7 +53,7 @@ namespace {
 // the passed freeing_buffer pointer.
 inline void* aligned_alloc(size_t alignment, size_t size,
                            void** freeing_buffer) {
-#ifdef TFLITE_USE_STD_ALIGN
+#ifdef TFLITE_USE_STD_ALIGNED_ALLOC
   *freeing_buffer = ::aligned_alloc(
       alignment, (size + alignment - 1) / alignment * alignment);
   return *freeing_buffer;
@@ -70,6 +69,24 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 bool HasSdotInstruction() {
   static const bool has_dotprod = ruy::DetectDotprod();
   return has_dotprod;
+}
+
+inline float AccumulateNeonLane(const float32x4_t lane) {
+#ifdef __aarch64__
+  return vaddvq_f32(lane);
+#else
+  return vgetq_lane_f32(lane, 0) + vgetq_lane_f32(lane, 1) +
+         vgetq_lane_f32(lane, 2) + vgetq_lane_f32(lane, 3);
+#endif
+}
+
+inline int32_t AccumulateNeonLane(const int32x4_t lane) {
+#ifdef __aarch64__
+  return vaddvq_s32(lane);
+#else
+  int64x2_t pairwiseAdded = vpaddlq_s32(lane);
+  return vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
+#endif
 }
 
 }  // namespace
@@ -101,9 +118,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       }
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this column.
-      *result_in_batch +=
-          (vgetq_lane_f32(acc_32x4, 0) + vgetq_lane_f32(acc_32x4, 1) +
-           vgetq_lane_f32(acc_32x4, 2) + vgetq_lane_f32(acc_32x4, 3));
+      *result_in_batch += AccumulateNeonLane(acc_32x4);
       for (int c = postamble_start; c < m_cols; c++) {
         *result_in_batch += matrix_row[c] * vector_in_batch[c];
       }
@@ -466,15 +481,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
         col += (kWeightsPerNeonLane >> 1);
       }
-#ifdef __aarch64__
-      int32_t dotprod = vaddvq_s32(dotprod_32x4);
-#else
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this row.
-      int64x2_t pairwiseAdded = vpaddlq_s32(dotprod_32x4);
-      int32_t dotprod =
-          vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
-#endif
+      int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
       // Postamble loop.
       // TODO(raziel): if (ABSL_PREDICT_FALSE(col < m_cols))
       for (; col < m_cols; ++col) {
@@ -526,13 +535,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
           }
           matrix_ptr += kBlockSize;
         }
-#ifdef __aarch64__
-        *result_in_batch += vaddvq_f32(acc_32x4);
-#else
-        *result_in_batch +=
-            (vgetq_lane_f32(acc_32x4, 0) + vgetq_lane_f32(acc_32x4, 1) +
-             vgetq_lane_f32(acc_32x4, 2) + vgetq_lane_f32(acc_32x4, 3));
-#endif
+        *result_in_batch += AccumulateNeonLane(acc_32x4);
       }
       result_in_batch += result_stride;
     }
@@ -606,13 +609,7 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
         }
         // Add the 4 intermediate sum values to get the final dot-prod value for
         // this row.
-#ifdef __aarch64__
-        int32_t dotprod = vaddvq_s32(dotprod_32x4);
-#else
-        int64x2_t pairwiseAdded = vpaddlq_s32(dotprod_32x4);
-        int32_t dotprod =
-            vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
-#endif
+        int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
         *result += dotprod * batch_scaling_factor;
       }
     }  // for row
@@ -962,12 +959,7 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
     // Vector multiply-accumulate 4 float
     acc_32x4 = vmlaq_f32(acc_32x4, v1_f32x4, v2_f32x4);
   }
-#ifdef __aarch64__
-  float result = vaddvq_f32(acc_32x4);
-#else
-  float result = (vgetq_lane_f32(acc_32x4, 0) + vgetq_lane_f32(acc_32x4, 1) +
-                  vgetq_lane_f32(acc_32x4, 2) + vgetq_lane_f32(acc_32x4, 3));
-#endif
+  float result = AccumulateNeonLane(acc_32x4);
   // Postamble loop.
   for (int v = postamble_start; v < v_size; v++) {
     result += vector1[v] * vector2[v];
@@ -1004,13 +996,7 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
       float32x4_t v1_f32x4 = vld1q_f32(input_vector_ptr + r);
       sum_f32x4 = vaddq_f32(sum_f32x4, v1_f32x4);
     }
-#ifdef __aarch64__
-    output_vector[o] += vaddvq_f32(sum_f32x4);
-#else
-    output_vector[o] +=
-        (vgetq_lane_f32(sum_f32x4, 0) + vgetq_lane_f32(sum_f32x4, 1) +
-         vgetq_lane_f32(sum_f32x4, 2) + vgetq_lane_f32(sum_f32x4, 3));
-#endif
+    output_vector[o] += AccumulateNeonLane(sum_f32x4);
     input_vector_ptr += postamble_start;
 
     // Postamble loop.

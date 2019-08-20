@@ -105,6 +105,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyHardSwish);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -432,12 +433,25 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   CheckModelCounts(*model);
   CheckFinalDataTypesSatisfied(*model);
 
-  int64 ops_count;
+  // Estimate and log the number of arithmetic ops
+  int64 ops_count = 0;
   if (EstimateArithmeticOpsCount(*model, &ops_count)) {
-    LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
-              << " billion (note that a multiply-add is counted as 2 ops).";
+    LOG(INFO) << "Estimated count of arithmetic ops: " << ops_count
+              << " ops, equivalently " << ops_count / 2 << " MACs";
   }
   model->ops_count = ops_count;
+  int64 params_count = 0;
+
+  // Compute and log the number of parameters
+  for (const auto& array_pair : model->GetArrayMap()) {
+    const Array& array = *array_pair.second;
+    if (!array.buffer) {
+      // not a parameter array
+      continue;
+    }
+    params_count += RequiredBufferSizeForShape(array.shape());
+  }
+  LOG(INFO) << "Number of parameters: " << params_count;
   return tensorflow::Status::OK();
 }
 

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -225,6 +227,20 @@ Status XlaCompilationCache::CompileSingleOp(
                      out_compilation_result, out_executable);
 }
 
+namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
+}  // namespace
+
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
     absl::Span<const XlaCompiler::Argument> args,
@@ -302,6 +318,9 @@ Status XlaCompilationCache::CompileImpl(
       }
 
       if (is_megamorphic) {
+        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                    function.name())
+            .IgnoreError();
         VLOG(3) << "Not compiling cluster " << function.name()
                 << " because it is megamorphic.";
         return false;
@@ -353,6 +372,7 @@ Status XlaCompilationCache::CompileImpl(
       auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
+      LogOnceXlaCompiledFirstCluster();
       VLOG(1) << "compiled " << function.name() << " "
               << it->second.compile_count
               << " times, compile time: " << compile_time_us

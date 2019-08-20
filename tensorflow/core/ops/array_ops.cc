@@ -3398,7 +3398,7 @@ REGISTER_OP("Fingerprint")
           return errors::InvalidArgument("`method` must be rank 0: ",
                                          method->shape());
         }
-        const string& method_string = method->scalar<string>()();
+        const string& method_string = method->scalar<tstring>()();
         if (method_string != "farmhash64") {
           return errors::InvalidArgument("Unsupported method: ", method_string);
         }

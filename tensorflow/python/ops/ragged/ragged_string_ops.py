@@ -741,6 +741,12 @@ def ngrams(data,
     data = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         data, name="data", dtype=dtypes.string)
 
+    # preserve the shape of the data if it is a tensor
+    to_tensor = False
+    if isinstance(data, ops.Tensor):
+      dense_shape = array_ops.concat([array_ops.shape(data)[:-1], [-1]], axis=0)
+      to_tensor = True
+
     if not isinstance(data, ragged_tensor.RaggedTensor):
       if data.shape.ndims is None:
         raise ValueError("Rank of data must be known.")
@@ -756,9 +762,11 @@ def ngrams(data,
             data, ragged_rank=data.shape.ndims - 1)
 
     if data.ragged_rank > 1:
-      return data.with_values(
+      output = data.with_values(
           ngrams(data.values, ngram_width, separator, pad_values, padding_width,
                  preserve_short_sequences, name))
+      return array_ops.reshape(output.flat_values,
+                               dense_shape) if to_tensor else output
 
     if pad_values is None:
       padding_width = 0
@@ -785,5 +793,8 @@ def ngrams(data,
         pad_width=padding_width,
         preserve_short_sequences=preserve_short_sequences)
 
-    return ragged_tensor.RaggedTensor.from_row_splits(
+    # if the input is Dense tensor, the output should also be a dense tensor
+    output = ragged_tensor.RaggedTensor.from_row_splits(
         values=output, row_splits=output_splits, validate=False)
+    return array_ops.reshape(output.flat_values,
+                             dense_shape) if to_tensor else output

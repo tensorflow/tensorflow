@@ -26,6 +26,10 @@ from tensorflow.python.ops import boosted_trees_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import googletest
 
+_INEQUALITY_DEFAULT_LEFT = 'INEQUALITY_DEFAULT_LEFT'.encode('utf-8')
+_INEQUALITY_DEFAULT_RIGHT = 'INEQUALITY_DEFAULT_RIGHT'.encode('utf-8')
+_EQUALITY_DEFAULT_RIGHT = 'EQUALITY_DEFAULT_RIGHT'.encode('utf-8')
+
 
 class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
   """Tests for growing tree ensemble from split candidates."""
@@ -97,6 +101,225 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             bucketized_split {
               feature_id: 6
               threshold: 7
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.65
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.489
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.53
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+          last_layer_node_start: 0
+          last_layer_node_end: 1
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
+  def testGrowWithEmptyEnsembleV2(self):
+    """Test growing an empty ensemble."""
+    with self.cached_session() as session:
+      # Create empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_ids = [0, 6]
+
+      # Prepare feature inputs.
+      feature1_nodes = np.array([0], dtype=np.int32)
+      feature1_gains = np.array([7.62], dtype=np.float32)
+      feature1_dimensions = np.array([0], dtype=np.int32)
+      feature1_thresholds = np.array([52], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
+      feature1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      # Feature split with the highest gain.
+      feature2_nodes = np.array([0], dtype=np.int32)
+      feature2_gains = np.array([7.65], dtype=np.float32)
+      feature2_dimensions = np.array([1], dtype=np.int32)
+      feature2_thresholds = np.array([7], dtype=np.int32)
+      feature2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
+      feature2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
+      feature2_inequality_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          learning_rate=0.1,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          # Tree will be finalized now, since we will reach depth 1.
+          max_depth=1,
+          feature_ids=feature_ids,
+          dimension_ids=[feature1_dimensions, feature2_dimensions],
+          node_ids=[feature1_nodes, feature2_nodes],
+          gains=[feature1_gains, feature2_gains],
+          thresholds=[feature1_thresholds, feature2_thresholds],
+          left_node_contribs=[
+              feature1_left_node_contribs, feature2_left_node_contribs
+          ],
+          right_node_contribs=[
+              feature1_right_node_contribs, feature2_right_node_contribs
+          ],
+          split_types=[
+              feature1_inequality_split_types, feature2_inequality_split_types
+          ],
+      )
+      session.run(grow_op)
+
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      # Note that since the tree is finalized, we added a new dummy tree.
+      expected_result = """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 6
+              threshold: 7
+              dimension_id: 1
+              left_id: 1
+              right_id: 2
+              default_direction: DEFAULT_RIGHT
+            }
+            metadata {
+              gain: 7.65
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.489
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.53
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+          last_layer_node_start: 0
+          last_layer_node_end: 1
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
+  def testGrowWithEmptyEnsembleV2EqualitySplit(self):
+    """Test growing an empty ensemble."""
+    with self.cached_session() as session:
+      # Create empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble('ensemble')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_ids = [0, 6]
+
+      # Prepare feature inputs.
+      feature1_nodes = np.array([0], dtype=np.int32)
+      feature1_gains = np.array([7.62], dtype=np.float32)
+      feature1_dimensions = np.array([0], dtype=np.int32)
+      feature1_thresholds = np.array([52], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-4.375]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[7.143]], dtype=np.float32)
+      feature1_inequality_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      # Feature split with the highest gain.
+      feature2_nodes = np.array([0], dtype=np.int32)
+      feature2_gains = np.array([7.65], dtype=np.float32)
+      feature2_dimensions = np.array([1], dtype=np.int32)
+      feature2_thresholds = np.array([7], dtype=np.int32)
+      feature2_left_node_contribs = np.array([[-4.89]], dtype=np.float32)
+      feature2_right_node_contribs = np.array([[5.3]], dtype=np.float32)
+      feature2_inequality_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          learning_rate=0.1,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          # Tree will be finalized now, since we will reach depth 1.
+          max_depth=1,
+          feature_ids=feature_ids,
+          dimension_ids=[feature1_dimensions, feature2_dimensions],
+          node_ids=[feature1_nodes, feature2_nodes],
+          gains=[feature1_gains, feature2_gains],
+          thresholds=[feature1_thresholds, feature2_thresholds],
+          left_node_contribs=[
+              feature1_left_node_contribs, feature2_left_node_contribs
+          ],
+          right_node_contribs=[
+              feature1_right_node_contribs, feature2_right_node_contribs
+          ],
+          split_types=[
+              feature1_inequality_split_types, feature2_inequality_split_types
+          ],
+      )
+      session.run(grow_op)
+
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      # Note that since the tree is finalized, we added a new dummy tree.
+      expected_result = """
+        trees {
+          nodes {
+            categorical_split {
+              feature_id: 6
+              value: 7
+              dimension_id: 1
               left_id: 1
               right_id: 2
             }
@@ -370,6 +593,417 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(expected_result, tree_ensemble)
 
   @test_util.run_deprecated_v1
+  def testGrowExistingEnsembleTreeV2NotFinalized(self):
+    """Test growing an existing ensemble with the last tree not finalized."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.714
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.4375
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: false
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+        }
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare feature inputs.
+      # feature 1 only has a candidate for node 1, feature 2 has candidates
+      # for both nodes and feature 3 only has a candidate for node 2.
+
+      feature_ids = [0, 1, 0]
+
+      feature1_nodes = np.array([1], dtype=np.int32)
+      feature1_gains = np.array([1.4], dtype=np.float32)
+      feature1_dimensions = np.array([0], dtype=np.int32)
+      feature1_thresholds = np.array([21], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      feature2_nodes = np.array([1, 2], dtype=np.int32)
+      feature2_gains = np.array([0.63, 2.7], dtype=np.float32)
+      feature2_dimensions = np.array([1, 3], dtype=np.int32)
+      feature2_thresholds = np.array([23, 7], dtype=np.int32)
+      feature2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
+      feature2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
+      feature2_split_types = np.array(
+          [_INEQUALITY_DEFAULT_RIGHT, _INEQUALITY_DEFAULT_RIGHT])
+
+      feature3_nodes = np.array([2], dtype=np.int32)
+      feature3_gains = np.array([1.7], dtype=np.float32)
+      feature3_dimensions = np.array([0], dtype=np.int32)
+      feature3_thresholds = np.array([3], dtype=np.int32)
+      feature3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
+      feature3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
+      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          learning_rate=0.1,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          # tree is going to be finalized now, since we reach depth 2.
+          max_depth=2,
+          feature_ids=feature_ids,
+          dimension_ids=[
+              feature1_dimensions, feature2_dimensions, feature3_dimensions
+          ],
+          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
+          gains=[feature1_gains, feature2_gains, feature3_gains],
+          thresholds=[
+              feature1_thresholds, feature2_thresholds, feature3_thresholds
+          ],
+          left_node_contribs=[
+              feature1_left_node_contribs, feature2_left_node_contribs,
+              feature3_left_node_contribs
+          ],
+          right_node_contribs=[
+              feature1_right_node_contribs, feature2_right_node_contribs,
+              feature3_right_node_contribs
+          ],
+          split_types=[
+              feature1_split_types, feature2_split_types, feature3_split_types
+          ],
+      )
+      session.run(grow_op)
+
+      # Expect the split for node 1 to be chosen from feature 1 and
+      # the split for node 2 to be chosen from feature 2.
+      # The grown tree should be finalized as max tree depth is 2 and we have
+      # grown 2 layers.
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      expected_result = """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 21
+              dimension_id: 0
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              gain: 1.4
+              original_leaf {
+                scalar: 0.714
+              }
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 1
+              dimension_id: 3
+              threshold: 7
+              left_id: 5
+              right_id: 6
+              default_direction: DEFAULT_RIGHT
+            }
+            metadata {
+              gain: 2.7
+              original_leaf {
+                scalar: -0.4375
+              }
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.114
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.879
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.5875
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.2075
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        tree_metadata {
+          is_finalized: true
+          num_layers_grown: 2
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
+  def testGrowExistingEnsembleTreeV2NotFinalizedEqualitySplit(self):
+    """Test growing an existing ensemble with the last tree not finalized."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.714
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.4375
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: false
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+        }
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare feature inputs.
+      # feature 1 only has a candidate for node 1, feature 2 has candidates
+      # for both nodes and feature 3 only has a candidate for node 2.
+
+      feature_ids = [0, 1, 0]
+
+      feature1_nodes = np.array([1], dtype=np.int32)
+      feature1_gains = np.array([1.4], dtype=np.float32)
+      feature1_dimensions = np.array([0], dtype=np.int32)
+      feature1_thresholds = np.array([21], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      feature1_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      feature2_nodes = np.array([1, 2], dtype=np.int32)
+      feature2_gains = np.array([0.63, 2.7], dtype=np.float32)
+      feature2_dimensions = np.array([1, 3], dtype=np.int32)
+      feature2_thresholds = np.array([23, 7], dtype=np.int32)
+      feature2_left_node_contribs = np.array([[-0.6], [-1.5]], dtype=np.float32)
+      feature2_right_node_contribs = np.array([[0.24], [2.3]], dtype=np.float32)
+      feature2_split_types = np.array(
+          [_EQUALITY_DEFAULT_RIGHT, _EQUALITY_DEFAULT_RIGHT])
+
+      feature3_nodes = np.array([2], dtype=np.int32)
+      feature3_gains = np.array([1.7], dtype=np.float32)
+      feature3_dimensions = np.array([0], dtype=np.int32)
+      feature3_thresholds = np.array([3], dtype=np.int32)
+      feature3_left_node_contribs = np.array([[-0.75]], dtype=np.float32)
+      feature3_right_node_contribs = np.array([[1.93]], dtype=np.float32)
+      feature3_split_types = np.array([_INEQUALITY_DEFAULT_LEFT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          learning_rate=0.1,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          # tree is going to be finalized now, since we reach depth 2.
+          max_depth=2,
+          feature_ids=feature_ids,
+          dimension_ids=[
+              feature1_dimensions, feature2_dimensions, feature3_dimensions
+          ],
+          node_ids=[feature1_nodes, feature2_nodes, feature3_nodes],
+          gains=[feature1_gains, feature2_gains, feature3_gains],
+          thresholds=[
+              feature1_thresholds, feature2_thresholds, feature3_thresholds
+          ],
+          left_node_contribs=[
+              feature1_left_node_contribs, feature2_left_node_contribs,
+              feature3_left_node_contribs
+          ],
+          right_node_contribs=[
+              feature1_right_node_contribs, feature2_right_node_contribs,
+              feature3_right_node_contribs
+          ],
+          split_types=[
+              feature1_split_types, feature2_split_types, feature3_split_types
+          ],
+      )
+      session.run(grow_op)
+
+      # Expect the split for node 1 to be chosen from feature 1 and
+      # the split for node 2 to be chosen from feature 2.
+      # The grown tree should be finalized as max tree depth is 2 and we have
+      # grown 2 layers.
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      expected_result = """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 21
+              dimension_id: 0
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              gain: 1.4
+              original_leaf {
+                scalar: 0.714
+              }
+            }
+          }
+          nodes {
+            categorical_split {
+              feature_id: 1
+              dimension_id: 3
+              value: 7
+              left_id: 5
+              right_id: 6
+            }
+            metadata {
+              gain: 2.7
+              original_leaf {
+                scalar: -0.4375
+              }
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.114
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.879
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.5875
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.2075
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 1.0
+        tree_weights: 1.0
+        tree_metadata {
+          is_finalized: true
+          num_layers_grown: 2
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 2
+          last_layer_node_start: 0
+          last_layer_node_end: 1
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
   def testGrowExistingEnsembleTreeFinalized(self):
     """Test growing an existing ensemble with the last tree finalized."""
     with self.cached_session() as session:
@@ -481,6 +1115,323 @@ class UpdateTreeEnsembleOpTest(test_util.TensorFlowTestCase):
             bucketized_split {
               feature_id: 75
               threshold: 21
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: -1.4
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.6
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.165
+            }
+          }
+        }
+        tree_weights: 0.15
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: false
+        }
+        growing_metadata {
+          num_trees_attempted: 2
+          num_layers_attempted: 2
+          last_layer_node_start: 1
+          last_layer_node_end: 3
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
+  def testGrowExistingEnsembleTreeV2Finalized(self):
+    """Test growing an existing ensemble with the last tree finalized."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.14
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -4.375
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 0.15
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+        }
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare feature inputs.
+
+      feature_ids = [75]
+
+      feature1_nodes = np.array([0], dtype=np.int32)
+      feature1_gains = np.array([-1.4], dtype=np.float32)
+      feature1_dimensions = np.array([1], dtype=np.int32)
+      feature1_thresholds = np.array([21], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      feature1_split_types = np.array([_INEQUALITY_DEFAULT_RIGHT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          learning_rate=0.1,
+          max_depth=2,
+          feature_ids=feature_ids,
+          dimension_ids=[feature1_dimensions],
+          node_ids=[feature1_nodes],
+          gains=[feature1_gains],
+          thresholds=[feature1_thresholds],
+          left_node_contribs=[feature1_left_node_contribs],
+          right_node_contribs=[feature1_right_node_contribs],
+          split_types=[feature1_split_types])
+      session.run(grow_op)
+
+      # Expect a new tree added, with a split on feature 75
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      expected_result = """
+       trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.14
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -4.375
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 75
+              dimension_id: 1
+              threshold: 21
+              left_id: 1
+              right_id: 2
+              default_direction: DEFAULT_RIGHT
+            }
+            metadata {
+              gain: -1.4
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -0.6
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 0.165
+            }
+          }
+        }
+        tree_weights: 0.15
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: false
+        }
+        growing_metadata {
+          num_trees_attempted: 2
+          num_layers_attempted: 2
+          last_layer_node_start: 1
+          last_layer_node_end: 3
+        }
+      """
+      self.assertEqual(new_stamp, 1)
+      self.assertProtoEquals(expected_result, tree_ensemble)
+
+  @test_util.run_deprecated_v1
+  def testGrowExistingEnsembleTreeV2FinalizedEqualitySplit(self):
+    """Test growing an existing ensemble with the last tree finalized."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.14
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -4.375
+            }
+          }
+        }
+        trees {
+          nodes {
+            leaf {
+              scalar: 0.0
+            }
+          }
+        }
+        tree_weights: 0.15
+        tree_weights: 1.0
+        tree_metadata {
+          num_layers_grown: 1
+          is_finalized: true
+        }
+        tree_metadata {
+        }
+        growing_metadata {
+          num_trees_attempted: 1
+          num_layers_attempted: 1
+        }
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare feature inputs.
+
+      feature_ids = [75]
+
+      feature1_nodes = np.array([0], dtype=np.int32)
+      feature1_gains = np.array([-1.4], dtype=np.float32)
+      feature1_dimensions = np.array([1], dtype=np.int32)
+      feature1_thresholds = np.array([21], dtype=np.int32)
+      feature1_left_node_contribs = np.array([[-6.0]], dtype=np.float32)
+      feature1_right_node_contribs = np.array([[1.65]], dtype=np.float32)
+      feature1_split_types = np.array([_EQUALITY_DEFAULT_RIGHT])
+
+      # Grow tree ensemble.
+      grow_op = boosted_trees_ops.update_ensemble_v2(
+          tree_ensemble_handle,
+          pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING,
+          learning_rate=0.1,
+          max_depth=2,
+          feature_ids=feature_ids,
+          dimension_ids=[feature1_dimensions],
+          node_ids=[feature1_nodes],
+          gains=[feature1_gains],
+          thresholds=[feature1_thresholds],
+          left_node_contribs=[feature1_left_node_contribs],
+          right_node_contribs=[feature1_right_node_contribs],
+          split_types=[feature1_split_types])
+      session.run(grow_op)
+
+      # Expect a new tree added, with a split on feature 75
+      new_stamp, serialized = session.run(tree_ensemble.serialize())
+      tree_ensemble = boosted_trees_pb2.TreeEnsemble()
+      tree_ensemble.ParseFromString(serialized)
+
+      expected_result = """
+       trees {
+          nodes {
+            bucketized_split {
+              feature_id: 4
+              dimension_id: 0
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.14
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -4.375
+            }
+          }
+        }
+        trees {
+          nodes {
+            categorical_split {
+              feature_id: 75
+              dimension_id: 1
+              value: 21
               left_id: 1
               right_id: 2
             }

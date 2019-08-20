@@ -38,4 +38,7 @@ bazel test --define=no_tensorflow_py_deps=true \
       --test_output=errors \
       -- //${PIP_TEST_ROOT}/tensorflow/python/... \
       -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu
+      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu \
+      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test_gpu
+

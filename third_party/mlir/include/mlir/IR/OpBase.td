@@ -334,6 +334,10 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class OpaqueType<string dialect, string name, string description>
+  : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
+         description>;
+
 // Function Type
 
 // Any function type.
@@ -600,6 +604,9 @@ def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
   let returnType = [{ APInt }];
 }
 
+def I1Attr  : IntegerAttrBase<I1,  "1-bit integer attribute">;
+def I8Attr  : IntegerAttrBase<I8,  "8-bit integer attribute">;
+def I16Attr : IntegerAttrBase<I16, "16-bit integer attribute">;
 def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
 def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 
@@ -800,6 +807,13 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
+def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+                          "dictionary of named attribute values"> {
+  let storageType = [{ DictionaryAttr }];
+  let returnType = [{ DictionaryAttr }];
+  let convertFromStorage = "$_self";
+}
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
@@ -863,6 +877,11 @@ def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
   let storageType = [{ SymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+}
+
+def SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "symbol ref array attribute"> {
+  let constBuilderCall = ?;
 }
 
 //===----------------------------------------------------------------------===//
@@ -984,7 +1003,7 @@ class OpTrait;
 // purpose to wrap around C++ symbol string with this class is to make
 // traits specified for ops in TableGen less alien and more integrated.
 class NativeOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // ParamNativeOpTrait corresponds to the template-parameterized traits in the
@@ -1000,7 +1019,7 @@ class ParamNativeOpTrait<string prop, string params>
 // affects op definition generator internals, like how op builders and
 // operand/attribute/result getters are generated.
 class GenInternalOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // PredOpTrait is an op trait implemented by way of a predicate on the op.
@@ -1013,6 +1032,8 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative      : NativeOpTrait<"IsCommutative">;
+// Op is isolated from above.
+def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
@@ -1056,6 +1077,19 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // known at runtime. This trait requires all variadic results of an op
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
+
+//===----------------------------------------------------------------------===//
+// OpInterface definitions
+//===----------------------------------------------------------------------===//
+
+// NativeOpInterface corresponds to a specific 'OpInterface' class defined in
+// C++. The purpose to wrap around C++ symbol string with this class is to make
+// interfaces specified for ops in TableGen less alien and more integrated.
+class NativeOpInterface<string prop> : NativeOpTrait<""> {
+  // TODO(riverriddle) Remove when operation interfaces have their own trait
+  // subclass.
+  let trait = prop # "::Trait";
+}
 
 //===----------------------------------------------------------------------===//
 // Op definitions

@@ -351,41 +351,6 @@ TEST_P(ParameterizedTakeDatasetOpTest, Cardinality) {
   EXPECT_EQ(take_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_F(TakeDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = TakeLessTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_take_dataset;
-  inputs_for_take_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_take_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> take_dataset_kernel;
-  TF_ASSERT_OK(CreateTakeDatasetKernel(test_case.expected_output_dtypes,
-                                       test_case.expected_output_shapes,
-                                       &take_dataset_kernel));
-  std::unique_ptr<OpKernelContext> take_dataset_context;
-  TF_ASSERT_OK(CreateTakeDatasetContext(take_dataset_kernel.get(),
-                                        &inputs_for_take_dataset,
-                                        &take_dataset_context));
-  DatasetBase *take_dataset;
-  TF_ASSERT_OK(CreateDataset(take_dataset_kernel.get(),
-                             take_dataset_context.get(), &take_dataset));
-  core::ScopedUnref scoped_unref(take_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(take_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedTakeDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

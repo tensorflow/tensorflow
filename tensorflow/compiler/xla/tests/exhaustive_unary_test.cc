@@ -395,7 +395,17 @@ XLA_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-XLA_TEST_FLOAT_32_BITS_OR_LESS(Tanh, { Run(Tanh, std::tanh); })
+XLA_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
+                 ? ErrorSpec{0, 0}
+                 : GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(Tanh, std::tanh, error_spec_gen);
+})
 
 template <PrimitiveType T>
 void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCosTan() {
@@ -619,7 +629,17 @@ XLA_TEST_P(ExhaustiveF64UnaryTest, Cosh) { Run(Cosh, std::cosh); }
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Sinh) { Run(Sinh, std::sinh); }
 
-XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) { Run(Tanh, std::tanh); }
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
+                 ? ErrorSpec{0, 0}
+                 : GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(Tanh, std::tanh, error_spec_gen);
+}
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Cos) { Run(Cos, std::cos); }
 
@@ -628,6 +648,14 @@ XLA_TEST_P(ExhaustiveF64UnaryTest, Sin) { Run(Sin, std::sin); }
 XLA_TEST_P(ExhaustiveF64UnaryTest, Tan) { Run(Tan, std::tan); }
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Round) { Run(Round, std::round); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Erf) {
+  Run(Erf, std::erf, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Erfc) {
+  Run(Erfc, std::erfc, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+}
 
 #if defined(UNARY_TEST_TARGET_F64)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
@@ -672,7 +700,7 @@ class ExhaustiveComplexUnaryTestBase
     this->known_incorrect_fn_ = [&](int64 v) {
       double f = this->ConvertValue(v);
       return (T == C128 &&
-              std::abs(f) > std::numeric_limits<float>::max() / 2) ||
+              std::abs(f) > std::numeric_limits<double>::max() / 2) ||
              f == -std::numeric_limits<double>::infinity();
     };
   }
@@ -716,6 +744,20 @@ typedef ExhaustiveComplexUnaryTestBase<C128> ExhaustiveC128UnaryTest;
 // TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
 XLA_TEST_P(ExhaustiveC64UnaryTest, DISABLED_ON_CPU(Log)) {
   Run(Log, [](complex64 x) { return std::log<float>(x); });
+}
+
+XLA_TEST_P(ExhaustiveC64UnaryTest, Sqrt) {
+  Run(Sqrt, [](complex64 x) {
+    return static_cast<complex64>(
+        std::sqrt<double>(static_cast<complex128>(x)));
+  });
+}
+
+XLA_TEST_P(ExhaustiveC64UnaryTest, Rsqrt) {
+  Run(Rsqrt, [](complex64 x) {
+    return static_cast<complex64>(
+        complex128(1, 0) / std::sqrt<double>(static_cast<complex128>(x)));
+  });
 }
 
 // The current libc++ implementation of the complex tanh function provides
@@ -785,6 +827,35 @@ XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
            std::abs(f) < 1.0e-300;
   };
   Run(Log, [](complex128 x) { return std::log<double>(x); });
+}
+
+XLA_TEST_P(ExhaustiveC128UnaryTest, Sqrt) {
+  // Similar to the Tanh bug.
+  known_incorrect_fn_ = [&](int64 v) {
+    double f = this->ConvertValue(v);
+    return std::abs(f) > std::numeric_limits<double>::max() / 2;
+  };
+  Run(Sqrt, [](complex128 x) { return std::sqrt<double>(x); });
+}
+
+XLA_TEST_P(ExhaustiveC128UnaryTest, Rsqrt) {
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    // Edge case on CUDA backend where the Log of a complex number made up of
+    // the smallest denormals is more accurate than the interpreter backend.
+    error_spec_gen = [](complex128 x) {
+      constexpr double denorm_min = std::numeric_limits<double>::denorm_min();
+      if (std::abs(x.real()) == denorm_min &&
+          std::abs(x.imag()) == denorm_min) {
+        return ErrorSpec(0.5, 0.5);
+      }
+      return GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(
+      Rsqrt,
+      [](complex128 x) { return complex128(1, 0) / std::sqrt<double>(x); },
+      error_spec_gen);
 }
 
 XLA_TEST_P(ExhaustiveC128UnaryTest, Tanh) {

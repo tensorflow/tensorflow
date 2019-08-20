@@ -290,8 +290,8 @@ void VectorizerTestPass::runOnFunction() {
   }
 }
 
-FunctionPassBase *mlir::createVectorizerTestPass() {
-  return new VectorizerTestPass();
+std::unique_ptr<FunctionPassBase> mlir::createVectorizerTestPass() {
+  return std::make_unique<VectorizerTestPass>();
 }
 
 static PassRegistration<VectorizerTestPass>

@@ -109,7 +109,7 @@ class InitializeTRTResource : public OpKernel {
                                  resource->cache_.size(), " entries."));
 
     // Get the file name.
-    const string& filename = ctx->input(1).scalar<string>()();
+    const string& filename = ctx->input(1).scalar<tstring>()();
     OP_REQUIRES(ctx, !filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
@@ -171,8 +171,8 @@ class SerializeTRTResource : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    const string& resource_name = ctx->input(0).scalar<string>()();
-    const string& filename = ctx->input(1).scalar<string>()();
+    const string& resource_name = ctx->input(0).scalar<tstring>()();
+    const string& filename = ctx->input(1).scalar<tstring>()();
     OP_REQUIRES(ctx, !filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
@@ -184,13 +184,7 @@ class SerializeTRTResource : public OpKernel {
     core::ScopedUnref unref_me(resource);
 
     // Terminate the calibration if any.
-    if (resource->calib_ctx_) {
-      // We don't save the calibration_table for TF 2.0 at the moment, it's used
-      // in 1.x environment.
-      string calibration_table;
-      OP_REQUIRES_OK(
-          ctx, resource->calib_ctx_->SerializeToString(&calibration_table));
-    }
+    if (resource->calib_ctx_) resource->calib_ctx_->TerminateCalibration();
 
     // Serialize the engines and write them to file.
     std::unique_ptr<WritableFile> file;

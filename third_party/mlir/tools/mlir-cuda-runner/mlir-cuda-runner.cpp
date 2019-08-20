@@ -29,9 +29,9 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/JitRunner.h"
@@ -98,8 +98,8 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
                        "cuLinkComplete");
 
   char *cubinAsChar = static_cast<char *>(cubinData);
-  OwnedCubin result = llvm::make_unique<std::vector<char>>(
-      cubinAsChar, cubinAsChar + cubinSize);
+  OwnedCubin result =
+      std::make_unique<std::vector<char>>(cubinAsChar, cubinAsChar + cubinSize);
 
   // This will also destroy the cubin data.
   RETURN_ON_CUDA_ERROR(cuLinkDestroy(linkState), "cuLinkDestroy");

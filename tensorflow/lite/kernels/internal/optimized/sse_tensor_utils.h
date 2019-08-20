@@ -114,11 +114,6 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector) {
-  PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
-}
-
 void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
   PortableApplySigmoidToVector(vector, v_size, result);
 }
@@ -128,16 +123,8 @@ void ApplyActivationToVector(const float* vector, int v_size,
   PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
-void CopyVector(const float* vector, int v_size, float* result) {
-  PortableCopyVector(vector, v_size, result);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
-}
-
-void ZeroVector(float* vector, int v_size) {
-  PortableZeroVector(vector, v_size);
 }
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }

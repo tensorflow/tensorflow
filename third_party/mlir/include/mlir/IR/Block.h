@@ -95,9 +95,8 @@ public:
   /// Blocks are maintained in a Region.
   Region *getParent();
 
-  /// Returns the closest surrounding operation that contains this block or
-  /// nullptr if this is a top-level block.
-  Operation *getContainingOp();
+  /// Returns the closest surrounding operation that contains this block.
+  Operation *getParentOp();
 
   /// Return if this block is the entry block in the parent region.
   bool isEntryBlock();
@@ -373,7 +372,7 @@ struct ilist_traits<::mlir::Block> : public ilist_alloc_traits<::mlir::Block> {
                              block_iterator first, block_iterator last);
 
 private:
-  mlir::Region *getContainingRegion();
+  mlir::Region *getParentRegion();
 };
 } // end namespace llvm
 

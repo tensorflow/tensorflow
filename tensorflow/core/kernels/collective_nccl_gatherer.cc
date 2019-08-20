@@ -45,7 +45,8 @@ void NcclGatherer::Run(StatusCallback done) {
   NcclManager::instance()->AddToAllGather(
       std::move(participant),
       {std::move(nccl_collective_key), num_local_devices, num_global_devices,
-       col_params_->group.runtime_details.communicator_key});
+       col_params_->group.runtime_details.communicator_key,
+       /*source_rank=*/-1});
   {
     // `WaitForDependencies` may block if the collective instances on which this
     // op depends have not yet launched.  When this function returns, this op is

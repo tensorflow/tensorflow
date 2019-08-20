@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -23,7 +24,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -150,8 +150,9 @@ void LegalizeControlFlow::runOnFunction() {
 }  // namespace XLA
 }  // namespace mlir
 
-mlir::FunctionPassBase* mlir::XLA::createLegalizeControlFlowPass() {
-  return new LegalizeControlFlow();
+std::unique_ptr<mlir::FunctionPassBase>
+mlir::XLA::createLegalizeControlFlowPass() {
+  return std::make_unique<LegalizeControlFlow>();
 }
 
 static PassRegistration<mlir::XLA::LegalizeControlFlow> legalize_cf_pass(

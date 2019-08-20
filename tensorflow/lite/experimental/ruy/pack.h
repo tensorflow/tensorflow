@@ -85,12 +85,14 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
+// IWYU pragma: begin_exports
 #if RUY_PLATFORM(NEON)
 #include "tensorflow/lite/experimental/ruy/pack_arm.h"
-#elif RUY_PLATFORM(AVX512)
+#elif RUY_PLATFORM(X86)
 #include "tensorflow/lite/experimental/ruy/pack_x86.h"
 #else
 #include "tensorflow/lite/experimental/ruy/pack_common.h"
 #endif
+// IWYU pragma: end_exports
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_H_

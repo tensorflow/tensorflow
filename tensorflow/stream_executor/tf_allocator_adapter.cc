@@ -21,8 +21,9 @@ limitations under the License.
 namespace stream_executor {
 
 TfAllocatorAdapter::TfAllocatorAdapter(const Platform *platform,
-                                       tensorflow::Allocator *wrapped)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
+                                       tensorflow::Allocator *wrapped,
+                                       Stream *stream)
+    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(stream) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 

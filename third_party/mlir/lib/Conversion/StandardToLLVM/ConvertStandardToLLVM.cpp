@@ -23,13 +23,13 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -145,18 +145,20 @@ Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   return LLVM::LLVMType::getStructTy(llvmDialect, types);
 }
 
-// Convert a 1D vector type to an LLVM vector type.
+// Convert an n-D vector type to an LLVM vector type via (n-1)-D array type when
+// n > 1.
+// For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
+// `vector<4 x 8 x 16 f32>` converts to `!llvm<"[4 x [8 x <16 x float>]]">`.
 Type LLVMTypeConverter::convertVectorType(VectorType type) {
-  if (type.getRank() != 1) {
-    auto *mlirContext = llvmDialect->getContext();
-    emitError(UnknownLoc::get(mlirContext), "only 1D vectors are supported");
+  auto elementType = unwrap(convertType(type.getElementType()));
+  if (!elementType)
     return {};
-  }
-
-  LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
-  return elementType
-             ? LLVM::LLVMType::getVectorTy(elementType, type.getShape().front())
-             : Type();
+  auto vectorType =
+      LLVM::LLVMType::getVectorTy(elementType, type.getShape().back());
+  auto shape = type.getShape();
+  for (int i = shape.size() - 2; i >= 0; --i)
+    vectorType = LLVM::LLVMType::getArrayTy(vectorType, shape[i]);
+  return vectorType;
 }
 
 // Dispatch based on the actual type.  Return null type on error.
@@ -806,10 +808,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
                                 transformed.indices(), rewriter, getModule());
-    auto elementType = lowering.convertType(type.getElementType());
-
-    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, elementType,
-                                              ArrayRef<Value *>{dataPtr});
+    rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, dataPtr);
     return matchSuccess();
   }
 };
@@ -865,10 +864,11 @@ struct IndexCastOpLowering : public LLVMLegalizationPattern<IndexCastOp> {
   }
 };
 
-// Convert std.cmpi predicate into the LLVM dialect ICmpPredicate.  The two
+// Convert std.cmp predicate into the LLVM dialect CmpPredicate.  The two
 // enums share the numerical values so just cast.
-static LLVM::ICmpPredicate convertCmpIPredicate(CmpIPredicate pred) {
-  return static_cast<LLVM::ICmpPredicate>(pred);
+template <typename LLVMPredType, typename StdPredType>
+static LLVMPredType convertCmpPredicate(StdPredType pred) {
+  return static_cast<LLVMPredType>(pred);
 }
 
 struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
@@ -882,8 +882,27 @@ struct CmpIOpLowering : public LLVMLegalizationPattern<CmpIOp> {
 
     rewriter.replaceOpWithNewOp<LLVM::ICmpOp>(
         op, lowering.convertType(cmpiOp.getResult()->getType()),
-        rewriter.getI64IntegerAttr(
-            static_cast<int64_t>(convertCmpIPredicate(cmpiOp.getPredicate()))),
+        rewriter.getI64IntegerAttr(static_cast<int64_t>(
+            convertCmpPredicate<LLVM::ICmpPredicate>(cmpiOp.getPredicate()))),
+        transformed.lhs(), transformed.rhs());
+
+    return matchSuccess();
+  }
+};
+
+struct CmpFOpLowering : public LLVMLegalizationPattern<CmpFOp> {
+  using LLVMLegalizationPattern<CmpFOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto cmpfOp = cast<CmpFOp>(op);
+    CmpFOpOperandAdaptor transformed(operands);
+
+    rewriter.replaceOpWithNewOp<LLVM::FCmpOp>(
+        op, lowering.convertType(cmpfOp.getResult()->getType()),
+        rewriter.getI64IntegerAttr(static_cast<int64_t>(
+            convertCmpPredicate<LLVM::FCmpPredicate>(cmpfOp.getPredicate()))),
         transformed.lhs(), transformed.rhs());
 
     return matchSuccess();
@@ -1026,9 +1045,9 @@ void mlir::populateStdToLLVMConversionPatterns(
   patterns.insert<
       AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
       BranchOpLowering, CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
-      CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
-      DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
-      FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
+      CmpFOpLowering, CondBranchOpLowering, ConstLLVMOpLowering,
+      DeallocOpLowering, DimOpLowering, DivISOpLowering, DivIUOpLowering,
+      DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
       SelectOpLowering, SIToFPLowering, StoreOpLowering, SubFOpLowering,
@@ -1060,7 +1079,7 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
 /// Create an instance of LLVMTypeConverter in the given context.
 static std::unique_ptr<LLVMTypeConverter>
 makeStandardToLLVMTypeConverter(MLIRContext *context) {
-  return llvm::make_unique<LLVMTypeConverter>(context);
+  return std::make_unique<LLVMTypeConverter>(context);
 }
 
 namespace {
@@ -1096,8 +1115,7 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return typeConverter->isSignatureLegal(op.getType());
     });
-    if (failed(applyPartialConversion(m, target, std::move(patterns),
-                                      typeConverter.get())))
+    if (failed(applyPartialConversion(m, target, patterns, &*typeConverter)))
       signalPassFailure();
   }
 
@@ -1111,14 +1129,15 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-ModulePassBase *mlir::createConvertToLLVMIRPass() {
-  return new LLVMLoweringPass;
+std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
+  return std::make_unique<LLVMLoweringPass>();
 }
 
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
                                 LLVMTypeConverterMaker typeConverterMaker) {
-  return new LLVMLoweringPass(patternListFiller, typeConverterMaker);
+  return std::make_unique<LLVMLoweringPass>(patternListFiller,
+                                            typeConverterMaker);
 }
 
 static PassRegistration<LLVMLoweringPass>

@@ -69,9 +69,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     Args:
       learning_rate: A `Tensor` or a floating point value.  The learning rate.
       initial_accumulator_value: A floating point value.
-        Starting value for the accumulators, must be positive.
-      epsilon: A floating point value.
-        Starting value for the accumulators, must be positive.
+        Starting value for the accumulators, must be non-negative.
+      epsilon: A small floating point value to avoid zero denominator.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adagrad".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,

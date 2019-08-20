@@ -44,7 +44,7 @@ Status RemoteExecuteNode::Run() {
   }
   VLOG(3) << "Issuing: " << rpc_description;
 
-  eager_client_->StreamingEnqueueAsync(
+  return eager_client_->StreamingEnqueueAsync(
       request_.get(), response,
       [inputs, retvals, response, device,
        rpc_description](const Status& status) {
@@ -75,7 +75,6 @@ Status RemoteExecuteNode::Run() {
         }
         delete response;
       });
-  return Status::OK();
 }
 
 }  // namespace eager

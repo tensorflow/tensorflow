@@ -39,7 +39,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "third_party/opencl_headers/CL/cl.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -57,13 +57,9 @@ namespace gpu {
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
-
   BHWC,
-
   DHWC4,
-
   HWDC4,
-
   HDWC4,
 };
 

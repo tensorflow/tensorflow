@@ -12,9 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/common.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/pack.h"
-
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
@@ -1289,7 +1292,7 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
 
           "ands r2, %[rows], #3\n"
           "beq 4f\n"
-          "mov r0, 0\n"
+          "mov r0, #0\n"
           // Zero out q0 - q3
           "vdup.32 q0, r0\n"
           "vdup.32 q1, r0\n"

@@ -267,7 +267,7 @@ class StatsAggregatorSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &summary_t));
     Summary summary;
     resource->stats_aggregator()->EncodeToProto(&summary);
-    summary_t->scalar<string>()() = summary.SerializeAsString();
+    summary_t->scalar<tstring>()() = summary.SerializeAsString();
   }
 };
 

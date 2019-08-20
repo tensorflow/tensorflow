@@ -23,25 +23,6 @@ namespace tflite {
 namespace testing {
 namespace {
 
-inline TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                                     const char* name) {
-  TfLiteTensor result;
-  result.type = kTfLiteBool;
-  result.data.b = const_cast<bool*>(data);
-  result.dims = dims;
-  result.params = {};
-  result.allocation_type = kTfLiteMemNone;
-  result.bytes = ElementCount(*dims) * sizeof(bool);
-  result.allocation = nullptr;
-  result.name = name;
-  return result;
-}
-
-inline TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
-                                     TfLiteIntArray* dims, const char* name) {
-  return CreateBoolTensor(data.begin(), dims, name);
-}
-
 void TestLogicalOp(tflite::BuiltinOperator op,
                    std::initializer_list<int> input1_dims_data,
                    std::initializer_list<bool> input1_data,

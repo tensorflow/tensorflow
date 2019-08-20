@@ -81,8 +81,9 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of a
 /// Function.
-FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
-  return new LoopTiling(cacheSizeBytes);
+std::unique_ptr<FunctionPassBase>
+mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
+  return std::make_unique<LoopTiling>(cacheSizeBytes);
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified

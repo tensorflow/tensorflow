@@ -234,7 +234,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      src.flat<string>()(i) = data[i];
+      src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -244,7 +244,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
+      ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
     TF_DeleteTensor(dst);
@@ -1386,7 +1386,7 @@ TEST(CAPI, SavedModel) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);
-    input.flat<string>()(i) = example.SerializeAsString();
+    input.flat<tstring>()(i) = example.SerializeAsString();
   }
 
   const tensorflow::string input_op_name(

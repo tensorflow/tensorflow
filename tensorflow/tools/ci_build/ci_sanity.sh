@@ -577,7 +577,8 @@ _do_pip_no_cuda_deps_check() {
         "@local_config_cuda//cuda:cudnn"
         "@local_config_cuda//cuda:curand"
         "@local_config_cuda//cuda:cusolver"
-        "@local_config_cuda//cuda:cusparse")
+        "@local_config_cuda//cuda:cusparse"
+        "@local_config_tensorrt//:tensorrt")
   for cuda_dep in "${DISALLOWED_CUDA_DEPS[@]}"
   do
    _check_no_deps "//tensorflow/tools/pip_package:build_pip_package" "${cuda_dep}" "${EXTRA_FLAG}"

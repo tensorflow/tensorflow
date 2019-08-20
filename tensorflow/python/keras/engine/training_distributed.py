@@ -646,7 +646,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
+          model, dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
         raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps_per_epoch argument.')
@@ -703,7 +703,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps')
+          model, dataset, steps, steps_name='steps')
       if steps is None:
         raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
@@ -740,7 +740,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         allow_partial_batch=True)
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps')
+          model, dataset, steps, steps_name='steps')
       if steps is None:
         raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
@@ -762,7 +762,8 @@ def train_with_multi_worker(method):
   def wrapper(model, **kwargs):
     def _worker_fn(_):
       callbacks = kwargs.pop('callbacks', None)
-      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
+      filtered_callbacks = dist_utils.filter_distributed_callbacks(
+          callbacks, model)
       kwargs['callbacks'] = filtered_callbacks
       return method(model, **kwargs)
 

@@ -31,7 +31,7 @@ using namespace mlir::quantizer;
 static void
 collectElementsStatisticsDim(ElementsAttr attr, unsigned numElements,
                              ArrayRef<int64_t> shape,
-                             llvm::SmallVector<uint64_t, 4> &indices,
+                             llvm::SmallVectorImpl<uint64_t> &indices,
                              uint64_t dim, TensorAxisStatistics &statistics) {
   // Recursive terminating condition.
   if (dim >= shape.size())
@@ -50,9 +50,7 @@ collectElementsStatisticsDim(ElementsAttr attr, unsigned numElements,
   // Collection dim.
   for (uint64_t i = 0, s = shape[dim]; i < s; ++i) {
     indices[dim] = i;
-    double value = attr.getValue(llvm::makeArrayRef(indices))
-                       .cast<FloatAttr>()
-                       .getValueAsDouble();
+    double value = attr.getValue<FloatAttr>(indices).getValueAsDouble();
     statistics.minValue = std::min(statistics.minValue, value);
     statistics.maxValue = std::max(statistics.maxValue, value);
     statistics.mean += value / numElements;

@@ -43,13 +43,14 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   target.addLegalDialect<spirv::SPIRVDialect>();
   target.addLegalOp<FuncOp>();
 
-  if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+  if (failed(applyPartialConversion(module, target, patterns))) {
     return signalPassFailure();
   }
 }
 
-ModulePassBase *mlir::spirv::createConvertStandardToSPIRVPass() {
-  return new ConvertStandardToSPIRVPass();
+std::unique_ptr<ModulePassBase>
+mlir::spirv::createConvertStandardToSPIRVPass() {
+  return std::make_unique<ConvertStandardToSPIRVPass>();
 }
 
 static PassRegistration<ConvertStandardToSPIRVPass>
