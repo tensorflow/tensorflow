@@ -31,7 +31,7 @@ std::string GenerateConvolutionConstantCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     const int2& kernel_size, const int2& dilation, int src_channels,
-    int dst_channels,
+    int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
@@ -114,6 +114,10 @@ std::string GenerateConvolutionConstantCode(
       if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
+      } else if (device.IsAdreno3xx()) {
+        c += "  {\n";
+        c += "  FLT y_in = (FLT)(" + s_y + " >= 0 && " + s_y +
+             " < src_size.y);\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
@@ -124,6 +128,13 @@ std::string GenerateConvolutionConstantCode(
           c += "(" + s_type + ")(0.0) : ";
           c += src_tensor.Read3D(s_x, s_y, std::to_string(s)) + s_postfix +
                ";\n";
+        } else if (device.IsAdreno3xx()) {
+          c += "    FLT x_in = (FLT)(" + s_x + ">= 0 && " + s_x +
+               "< src_size.x) * y_in;\n";
+          c += "    " + s_type + " src = " +
+               src_tensor.Read3D(s_x, s_y, std::to_string(s),
+                                 TextureAddressMode::DONT_CARE) +
+               s_postfix + " * x_in;\n";
         } else {
           c += "    " + s_type +
                " src = " + src_tensor.Read3D(s_x, s_y, std::to_string(s)) +
@@ -136,7 +147,8 @@ std::string GenerateConvolutionConstantCode(
         }
         c += "  }\n";
       }
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (src_descriptor.storage_type == TensorStorageType::BUFFER ||
+          device.IsAdreno3xx()) {
         c += "  }\n";
       }
     }
@@ -210,7 +222,7 @@ Status ConvConstants::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionConstantCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, kernel_size_, dilation_, src_channels_,
-      dst_channels_, linked_operations_);
+      dst_channels_, *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
