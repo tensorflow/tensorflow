@@ -318,6 +318,10 @@ class _TensorCacheDeleter(object):
       del _tensor_caches_map[self._context_id]
 
 
+# Thread-local stack of execution callbacks.
+_post_execution_callbacks = threading.local()
+
+
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -379,7 +383,6 @@ class Context(object):
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
-    self._post_execution_callbacks = []
     self._seed = None
     self._initialize_lock = threading.Lock()
     self._initialized = False
@@ -1027,17 +1030,18 @@ class Context(object):
       `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
     """
-    # TODO(cais): (b/64674139) Allow access to function-internal operations.
-    self._post_execution_callbacks.append(callback)
+    self.post_execution_callbacks.append(callback)
 
   def clear_post_execution_callbacks(self):
     """Clear all post-execution callbacks added to the context."""
-    del self._post_execution_callbacks[:]
+    del self.post_execution_callbacks[:]
 
   @property
   def post_execution_callbacks(self):
     """Get the list of post-execution callbacks added to the context."""
-    return self._post_execution_callbacks
+    if not hasattr(_post_execution_callbacks, "callbacks"):
+      _post_execution_callbacks.callbacks = []
+    return _post_execution_callbacks.callbacks
 
   def _initialize_physical_devices(self):
     """Get local devices visible to the system."""

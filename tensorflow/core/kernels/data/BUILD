@@ -628,6 +628,7 @@ tf_kernel_library(
     srcs = ["prefetch_dataset_op.cc"],
     hdrs = ["prefetch_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         ":prefetch_autotuner",
         ":stats_utils",

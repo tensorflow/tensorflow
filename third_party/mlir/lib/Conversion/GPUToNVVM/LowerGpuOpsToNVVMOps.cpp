@@ -21,10 +21,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
-#include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
@@ -129,7 +129,7 @@ public:
 } // anonymous namespace
 
 std::unique_ptr<FunctionPassBase> createLowerGpuOpsToNVVMOpsPass() {
-  return llvm::make_unique<LowerGpuOpsToNVVMOpsPass>();
+  return std::make_unique<LowerGpuOpsToNVVMOpsPass>();
 }
 
 static PassRegistration<LowerGpuOpsToNVVMOpsPass>

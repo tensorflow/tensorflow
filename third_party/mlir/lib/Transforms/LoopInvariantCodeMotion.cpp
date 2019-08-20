@@ -25,11 +25,11 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
@@ -77,7 +77,7 @@ static bool isMemRefDereferencingOp(Operation &op) {
 }
 
 std::unique_ptr<FunctionPassBase> mlir::createLoopInvariantCodeMotionPass() {
-  return llvm::make_unique<LoopInvariantCodeMotion>();
+  return std::make_unique<LoopInvariantCodeMotion>();
 }
 
 // Returns true if the individual op is loop invariant.

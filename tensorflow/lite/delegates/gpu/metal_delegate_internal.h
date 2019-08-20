@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+struct TfLiteDelegate;
 
 // Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
 // into this encoder instead of the internal encoder.

@@ -555,19 +555,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "platform_strings",
-    srcs = [
-        "//tensorflow/core/platform:platform_strings.cc",
-        "//tensorflow/core/platform:platform_strings_computed.h",
-    ],
-    hdrs = [
-        "//tensorflow/core/platform:platform_strings.h",
-    ],
-    visibility = [":__subpackages__"],
-    deps = [],
-)
-
 filegroup(
     name = "platform_other_hdrs",
     srcs = [
@@ -663,9 +650,8 @@ cc_library(
         "lib/core/errors.h",
         "lib/core/status.h",
         "lib/core/stringpiece.h",
-        "lib/strings/numbers.h",
-        "lib/strings/strcat.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:legacy_proto_hdrs",
         "//tensorflow/core/platform:logging.h",
@@ -734,22 +720,12 @@ cc_library(
         "lib/io/table.h",
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
-        "lib/math/math_util.h",
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
         "lib/monitoring/gauge.h",
         "lib/monitoring/metric_def.h",
         "lib/monitoring/sampler.h",
-        "lib/random/distribution_sampler.h",
-        "lib/random/philox_random.h",
-        "lib/random/random_distributions.h",
-        "lib/random/simple_philox.h",
-        "lib/strings/numbers.h",
-        "lib/strings/proto_serialization.h",
-        "lib/strings/str_util.h",
-        "lib/strings/strcat.h",
-        "lib/strings/stringprintf.h",
         ":platform_base_hdrs",
         ":platform_env_hdrs",
         ":platform_file_system_hdrs",
@@ -758,10 +734,14 @@ cc_library(
         ":platform_protobuf_hdrs",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
+        "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/random:legacy_lib_random_headers",
+        "//tensorflow/core/lib/strings:legacy_lib_string_headers",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
         "@com_google_absl//absl/container:inlined_vector",
@@ -795,17 +775,6 @@ cc_library(
         ":core_stringpiece",
         ":lib_proto_parsing",
         ":protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "stacktrace_handler",
-    srcs = ["//tensorflow/core/platform:stacktrace_handler.cc"],
-    hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:abi",
-        "//tensorflow/core/platform:stacktrace",
     ],
 )
 
@@ -1806,6 +1775,11 @@ filegroup(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
+        "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
+        "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
+        "//tensorflow/core/lib/math:math_util.h",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2388,8 +2362,12 @@ tf_proto_library_cc(
 LIB_INTERNAL_PRIVATE_HEADERS = [
     "framework/resource_handle.h",
     "//tensorflow/core/platform:legacy_lib_internal_headers",
+    "//tensorflow/core/platform:str_util.h",
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+    "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
+    "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
+    "//tensorflow/core/lib/math:math_util.h",
 ] + glob(
     [
         "lib/**/*.h",
@@ -2418,14 +2396,8 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "lib/monitoring/mobile_gauge.h",
     "lib/monitoring/mobile_sampler.h",
     "lib/png/png_io.h",
-    "lib/random/random.h",
-    "lib/random/random_distributions.h",
-    "lib/random/weighted_picker.h",
-    "lib/strings/base64.h",
-    "lib/strings/ordered_code.h",
-    "lib/strings/proto_text_util.h",
-    "lib/strings/proto_serialization.h",
-    "lib/strings/scanner.h",
+    "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
+    "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
     "//tensorflow/core/platform:demangle.h",
     "//tensorflow/core/platform:denormal.h",
@@ -2496,6 +2468,8 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
+        "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
+        "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
     ],
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
@@ -2504,7 +2478,6 @@ cc_library(
                ":core_stringpiece",
                ":lib_hash_crc32c_accelerate_internal",
                ":lib_proto_parsing",
-               ":platform_strings",
                "@com_google_absl//absl/memory",
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
@@ -2512,7 +2485,9 @@ cc_library(
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
+               "//tensorflow/core/platform:platform_strings",
                "//tensorflow/core/platform:stringprintf",
+               "//tensorflow/core/platform:str_util",
                "//tensorflow/core/platform/default/build_config:platformlib",
                "@snappy",
                "@zlib_archive//:zlib",
@@ -2669,8 +2644,7 @@ cc_library(
     srcs = if_android([
         "lib/gif/gif_io.cc",
         "//tensorflow/core/platform:gif.h",
-        "lib/strings/strcat.h",
-        "lib/strings/numbers.h",
+        "//tensorflow/core/lib/strings:legacy_lib_android_gif_internal_string_headers",
     ]),
     hdrs = [
         "lib/core/stringpiece.h",
@@ -3692,8 +3666,8 @@ cc_library(
         "lib/io/block.h",
         "lib/io/block_builder.h",
         "lib/io/format.h",
-        "lib/random/philox_random_test_utils.h",
         "//tensorflow/core/lib/gtl:legacy_lib_test_internal_headers",
+        "//tensorflow/core/lib/random:legacy_lib_test_internal_headers",
     ],
     deps = [
         ":lib",
@@ -3760,9 +3734,9 @@ cc_library(
         # that "core_stringpiece" was enough but that recently changed and
         # we now need at least "str_util".
         ":lib",
-        ":stacktrace_handler",
         ":test_lite",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
@@ -3793,23 +3767,16 @@ tf_cc_tests(
         "lib/io/snappy/snappy_buffers_test.cc",
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",
-        "lib/math/math_util_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
         "lib/monitoring/gauge_test.cc",
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
-        "lib/random/distribution_sampler_test.cc",
-        "lib/random/philox_random_test.cc",
-        "lib/random/random_test.cc",
-        "lib/random/simple_philox_test.cc",
-        "lib/strings/base64_test.cc",
-        "lib/strings/numbers_test.cc",
-        "lib/strings/scanner_test.cc",
-        "lib/strings/str_util_test.cc",
-        "lib/strings/strcat_test.cc",
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
+        "//tensorflow/core/lib/math:math_util_test.cc",
+        "//tensorflow/core/lib/random:legacy_lib_random_tests",
+        "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/platform:fingerprint_test.cc",
         "//tensorflow/core/platform:integral_types_test.cc",
         "//tensorflow/core/platform:logging_test.cc",
@@ -3818,6 +3785,7 @@ tf_cc_tests(
         "//tensorflow/core/platform:port_test.cc",
         "//tensorflow/core/platform:profile_utils/cpu_utils_test.cc",
         "//tensorflow/core/platform:stacktrace_handler_test.cc",
+        "//tensorflow/core/platform:str_util_test.cc",
         "//tensorflow/core/platform:stringpiece_test.cc",
         "//tensorflow/core/platform:stringprintf_test.cc",
         "//tensorflow/core/platform:subprocess_test.cc",
@@ -3831,6 +3799,7 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
         "//third_party/eigen3",
@@ -3857,7 +3826,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "lib_random_random_distributions_test",
-    srcs = ["lib/random/random_distributions_test.cc"],
+    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_distributions_test"],
     tags = ["optonly"],
     deps = [
         ":lib",
@@ -3877,7 +3846,7 @@ tf_cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":lib",
-        ":platform_strings",
+        "//tensorflow/core/platform:platform_strings",
     ],
 )
 
@@ -4030,7 +3999,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "lib_strings_ordered_code_test",
-    srcs = ["lib/strings/ordered_code_test.cc"],
+    srcs = ["//tensorflow/core/lib/strings:legacy_strings_ordered_code_test"],
     extra_copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
     deps = [
         ":lib",
@@ -4042,7 +4011,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "lib_strings_proto_serialization_test",
-    srcs = ["lib/strings/proto_serialization_test.cc"],
+    srcs = ["//tensorflow/core/lib/strings:legacy_strings_proto_serialization_test"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -4057,7 +4026,7 @@ tf_cc_test(
 tf_cc_test(
     name = "lib_random_weighted_picker_test",
     size = "medium",
-    srcs = ["lib/random/weighted_picker_test.cc"],
+    srcs = ["//tensorflow/core/lib/random:legacy_lib_random_random_weighted_picker_test"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -4708,6 +4677,7 @@ tf_cuda_cc_test(
         ":framework",
         ":framework_internal",
         ":lib",
+        ":protos_all_cc",
         ":test",
         ":test_main",
         ":testlib",
@@ -5512,11 +5482,19 @@ filegroup(
     testonly = 1,
     srcs = [
         # A simple key-value store:
+        #   0 : 'b'
+        #   1 : 'b'
+        #    ...
+        #   9 : 'b'
+        # Which is then overwritten with:
         #   0 : 'a'
         #   1 : 'b'
         #    ...
         #   9 : 'j'
         "lib/lmdb/testdata/data.mdb",
+        # LMDB, being a memory-mapped database, uses a different file format on
+        # big-endian systems.
+        "lib/lmdb/testdata/data_bigendian.mdb",
     ],
     visibility = ["//visibility:public"],
 )
@@ -5549,9 +5527,9 @@ transitive_hdrs(
         ":core_cpu",
         ":framework",
         ":lib",
-        ":platform_strings",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/platform:platform_strings",
     ],
 )
 

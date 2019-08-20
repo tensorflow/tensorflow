@@ -590,7 +590,7 @@ int CuptiTracer::NumGpus() {
     if (cuDeviceGetCount(&gpu_count) != CUDA_SUCCESS) {
       return 0;
     }
-    LOG(INFO) << "xprof found " << gpu_count << " GPUs";
+    LOG(INFO) << "Profiler found " << gpu_count << " GPUs";
     return gpu_count;
   }();
   return num_gpus;
@@ -644,6 +644,8 @@ Status CuptiTracer::EnableApiTracing() {
 Status CuptiTracer::DisableApiTracing() {
   if (!api_tracing_enabled_) return Status::OK();
 
+  api_tracing_enabled_ = false;
+
   if (!option_->cbids_selected.empty()) {
     for (auto cbid : option_->cbids_selected) {
       RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableCallback(
@@ -656,8 +658,6 @@ Status CuptiTracer::DisableApiTracing() {
 
   VLOG(1) << "Disable subscriber";
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Unsubscribe(subscriber_));
-
-  api_tracing_enabled_ = false;
   return Status::OK();
 }
 
@@ -689,7 +689,7 @@ Status CuptiTracer::DisableActivityTracing() {
     for (auto activity : option_->activities_selected) {
       VLOG(1) << "Disabling activity tracing for: " << activity;
       if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
-        ConfigureActivityUnifiedMemoryCounter(true);
+        ConfigureActivityUnifiedMemoryCounter(false);
       }
       RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityDisable(activity));
     }
@@ -709,7 +709,8 @@ Status CuptiTracer::DisableActivityTracing() {
 
 uint64 CuptiTracer::GetTimestamp() {
   uint64_t tsc;
-  if (cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
+  if (cupti_interface_ &&
+      cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
     return tsc;
   }
   // Return 0 on error. If an activity timestamp is 0, the activity will be

@@ -39,7 +39,7 @@ class SummaryTensorOpV2 : public OpKernel {
 
     Summary s;
     Summary::Value* v = s.add_value();
-    v->set_tag(tag.scalar<string>()());
+    v->set_tag(string(tag.scalar<tstring>()()));  // NOLINT
 
     if (tensor.dtype() == DT_STRING) {
       // tensor_util.makeNdarray doesn't work for strings in tensor_content
@@ -49,11 +49,11 @@ class SummaryTensorOpV2 : public OpKernel {
     }
 
     v->mutable_metadata()->ParseFromString(
-        serialized_summary_metadata_tensor.scalar<string>()());
+        serialized_summary_metadata_tensor.scalar<tstring>()());
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 
@@ -92,7 +92,7 @@ class SummaryTensorOp : public OpKernel {
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 };
 

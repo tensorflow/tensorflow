@@ -319,7 +319,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
 }  // namespace
 
 std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass() {
-  return llvm::make_unique<ExecutorIslandCoarsening>();
+  return std::make_unique<ExecutorIslandCoarsening>();
 }
 
 static PassRegistration<ExecutorIslandCoarsening> pass(

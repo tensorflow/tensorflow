@@ -160,7 +160,7 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
 
   /// Append and return a new note.
   notes.push_back(
-      llvm::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
+      std::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
   return *notes.back();
 }
 

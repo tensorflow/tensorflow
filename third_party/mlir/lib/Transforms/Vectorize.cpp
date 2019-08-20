@@ -26,16 +26,16 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -1278,7 +1278,7 @@ void Vectorize::runOnFunction() {
 
 std::unique_ptr<FunctionPassBase>
 mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
-  return llvm::make_unique<Vectorize>(virtualVectorSize);
+  return std::make_unique<Vectorize>(virtualVectorSize);
 }
 
 static PassRegistration<Vectorize>

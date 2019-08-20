@@ -827,12 +827,12 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/strings",
     ]
 
-def tf_env_time_srcs():
-    return select({
-        "//tensorflow:windows": [
-            "windows/env_time.cc",
-        ],
-        "//conditions:default": [
-            "posix/env_time.cc",
-        ],
-    })
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]

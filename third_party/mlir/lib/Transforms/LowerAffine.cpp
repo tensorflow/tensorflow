@@ -23,13 +23,13 @@
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -530,7 +530,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
 std::unique_ptr<FunctionPassBase> mlir::createLowerAffinePass() {
-  return llvm::make_unique<LowerAffinePass>();
+  return std::make_unique<LowerAffinePass>();
 }
 
 static PassRegistration<LowerAffinePass>

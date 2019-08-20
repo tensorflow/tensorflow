@@ -23,6 +23,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/Twine.h"
 
 using namespace mlir;
@@ -61,8 +62,7 @@ Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 //===----------------------------------------------------------------------===//
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return Base::get(value.getResult(0).getContext(),
-                   StandardAttributes::AffineMap, value);
+  return Base::get(value.getContext(), StandardAttributes::AffineMap, value);
 }
 
 AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
@@ -377,6 +377,22 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   }
 }
 
+/// Return if the given 'index' refers to a valid element in this attribute.
+bool ElementsAttr::isValidIndex(ArrayRef<uint64_t> index) const {
+  auto type = getType();
+
+  // Verify that the rank of the indices matches the held type.
+  auto rank = type.getRank();
+  if (rank != static_cast<int64_t>(index.size()))
+    return false;
+
+  // Verify that all of the indices are within the shape dimensions.
+  auto shape = type.getShape();
+  return llvm::all_of(llvm::seq<int>(0, rank), [&](int i) {
+    return static_cast<int64_t>(index[i]) < shape[i];
+  });
+}
+
 ElementsAttr ElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APInt &)> mapping) const {
@@ -497,10 +513,21 @@ Attribute DenseElementsAttr::AttributeElementIterator::operator*() const {
 }
 
 /// Constructs a new iterator.
+DenseElementsAttr::BoolElementIterator::BoolElementIterator(
+    DenseElementsAttr attr, size_t dataIndex)
+    : DenseElementIndexedIteratorImpl<BoolElementIterator, bool, bool, bool>(
+          attr.getRawData().data(), attr.isSplat(), dataIndex) {}
+
+/// Accesses the bool value at this iterator position.
+bool DenseElementsAttr::BoolElementIterator::operator*() const {
+  return getBit(getData(), getDataIndex());
+}
+
+/// Constructs a new iterator.
 DenseElementsAttr::IntElementIterator::IntElementIterator(
-    DenseElementsAttr attr, size_t index)
+    DenseElementsAttr attr, size_t dataIndex)
     : DenseElementIndexedIteratorImpl<IntElementIterator, APInt, APInt, APInt>(
-          attr.getRawData().data(), attr.isSplat(), index),
+          attr.getRawData().data(), attr.isSplat(), dataIndex),
       bitWidth(getDenseElementBitwidth(attr.getType().getElementType())) {}
 
 /// Accesses the raw APInt value at this iterator position.
@@ -665,56 +692,6 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
 /// values are the same.
 bool DenseElementsAttr::isSplat() const { return getImpl()->isSplat; }
 
-/// If this attribute corresponds to a splat, then get the splat value.
-/// Otherwise, return null.
-Attribute DenseElementsAttr::getSplatValue() const {
-  return isSplat() ? *attr_value_begin() : Attribute();
-}
-
-/// Return the value at the given index. If index does not refer to a valid
-/// element, then a null attribute is returned.
-Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
-  auto type = getType();
-
-  // Verify that the rank of the indices matches the held type.
-  auto rank = type.getRank();
-  if (rank != static_cast<int64_t>(index.size()))
-    return Attribute();
-
-  // Verify that all of the indices are within the shape dimensions.
-  auto shape = type.getShape();
-  for (unsigned i = 0; i != rank; ++i)
-    if (shape[i] <= static_cast<int64_t>(index[i]))
-      return Attribute();
-
-  // If this is a splat, return the splat value directly.
-  if (isSplat())
-    return getSplatValue();
-
-  // Reduce the provided multidimensional index into a 1D index.
-  uint64_t valueIndex = 0;
-  uint64_t dimMultiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    valueIndex += index[i] * dimMultiplier;
-    dimMultiplier *= shape[i];
-  }
-
-  // Return the element stored at the 1D index.
-  auto elementType = getType().getElementType();
-  size_t bitWidth = getDenseElementBitwidth(elementType);
-  size_t storageWidth = getDenseElementStorageWidth(bitWidth);
-  APInt rawValueData =
-      readBits(getRawData().data(), valueIndex * storageWidth, bitWidth);
-
-  // Convert the raw value data to an attribute value.
-  if (elementType.isa<IntegerType>())
-    return IntegerAttr::get(elementType, rawValueData);
-  if (auto fType = elementType.dyn_cast<FloatType>())
-    return FloatAttr::get(elementType,
-                          APFloat(fType.getFloatSemantics(), rawValueData));
-  llvm_unreachable("unexpected element type");
-}
-
 /// Return the held element values as a range of Attributes.
 auto DenseElementsAttr::getAttributeValues() const
     -> llvm::iterator_range<AttributeElementIterator> {
@@ -725,6 +702,17 @@ auto DenseElementsAttr::attr_value_begin() const -> AttributeElementIterator {
 }
 auto DenseElementsAttr::attr_value_end() const -> AttributeElementIterator {
   return AttributeElementIterator(*this, getNumElements());
+}
+
+/// Return the held element values as a range of bool. The element type of
+/// this attribute must be of integer type of bitwidth 1.
+auto DenseElementsAttr::getBoolValues() const
+    -> llvm::iterator_range<BoolElementIterator> {
+  auto eltType = getType().getElementType().dyn_cast<IntegerType>();
+  assert(eltType && eltType.getWidth() == 1 && "expected i1 integer type");
+  (void)eltType;
+  return {BoolElementIterator(*this, 0),
+          BoolElementIterator(*this, getNumElements())};
 }
 
 /// Return the held element values as a range of APInts. The element type of
@@ -789,6 +777,25 @@ DenseElementsAttr DenseElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APFloat &)> mapping) const {
   return cast<DenseFPElementsAttr>().mapValues(newElementType, mapping);
+}
+
+/// Returns the 1 dimenional flattened index from the given multi-dimensional
+/// index.
+uint64_t DenseElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
+  assert(isValidIndex(index) && "expected valid multi-dimensional index");
+  auto type = getType();
+
+  // Reduce the provided multidimensional index into a flattended 1D row-major
+  // index.
+  auto rank = type.getRank();
+  auto shape = type.getShape();
+  uint64_t valueIndex = 0;
+  uint64_t dimMultiplier = 1;
+  for (int i = rank - 1; i >= 0; --i) {
+    valueIndex += index[i] * dimMultiplier;
+    dimMultiplier *= shape[i];
+  }
+  return valueIndex;
 }
 
 //===----------------------------------------------------------------------===//
@@ -888,6 +895,7 @@ StringRef OpaqueElementsAttr::getValue() const { return getImpl()->bytes; }
 /// Return the value at the given index. If index does not refer to a valid
 /// element, then a null attribute is returned.
 Attribute OpaqueElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  assert(isValidIndex(index) && "expected valid multi-dimensional index");
   if (Dialect *dialect = getDialect())
     return dialect->extractElementHook(*this, index);
   return Attribute();
@@ -927,12 +935,8 @@ DenseElementsAttr SparseElementsAttr::getValues() const {
 
 /// Return the value of the element at the given index.
 Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  assert(isValidIndex(index) && "expected valid multi-dimensional index");
   auto type = getType();
-
-  // Verify that the rank of the indices matches the held type.
-  size_t rank = type.getRank();
-  if (rank != index.size())
-    return Attribute();
 
   /// Return an attribute corresponding to '0' for the element type.
   auto getZeroAttr = [=]() -> Attribute {
@@ -964,6 +968,7 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   // Build a mapping between known indices and the offset of the stored element.
   llvm::SmallDenseMap<llvm::ArrayRef<uint64_t>, size_t> mappedIndices;
   auto numSparseIndices = sparseIndices.getType().getDimSize(0);
+  size_t rank = type.getRank();
   for (size_t i = 0, e = numSparseIndices; i != e; ++i)
     mappedIndices.try_emplace(
         {&*std::next(sparseIndexValues.begin(), i * rank), rank}, i);

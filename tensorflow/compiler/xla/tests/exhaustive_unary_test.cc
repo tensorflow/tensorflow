@@ -649,6 +649,14 @@ XLA_TEST_P(ExhaustiveF64UnaryTest, Tan) { Run(Tan, std::tan); }
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Round) { Run(Round, std::round); }
 
+XLA_TEST_P(ExhaustiveF64UnaryTest, Erf) {
+  Run(Erf, std::erf, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Erfc) {
+  Run(Erfc, std::erfc, [](NativeT x) { return ErrorSpec{1e-20, 1e-20}; });
+}
+
 #if defined(UNARY_TEST_TARGET_F64)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 INSTANTIATE_TEST_SUITE_P(

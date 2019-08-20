@@ -240,6 +240,18 @@ class MathTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_cross(self):
+    x = random_ops.random_uniform([4, 2, 3])
+    y = random_ops.random_uniform([4, 2, 3])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      y_i = array_ops.gather(y, i)
+      x_0 = array_ops.gather(x, 0)
+      return math_ops.cross(x_i, y_i), math_ops.cross(x_0, y_i)
+
+    self._test_loop_fn(loop_fn, 4, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_matmul(self):
     for tr_a in (True, False):
       for tr_b in (True, False):

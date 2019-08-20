@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -34,7 +34,7 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeTFPass() {
-  return llvm::make_unique<LegalizeTF>();
+  return std::make_unique<LegalizeTF>();
 }
 
 /// Returns if the given TF data format string is the default format.

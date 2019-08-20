@@ -539,7 +539,7 @@ class CudaEventCollector {
       node_name = "<invalid_name>";
     }
     if (record.annotation) {
-      node_name = absl::StrCat(*record.annotation, "::", node_name);
+      node_name = absl::StrCat(*record.annotation, "@@", node_name);
     }
     stats->set_node_name(node_name);
     // TODO(csigg): Report grid size?
@@ -568,7 +568,7 @@ class CudaEventCollector {
       node_name = "<invalid_name>";
     }
     if (record.annotation) {
-      node_name = absl::StrCat(*record.annotation, "::", node_name);
+      node_name = absl::StrCat(*record.annotation, "@@", node_name);
     }
     stats->set_node_name(node_name);
     // TODO(csigg): Show label in Chrome trace viewer.

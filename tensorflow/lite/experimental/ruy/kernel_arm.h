@@ -37,7 +37,11 @@ namespace ruy {
 
 #if RUY_PLATFORM(NEON) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
+#if RUY_PLATFORM(NEON_64)
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params);
+#elif RUY_PLATFORM(NEON_32)
+void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params);
+#endif
 void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
@@ -65,7 +69,30 @@ struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
     }
   }
 };
+#endif
 
+#if RUY_PLATFORM(NEON_32)
+template <typename DstScalar>
+struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
+              BasicSpec<std::int32_t, DstScalar>> {
+  using LhsLayout = FixedKernelLayout<Order::kColMajor, 16, 4>;
+  using RhsLayout = FixedKernelLayout<Order::kColMajor, 16, 2>;
+  Tuning tuning = Tuning::kAuto;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
+           const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
+                         dst, &params);
+    Kernel8bitNeonOutOfOrder(params);
+  }
+};
+#endif
+
+#if RUY_PLATFORM(NEON_64)
 template <typename DstScalar>
 struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
               BasicSpec<std::int32_t, DstScalar>> {

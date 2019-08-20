@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -42,7 +42,7 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 }  // namespace
 
 std::unique_ptr<FunctionPassBase> CreateTFOptimizePass() {
-  return llvm::make_unique<TFOptimizePass>();
+  return std::make_unique<TFOptimizePass>();
 }
 
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");

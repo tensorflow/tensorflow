@@ -38,7 +38,8 @@ class ProcessFunctionLibraryRuntime {
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
-      const CustomKernelCreator* custom_kernel_creator = nullptr);
+      const CustomKernelCreator* custom_kernel_creator = nullptr,
+      const SessionMetadata* metadata = nullptr);
 
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -360,6 +361,7 @@ class ProcessFunctionLibraryRuntime {
       flr_map_;
   int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
+  const SessionMetadata* const session_metadata_;
 };
 
 }  // namespace tensorflow

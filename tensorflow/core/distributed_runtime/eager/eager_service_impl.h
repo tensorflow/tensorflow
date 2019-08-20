@@ -195,6 +195,8 @@ class EagerServiceImpl {
  private:
   Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
                    QueueResponse* queue_response);
+  Status SendTensor(const SendTensorOp& send_tensor,
+                    EagerContext* eager_context);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

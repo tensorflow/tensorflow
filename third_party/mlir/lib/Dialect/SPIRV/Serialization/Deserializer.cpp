@@ -28,6 +28,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/StringExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 
@@ -78,11 +79,14 @@ private:
   /// Processes the SPIR-V OpMemoryModel with `operands` and updates `module`.
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
 
-  /// Process SPIR-V OpName with `operands`
+  /// Process SPIR-V OpName with `operands`.
   LogicalResult processName(ArrayRef<uint32_t> operands);
 
   /// Method to process an OpDecorate instruction.
   LogicalResult processDecoration(ArrayRef<uint32_t> words);
+
+  // Method to process an OpMemberDecorate instruction.
+  LogicalResult processMemberDecoration(ArrayRef<uint32_t> words);
 
   /// Processes the SPIR-V function at the current `offset` into `binary`.
   /// The operands to the OpFunction instruction is passed in as ``operands`.
@@ -90,8 +94,29 @@ private:
   /// them to their handler method accordingly.
   LogicalResult processFunction(ArrayRef<uint32_t> operands);
 
-  /// Get the FuncOp associated with a result <id> of OpFunction.
+  /// Returns a symbol to be used for the specialization constant with the given
+  /// result <id>. This tries to use the specialization constant's OpName if
+  /// exists; otherwise creates one based on the <id>.
+  std::string getSpecConstantSymbol(uint32_t id);
+
+  /// Gets the specialization constant with the given result <id>.
+  spirv::SpecConstantOp getSpecConstant(uint32_t id) {
+    return specConstMap.lookup(id);
+  }
+
+  /// Processes the OpVariable instructions at current `offset` into `binary`.
+  /// It is expected that this method is used for variables that are to be
+  /// defined at module scope and will be deserialized into a spv.globalVariable
+  /// instruction.
+  LogicalResult processGlobalVariable(ArrayRef<uint32_t> operands);
+
+  /// Gets the FuncOp associated with a result <id> of OpFunction.
   FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
+
+  /// Gets the global variable associated with a result <id> of OpVariable.
+  spirv::GlobalVariableOp getGlobalVariable(uint32_t id) {
+    return globalVariableMap.lookup(id);
+  }
 
   //===--------------------------------------------------------------------===//
   // Type
@@ -111,6 +136,8 @@ private:
 
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
+  LogicalResult processStructType(ArrayRef<uint32_t> operands);
+
   //===--------------------------------------------------------------------===//
   // Constant
   //===--------------------------------------------------------------------===//
@@ -125,10 +152,9 @@ private:
   LogicalResult processConstantBool(bool isTrue, ArrayRef<uint32_t> operands,
                                     bool isSpec);
 
-  /// Processes a SPIR-V Op{|Spec}ConstantComposite instruction with the given
-  /// `operands`. `isSpec` indicates whether this is a specialization constant.
-  LogicalResult processConstantComposite(ArrayRef<uint32_t> operands,
-                                         bool isSpec);
+  /// Processes a SPIR-V OpConstantComposite instruction with the given
+  /// `operands`.
+  LogicalResult processConstantComposite(ArrayRef<uint32_t> operands);
 
   /// Processes a SPIR-V OpConstantNull instruction with the given `operands`.
   LogicalResult processConstantNull(ArrayRef<uint32_t> operands);
@@ -138,7 +164,11 @@ private:
   //===--------------------------------------------------------------------===//
 
   /// Get the Value associated with a result <id>.
-  Value *getValue(uint32_t id) { return valueMap.lookup(id); }
+  ///
+  /// This method inserts "casting" ops (`spv._address_of` and
+  /// `spv._reference_of`) to turn an symbol into a SSA value for handling uses
+  /// of module scope constants/variables in functions.
+  Value *getValue(uint32_t id);
 
   /// Slices the first instruction out of `binary` and returns its opcode and
   /// operands via `opcode` and `operands` respectively. Returns failure if
@@ -198,6 +228,12 @@ private:
   // Result <id> to function mapping.
   DenseMap<uint32_t, FuncOp> funcMap;
 
+  // Result <id> to variable mapping.
+  DenseMap<uint32_t, spirv::SpecConstantOp> specConstMap;
+
+  // Result <id> to variable mapping.
+  DenseMap<uint32_t, spirv::GlobalVariableOp> globalVariableMap;
+
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
 
@@ -206,6 +242,12 @@ private:
 
   // Result <id> to decorations mapping.
   DenseMap<uint32_t, NamedAttributeList> decorations;
+
+  // Result <id> to type decorations.
+  DenseMap<uint32_t, uint32_t> typeDecorations;
+
+  // Result <id> to member decorations.
+  DenseMap<uint32_t, DenseMap<uint32_t, uint32_t>> memberDecorationMap;
 
   // List of instructions that are processed in a defered fashion (after an
   // initial processing of the entire binary). Some operations like
@@ -321,8 +363,41 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
         opBuilder.getIdentifier(attrName),
         opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
     break;
+  case spirv::Decoration::BuiltIn:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
+                              opBuilder.getStringAttr(stringifyBuiltIn(
+                                  static_cast<spirv::BuiltIn>(words[2]))));
+    break;
+  case spirv::Decoration::ArrayStride:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
+    break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
+  }
+  return success();
+}
+
+LogicalResult Deserializer::processMemberDecoration(ArrayRef<uint32_t> words) {
+  // The binary layout of OpMemberDecorate is different comparing to OpDecorate
+  if (words.size() != 4) {
+    return emitError(unknownLoc, "OpMemberDecorate must have 4 operands");
+  }
+
+  switch (static_cast<spirv::Decoration>(words[2])) {
+  case spirv::Decoration::Offset:
+    memberDecorationMap[words[0]][words[1]] = words[3];
+    break;
+  default:
+    return emitError(unknownLoc, "unhandled OpMemberDecoration case: ")
+           << words[2];
   }
   return success();
 }
@@ -430,6 +505,84 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
   }
   std::swap(funcBody, opBuilder);
+  return success();
+}
+
+std::string Deserializer::getSpecConstantSymbol(uint32_t id) {
+  auto constName = nameMap.lookup(id).str();
+  if (constName.empty()) {
+    constName = "spirv_spec_const_" + std::to_string(id);
+  }
+  return constName;
+}
+
+LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
+  unsigned wordIndex = 0;
+  if (operands.size() < 3) {
+    return emitError(
+        unknownLoc,
+        "OpVariable needs at least 3 operands, type, <id> and storage class");
+  }
+
+  // Result Type.
+  auto type = getType(operands[wordIndex]);
+  if (!type) {
+    return emitError(unknownLoc, "unknown result type <id> : ")
+           << operands[wordIndex];
+  }
+  auto ptrType = type.dyn_cast<spirv::PointerType>();
+  if (!ptrType) {
+    return emitError(unknownLoc,
+                     "expected a result type <id> to be a spv.ptr, found : ")
+           << type;
+  }
+  wordIndex++;
+
+  // Result <id>.
+  auto variableID = operands[wordIndex];
+  auto variableName = nameMap.lookup(variableID).str();
+  if (variableName.empty()) {
+    variableName = "spirv_var_" + std::to_string(variableID);
+  }
+  wordIndex++;
+
+  // Storage class.
+  auto storageClass = static_cast<spirv::StorageClass>(operands[wordIndex]);
+  if (ptrType.getStorageClass() != storageClass) {
+    return emitError(unknownLoc, "mismatch in storage class of pointer type ")
+           << type << " and that specified in OpVariable instruction  : "
+           << stringifyStorageClass(storageClass);
+  }
+  wordIndex++;
+
+  // Initializer.
+  SymbolRefAttr initializer = nullptr;
+  if (wordIndex < operands.size()) {
+    auto initializerOp = getGlobalVariable(operands[wordIndex]);
+    if (!initializerOp) {
+      return emitError(unknownLoc, "unknown <id> ")
+             << operands[wordIndex] << "used as initializer";
+    }
+    wordIndex++;
+    initializer = opBuilder.getSymbolRefAttr(initializerOp.getOperation());
+  }
+  if (wordIndex != operands.size()) {
+    return emitError(unknownLoc,
+                     "found more operands than expected when deserializing "
+                     "OpVariable instruction, only ")
+           << wordIndex << " of " << operands.size() << " processed";
+  }
+  auto varOp = opBuilder.create<spirv::GlobalVariableOp>(
+      unknownLoc, opBuilder.getTypeAttr(type),
+      opBuilder.getStringAttr(variableName), initializer);
+
+  // Decorations.
+  if (decorations.count(variableID)) {
+    for (auto attr : decorations[variableID].getAttrs()) {
+      varOp.setAttr(attr.first, attr.second);
+    }
+  }
+  globalVariableMap[variableID] = varOp;
   return success();
 }
 
@@ -542,6 +695,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     return processArrayType(operands);
   case spirv::Opcode::OpTypeFunction:
     return processFunctionType(operands);
+  case spirv::Opcode::OpTypeStruct:
+    return processStructType(operands);
   default:
     return emitError(unknownLoc, "unhandled type instruction");
   }
@@ -581,7 +736,8 @@ LogicalResult Deserializer::processArrayType(ArrayRef<uint32_t> operands) {
            << defOp->getName();
   }
 
-  typeMap[operands[0]] = spirv::ArrayType::get(elementTy, count);
+  typeMap[operands[0]] = spirv::ArrayType::get(
+      elementTy, count, typeDecorations.lookup(operands[0]));
   return success();
 }
 
@@ -607,6 +763,46 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
     returnTypes = llvm::makeArrayRef(returnType);
   }
   typeMap[operands[0]] = FunctionType::get(argTypes, returnTypes, context);
+  return success();
+}
+
+LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
+  // TODO(ravishankarm) : Regarding to the spec spv.struct must support zero
+  // amount of members.
+  if (operands.size() < 2) {
+    return emitError(unknownLoc, "OpTypeStruct must have at least 2 operand");
+  }
+
+  SmallVector<Type, 0> memberTypes;
+  for (auto op : llvm::drop_begin(operands, 1)) {
+    Type memberType = getType(op);
+    if (!memberType) {
+      return emitError(unknownLoc, "OpTypeStruct references undefined <id> ")
+             << op;
+    }
+    memberTypes.push_back(memberType);
+  }
+
+  SmallVector<spirv::StructType::LayoutInfo, 0> layoutInfo;
+  // Check for layoutinfo
+  auto memberDecorationIt = memberDecorationMap.find(operands[0]);
+  if (memberDecorationIt != memberDecorationMap.end()) {
+    // Each member must have an offset
+    const auto &offsetDecorationMap = memberDecorationIt->second;
+    auto offsetDecorationMapEnd = offsetDecorationMap.end();
+    for (auto memberIndex : llvm::seq<uint32_t>(0, memberTypes.size())) {
+      // Check that specific member has an offset
+      auto offsetIt = offsetDecorationMap.find(memberIndex);
+      if (offsetIt == offsetDecorationMapEnd) {
+        return emitError(unknownLoc, "OpTypeStruct with <id> ")
+               << operands[0] << " must have an offset for " << memberIndex
+               << "-th member";
+      }
+      layoutInfo.push_back(
+          static_cast<spirv::StructType::LayoutInfo>(offsetIt->second));
+    }
+  }
+  typeMap[operands[0]] = spirv::StructType::get(memberTypes, layoutInfo);
   return success();
 }
 
@@ -654,8 +850,8 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
            << bitwidth;
   };
 
-  spirv::ConstantOp op;
-  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
+  auto resultID = operands[1];
+
   if (auto intType = resultType.dyn_cast<IntegerType>()) {
     auto bitwidth = intType.getWidth();
     if (failed(checkOperandSizeForBitwidth(bitwidth))) {
@@ -677,9 +873,21 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
     }
 
     auto attr = opBuilder.getIntegerAttr(intType, value);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr,
-                                             isSpecConst);
-  } else if (auto floatType = resultType.dyn_cast<FloatType>()) {
+
+    if (isSpec) {
+      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
+      auto op =
+          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
+      specConstMap[resultID] = op;
+    } else {
+      auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr);
+      valueMap[resultID] = op.getResult();
+    }
+
+    return success();
+  }
+
+  if (auto floatType = resultType.dyn_cast<FloatType>()) {
     auto bitwidth = floatType.getWidth();
     if (failed(checkOperandSizeForBitwidth(bitwidth))) {
       return failure();
@@ -703,15 +911,22 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
     }
 
     auto attr = opBuilder.getFloatAttr(floatType, value);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr,
-                                             isSpecConst);
-  } else {
-    return emitError(unknownLoc, "OpConstant can only generate values of "
-                                 "scalar integer or floating-point type");
+    if (isSpec) {
+      auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
+      auto op =
+          opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
+      specConstMap[resultID] = op;
+    } else {
+      auto op =
+          opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr);
+      valueMap[resultID] = op.getResult();
+    }
+
+    return success();
   }
 
-  valueMap[operands[1]] = op.getResult();
-  return success();
+    return emitError(unknownLoc, "OpConstant can only generate values of "
+                                 "scalar integer or floating-point type");
 }
 
 LogicalResult Deserializer::processConstantBool(bool isTrue,
@@ -725,17 +940,23 @@ LogicalResult Deserializer::processConstantBool(bool isTrue,
   }
 
   auto attr = opBuilder.getBoolAttr(isTrue);
-  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
-  auto op = opBuilder.create<spirv::ConstantOp>(
-      unknownLoc, opBuilder.getI1Type(), attr, isSpecConst);
+  auto resultID = operands[1];
+  if (isSpec) {
+    auto symName = opBuilder.getStringAttr(getSpecConstantSymbol(resultID));
+    auto op =
+        opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
+    specConstMap[resultID] = op;
+  } else {
+    auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc,
+                                                  opBuilder.getI1Type(), attr);
+    valueMap[resultID] = op.getResult();
+  }
 
-  valueMap[operands[1]] = op.getResult();
   return success();
 }
 
 LogicalResult
-Deserializer::processConstantComposite(ArrayRef<uint32_t> operands,
-                                       bool isSpec) {
+Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
   if (operands.size() < 2) {
     return emitError(unknownLoc,
                      "OpConstantComposite must have type <id> and result <id>");
@@ -772,15 +993,12 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands,
   }
 
   spirv::ConstantOp op;
-  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
     auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
-                                             isSpecConst);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
   } else if (auto arrayType = resultType.dyn_cast<spirv::ArrayType>()) {
     auto attr = opBuilder.getArrayAttr(elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
-                                             isSpecConst);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
   } else {
     return emitError(unknownLoc, "unsupported OpConstantComposite type: ")
            << resultType;
@@ -806,9 +1024,7 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
   if (resultType.isa<IntegerType>() || resultType.isa<FloatType>() ||
       resultType.isa<VectorType>()) {
     auto attr = opBuilder.getZeroAttr(resultType);
-    UnitAttr isSpecConst;
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
-                                             isSpecConst);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
   } else {
     return emitError(unknownLoc, "unsupported OpConstantNull type: ")
            << resultType;
@@ -821,6 +1037,22 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
 //===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//
+
+Value *Deserializer::getValue(uint32_t id) {
+  if (auto varOp = getGlobalVariable(id)) {
+    auto addressOfOp = opBuilder.create<spirv::AddressOfOp>(
+        unknownLoc, varOp.type(),
+        opBuilder.getSymbolRefAttr(varOp.getOperation()));
+    return addressOfOp.pointer();
+  }
+  if (auto constOp = getSpecConstant(id)) {
+    auto referenceOfOp = opBuilder.create<spirv::ReferenceOfOp>(
+        unknownLoc, constOp.default_value().getType(),
+        opBuilder.getSymbolRefAttr(constOp.getOperation()));
+    return referenceOfOp.reference();
+  }
+  return valueMap.lookup(id);
+}
 
 LogicalResult
 Deserializer::sliceInstruction(spirv::Opcode &opcode,
@@ -867,6 +1099,11 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
       return success();
     }
     break;
+  case spirv::Opcode::OpVariable:
+    if (isa<spirv::ModuleOp>(opBuilder.getBlock()->getParentOp())) {
+      return processGlobalVariable(operands);
+    }
+    break;
   case spirv::Opcode::OpName:
     return processName(operands);
   case spirv::Opcode::OpTypeVoid:
@@ -876,6 +1113,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypeVector:
   case spirv::Opcode::OpTypeArray:
   case spirv::Opcode::OpTypeFunction:
+  case spirv::Opcode::OpTypeStruct:
   case spirv::Opcode::OpTypePointer:
     return processType(opcode, operands);
   case spirv::Opcode::OpConstant:
@@ -883,9 +1121,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpSpecConstant:
     return processConstant(operands, /*isSpec=*/true);
   case spirv::Opcode::OpConstantComposite:
-    return processConstantComposite(operands, /*isSpec=*/false);
-  case spirv::Opcode::OpSpecConstantComposite:
-    return processConstantComposite(operands, /*isSpec=*/true);
+    return processConstantComposite(operands);
   case spirv::Opcode::OpConstantTrue:
     return processConstantBool(/*isTrue=*/true, operands, /*isSpec=*/false);
   case spirv::Opcode::OpSpecConstantTrue:
@@ -898,6 +1134,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processConstantNull(operands);
   case spirv::Opcode::OpDecorate:
     return processDecoration(operands);
+  case spirv::Opcode::OpMemberDecorate:
+    return processMemberDecoration(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
   default:
@@ -934,18 +1172,19 @@ Deserializer::processOp<spirv::EntryPointOp>(ArrayRef<uint32_t> words) {
                                  "and OpFunction with <id> ")
            << fnID << ": " << fnName << " vs. " << parsedFunc.getName();
   }
-  SmallVector<Value *, 4> interface;
+  SmallVector<Attribute, 4> interface;
   while (wordIndex < words.size()) {
-    auto arg = getValue(words[wordIndex]);
+    auto arg = getGlobalVariable(words[wordIndex]);
     if (!arg) {
       return emitError(unknownLoc, "undefined result <id> ")
              << words[wordIndex] << " while decoding OpEntryPoint";
     }
-    interface.push_back(arg);
+    interface.push_back(opBuilder.getSymbolRefAttr(arg.getOperation()));
     wordIndex++;
   }
-  opBuilder.create<spirv::EntryPointOp>(
-      unknownLoc, exec_model, opBuilder.getSymbolRefAttr(fnName), interface);
+  opBuilder.create<spirv::EntryPointOp>(unknownLoc, exec_model,
+                                        opBuilder.getSymbolRefAttr(fnName),
+                                        opBuilder.getArrayAttr(interface));
   return success();
 }
 

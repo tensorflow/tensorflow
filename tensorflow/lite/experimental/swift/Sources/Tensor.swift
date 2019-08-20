@@ -73,11 +73,11 @@ public enum TensorDataType: Equatable, Hashable {
   /// 32-bit single precision floating point.
   case float32
 
-  /// Creates a new tensor data type from the given `TFL_Type` or `nil` if the data type is
+  /// Creates a new tensor data type from the given `TfLiteType` or `nil` if the data type is
   /// unsupported or could not be determined because there was an error.
   ///
   /// - Parameter type: A data type supported by a tensor.
-  init?(type: TFL_Type) {
+  init?(type: TfLiteType) {
     switch type {
     case kTfLiteBool:
       self = .bool

@@ -22,10 +22,10 @@
 
 #include "mlir/Transforms/FoldUtils.h"
 
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 

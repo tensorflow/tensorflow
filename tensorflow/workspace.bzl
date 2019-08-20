@@ -162,7 +162,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",
         strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
             "https://github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
         ],
     )
@@ -443,12 +443,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "nsync",
-        sha256 = "704be7f58afa47b99476bbac7aafd1a9db4357cef519db361716f13538547ffd",
-        strip_prefix = "nsync-1.20.2",
+        sha256 = "caf32e6b3d478b78cff6c2ba009c3400f8251f646804bcb65465666a9cea93c4",
+        strip_prefix = "nsync-1.22.0",
         system_build_file = clean_dep("//third_party/systemlibs:nsync.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/nsync/archive/1.20.2.tar.gz",
-            "https://github.com/google/nsync/archive/1.20.2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/nsync/archive/1.22.0.tar.gz",
+            "https://github.com/google/nsync/archive/1.22.0.tar.gz",
         ],
     )
 
@@ -500,12 +500,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "curl",
         build_file = clean_dep("//third_party:curl.BUILD"),
-        sha256 = "821aeb78421375f70e55381c9ad2474bf279fc454b791b7e95fc83562951c690",
-        strip_prefix = "curl-7.65.1",
+        sha256 = "4376ac72b95572fb6c4fbffefb97c7ea0dd083e1974c0e44cd7e49396f454839",
+        strip_prefix = "curl-7.65.3",
         system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/curl.haxx.se/download/curl-7.65.1.tar.gz",
-            "https://curl.haxx.se/download/curl-7.65.1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.65.3.tar.gz",
+            "https://curl.haxx.se/download/curl-7.65.3.tar.gz",
         ],
     )
 

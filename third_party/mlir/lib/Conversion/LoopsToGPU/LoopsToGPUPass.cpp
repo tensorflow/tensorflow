@@ -69,11 +69,11 @@ struct ForLoopMapper : public FunctionPass<ForLoopMapper> {
 std::unique_ptr<FunctionPassBase>
 mlir::createSimpleLoopsToGPUPass(unsigned numBlockDims,
                                  unsigned numThreadDims) {
-  return llvm::make_unique<ForLoopMapper>(numBlockDims, numThreadDims);
+  return std::make_unique<ForLoopMapper>(numBlockDims, numThreadDims);
 }
 
 static PassRegistration<ForLoopMapper>
     registration(PASS_NAME, "Convert top-level loops to GPU kernels", [] {
-      return llvm::make_unique<ForLoopMapper>(clNumBlockDims.getValue(),
-                                              clNumThreadDims.getValue());
+      return std::make_unique<ForLoopMapper>(clNumBlockDims.getValue(),
+                                             clNumThreadDims.getValue());
     });

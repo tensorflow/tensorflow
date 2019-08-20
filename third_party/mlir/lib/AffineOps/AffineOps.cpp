@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -23,7 +24,6 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
@@ -1684,7 +1684,11 @@ void AffineStoreOp::build(Builder *builder, OperationState *result,
   result->addOperands(memref);
   result->addOperands(operands);
   auto memrefType = memref->getType().cast<MemRefType>();
-  auto map = builder->getMultiDimIdentityMap(memrefType.getRank());
+  auto rank = memrefType.getRank();
+  // Create identity map for memrefs with at least one dimension or () -> ()
+  // for zero-dimensional memrefs.
+  auto map = rank ? builder->getMultiDimIdentityMap(rank)
+                  : builder->getEmptyAffineMap();
   result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
 }
 

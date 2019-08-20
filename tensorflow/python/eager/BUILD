@@ -258,7 +258,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  #TODO(b/139745667)
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -411,6 +414,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
     ],

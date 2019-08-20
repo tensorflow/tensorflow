@@ -298,6 +298,30 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString);
 
+  py::class_<Device, std::shared_ptr<Device>>(
+      m, "Device",
+      "A descriptor of an available device.\n\nSubclasses are used to "
+      "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
+      "have additional properties specific to that device type.")
+      .def_property_readonly(
+          "id", &Device::id,
+          "Integer ID of this device.\n\nUnique across all available devices "
+          "of this type, including remote devices on multi-host platforms.")
+      .def_property_readonly("host_id", &Device::host_id,
+                             "Integer ID of this device's host.\n\n"
+                             "This is always 0 except on multi-host platforms.")
+      .def("__str__", &Device::DebugString);
+
+  py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
+      .def("__repr__", [](const CpuDevice& device) {
+        return absl::StrFormat("CpuDevice(id=%i)", device.id());
+      });
+
+  py::class_<GpuDevice, Device, std::shared_ptr<GpuDevice>>(m, "GpuDevice")
+      .def("__repr__", [](const GpuDevice& device) {
+        return absl::StrFormat("GpuDevice(id=%i)", device.id());
+      });
+
   // Local XLA client methods.
 
   // Custom-call targets.
@@ -317,7 +341,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
                   py::arg("xla_platform_id"), py::arg("asynchronous"),
                   py::arg("allocator_config") = AllocatorConfig())
-      .def("DeviceCount", &PyLocalClient::device_count)
+      .def("device_count", &PyLocalClient::device_count)
+      .def("local_device_count", &PyLocalClient::local_device_count)
+      .def("devices", &PyLocalClient::devices)
+      .def("host_id", &PyLocalClient::host_id)
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
@@ -606,20 +633,26 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def(
       "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         int64 dimension) -> XlaOp {
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
+         absl::optional<const XlaComputation*> comparator) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
           }
-          return Sort(operands,
-                      CreateScalarLtComputation(operand_types, builder),
-                      dimension);
+
+          if (comparator) {
+            return Sort(operands, **comparator, dimension);
+          } else {
+            return Sort(operands,
+                        CreateScalarLtComputation(operand_types, builder),
+                        dimension);
+          }
         });
       },
-      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1);
+      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
+      py::arg("comparator") = absl::nullopt);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);

@@ -22,6 +22,7 @@ filegroup(
 cc_library(
     name = "tf_mlir_opt_main",
     srcs = ["tf_mlir_opt_main.cc"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
@@ -37,6 +38,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:MlirOptLib",
@@ -46,6 +48,16 @@ cc_library(
         "@local_config_mlir//:Support",
         "@local_config_mlir//test:TestDialect",
         "@local_config_mlir//test:TestTransforms",
+    ],
+)
+
+cc_library(
+    name = "init_mlir",
+    srcs = ["init_mlir.cc"],
+    hdrs = ["init_mlir.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:support",
     ],
 )
 

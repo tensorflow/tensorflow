@@ -20,10 +20,11 @@ load(
     "tf_additional_rocdl_deps",
     "tf_additional_rocdl_srcs",
     "tf_additional_test_srcs",
-    "tf_env_time_srcs",
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
+    "tf_protobuf_deps",
+    "tf_protobuf_compiler_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -76,9 +77,7 @@ cc_library(
 
 cc_library(
     name = "cpu_info",
-    srcs = ["cpu_info.cc"] + tf_platform_srcs([
-        "cpu_info.h",
-    ]),
+    srcs = ["cpu_info.cc"],
     hdrs = ["cpu_info.h"],
     copts = tf_copts(),
     deps = [
@@ -104,7 +103,7 @@ cc_library(
 
 cc_library(
     name = "env_time",
-    srcs = ["env_time.cc"] + tf_env_time_srcs(),
+    srcs = tf_platform_srcs(["env_time.cc"]),
     hdrs = ["env_time.h"],
     deps = [
         ":types",
@@ -157,9 +156,37 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_strings",
+    srcs = [
+        "platform_strings.cc",
+        "platform_strings_computed.h",
+    ],
+    hdrs = ["platform_strings.h"],
+)
+
+cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     deps = [":platform"],
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [
+        "protobuf.cc",
+        "protobuf_util.cc",
+    ],
+    hdrs = ["protobuf.h"],
+    deps = [
+        ":platform",
+        ":types",
+    ] + tf_protobuf_deps(),
+)
+
+cc_library(
+    name = "protobuf_compiler",
+    hdrs = ["protobuf_compiler.h"],
+    deps = tf_protobuf_compiler_deps(),
 )
 
 cc_library(
@@ -174,12 +201,34 @@ cc_library(
 )
 
 cc_library(
+    name = "stacktrace_handler",
+    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
+    hdrs = ["stacktrace_handler.h"],
+    deps = [
+        ":platform",
+        ":stacktrace",
+    ],
+)
+
+cc_library(
     name = "setround",
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
     deps = [
         ":logging",
         ":macros",
+    ],
+)
+
+cc_library(
+    name = "str_util",
+    srcs = ["str_util.cc"],
+    hdrs = ["str_util.h"],
+    deps = [
+        ":logging",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -199,6 +248,11 @@ cc_library(
         ":macros",
         ":types",
     ],
+)
+
+cc_library(
+    name = "thread_annotations",
+    hdrs = ["thread_annotations.h"],
 )
 
 cc_library(
@@ -316,6 +370,7 @@ filegroup(
             "jpeg.h",
             "png.h",
             "stringprintf.h",
+            "str_util.h",
             "**/cuda.h",
             "**/rocm.h",
             "**/stream_executor.h",
@@ -348,6 +403,7 @@ filegroup(
             "platform_strings.cc",
             "protobuf.cc",
             "stringprintf.cc",
+            "str_util.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],

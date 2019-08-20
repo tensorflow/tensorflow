@@ -53,7 +53,7 @@ void prune_graph(GraphOp graph);
 namespace TFDevice {
 // Creates a pass that forms clusters from instructions that are assigned to
 // same device.
-FunctionPassBase* CreateClusterFormationPass();
+std::unique_ptr<FunctionPassBase> CreateClusterFormationPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();

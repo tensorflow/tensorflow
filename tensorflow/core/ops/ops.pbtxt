@@ -4849,6 +4849,218 @@ op {
   }
 }
 op {
+  name: "BlockLSTMGradV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "x_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "w_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wci_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wcf_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wco_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
+  name: "BlockLSTMV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  attr {
+    name: "cell_clip"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BoostedTreesAggregateStats"
   input_arg {
     name: "node_ids"
@@ -5939,7 +6151,7 @@ op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -5962,7 +6174,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "beam_width"
@@ -5983,12 +6195,25 @@ op {
       b: true
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCGreedyDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -6008,7 +6233,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "merge_repeated"
@@ -6017,12 +6242,25 @@ op {
       b: false
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCLoss"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "labels_indices"
@@ -6038,11 +6276,11 @@ op {
   }
   output_arg {
     name: "loss"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "gradient"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "preprocess_collapse_repeated"
@@ -6063,6 +6301,19 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
     }
   }
 }

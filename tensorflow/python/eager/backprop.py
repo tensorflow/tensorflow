@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
@@ -636,7 +637,12 @@ def _zeros(shape, dtype):
     return array_ops.zeros(shape, dtype)
 
   device = ctx.device_name
-  cache_key = shape, dtype, device
+
+  if tensor_util.is_tensor(shape):
+    shape_key = shape.experimental_ref()
+  else:
+    shape_key = shape
+  cache_key = shape_key, dtype, device
   cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
     if dtypes.as_dtype(dtype).is_bool:
@@ -934,7 +940,8 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor (or list of tensors) to be differentiated.
+      target: a list or nested structure of Tensors or Variables to be
+        differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of

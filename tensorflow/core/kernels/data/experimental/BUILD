@@ -393,6 +393,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/time",
     ],
 )

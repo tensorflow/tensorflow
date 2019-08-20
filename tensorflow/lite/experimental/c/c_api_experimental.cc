@@ -21,29 +21,24 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-TFL_Status TFL_InterpreterResetVariableTensors(TFL_Interpreter* interpreter) {
+TfLiteStatus TfLiteInterpreterResetVariableTensors(
+    TfLiteInterpreter* interpreter) {
   return interpreter->impl->ResetVariableTensors();
 }
 
-void TFL_InterpreterOptionsAddBuiltinOp(TFL_InterpreterOptions* options,
-                                        TFL_BuiltinOperator op,
-                                        const TFL_Registration* registration,
-                                        int32_t min_version,
-                                        int32_t max_version) {
+void TfLiteInterpreterOptionsAddBuiltinOp(
+    TfLiteInterpreterOptions* options, TfLiteBuiltinOperator op,
+    const TfLiteRegistration* registration, int32_t min_version,
+    int32_t max_version) {
   options->op_resolver.AddBuiltin(static_cast<tflite::BuiltinOperator>(op),
                                   registration, min_version, max_version);
 }
 
-void TFL_InterpreterOptionsAddCustomOp(TFL_InterpreterOptions* options,
-                                       const char* name,
-                                       const TFL_Registration* registration,
-                                       int min_version, int max_version) {
+void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
+                                         const char* name,
+                                         const TfLiteRegistration* registration,
+                                         int min_version, int max_version) {
   options->op_resolver.AddCustom(name, registration, min_version, max_version);
-}
-
-void TFL_InterpreterOptionsAddDelegate(TFL_InterpreterOptions* options,
-                                       TFL_Delegate* delegate) {
-  options->delegates.push_back(delegate);
 }
 
 #ifdef __cplusplus

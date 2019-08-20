@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -248,9 +248,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
 
-  // Create a stream for us to do our work on.
-  se::Stream stream{stream_exec_};
-  stream.Init();
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -262,11 +259,21 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
+  absl::optional<se::Stream> stream_opt;
+  se::Stream* stream = [&] {
+    if (allocator->GetStream()) {
+      return allocator->GetStream();
+    }
+    stream_opt.emplace(stream_exec_);
+    stream_opt->Init();
+    return &stream_opt.value();
+  }();
+
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [&stream, &result_shape,
+  const auto initialize_buffer = [stream, &result_shape,
                                   &rng_state](DeviceMemoryBase buffer) {
-    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+    InitializeFloatBuffer(stream, result_shape.element_type(), &rng_state,
                           buffer);
   };
 
@@ -274,7 +281,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::cuda::RedzoneAllocator input_output_allocator(
-      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -310,9 +317,15 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const auto canonical_hlo =
       std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
 
+  string blas_version;
+  if (auto* blas = stream_exec_->AsBlas()) {
+    (void)blas->GetVersion(&blas_version);
+  }
+
   absl::Span<const AlgorithmDesc> blacklisted_algos =
-      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
-                               GetCudnnVersion(stream_exec_), canonical_hlo);
+      GetBlacklistedConvAlgorithms(GetComputeCapability(stream_exec_),
+                                   GetCudnnVersion(stream_exec_), blas_version,
+                                   canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -327,7 +340,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
 
     se::cuda::RedzoneAllocator scratch_allocator(
-        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
+        stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -338,7 +351,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     options.algo_override = alg;
     Status launch_status =
         RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, &stream, options);
+                     &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
       continue;
@@ -361,20 +374,21 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
     // Check for writes to redzones.
     TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
-                        CheckRedzones(input_output_allocator, &stream,
+                        CheckRedzones(input_output_allocator, stream,
                                       "input/output", instr, &result));
 
     TF_ASSIGN_OR_RETURN(
         bool scratch_allocator_redzone_clear,
-        CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result));
+        CheckRedzones(scratch_allocator, stream, "scratch", instr, &result));
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
-      CudnnConvolutionList proto;
+      AlgorithmBlacklist proto;
       auto entry = proto.add_entries();
       entry->set_hlo(canonical_hlo);
       *entry->mutable_cc() = GetComputeCapability(stream_exec_);
-      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
+      entry->set_blas_version(blas_version);
       auto algo = entry->add_algos();
       algo->set_id(alg.algo_id());
       algo->set_tensor_ops(alg.tensor_ops_enabled());
@@ -383,8 +397,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
           << "To blacklist this algorithm for this convolution, "
              "copy-paste the following "
              "proto to the blacklist file pointed by XLA_FLAGS "
-             "--xla_gpu_cudnn_conv_blacklist_path="
-          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+             "--xla_gpu_algorithm_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_algorithm_blacklist_path()
           << " : " << proto.ShortDebugString();
       continue;
     }
@@ -392,7 +406,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, reference_result_buffer, result_buffer);
+          stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
@@ -410,7 +424,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
             << instr->ToString() << " for "
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
-        PrintPlatformInfo(&stream);
+        PrintPlatformInfo(stream);
         VLOG(1) << "Full module on failure: \n"
                 << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
@@ -428,8 +442,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
           input_output_allocator.AllocateBytes(result_buffer.size()));
-      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
-                        result_buffer.size());
+      stream->ThenMemcpy(&reference_result_buffer, result_buffer,
+                         result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -456,14 +470,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    {
-      string blas_version;
-      if (auto* blas = stream_exec_->AsBlas()) {
-        if (blas->GetVersion(&blas_version).ok()) {
-          log.set_blas_version(blas_version);
-        }
-      }
-    }
+    log.set_blas_version(blas_version);
     VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.

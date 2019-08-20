@@ -1096,8 +1096,6 @@ void ModulePrinter::printAffineMap(AffineMap map) {
     os << ']';
   }
 
-  // AffineMap should have at least one result.
-  assert(!map.getResults().empty());
   // Result affine expressions.
   os << " -> (";
   interleaveComma(map.getResults(),

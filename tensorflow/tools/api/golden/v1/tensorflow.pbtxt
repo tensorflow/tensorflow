@@ -1917,6 +1917,10 @@ tf_module {
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
   }
   member_method {
+    name: "repeat"
+    argspec: "args=[\'input\', \'repeats\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "report_uninitialized_variables"
     argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'report_uninitialized_variables\'], "
   }

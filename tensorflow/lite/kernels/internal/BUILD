@@ -382,6 +382,7 @@ cc_library(
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
         "reference/maximum_minimum.h",
+        "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -434,6 +435,7 @@ cc_library(
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
         "reference/maximum_minimum.h",
+        "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -505,6 +507,7 @@ cc_library(
         "reference/portable_tensor_utils_impl.h",
     ],
     deps = [
+        ":common",
         ":compatibility",
         ":round",
         ":types",

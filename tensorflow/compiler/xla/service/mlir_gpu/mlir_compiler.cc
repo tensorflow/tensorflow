@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
 
-#include "mlir/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
@@ -61,21 +61,6 @@ StatusOr<std::unique_ptr<HloModule>> MlirCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Not yet implemented in MLIR compiler");
-}
-
-Status MlirCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group,
-    absl::Span<se::StreamExecutor* const> executors,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Not yet implemented in MLIR compiler");
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-MlirCompiler::RunBackendOnModuleGroup(
-    std::unique_ptr<HloModuleGroup> module_group,
-    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   return Unimplemented("Not yet implemented in MLIR compiler");
 }

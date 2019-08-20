@@ -26,8 +26,8 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include <algorithm>
@@ -89,7 +89,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
 std::unique_ptr<FunctionPassBase> mlir::createMemRefDataFlowOptPass() {
-  return llvm::make_unique<MemRefDataFlowOpt>();
+  return std::make_unique<MemRefDataFlowOpt>();
 }
 
 // This is a straightforward implementation not optimized for speed. Optimize

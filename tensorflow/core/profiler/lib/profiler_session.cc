@@ -43,8 +43,24 @@ std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 // This is done so all ops with the same type appear in the same color in trace
 // viewer.
 inline std::string EventName(absl::string_view node_name) {
-  std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-  return std::string(parts.back());
+  // NOTE: open source device tracer now append cupti kernel name after
+  // annotation as node_name, @@ is used as separator. kernel name is
+  // demangled and possibly contains "::" patterns.
+  std::vector<absl::string_view> segments = absl::StrSplit(node_name, "@@");
+  if (segments.size() > 1) {  // unparsed
+    // find the last annotation.
+    std::vector<absl::string_view> annotation_stack =
+        absl::StrSplit(segments.front(), "::");
+    // strip trace argument.
+    std::vector<absl::string_view> annotation_parts =
+        absl::StrSplit(annotation_stack.back(), '#');
+    std::vector<absl::string_view> parts =
+        absl::StrSplit(annotation_parts.front(), ':');
+    return std::string(parts.back());
+  } else {
+    std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
+    return std::string(parts.back());
+  }
 }
 
 void AssignLanes(RunMetadata* run_metadata) {
@@ -122,7 +138,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
           EnvTime::kMicrosToPicos);
       event->set_duration_ps(node.all_end_rel_micros() *
                              EnvTime::kMicrosToPicos);
-      (*args)["label"] = node.timeline_label();
+      if (!node.timeline_label().empty()) {
+        (*args)["label"] = node.timeline_label();
+      }
+      if (event->name() != node.node_name()) {
+        (*args)["long name"] = node.node_name();
+      }
     }
   }
 

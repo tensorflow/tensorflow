@@ -102,6 +102,47 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int16_t* output);
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int8_t* output);
+
+void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
+                    const int32_t* bias, int32_t layer_norm_scale_a,
+                    int32_t layer_norm_scale_b, int32_t variance_limit,
+                    int n_batch, int n_input, int16_t* output);
+
+void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
+                  int16_t* output);
+
+void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output);
+
+void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output);
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int shift, int16_t* output);
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int shift, int8_t* output);
+
+void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int16_t* output);
+
+void CwiseClipping(int16_t* input, const int16_t clipping_value,
+                   int32_t n_batch, int32_t n_input);
+
+void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
+                   int32_t n_input);
+
 // Cwise product of two vectors.
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
                               int v_size, float* result);
@@ -153,8 +194,13 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector);
 
 // Batch vector initialization with another vector.
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector);
+template <typename T>
+void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
+                             T* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(vector, v_size, batch_vector + b * v_size);
+  }
+}
 
 // Apply sigmoid to elements of a vector.
 void ApplySigmoidToVector(const float* vector, int v_size, float* result);
@@ -163,14 +209,8 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result);
 void ApplyActivationToVector(const float* vector, int v_size,
                              TfLiteFusedActivation activation, float* result);
 
-// Copy vector to another vector.
-void CopyVector(const float* vector, int v_size, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
-
-// Fill vector with 0.f.
-void ZeroVector(float* vector, int v_size);
 
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,

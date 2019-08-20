@@ -21,10 +21,10 @@
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 
@@ -110,7 +110,7 @@ public:
 } // namespace
 
 std::unique_ptr<ModulePassBase> mlir::createGpuKernelOutliningPass() {
-  return llvm::make_unique<GpuKernelOutliningPass>();
+  return std::make_unique<GpuKernelOutliningPass>();
 }
 
 static PassRegistration<GpuKernelOutliningPass>

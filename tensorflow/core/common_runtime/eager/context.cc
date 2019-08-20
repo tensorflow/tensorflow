@@ -342,26 +342,7 @@ Status EagerContext::FindDeviceByName(const string& name,
 }
 
 void EagerContext::ClearRunMetadata() {
-  if (metadata_listener_ != nullptr) {
-    metadata_listener_->BeforeClearRunMetadata();
-  }
   run_metadata_.Clear();
-}
-
-Status EagerContext::RegisterRunMetadataListener(
-    RunMetadataListener* listener) {
-  mutex_lock l(metadata_mu_);
-  if (metadata_listener_ != nullptr) {
-    return Status(error::Code::INVALID_ARGUMENT,
-                  "Cannot run two eager profiler at the same time");
-  }
-  metadata_listener_ = listener;
-  return Status::OK();
-}
-
-void EagerContext::ClearRunMetadataListener() {
-  mutex_lock l(metadata_mu_);
-  metadata_listener_ = nullptr;
 }
 
 void EagerContext::StartStep() {
@@ -504,28 +485,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   }
 }
 
-bool EagerContext::ShouldStoreGraphs() {
-  mutex_lock ml(metadata_mu_);
-  return should_store_graphs_.load() || metadata_listener_ != nullptr;
-}
-
-bool EagerContext::ShouldStoreStepStats() {
-  mutex_lock ml(metadata_mu_);
-  return should_store_step_stats_.load() || metadata_listener_ != nullptr;
-}
+bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }
 
 void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
-  if (!value || metadata_listener_ != nullptr) {
-    run_metadata_.Clear();
-  }
-}
-
-void EagerContext::SetShouldStoreStepStats(bool value) {
-  mutex_lock ml(metadata_mu_);
-  should_store_step_stats_.store(value);
-  if (!value || metadata_listener_ != nullptr) {
+  if (!value) {
     run_metadata_.Clear();
   }
 }

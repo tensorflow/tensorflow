@@ -22,10 +22,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace TFL {

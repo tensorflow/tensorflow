@@ -219,8 +219,8 @@ class CuptiTracer {
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
 
   absl::optional<CuptiTracerOptions> option_;
-  CuptiInterface* cupti_interface_;
-  CuptiTraceCollector* collector_;
+  CuptiInterface* cupti_interface_ = nullptr;
+  CuptiTraceCollector* collector_ = nullptr;
   absl::optional<AnnotationMap> annotation_map_;
 
   bool api_tracing_enabled_ = false;

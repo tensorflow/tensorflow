@@ -196,6 +196,12 @@ func @testQuantizedSquare(tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x
   return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
 }
 
+func @testQuantizedResizeNearestNeighbor(tensor<? x !quant.uniform<u8:f32, 0.1>>, tensor<? x i32>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
+^bb0(%arg0: tensor<? x !quant.uniform<u8:f32, 0.1>>, %arg1: tensor<? x i32>):
+  %0 = "tfl.resize_nearest_neighbor"(%arg0, %arg1) { align_corners = false } : (tensor<? x !quant.uniform<u8:f32, 0.1>>, tensor<? x i32>) -> tensor<? x !quant.uniform<u8:f32, 0.1>>
+  return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
+}
+
 // CHECK-LABEL: testTanh
 func @testTanh(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -1176,3 +1182,39 @@ func @testQuantizedLocalResponseNormalization(%arg0 : tensor<1x56x56x192x!quant.
   return %0 : tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>
 }
 
+// -----
+
+// CHECK-LABEL: testSvdf
+func @testSvdf(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: tensor<? x f32>, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>) -> tensor<? x f32> {
+  // CHECK: "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", rank = 2 : i32} : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", rank = 2 : i32} : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testSvdfUnsupportedType(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>, %arg2: tensor<? x i32>, %arg3: tensor<? x i32>, %arg4: tensor<? x i32>) -> tensor<? x f32> {
+  // expected-error @+1 {{'tfl.svdf' op operand #0 must be tensor of 32-bit float or 8-bit integer values}}
+  %0 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", rank = 2 : i32} : (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testDepthToSpace
+func @testDepthToSpaceF32(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32> {
+  // CHECK: %[[ARG:.*]]: tensor<1x1x1x4xf32>
+  // CHECK: "tfl.depth_to_space"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+  %0 = "tfl.depth_to_space"(%arg0) {block_size = 2: i32} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xf32>
+  return %0 : tensor<1x2x2x1xf32>
+}
+
+// -----
+
+func @testDepthToSpaceInvalidOutputType(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xi32> {
+  // expected-error @+1 {{'tfl.depth_to_space' op failed to verify that input and output must have same element type}}
+  %0 = "tfl.depth_to_space"(%arg0) {block_size = 2: i32} : (tensor<1x1x1x4xf32>) -> tensor<1x2x2x1xi32>
+  return %0 : tensor<1x2x2x1xi32>
+}
+
+// -----

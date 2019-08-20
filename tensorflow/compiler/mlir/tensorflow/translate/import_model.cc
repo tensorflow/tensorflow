@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
+#include <iterator>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -36,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -107,7 +109,8 @@ class ImporterBase {
   void GetArgsAndRetsFromFunctionBody(
       const FunctionBody& fbody,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
-      absl::InlinedVector<OutputTensor, 4>* ret_nodes);
+      absl::InlinedVector<OutputTensor, 4>* ret_nodes,
+      absl::InlinedVector<Node*, 4>* control_ret_nodes);
 
   // Prepares converting the graph to an MLIR module. This step removes the
   // backedges of the graph, orders the nodes and infers the shapes.
@@ -119,6 +122,7 @@ class ImporterBase {
   Status Convert(llvm::StringRef func_name, mlir::FunctionType func_type,
                  const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+                 const absl::InlinedVector<Node*, 4>& control_ret_nodes,
                  llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
   // Returns the list of nodes in the graph. Nodes are presented in the reverse
@@ -229,7 +233,8 @@ class ImporterBase {
       mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
       llvm::ArrayRef<mlir::Type> arg_types,
       const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
-      const absl::InlinedVector<OutputTensor, 4>& ret_nodes);
+      const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+      const absl::InlinedVector<Node*, 4>& control_ret_nodes);
 
   // Gets the location information of the given node. It uses the
   // "original_node_name" in the NodeDef to get the corresponding file location
@@ -767,7 +772,8 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
 
 void ImporterBase::GetArgsAndRetsFromFunctionBody(
     const FunctionBody& fbody, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
-    absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
+    absl::InlinedVector<OutputTensor, 4>* ret_nodes,
+    absl::InlinedVector<Node*, 4>* control_ret_nodes) {
   arg_nodes->reserve(fbody.arg_nodes.size());
   ret_nodes->reserve(fbody.ret_nodes.size());
   for (auto arg : fbody.arg_nodes) {
@@ -776,6 +782,7 @@ void ImporterBase::GetArgsAndRetsFromFunctionBody(
   for (auto ret : fbody.ret_nodes) {
     ret_nodes->emplace_back(ret, 0);
   }
+  *control_ret_nodes = fbody.control_ret_nodes;
 }
 
 Status ImporterBase::ConvertLibFunction(const std::string& func_name) {
@@ -845,10 +852,12 @@ Status ImporterBase::ConvertLibFunction(const std::string& func_name) {
 
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
-  GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes);
+  absl::InlinedVector<Node*, 4> control_ret_nodes;
+  GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
+                                 &control_ret_nodes);
 
   TF_RETURN_IF_ERROR(child_importer.Convert(
-      mlir_func_name, func_type, arg_nodes, ret_nodes,
+      mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
       llvm::makeArrayRef(attributes.begin(), attributes.end())));
   return Status::OK();
 }
@@ -863,6 +872,7 @@ Status ImporterBase::Convert(
     llvm::StringRef func_name, mlir::FunctionType func_type,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+    const absl::InlinedVector<Node*, 4>& control_ret_nodes,
     llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
   auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
@@ -888,14 +898,15 @@ Status ImporterBase::Convert(
   TF_RETURN_IF_ERROR(AddBackedges());
 
   return ConvertFunctionArgAndRets(bb, graph, func_type.getInputs(), arg_nodes,
-                                   ret_nodes);
+                                   ret_nodes, control_ret_nodes);
 }
 
 Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
     llvm::ArrayRef<mlir::Type> arg_types,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
-    const absl::InlinedVector<OutputTensor, 4>& ret_nodes) {
+    const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+    const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
   for (int i = 0, e = arg_types.size(); i < e; ++i) {
     // The lookup can't fail here: otherwise some nodes in the function haven't
     // be converted to mlir operations and don't have a mapping.
@@ -959,7 +970,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     inst->erase();
   }
 
-  llvm::SmallVector<mlir::Value*, 8> inst_to_returned;
+  llvm::SmallVector<mlir::Value*, 8> inst_to_return;
   for (const auto& ret : ret_nodes) {
     auto* inst = node_values_[ret.node->id()];
     auto op = absl::string_view(ret.node->type_string());
@@ -973,25 +984,29 @@ Status ImporterBase::ConvertFunctionArgAndRets(
       // control dependencies.
       if (inner_op->getNumOperands() != 1)
         return errors::Unimplemented("Return node with multiple inputs.");
-      inst_to_returned.push_back(inner_op->getOperand(0));
+      inst_to_return.push_back(inner_op->getOperand(0));
       inst->dropAllReferences();
       inst->erase();
     } else {
-      inst_to_returned.push_back(inst->getResult(ret.index));
+      inst_to_return.push_back(inst->getResult(ret.index));
     }
+  }
+
+  for (Node* control_ret : control_ret_nodes) {
+    auto* inst = node_values_[control_ret->id()];
+    inst_to_return.push_back(*std::prev(inst->result_end()));
   }
 
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
   builder_->setInsertionPointToEnd(&graph_op.body().front());
   builder_->create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
-                                               inst_to_returned);
-  inst_to_returned.assign(graph_op.getResults().begin(),
-                          graph_op.getResults().end());
+                                               inst_to_return);
+  inst_to_return.assign(graph_op.getResults().begin(),
+                        graph_op.getResults().end());
   builder_->setInsertionPointToEnd(bb);
-  builder_->create<mlir::ReturnOp>(
-      mlir::UnknownLoc::get(context_),
-      llvm::makeArrayRef(inst_to_returned.begin(), inst_to_returned.end()));
+  builder_->create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
+                                   inst_to_return);
   return Status::OK();
 }
 
@@ -1452,6 +1467,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   mlir::FunctionType func_type;
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
+  absl::InlinedVector<Node*, 4> control_ret_nodes;
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
   std::unique_ptr<FunctionBody> graph_fbody;
   if (specs.graph_as_function) {
@@ -1471,7 +1487,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_RETURN_IF_ERROR(importer.PrepareConvert(*graph_fbody->graph));
     TF_ASSIGN_OR_RETURN(func_type, importer.InferLibFunctionType(*graph_fbody));
     importer.GetArgsAndRetsFromFunctionBody(*graph_fbody, &arg_nodes,
-                                            &ret_nodes);
+                                            &ret_nodes, &control_ret_nodes);
 
     if (!arg_nodes.empty() || !ret_nodes.empty()) {
       mlir::Builder b(context);
@@ -1531,7 +1547,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
                       {producer, min_consumer, bad_consumers})));
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
-      "main", func_type, arg_nodes, ret_nodes, attrs));
+      "main", func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs));
   return module;
 }
 

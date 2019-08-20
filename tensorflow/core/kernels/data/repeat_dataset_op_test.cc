@@ -73,17 +73,17 @@ struct TestCase {
 TestCase FiniteRepeatTestCase() {
   return {/*input_tensors*/
           {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-           CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
+           CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
           /*count*/ 2,
           /*expected_outputs*/
           {CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           CreateTensor<string>(TensorShape{1}, {"a"}),
+           CreateTensor<tstring>(TensorShape{1}, {"a"}),
            CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           CreateTensor<string>(TensorShape{1}, {"b"}),
+           CreateTensor<tstring>(TensorShape{1}, {"b"}),
            CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           CreateTensor<string>(TensorShape{1}, {"a"}),
+           CreateTensor<tstring>(TensorShape{1}, {"a"}),
            CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           CreateTensor<string>(TensorShape{1}, {"b"})},
+           CreateTensor<tstring>(TensorShape{1}, {"b"})},
           /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
           /*expected_output_shapes*/
           {PartialTensorShape({2}), PartialTensorShape({1})},
@@ -94,7 +94,7 @@ TestCase FiniteRepeatTestCase() {
 TestCase EmptyRepeatTestCase() {
   return {/*input_tensors*/
           {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-           CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
+           CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
           /*count*/ 0,
           /*expected_outputs*/
           {},

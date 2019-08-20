@@ -24,11 +24,11 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopFusionUtils.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
@@ -114,8 +114,8 @@ struct LoopFusion : public FunctionPass<LoopFusion> {
 std::unique_ptr<FunctionPassBase>
 mlir::createLoopFusionPass(unsigned fastMemorySpace,
                            uint64_t localBufSizeThreshold, bool maximalFusion) {
-  return llvm::make_unique<LoopFusion>(fastMemorySpace, localBufSizeThreshold,
-                                       maximalFusion);
+  return std::make_unique<LoopFusion>(fastMemorySpace, localBufSizeThreshold,
+                                      maximalFusion);
 }
 
 namespace {

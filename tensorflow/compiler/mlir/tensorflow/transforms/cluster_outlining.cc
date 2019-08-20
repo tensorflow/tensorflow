@@ -17,6 +17,7 @@ limitations under the License.
 // `tf_device.launch` with equivalent `tf_device.launch_func` operations.
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -24,7 +25,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -129,7 +129,7 @@ void ClusterOutliningPass::runOnModule() {
 }  // namespace
 
 std::unique_ptr<ModulePassBase> CreateClusterOutliningPass() {
-  return llvm::make_unique<ClusterOutliningPass>();
+  return std::make_unique<ClusterOutliningPass>();
 }
 
 static PassRegistration<ClusterOutliningPass> pass(

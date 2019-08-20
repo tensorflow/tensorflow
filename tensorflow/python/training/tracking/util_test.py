@@ -1413,8 +1413,9 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
     six.assertCountEqual(
         self,
-        [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
-        trackable_utils.list_objects(save_template))
+        [id(v1_save), id(v2_save), id(manual_scope),
+         id(manual_scope_v), id(save_template)],
+        map(id, trackable_utils.list_objects(save_template)))
     manual_dep, = manual_scope._checkpoint_dependencies
     self.assertEqual("in_manual_scope", manual_dep.name)
     self.assertIs(manual_scope_v, manual_dep.ref)

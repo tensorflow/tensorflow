@@ -172,7 +172,7 @@ class BundleWriter {
 //
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
-Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
+Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     StringPiece merged_prefix);
 
 // On construction, silently attempts to read the metadata associated with

@@ -74,7 +74,7 @@ template <typename TypeConverter = LLVMTypeConverter>
 std::unique_ptr<ModulePassBase>
 createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller) {
   return createConvertToLLVMIRPass(patternListFiller, [](MLIRContext *context) {
-    return llvm::make_unique<TypeConverter>(context);
+    return std::make_unique<TypeConverter>(context);
   });
 }
 

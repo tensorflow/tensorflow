@@ -19,12 +19,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -351,6 +351,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kDivide, DivOp);
+      NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);

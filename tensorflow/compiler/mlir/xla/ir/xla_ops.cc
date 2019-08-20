@@ -17,12 +17,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h.inc"
 
 using namespace mlir;
 using namespace mlir::XLA;
@@ -85,70 +105,69 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Converts the values of an ElementsAttr into the corresponding type.
+ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
+  auto oldType = getElementTypeOrSelf(elements);
+  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
+
+  if (oldType.isa<FloatType>()) {
+    // mapValues always takes a function returning APInt, even when the output
+    // is actually float.
+    using func_type = APInt(const APFloat&);
+    if (auto newFloatType = newType.dyn_cast<FloatType>()) {
+      // Float -> Float
+      return elements.mapValues(
+          newType, llvm::function_ref<func_type>([&newFloatType](
+                                                     const APFloat& floatVal) {
+            APFloat newDouble(FloatAttr::getValueAsDouble(floatVal));
+            bool losesInfo = false;
+            newDouble.convert(newFloatType.getFloatSemantics(),
+                              llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+            return newDouble.bitcastToAPInt();
+          }));
+    }
+    // Float -> Int
+    return elements.mapValues(
+        newType,
+        llvm::function_ref<func_type>([&bitWidth](const APFloat& floatVal) {
+          return APInt(bitWidth, FloatAttr::getValueAsDouble(floatVal));
+        }));
+  }
+
+  // oldType is Integer
+  // mapValues always takes a function returning APInt, even when the output
+  // is actually float.
+  using func_type = APInt(const APInt&);
+  if (auto newFloatType = newType.dyn_cast<FloatType>()) {
+    // Int -> Float
+    return elements.mapValues(
+        newType,
+        llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
+          APFloat newDouble(static_cast<double>(intVal.getLimitedValue()));
+          bool losesInfo = false;
+          newDouble.convert(newFloatType.getFloatSemantics(),
+                            llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+          return newDouble.bitcastToAPInt();
+        }));
+  }
+  // newType is Integer
+  // Int -> Int
+  return elements.mapValues(
+      newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
+        return APInt(bitWidth, intVal.getLimitedValue());
+      }));
+}
+
+}  // namespace
+
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 1 && "convert must take one operand");
-  auto operand = operands[0];
+  if (getOperand()->getType() == getResult()->getType()) return getOperand();
 
-  if (!operand) return {};
-
-  if (auto elementsAttr = operand.dyn_cast<ElementsAttr>()) {
-    auto inType = elementsAttr.getType();
-    auto outType = getResult()->getType().cast<ShapedType>();
-
-    if (inType == outType) {
-      return operand;
-    }
-
-    auto inElement = inType.getElementType();
-    auto outElement = outType.getElementType();
-    size_t bitWidth =
-        outElement.isBF16() ? 64 : outElement.getIntOrFloatBitWidth();
-
-    if (inElement.isa<FloatType>()) {
-      if (outElement.isa<IntegerType>()) {
-        auto func = [&](const APFloat& floatValue) -> APInt {
-          return APInt(bitWidth, FloatAttr::getValueAsDouble(floatValue));
-        };
-        llvm::function_ref<APInt(const APFloat&)> func_ref = func;
-        return elementsAttr.mapValues(outType.getElementType(), func_ref);
-      }
-
-      if (outElement.isa<FloatType>()) {
-        auto& semantics = outElement.cast<FloatType>().getFloatSemantics();
-        auto func = [&](const APFloat& floatValue) -> APInt {
-          APFloat newDouble(FloatAttr::getValueAsDouble(floatValue));
-          bool losesInfo = false;
-          newDouble.convert(semantics, llvm::APFloat::rmNearestTiesToEven,
-                            &losesInfo);
-          return newDouble.bitcastToAPInt();
-        };
-        llvm::function_ref<APInt(const APFloat&)> func_ref = func;
-        return elementsAttr.mapValues(outType.getElementType(), func_ref);
-      }
-    }
-
-    if (inElement.isa<IntegerType>()) {
-      if (outElement.isa<IntegerType>()) {
-        auto func = [&](const APInt& val) -> APInt {
-          return APInt(bitWidth, val.getLimitedValue());
-        };
-        llvm::function_ref<APInt(const APInt&)> func_ref = func;
-        return elementsAttr.mapValues(outType.getElementType(), func_ref);
-      }
-
-      if (outElement.isa<FloatType>()) {
-        auto& semantics = outElement.cast<FloatType>().getFloatSemantics();
-        auto func = [&](const APInt& val) -> APInt {
-          APFloat newDouble(static_cast<double>(val.getLimitedValue()));
-          bool losesInfo = false;
-          newDouble.convert(semantics, llvm::APFloat::rmNearestTiesToEven,
-                            &losesInfo);
-          return newDouble.bitcastToAPInt();
-        };
-        llvm::function_ref<APInt(const APInt&)> func_ref = func;
-        return elementsAttr.mapValues(outType.getElementType(), func_ref);
-      }
-    }
+  // If the operand is constant, we can do the conversion now.
+  if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
+    return ConvertElements(elementsAttr, getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -188,36 +207,32 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 1 && "convert must take one operand");
-  auto operand = operands[0];
-  if (!operand) return {};
+  if (getOperand()->getType() == getType()) {
+    return getOperand();
+  }
 
-  if (auto elements = operand.dyn_cast<DenseElementsAttr>()) {
+  if (auto prev_op =
+          dyn_cast_or_null<ReshapeOp>(getOperand()->getDefiningOp())) {
+    setOperand(prev_op.getOperand());
+    return getResult();
+  }
+
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
     return elements.reshape(getResult()->getType().cast<ShapedType>());
   }
 
   return {};
 }
 
-namespace {
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
 
-struct SimplifyRedundantReshape : public OpRewritePattern<ReshapeOp> {
-  explicit SimplifyRedundantReshape(MLIRContext* context)
-      : OpRewritePattern(context, /*benefit=*/1) {}
-
-  PatternMatchResult matchAndRewrite(ReshapeOp op,
-                                     PatternRewriter& rewriter) const override {
-    if (op.getOperand()->getType() == op.getType()) {
-      rewriter.replaceOp(op, {op.getOperand()});
-      return matchSuccess();
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  for (auto it : llvm::enumerate(permutation().cast<DenseIntElementsAttr>())) {
+    if (it.index() != it.value()) {
+      return {};
     }
-    return matchFailure();
   }
-};
-
-}  // namespace
-
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
-                                            MLIRContext* context) {
-  results.insert<SimplifyRedundantReshape>(context);
+  return getOperand();
 }

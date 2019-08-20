@@ -105,6 +105,7 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
              /*delta=*/(ConstantOp TFi32<-1>)), (ConstantOp TFi32<1>))), $b,
            ConstBoolAttrFalse, $bt)>;
 
+def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 
 //===----------------------------------------------------------------------===//
@@ -149,3 +150,8 @@ def : Pat<(TF_ReshapeOp:$op
           (TFL_DequantizeOp
               (TFL_QuantizeOp (TF_ReshapeOp $input, $shape),
               (UpdateShape $qtype, $op)))>;
+
+// The Rank op produces result which is independent with the quantization
+// parameters of the input, so we can remove the quantization ops.
+def : Pat<(TF_RankOp (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype))),
+          (TF_RankOp $input)>;

@@ -299,12 +299,7 @@ cc_library(
 )
 
 cc_library(
-    name = "kernel",
-    srcs = [
-        "kernel_arm32.cc",
-        "kernel_arm64.cc",
-        "kernel_avx512.cc",
-    ],
+    name = "kernel_common",
     hdrs = [
         "kernel.h",
         "kernel_arm.h",
@@ -330,11 +325,65 @@ cc_library(
 )
 
 cc_library(
-    name = "pack",
+    name = "kernel_arm",
     srcs = [
-        "pack_arm.cc",
-        "pack_avx512.cc",
+        "kernel_arm32.cc",
+        "kernel_arm64.cc",
     ],
+    copts = RUY_COPTS,
+    deps = [
+        ":common",
+        ":kernel_common",
+        ":opt_set",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "kernel_avx512",
+    srcs = [
+        "kernel_avx512.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":kernel_common",
+        ":opt_set",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "kernel",
+    hdrs = [
+        "kernel.h",
+        "kernel_common.h",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":common",
+        ":internal_matrix",
+        ":kernel_arm",  # fixdeps: keep
+        ":kernel_avx512",  # fixdeps: keep
+        ":kernel_common",
+        ":matrix",
+        ":opt_set",
+        ":path",
+        ":platform",
+        ":side_pair",
+        ":size_util",
+        ":spec",
+        ":tune",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack_common",
     hdrs = [
         "pack.h",
         "pack_arm.h",
@@ -348,6 +397,61 @@ cc_library(
         ":internal_matrix",
         ":matrix",
         ":opt_set",
+        ":path",
+        ":platform",
+        ":tune",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack_arm",
+    srcs = [
+        "pack_arm.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":common",
+        ":opt_set",
+        ":pack_common",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack_avx512",
+    srcs = [
+        "pack_avx512.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack",
+    hdrs = [
+        "pack.h",
+        "pack_common.h",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":common",
+        ":internal_matrix",
+        ":matrix",
+        ":opt_set",
+        ":pack_arm",  # fixdeps: keep
+        ":pack_avx512",  # fixdeps: keep
+        ":pack_common",
         ":path",
         ":platform",
         ":tune",
