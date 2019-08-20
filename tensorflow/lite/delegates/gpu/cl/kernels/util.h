@@ -68,6 +68,11 @@ std::string GetTensorDeclaration(TensorStorageType storage_type,
 
 std::string GenerateGlobal3DCoords(TensorStorageType storage_type);
 
+enum class TextureAddressMode {
+  DONT_CARE,  // translated to CLK_ADDRESS_NONE
+  ZERO,       // translated to CLK_ADDRESS_CLAMP
+};
+
 class TensorCodeGenerator {
  public:
   TensorCodeGenerator(const std::string& name,
@@ -82,19 +87,28 @@ class TensorCodeGenerator {
 
   std::string GetDeclaration(AccessType access) const;
 
-  std::string Read3D(const std::string& x, const std::string& y,
-                     const std::string& z) const;
+  // This function (and functions below) accept TextureAddressMode, but this
+  // argument applicable only for texture types. Buffer types ignore this
+  // parameter.
+  std::string Read3D(
+      const std::string& x, const std::string& y, const std::string& z,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
-  std::string ReadAsFloat3D(const std::string& x, const std::string& y,
-                            const std::string& z) const;
+  std::string ReadAsFloat3D(
+      const std::string& x, const std::string& y, const std::string& z,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
-  std::string Read3D(const std::string& global_address) const;
+  std::string Read3D(
+      const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
-  std::string ReadAsFloat3D(const std::string& global_address) const;
+  std::string ReadAsFloat3D(
+      const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   std::string GetAddress(const std::string& var_name, const std::string& x,
                          const std::string& y, const std::string& z) const;
