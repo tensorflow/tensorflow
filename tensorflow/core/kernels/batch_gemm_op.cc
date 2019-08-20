@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 
 template <typename Device, typename Scalar>

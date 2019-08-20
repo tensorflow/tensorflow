@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import random
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
@@ -36,9 +37,6 @@ def GetRandomNormalInput(shape, dtype):
   scale = 10.0 if dtype != np.float16 else 0.1
   loc = -10.0 if dtype != np.float16 else 0.1
   vals = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
-  if dtype in (np.complex64, np.complex128):
-    imag = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
-    vals += 1j * imag
   return vals.reshape(shape)
 
 
@@ -54,18 +52,22 @@ class BatchGemmOpTest(test.TestCase):
     return np.matmul(x, y)
 
   # Compares TensorFlow BatchGemm with NumPy's matmul.
-  def _compare(self, x_in, y_in, transpose_a, transpose_b, static_shape):
+  def _compare(self, x_in, y_in, transpose_a, transpose_b, alpha, beta, static_shape):
     x_t_shape = x_in.shape[:-2] + (x_in.shape[-1], x_in.shape[-2])
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not transpose_a else x_in.reshape(x_t_shape)
     y = y_in if not transpose_b else y_in.reshape(y_t_shape)
-    is_floating = x.dtype != np.int32
-    tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
-    with self.cached_session(use_gpu=is_floating) as sess:
+
+    tol = 0
+    if x.dtype == np.float32 or x.dtype == np.float16:
+      tol = 100 * np.finfo(x.dtype).eps
+    elif x.dtype == np.float64:
+      # float64 eps is around 10 ** (-14) which is way too small for accumulated differences
+      # Bumping it up to 10 ** (-7)
+      tol = 10 ** (-7)
+    with self.cached_session(use_gpu=True) as sess:
       # Note: Testing with three dimensions only now
       z_in = np.ones((x_in.shape[0], x_in.shape[1], y_in.shape[2])).astype(x.dtype)
-      alpha = 1.0
-      beta = 0.0
       if static_shape:
         z0 = math_ops.batch_gemm(
             x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b, alpha=alpha, beta=beta)
@@ -76,8 +78,7 @@ class BatchGemmOpTest(test.TestCase):
         z0 = math_ops.batch_gemm(
             x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b, alpha=alpha, beta=beta)
         z0_val = sess.run(z0, feed_dict={x_ph: x, y_ph: y})
-      z1 = self._npBatchGemm(x, y, transpose_a, transpose_b)
-      z1 = alpha * z1 + beta * z_in
+      z1 = alpha * self._npBatchGemm(x, y, transpose_a, transpose_b) + beta * z_in
       self.assertAllClose(z0_val, z1, rtol=tol, atol=tol)
 
   def _testNonEmpty(self, dtype, transpose_a, transpose_b, use_static_shape):
@@ -88,6 +89,8 @@ class BatchGemmOpTest(test.TestCase):
           GetRandomNormalInput(b_shape, dtype),
           transpose_a,
           transpose_b,
+          random.random(),
+          random.random(),
           static_shape=use_static_shape)
 
     CompareNonEmpty(self, [1, 2, 3], [1, 3, 5])
@@ -107,6 +110,8 @@ class BatchGemmOpTest(test.TestCase):
           np.zeros(b_shape).astype(dtype),
           transpose_a,
           transpose_b,
+          random.random(),
+          random.random(),
           static_shape=use_static_shape)
 
     CompareEmpty(self, [0, 3, 2], [0, 2, 4])
@@ -127,7 +132,7 @@ class BatchGemmGradientTest(test.TestCase):
 
   # loss = sum(batch_matmul(x, y)). Verify dl/dx and dl/dy via the
   # gradient checker.
-  def _checkGrad(self, x_in, y_in, transpose_a, transpose_b):
+  def _checkGrad(self, x_in, y_in, transpose_a, transpose_b, alpha, beta):
     x_t_shape = x_in.shape[:-2] + (x_in.shape[-1], x_in.shape[-2])
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not transpose_a else x_in.reshape(x_t_shape)
@@ -136,8 +141,6 @@ class BatchGemmGradientTest(test.TestCase):
     # Since our gradient is linear, a larger delta decreases the error.
     delta = 10 * epsilon**(1.0 / 3.0)
 
-    alpha = 1.0
-    beta = 0.0
     z = np.ones((x_in.shape[0], x_in.shape[1], y_in.shape[2])).astype(x.dtype)
 
     # Note: z is counted as a constant for batch_gemm operator therefore should
@@ -153,12 +156,11 @@ class BatchGemmGradientTest(test.TestCase):
       self.assertAllClose(x_jacob_t, x_jacob_n, rtol=tol, atol=tol)
       self.assertAllClose(y_jacob_t, y_jacob_n, rtol=tol, atol=tol)
 
-  # Tests gradients of a batched matmul of x, and y
   def _compare(self, a_shape, b_shape, dtype, transpose_a, transpose_b):
     np.random.seed(42)
     x = GetRandomNormalInput(a_shape, dtype)
     y = GetRandomNormalInput(b_shape, dtype)
-    self._checkGrad(x, y, transpose_a, transpose_b)
+    self._checkGrad(x, y, transpose_a, transpose_b, random.random(), 0.0)
 
 
 def _GetBatchGemmGradientTest(dtype, transpose_a, transpose_b):
@@ -174,9 +176,6 @@ def _GetBatchGemmGradientTest(dtype, transpose_a, transpose_b):
 
 if __name__ == "__main__":
   dtypes_to_test = [np.float16, np.float32, np.float64]
-  if not test.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [np.complex64, np.complex128]
   for dtype_ in dtypes_to_test:
     for transpose_a_ in False, True:
       for transpose_b_ in False, True:
@@ -188,8 +187,6 @@ if __name__ == "__main__":
               "testBatchGemmOp_" + name + "_{}".format(use_static_shape_),
               _GetBatchGemmOpTest(dtype_, transpose_a_, transpose_b_,
                                     use_static_shape_))
-        if dtype_ == np.int32:
-          continue
         setattr(BatchGemmGradientTest, "testBatchGemmGradient_" + name,
                 _GetBatchGemmGradientTest(dtype_, transpose_a_, transpose_b_))
 
