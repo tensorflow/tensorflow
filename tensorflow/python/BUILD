@@ -6858,6 +6858,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
+        "//third_party/car/deep_nets/tensorflow:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",
