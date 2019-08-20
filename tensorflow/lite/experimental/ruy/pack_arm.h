@@ -128,8 +128,8 @@ void Pack8bitNeonDotprodInOrder(const void* src_ptr0, const void* src_ptr1,
                                 int input_xor);
 
 #elif RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
-void Pack8bitNeonOutOfOrderLHS(const PackParams8bit& params);
-void Pack8bitNeonOutOfOrderRHS(const PackParams8bit& params);
+void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params);
+void Pack8bitNeonOutOfOrder2Cols(const PackParams8bit& params);
 #endif  // (RUY_PLATFORM(NEON_64)&& RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #if (RUY_PLATFORM(NEON_32) || RUY_PLATFORM(NEON_64)) && \
@@ -205,7 +205,7 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 4>, Scalar,
                          packed_ptr, src_inc0, src_inc1, src_inc2, src_inc3,
                          src_matrix.layout.rows, src_matrix.zero_point,
                          kInputXor, &params);
-      Pack8bitNeonOutOfOrderLHS(params);
+      Pack8bitNeonOutOfOrder4Cols(params);
 #endif  // RUY_PLATFORM(NEON_64)
     }
   }
@@ -259,7 +259,7 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 2>, Scalar,
                          packed_ptr, src_inc0, src_inc1, -1, -1,
                          src_matrix.layout.rows, src_matrix.zero_point,
                          kInputXor, &params);
-      Pack8bitNeonOutOfOrderRHS(params);
+      Pack8bitNeonOutOfOrder2Cols(params);
     }
   }
 };
