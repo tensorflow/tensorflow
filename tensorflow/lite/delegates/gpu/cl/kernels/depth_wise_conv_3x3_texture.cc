@@ -30,10 +30,14 @@ namespace {
 std::string GenerateDepthWiseConvCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    const CLDevice& device) {
   std::string c = GetCommonDefines(precision);
   TensorCodeGenerator src_tensor("src_data", "dst_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+
+  const auto mode = device.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
+                                         : TextureAddressMode::ZERO;
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
@@ -65,11 +69,35 @@ std::string GenerateDepthWiseConvCode(
   c += "   FLT4 s2;\n";
   c += "   FLT4 s3;\n";
   c += " \n";
-  c += " {\n";
-  c += "   s0 = " + src_tensor.Read3D("X - 1", "Y - 1", "Z") + ";\n";
-  c += "   s1 = " + src_tensor.Read3D("X", "Y - 1", "Z") + ";\n";
-  c += "   s2 = " + src_tensor.Read3D("X + 1", "Y - 1", "Z") + ";\n";
-  c += "   s3 = " + src_tensor.Read3D("X + 2", "Y - 1", "Z") + ";\n";
+  if (device.IsAdreno3xx()) {
+    c += "   FLT4 in_x;\n";
+    c += "   FLT4 in_y;\n";
+    c += "   in_x.x = (FLT)(X - 1 >= 0 && X - 1 < dst_size.x);\n";
+    c += "   in_x.y = (FLT)(X >= 0 && X < dst_size.x);\n";
+    c += "   in_x.z = (FLT)(X + 1 >= 0 && X + 1 < dst_size.x);\n";
+    c += "   in_x.w = (FLT)(X + 2 >= 0 && X + 2 < dst_size.x);\n";
+    c += "   in_y.x = (FLT)(Y - 1 >= 0 && Y - 1 < dst_size.y);\n";
+    c += "   in_y.y = (FLT)(Y >= 0 && Y < dst_size.y);\n";
+    c += "   in_y.z = (FLT)(Y + 1 >= 0 && Y + 1 < dst_size.y);\n";
+    c += "   in_y.w = (FLT)(Y + 2 >= 0 && Y + 2 < dst_size.y);\n";
+  }
+  if (device.IsAdreno3xx()) {
+    c += " if (Z > -4) {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y - 1", "Z", mode) +
+         " * in_x.x * in_y.x;\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y - 1", "Z", mode) +
+         " * in_x.y * in_y.x;\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y - 1", "Z", mode) +
+         " * in_x.z * in_y.x;\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y - 1", "Z", mode) +
+         " * in_x.w * in_y.x;\n";
+  } else {
+    c += " {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y - 1", "Z", mode) + ";\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y - 1", "Z", mode) + ";\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y - 1", "Z", mode) + ";\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y - 1", "Z", mode) + ";\n";
+  }
   c += "   r0 += TO_ACCUM_TYPE(f0 * s0);\n";
   c += "   r0 += TO_ACCUM_TYPE(f1 * s1);\n";
   c += "   r1 += TO_ACCUM_TYPE(f0 * s1);\n";
@@ -77,11 +105,23 @@ std::string GenerateDepthWiseConvCode(
   c += "   r1 += TO_ACCUM_TYPE(f1 * s2);\n";
   c += "   r1 += TO_ACCUM_TYPE(f2 * s3);\n";
   c += " }\n";
-  c += " {\n";
-  c += "   s0 = " + src_tensor.Read3D("X - 1", "Y", "Z") + ";\n";
-  c += "   s1 = " + src_tensor.Read3D("X", "Y", "Z") + ";\n";
-  c += "   s2 = " + src_tensor.Read3D("X + 1", "Y", "Z") + ";\n";
-  c += "   s3 = " + src_tensor.Read3D("X + 2", "Y", "Z") + ";\n";
+  if (device.IsAdreno3xx()) {
+    c += " if (Z > -3) {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y", "Z", mode) +
+         " * in_x.x * in_y.y;\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y", "Z", mode) +
+         " * in_x.y * in_y.y;\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y", "Z", mode) +
+         " * in_x.z * in_y.y;\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y", "Z", mode) +
+         " * in_x.w * in_y.y;\n";
+  } else {
+    c += " {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y", "Z", mode) + ";\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y", "Z", mode) + ";\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y", "Z", mode) + ";\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y", "Z", mode) + ";\n";
+  }
   c += "   r0 += TO_ACCUM_TYPE(f3 * s0);\n";
   c += "   r2 += TO_ACCUM_TYPE(f0 * s0);\n";
   c += "   r0 += TO_ACCUM_TYPE(f4 * s1);\n";
@@ -95,11 +135,23 @@ std::string GenerateDepthWiseConvCode(
   c += "   r1 += TO_ACCUM_TYPE(f5 * s3);\n";
   c += "   r3 += TO_ACCUM_TYPE(f2 * s3);\n";
   c += " }\n";
-  c += " {\n";
-  c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 1", "Z") + ";\n";
-  c += "   s1 = " + src_tensor.Read3D("X", "Y + 1", "Z") + ";\n";
-  c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 1", "Z") + ";\n";
-  c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 1", "Z") + ";\n";
+  if (device.IsAdreno3xx()) {
+    c += " if (Z > -2) {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 1", "Z", mode) +
+         " * in_x.x * in_y.z;\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y + 1", "Z", mode) +
+         " * in_x.y * in_y.z;\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 1", "Z", mode) +
+         " * in_x.z * in_y.z;\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 1", "Z", mode) +
+         " * in_x.w * in_y.z;\n";
+  } else {
+    c += " {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 1", "Z", mode) + ";\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y + 1", "Z", mode) + ";\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 1", "Z", mode) + ";\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 1", "Z", mode) + ";\n";
+  }
   c += "   r0 += TO_ACCUM_TYPE(f6 * s0);\n";
   c += "   r2 += TO_ACCUM_TYPE(f3 * s0);\n";
   c += "   r0 += TO_ACCUM_TYPE(f7 * s1);\n";
@@ -113,11 +165,23 @@ std::string GenerateDepthWiseConvCode(
   c += "   r1 += TO_ACCUM_TYPE(f8 * s3);\n";
   c += "   r3 += TO_ACCUM_TYPE(f5 * s3);\n";
   c += " }\n";
-  c += " {\n";
-  c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 2", "Z") + ";\n";
-  c += "   s1 = " + src_tensor.Read3D("X", "Y + 2", "Z") + ";\n";
-  c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 2", "Z") + ";\n";
-  c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 2", "Z") + ";\n";
+  if (device.IsAdreno3xx()) {
+    c += " if (Z > -1) {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 2", "Z", mode) +
+         " * in_x.x * in_y.w;\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y + 2", "Z", mode) +
+         " * in_x.y * in_y.w;\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 2", "Z", mode) +
+         " * in_x.z * in_y.w;\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 2", "Z", mode) +
+         " * in_x.w * in_y.w;\n";
+  } else {
+    c += " {\n";
+    c += "   s0 = " + src_tensor.Read3D("X - 1", "Y + 2", "Z", mode) + ";\n";
+    c += "   s1 = " + src_tensor.Read3D("X", "Y + 2", "Z", mode) + ";\n";
+    c += "   s2 = " + src_tensor.Read3D("X + 1", "Y + 2", "Z", mode) + ";\n";
+    c += "   s3 = " + src_tensor.Read3D("X + 2", "Y + 2", "Z", mode) + ";\n";
+  }
   c += "   r2 += TO_ACCUM_TYPE(f6 * s0);\n";
   c += "   r2 += TO_ACCUM_TYPE(f7 * s1);\n";
   c += "   r3 += TO_ACCUM_TYPE(f6 * s1);\n";
@@ -186,7 +250,7 @@ Status DepthWiseConv3x3Texture::Compile(
     const CreationContext& creation_context) {
   std::string code = GenerateDepthWiseConvCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, linked_operations_);
+      definition_.precision, linked_operations_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

@@ -81,10 +81,11 @@ std::string GenerateDepthWiseConvolutionCode(
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
-  auto access_mode = src_descriptor.storage_type == TensorStorageType::BUFFER ||
-                             device.IsAdreno3xx()
-                         ? TextureAddressMode::DONT_CARE
-                         : TextureAddressMode::ZERO;
+  const auto access_mode =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+              device.IsAdreno3xx()
+          ? TextureAddressMode::DONT_CARE
+          : TextureAddressMode::ZERO;
 
   std::string c = GetCommonDefines(precision);
 
