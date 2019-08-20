@@ -29,9 +29,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.ops import nn_ops
 
 
 class ConcatOpTest(test.TestCase):
@@ -734,7 +734,7 @@ class ConcatOffsetTest(test.TestCase):
       s5_1 = array_ops.slice(s4_1, [0, 6, 6, 0], [-1, 1, 1, -1])
       s5_2 = array_ops.slice(s4_2, [0, 6, 6, 0], [-1, 1, 1, -1])
       x_concat = array_ops.concat([s5_1, s5_2], 3)
-      self.evaluate(x_concat)
+      self.evaluate(x_concat)  # This test is only meant to check the creation is not crashed
 
 if __name__ == "__main__":
   test.main()
