@@ -591,10 +591,10 @@ cc_library(
         "functionalize_while.h",
     ],
     deps = [
+        ":frontend_attributes_util",
         ":functionalize_cond",
         ":functionalize_control_flow_util",
         ":tf2xla_util",
-        ":frontend_attributes_util",
         "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
