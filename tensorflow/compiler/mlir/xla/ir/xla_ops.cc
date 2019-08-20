@@ -163,6 +163,8 @@ ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
 }  // namespace
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
+  if (getOperand()->getType() == getResult()->getType()) return getOperand();
+
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
     return ConvertElements(elementsAttr, getElementTypeOrSelf(getResult()));
