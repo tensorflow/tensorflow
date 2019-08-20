@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
@@ -40,7 +41,10 @@ class LMDBDatasetTest(test_base.DatasetTestBase):
   def setUp(self):
     super(LMDBDatasetTest, self).setUp()
     # Copy database out because we need the path to be writable to use locks.
-    path = os.path.join(prefix_path, "lmdb", "testdata", "data.mdb")
+    # The on-disk format of an LMDB database is different on big-endian
+    # machines, because LMDB is a memory-mapped database.
+    db_file = "data.mdb" if sys.byteorder == "little" else "data_bigendian.mdb"
+    path = os.path.join(prefix_path, "lmdb", "testdata", db_file)
     self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
     shutil.copy(path, self.db_path)
 
