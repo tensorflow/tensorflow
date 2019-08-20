@@ -181,10 +181,10 @@ class OptimizationOptions(options.OptionsBase):
       "defaults to True.")
 
   unbatch_and_batch_fusion = options.create_option(
-       name="unbatch_and_batch_fusion",
-       ty=bool,
-       docstring="Whether to fuse unbatch and batch transformations. If None, "
-       "defaults to False.")
+      name="unbatch_and_batch_fusion",
+      ty=bool,
+      docstring="Whether to fuse unbatch and batch transformations. If None, "
+      "defaults to False.")
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
