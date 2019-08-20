@@ -171,6 +171,9 @@
 // CHECK: #map{{[0-9]+}} = (d0) -> (d0 * 16 - (d0 + 1) + 15)
 #map52 = (d0) -> (16*d0 + ((d0 + 1) * -1) + 15)
 
+// CHECK: #map{{[0-9]+}} = (d0) -> (d0 - (d0 + 1))
+#map53 = (d0) -> (d0 - (d0 + 1))
+
 // Single identity maps are removed.
 // CHECK: func @f0(memref<2x4xi8, 1>)
 func @f0(memref<2x4xi8, #map0, 1>)
@@ -337,3 +340,6 @@ func @f51(memref<1xi8, #map51>)
 
 // CHECK: func @f52(memref<1xi8, #map{{[0-9]+}}>)
 func @f52(memref<1xi8, #map52>)
+
+// CHECK: func @f53(memref<1xi8, #map{{[0-9]+}}>)
+func @f53(memref<1xi8, #map53>)
