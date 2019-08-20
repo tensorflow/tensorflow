@@ -89,6 +89,16 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
     TfLiteInterpreterOptions* options, int32_t num_threads);
 
+// Adds a delegate to be applied during `TfLiteInterpreter` creation.
+//
+// If delegate application fails, interpreter creation will also fail with an
+// associated error logged.
+//
+// NOTE: The caller retains ownership of the delegate and should ensure that it
+// remains valid for the duration of any created interpreter's lifetime.
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
+    TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
+
 // Sets a custom error reporter for interpreter execution.
 //
 // * `reporter` takes the provided `user_data` object, as well as a C-style

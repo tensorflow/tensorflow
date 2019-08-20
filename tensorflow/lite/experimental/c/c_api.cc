@@ -80,6 +80,11 @@ void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
   options->num_threads = num_threads;
 }
 
+void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
+                                         TfLiteDelegate* delegate) {
+  options->delegates.push_back(delegate);
+}
+
 void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),

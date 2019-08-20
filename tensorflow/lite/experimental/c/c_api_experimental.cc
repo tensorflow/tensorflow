@@ -41,11 +41,6 @@ void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
   options->op_resolver.AddCustom(name, registration, min_version, max_version);
 }
 
-void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
-                                         TfLiteDelegate* delegate) {
-  options->delegates.push_back(delegate);
-}
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

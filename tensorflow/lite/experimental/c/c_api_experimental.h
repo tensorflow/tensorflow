@@ -46,16 +46,6 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     TfLiteInterpreterOptions* options, const char* name,
     const TfLiteRegistration* registration, int min_version, int max_version);
 
-// Adds a delegate to be applied during `TfLiteInterpreter` creation.
-//
-// If delegate application fails, interpreter creation will also fail with an
-// associated error logged.
-//
-// NOTE: The caller retains ownership of the delegate and should ensure that it
-// remains valid for the duration of any created interpreter's lifetime.
-TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
-    TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

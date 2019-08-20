@@ -158,6 +158,52 @@ TEST(CApiSimple, QuantizationParams) {
   TfLiteInterpreterDelete(interpreter);
 }
 
+TEST(CApiSimple, Delegate) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.data_ = &delegate_prepared;
+  delegate.Prepare = [](TfLiteContext* context, TfLiteDelegate* delegate) {
+    *static_cast<bool*>(delegate->data_) = true;
+    return kTfLiteOk;
+  };
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, &delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  // Subsequent exectuion should behave properly (the delegate is a no-op).
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  TfLiteInterpreterDelete(interpreter);
+}
+
+TEST(CApiSimple, DelegateFails) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  TfLiteDelegate delegate = TfLiteDelegateCreate();
+  delegate.Prepare = [](TfLiteContext* context, TfLiteDelegate* delegate) {
+    return kTfLiteError;
+  };
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, &delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // Interpreter creation should fail as delegate preparation failed.
+  EXPECT_EQ(nullptr, interpreter);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
 TEST(CApiSimple, ErrorReporter) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
