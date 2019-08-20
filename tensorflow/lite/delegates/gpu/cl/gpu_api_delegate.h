@@ -26,11 +26,11 @@ limitations under the License.
 #define TFL_CAPI_EXPORT
 #else
 #if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
+#ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
 #else
 #define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
+#endif  // TFL_COMPILE_LIBRARY
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
 #endif  // _WIN32
