@@ -180,6 +180,12 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to fuse shuffle and repeat transformations. If None, "
       "defaults to True.")
 
+  unbatch_and_batch_fusion = options.create_option(
+       name="unbatch_and_batch_fusion",
+       ty=bool,
+       docstring="Whether to fuse unbatch and batch transformations. If None, "
+       "defaults to False.")
+
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
     result = set()
@@ -194,6 +200,7 @@ class OptimizationOptions(options.OptionsBase):
         "noop_elimination",
         "parallel_batch",
         "shuffle_and_repeat_fusion",
+        "unbatch_and_batch_fusion",
     ]
     for optimization in all_optimizations:
       if getattr(self, optimization):

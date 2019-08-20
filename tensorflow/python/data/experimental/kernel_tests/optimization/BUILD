@@ -421,3 +421,23 @@ py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
+
+py_test(
+    name = "unbatch_and_batch_fusion_test",
+    srcs = ["unbatch_and_batch_fusion_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
