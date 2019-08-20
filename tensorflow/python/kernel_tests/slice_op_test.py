@@ -161,7 +161,7 @@ class SliceTest(test.TestCase):
       total_filter_size = 1
       for s in filter_shape:
         total_filter_size *= s
-      filters = [i * 1.0 / total_filter_size for i in range(1, 
+      filters = [i * 1.0 / total_filter_size for i in range(1,
           total_filter_size + 1)]
       f = constant_op.constant(filters, shape=filter_shape,
              dtype=dtypes.float32)
