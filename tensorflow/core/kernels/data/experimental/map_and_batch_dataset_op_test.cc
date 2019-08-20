@@ -423,14 +423,16 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(MapAndBatchDatasetOpTest,
                                  MapAndBatchDatasetParams,
                                  IteratorSaveAndRestoreTestCases())
 
- TEST_F(MapAndBatchDatasetOpTest, InvalidArguments) {
-  std::vector<MapAndBatchDatasetParams> invalid_params_vec = {
-      InvalidBatchSizeMapAndBatchDatasetParams(),
-      InvalidNumParallelCallsMapAndBatchDatasetParams()};
-  for (auto& dataset_params : invalid_params_vec) {
-    EXPECT_EQ(Initialize(&dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
-  }
+TEST_F(MapAndBatchDatasetOpTest, InvalidBatchSize) {
+  auto dataset_params = InvalidBatchSizeMapAndBatchDatasetParams();
+  EXPECT_EQ(Initialize(&dataset_params).code(),
+            tensorflow::error::INVALID_ARGUMENT);
+}
+
+TEST_F(MapAndBatchDatasetOpTest, InvalidNumParallel) {
+  auto dataset_params = InvalidNumParallelCallsMapAndBatchDatasetParams();
+  EXPECT_EQ(Initialize(&dataset_params).code(),
+            tensorflow::error::INVALID_ARGUMENT);
 }
 
 }  // namespace
