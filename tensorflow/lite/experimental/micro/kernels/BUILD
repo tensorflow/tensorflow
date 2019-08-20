@@ -24,6 +24,7 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
@@ -268,6 +269,19 @@ tflite_micro_cc_test(
     name = "maximum_minimum_test",
     srcs = [
         "maximum_minimum_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "mul_test",
+    srcs = [
+        "mul_test.cc",
     ],
     deps = [
         ":all_ops_resolver",
