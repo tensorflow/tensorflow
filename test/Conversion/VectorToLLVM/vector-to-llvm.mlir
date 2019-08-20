@@ -22,11 +22,11 @@ func @outerproduct_add(%arg0: vector<2xf32>, %arg1: vector<3xf32>, %arg2: vector
 //          CHECK:   llvm.undef : !llvm<"[2 x <3 x float>]">
 //          CHECK:   llvm.shufflevector {{.*}} [0 : i32, 0 : i32, 0 : i32] : !llvm<"<2 x float>">, !llvm<"<2 x float>">
 //          CHECK:   llvm.extractvalue {{.*}}[0] : !llvm<"[2 x <3 x float>]">
-//          CHECK:   "llvm.fmuladd"({{.*}}) : (!llvm<"<3 x float>">, !llvm<"<3 x float>">, !llvm<"<3 x float>">) -> !llvm<"<3 x float>">
+//          CHECK:   "llvm.intr.fmuladd"({{.*}}) : (!llvm<"<3 x float>">, !llvm<"<3 x float>">, !llvm<"<3 x float>">) -> !llvm<"<3 x float>">
 //          CHECK:   llvm.insertvalue {{.*}}[0] : !llvm<"[2 x <3 x float>]">
 //          CHECK:   llvm.shufflevector {{.*}} [1 : i32, 1 : i32, 1 : i32] : !llvm<"<2 x float>">, !llvm<"<2 x float>">
 //          CHECK:   llvm.extractvalue {{.*}}[1] : !llvm<"[2 x <3 x float>]">
-//          CHECK:   "llvm.fmuladd"({{.*}}) : (!llvm<"<3 x float>">, !llvm<"<3 x float>">, !llvm<"<3 x float>">) -> !llvm<"<3 x float>">
+//          CHECK:   "llvm.intr.fmuladd"({{.*}}) : (!llvm<"<3 x float>">, !llvm<"<3 x float>">, !llvm<"<3 x float>">) -> !llvm<"<3 x float>">
 //          CHECK:   llvm.insertvalue {{.*}}[1] : !llvm<"[2 x <3 x float>]">
 //          CHECK:   llvm.return {{.*}} : !llvm<"[2 x <3 x float>]">
 
