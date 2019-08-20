@@ -76,7 +76,7 @@ if hasattr(_current_module, 'keras'):
   metrics = keras.metrics
   optimizers = keras.optimizers
   initializers = keras.initializers
-  setattr(_current_module, "losses", losses)
+  setattr(_current_module, "layers", layers)
   setattr(_current_module, "losses", losses)
   setattr(_current_module, "metrics", metrics)
   setattr(_current_module, "optimizers", optimizers)
