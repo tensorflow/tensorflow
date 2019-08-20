@@ -20,12 +20,12 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"

@@ -390,10 +390,10 @@ cc_library(
 cc_library(
     name = "VectorOps",
     srcs = [
-        "lib/VectorOps/VectorOps.cpp",
+        "lib/Dialect/VectorOps/VectorOps.cpp",
     ],
     hdrs = [
-        "include/mlir/VectorOps/VectorOps.h",
+        "include/mlir/Dialect/VectorOps/VectorOps.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -406,7 +406,7 @@ cc_library(
 
 cc_library(
     name = "VectorDialectRegistration",
-    srcs = ["lib/VectorOps/DialectRegistration.cpp"],
+    srcs = ["lib/Dialect/VectorOps/DialectRegistration.cpp"],
     copts = ["-std=c++14"],
     deps = [
         ":IR",
@@ -1730,8 +1730,8 @@ cc_library(
 filegroup(
     name = "LinalgOpsTdFiles",
     srcs = [
-        "include/mlir/Linalg/IR/LinalgBase.td",
-        "include/mlir/Linalg/IR/LinalgOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1741,15 +1741,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Linalg/IR/LinalgOps.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Linalg/IR/LinalgOps.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgOps.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Linalg/IR/LinalgOps.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
     td_srcs = [
         ":LinalgOpsTdFiles",
     ],
@@ -1758,8 +1758,8 @@ gentbl(
 filegroup(
     name = "LinalgLibraryOpsTdFiles",
     srcs = [
-        "include/mlir/Linalg/IR/LinalgBase.td",
-        "include/mlir/Linalg/IR/LinalgLibraryOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -1770,15 +1770,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Linalg/IR/LinalgLibraryOps.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Linalg/IR/LinalgLibraryOps.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Linalg/IR/LinalgLibraryOps.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgLibraryOps.td",
     td_srcs = [
         ":LinalgLibraryOpsTdFiles",
     ],
@@ -1787,23 +1787,23 @@ gentbl(
 cc_library(
     name = "Linalg",
     srcs = [
-        "lib/Linalg/Analysis/DependenceAnalysis.cpp",
-        "lib/Linalg/IR/LinalgOps.cpp",
-        "lib/Linalg/IR/LinalgTypes.cpp",
-        "lib/Linalg/Transforms/Fusion.cpp",
-        "lib/Linalg/Transforms/LowerToLLVMDialect.cpp",
-        "lib/Linalg/Transforms/LowerToLoops.cpp",
-        "lib/Linalg/Transforms/Tiling.cpp",
-        "lib/Linalg/Utils/Utils.cpp",
+        "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
+        "lib/Dialect/Linalg/IR/LinalgOps.cpp",
+        "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
+        "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
+        "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
+        "lib/Dialect/Linalg/Transforms/Tiling.cpp",
+        "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],
     hdrs = [
-        "include/mlir/Linalg/Analysis/DependenceAnalysis.h",
-        "include/mlir/Linalg/IR/LinalgOps.h",
-        "include/mlir/Linalg/IR/LinalgTraits.h",
-        "include/mlir/Linalg/IR/LinalgTypes.h",
-        "include/mlir/Linalg/Passes.h",
-        "include/mlir/Linalg/Utils/Intrinsics.h",
-        "include/mlir/Linalg/Utils/Utils.h",
+        "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
+        "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
+        "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
+        "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
+        "include/mlir/Dialect/Linalg/Passes.h",
+        "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
+        "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -1831,7 +1831,7 @@ cc_library(
 
 cc_library(
     name = "LinalgDialectRegistration",
-    srcs = ["lib/Linalg/LinalgRegistration.cpp"],
+    srcs = ["lib/Dialect/Linalg/LinalgRegistration.cpp"],
     copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
@@ -1902,7 +1902,7 @@ cc_library(
 filegroup(
     name = "VectorOpsTdFiles",
     srcs = [
-        "include/mlir/VectorOps/VectorOps.td",
+        "include/mlir/Dialect/VectorOps/VectorOps.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1912,15 +1912,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/VectorOps/VectorOps.h.inc",
+            "include/mlir/Dialect/VectorOps/VectorOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/VectorOps/VectorOps.cpp.inc",
+            "include/mlir/Dialect/VectorOps/VectorOps.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/VectorOps/VectorOps.td",
+    td_file = "include/mlir/Dialect/VectorOps/VectorOps.td",
     td_srcs = [
         ":VectorOpsTdFiles",
     ],

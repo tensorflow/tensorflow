@@ -27,12 +27,12 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
