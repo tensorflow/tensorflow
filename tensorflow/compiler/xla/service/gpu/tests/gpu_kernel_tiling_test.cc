@@ -730,11 +730,19 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module),
+#if TENSORFLOW_USE_ROCM
+                     R"(
+; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK-NOT: reduce.0.loop_header
+; CHECK: }
+)",
+#else
                      R"(
 ; CHECK-LABEL: define void @fusion
 ; CHECK-NOT: reduce.0.loop_header
 ; CHECK: }
 )",
+#endif
                      /*match_optimized_ir=*/true);
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
