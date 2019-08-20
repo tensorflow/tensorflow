@@ -29,7 +29,8 @@ std::string GetMaxUnoolingKernelCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& src_ind_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    bool manual_boundary_check) {
   TensorCodeGenerator src("src_data", "src_size", src_descriptor);
   TensorCodeGenerator src_ind("src_data_indices", "src_size",
                               src_ind_descriptor);
@@ -55,16 +56,19 @@ std::string GetMaxUnoolingKernelCode(
   code += "  int src_x = (X + padding.x) / stride.x;\n";
   code += "  int src_y = (Y + padding.y) / stride.y;\n";
   code += "  " + src.GetAddress("src_adr", "src_x", "src_y", "Z") + "\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_boundary_check) {
     code += "  bool outside = src_x < 0 || src_y < 0 ||";
     code += "  src_x >= src_size.x || src_y >= src_size.y;\n";
     code += "  FLT4 src = (FLT4)(0.0f);\n";
     code += "  int4 ind = (int4)(0);\n";
     code += "  if (!outside) {\n";
-    code += "    src = " + src.Read3D("src_adr") + ";\n";
-    code += "    ind = convert_int4(" + src_ind.Read3D("src_adr") + ");\n";
+    code +=
+        "    src = " + src.Read3D("src_adr", TextureAddressMode::DONT_CARE) +
+        ";\n";
+    code += "    ind = convert_int4(" +
+            src_ind.Read3D("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
     code += "  }\n";
-  } else {  // for textures no boundary checks
+  } else {
     code += "  FLT4 src = " + src.Read3D("src_adr") + ";\n";
     code += "  int4 ind = convert_int4(" + src_ind.Read3D("src_adr") + ");\n";
   }
@@ -114,9 +118,13 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 }
 
 Status MaxUnpooling::Compile(const CreationContext& creation_context) {
+  const bool manual_boundary_check =
+      definition_.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
+      creation_context.device->IsAdreno3xx();
   const auto code = GetMaxUnoolingKernelCode(
       definition_.src_tensors[0], definition_.src_tensors[1],
-      definition_.dst_tensors[0], definition_.precision, linked_operations_);
+      definition_.dst_tensors[0], definition_.precision, linked_operations_,
+      manual_boundary_check);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
