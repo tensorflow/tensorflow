@@ -17,22 +17,13 @@ limitations under the License.
 
 #include "Arduino.h"
 
-// The Arduino DUE uses a different object for the default serial port shown in
-// the monitor than most other models, so make sure we pick the right one. See
-// https://github.com/arduino/Arduino/issues/3088#issuecomment-406655244
-#if defined(__SAM3X8E__)
-#define DEBUG_SERIAL_OBJECT (SerialUSB)
-#else
-#define DEBUG_SERIAL_OBJECT (Serial)
-#endif
-
 // On Arduino platforms, we set up a serial port and write to it for debug
 // logging.
 extern "C" void DebugLog(const char* s) {
   static bool is_initialized = false;
   if (!is_initialized) {
-    DEBUG_SERIAL_OBJECT.begin(115200);
+    Serial.begin(115200);
     is_initialized = true;
   }
-  DEBUG_SERIAL_OBJECT.print(s);
+  Serial.print(s);
 }

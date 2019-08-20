@@ -33,7 +33,8 @@ int led = LED_BUILTIN;
 // Track whether the function has run at least once
 bool initialized = false;
 
-// Animates a dot across the screen to represent the current x and y values
+// Set brightness of the (inbuilt) LED with PWM
+// This will give a slow fade-in and fade-out animation
 void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
                   float y_value) {
   // Do this only once
