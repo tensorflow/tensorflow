@@ -535,9 +535,10 @@ def LLVM_ConstantOp
 
 // Operations that correspond to LLVM intrinsics. With MLIR operation set being
 // extendable, there is no reason to introduce a hard boundary between "core"
-// operations and intrinsics.
+// operations and intrinsics. However, we systematically prefix them with
+// "intr." to avoid potential name clashes.
 
-def LLVM_fmuladd : LLVM_Op<"fmuladd", [NoSideEffect]>,
+def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
