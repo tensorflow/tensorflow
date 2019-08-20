@@ -118,7 +118,7 @@ struct ReluGrad<Device, Eigen::half> {
 };
 #endif  // GOOGLE_CUDA
 
-
+#if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* __restrict__ input,
                                    int32* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
