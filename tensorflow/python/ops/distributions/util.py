@@ -791,7 +791,7 @@ def gen_new_seed(seed, salt):
   if seed is None:
     return None
   string = (str(seed) + salt).encode("utf-8")
-  return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
+  return int(hashlib.sha1(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
 
 def fill_triangular(x, upper=False, name=None):

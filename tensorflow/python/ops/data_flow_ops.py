@@ -693,7 +693,7 @@ class RandomShuffleQueue(QueueBase):
       # seed and shared_name. (seed2 from get_seed() is generally dependent on
       # the id of the last op created.)
       string = (str(seed1) + shared_name).encode("utf-8")
-      seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
+      seed2 = int(hashlib.sha1(string).hexdigest()[:8], 16) & 0x7FFFFFFF
     queue_ref = gen_data_flow_ops.random_shuffle_queue_v2(
         component_types=dtypes,
         shapes=shapes,

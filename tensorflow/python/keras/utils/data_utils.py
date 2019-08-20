@@ -317,7 +317,7 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   if (algorithm == 'sha256') or (algorithm == 'auto' and len(hash) == 64):
     hasher = hashlib.sha256()
   else:
-    hasher = hashlib.md5()
+    hasher = hashlib.sha1()
 
   with open(fpath, 'rb') as fpath_file:
     for chunk in iter(lambda: fpath_file.read(chunk_size), b''):
