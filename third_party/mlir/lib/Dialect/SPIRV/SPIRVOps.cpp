@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 
+#include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -32,11 +33,12 @@ using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
+static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
-static constexpr const char kIsSpecConstName[] = "is_spec_const";
+static constexpr const char kSpecConstAttrName[] = "spec_const";
 static constexpr const char kTypeAttrName[] = "type";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
@@ -469,11 +471,11 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
   auto varOp =
       moduleOp.lookupSymbol<spirv::GlobalVariableOp>(addressOfOp.variable());
   if (!varOp) {
-    return addressOfOp.emitError("expected spv.globalVariable symbol");
+    return addressOfOp.emitOpError("expected spv.globalVariable symbol");
   }
   if (addressOfOp.pointer()->getType() != varOp.type()) {
-    return addressOfOp.emitError(
-        "mismatch in result type and type of global variable referenced");
+    return addressOfOp.emitOpError(
+        "result type mismatch with the referenced global variable's type");
   }
   return success();
 }
@@ -583,9 +585,6 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
-  if (succeeded(parser->parseOptionalKeyword("spec")))
-    state->addAttribute(kIsSpecConstName, parser->getBuilder().getUnitAttr());
-
   Attribute value;
   if (parser->parseAttribute(value, kValueAttrName, state->attributes))
     return failure();
@@ -602,8 +601,7 @@ static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
 }
 
 static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::ConstantOp::getOperationName()
-           << (constOp.is_spec_const() ? " spec " : " ") << constOp.value();
+  *printer << spirv::ConstantOp::getOperationName() << ' ' << constOp.value();
   if (constOp.getType().isa<spirv::ArrayType>()) {
     *printer << " : " << constOp.getType();
   }
@@ -810,17 +808,16 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
   if (varOp.storageClass() == spirv::StorageClass::Generic)
     return varOp.emitOpError("storage class cannot be 'Generic'");
 
-  if (auto initializer =
-          varOp.getAttrOfType<SymbolRefAttr>(kInitializerAttrName)) {
-    // Get the module
+  if (auto init = varOp.getAttrOfType<SymbolRefAttr>(kInitializerAttrName)) {
     auto moduleOp = varOp.getParentOfType<spirv::ModuleOp>();
-    // TODO: Currently only variable initialization with other variables is
-    // supported. They could be constants as well, but this needs module-level
-    // constants to have symbol name as well.
-    if (!moduleOp.lookupSymbol<spirv::GlobalVariableOp>(
-            initializer.getValue())) {
-      return varOp.emitOpError(
-          "initializer must be result of a spv.globalVariable op");
+    auto *initOp = moduleOp.lookupSymbol(init.getValue());
+    // TODO: Currently only variable initialization with specialization
+    // constants and other variables is supported. They could be normal
+    // constants in the module scope as well.
+    if (!initOp || !(isa<spirv::GlobalVariableOp>(initOp) ||
+                     isa<spirv::SpecConstantOp>(initOp))) {
+      return varOp.emitOpError("initializer must be result of a "
+                               "spv.specConstant or spv.globalVariable op");
     }
   }
 
@@ -1034,6 +1031,42 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv._reference_of
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseReferenceOfOp(OpAsmParser *parser,
+                                      OperationState *state) {
+  SymbolRefAttr constRefAttr;
+  Type type;
+  if (parser->parseAttribute(constRefAttr, Type(), kSpecConstAttrName,
+                             state->attributes) ||
+      parser->parseColonType(type)) {
+    return failure();
+  }
+  return parser->addTypeToList(type, state->types);
+}
+
+static void print(spirv::ReferenceOfOp referenceOfOp, OpAsmPrinter *printer) {
+  *printer << spirv::ReferenceOfOp::getOperationName() << " @"
+           << referenceOfOp.spec_const() << " : "
+           << referenceOfOp.reference()->getType();
+}
+
+static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
+  auto moduleOp = referenceOfOp.getParentOfType<spirv::ModuleOp>();
+  auto specConstOp =
+      moduleOp.lookupSymbol<spirv::SpecConstantOp>(referenceOfOp.spec_const());
+  if (!specConstOp) {
+    return referenceOfOp.emitOpError("expected spv.specConstant symbol");
+  }
+  if (referenceOfOp.reference()->getType() !=
+      specConstOp.default_value().getType()) {
+    return referenceOfOp.emitOpError("result type mismatch with the referenced "
+                                     "specialization constant's type");
+  }
+  return success();
+}
+//===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
 
@@ -1082,6 +1115,50 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
            << fnResultType << ")";
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.specConstant
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSpecConstantOp(OpAsmParser *parser,
+                                       OperationState *state) {
+  StringAttr nameAttr;
+  Attribute valueAttr;
+
+  if (parser->parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                              state->attributes) ||
+      parser->parseEqual() ||
+      parser->parseAttribute(valueAttr, kDefaultValueAttrName,
+                             state->attributes))
+    return failure();
+
+  return success();
+}
+
+static void print(spirv::SpecConstantOp constOp, OpAsmPrinter *printer) {
+  *printer << spirv::SpecConstantOp::getOperationName() << " @"
+           << constOp.sym_name() << " = ";
+  printer->printAttribute(constOp.default_value());
+}
+
+static LogicalResult verify(spirv::SpecConstantOp constOp) {
+  auto value = constOp.default_value();
+
+  switch (value.getKind()) {
+  case StandardAttributes::Bool:
+  case StandardAttributes::Integer:
+  case StandardAttributes::Float: {
+    // Make sure bitwidth is allowed.
+    auto *dialect = static_cast<spirv::SPIRVDialect *>(constOp.getDialect());
+    if (!dialect->isValidSPIRVType(value.getType()))
+      return constOp.emitOpError("default value bitwidth disallowed");
+    return success();
+  }
+  default:
+    return constOp.emitOpError(
+        "default value can only be a bool, integer, or float scalar");
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1220,17 +1297,27 @@ static LogicalResult verify(spirv::VariableOp varOp) {
   if (varOp.getNumOperands() != 0) {
     // SPIR-V spec: "Initializer must be an <id> from a constant instruction or
     // a global (module scope) OpVariable instruction".
-    bool valid = false;
-    if (auto *initOp = varOp.getOperand(0)->getDefiningOp()) {
-      if (llvm::isa<spirv::ConstantOp>(initOp)) {
-        valid = true;
-      } else if (llvm::isa<spirv::VariableOp>(initOp)) {
-        valid = llvm::isa_and_nonnull<spirv::ModuleOp>(initOp->getParentOp());
-      }
-    }
-    if (!valid)
+    auto *initOp = varOp.getOperand(0)->getDefiningOp();
+    if (!initOp || !(isa<spirv::ConstantOp>(initOp) ||    // for normal constant
+                     isa<spirv::ReferenceOfOp>(initOp) || // for spec constant
+                     isa<spirv::AddressOfOp>(initOp)))
       return varOp.emitOpError("initializer must be the result of a "
-                               "spv.Constant or module-level spv.Variable op");
+                               "constant or spv.globalVariable op");
+  }
+
+  // TODO(antiagainst): generate these strings using ODS.
+  auto *op = varOp.getOperation();
+  auto descriptorSetName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::DescriptorSet));
+  auto bindingName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
+  auto builtInName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn));
+
+  for (const auto &attr : {descriptorSetName, bindingName, builtInName}) {
+    if (op->getAttr(attr))
+      return varOp.emitOpError("cannot have '")
+             << attr << "' attribute (only allowed in spv.globalVariable)";
   }
 
   return success();

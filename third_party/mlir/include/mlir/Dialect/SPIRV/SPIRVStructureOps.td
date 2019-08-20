@@ -34,24 +34,25 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let summary = "Get the address of a global variable.";
 
   let description = [{
-    Variables in module scope are defined using symbol names. This
-    instruction generates an SSA value that can be used to refer to
-    the symbol within function scope for use in instructions that
-    expect an SSA value. This operation has no equivalent SPIR-V
-    instruction. Since variables in module scope in SPIR-V dialect are
-    of pointer type, this instruction returns a pointer type as well,
-    and the type is same as the variable referenced.
+    Variables in module scope are defined using symbol names. This op generates
+    an SSA value that can be used to refer to the symbol within function scope
+    for use in ops that expect an SSA value. This operation has no corresponding
+    SPIR-V instruction; it's merely used for modelling purpose in the SPIR-V
+    dialect. Since variables in module scope in SPIR-V dialect are of pointer
+    type, this op returns a pointer type as well, and the type is the same as
+    the variable referenced.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    address-of-op ::= ssa-id `=` `spv.addressOf` `@`string-literal : pointer-type
+    spv-address-of-op ::= ssa-id `=` `spv._address_of` symbol-ref-id
+                                     `:` spirv-pointer-type
     ```
 
     For example:
 
     ```
-    %0 = spv.addressOf @var1 : !spv.ptr<f32, Input>
+    %0 = spv._address_of @global_var : !spv.ptr<f32, Input>
     ```
   }];
 
@@ -61,6 +62,54 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
 
   let results = (outs
     SPV_AnyPtr:$pointer
+  );
+
+  let hasOpcode = 0;
+}
+
+def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
+  let summary = "The op that declares a SPIR-V normal constant";
+
+  let description = [{
+    This op declares a SPIR-V normal constant. SPIR-V has multiple constant
+    instructions covering different constant types:
+
+    * `OpConstantTrue` and `OpConstantFalse` for boolean constants
+    * `OpConstant` for scalar constants
+    * `OpConstantComposite` for composite constants
+    * `OpConstantNull` for null constants
+    * ...
+
+    Having such a plethora of constant instructions renders IR transformations
+    more tedious. Therefore, we use a single `spv.constant` op to represent
+    them all. Note that conversion between those SPIR-V constant instructions
+    and this op is purely mechanical; so it can be scoped to the binary
+    (de)serialzation process.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
+                        (`:` spirv-type)?
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.constant true
+    %1 = spv.constant dense<[2, 3]> : vector<2xf32>
+    %2 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.array<1xvector<2xf32>>
+    ```
+
+    TODO(antiagainst): support constant structs
+  }];
+
+  let arguments = (ins
+    AnyAttr:$value
+  );
+
+  let results = (outs
+    SPV_Type:$constant
   );
 
   let hasOpcode = 0;
@@ -81,11 +130,11 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
     OpEntryPoint instructions with the same Execution Model and the same
     Name string.
 
-    Interface is a list of symbol references to spv.globalVariable
+    Interface is a list of symbol references to `spv.globalVariable`
     operations. These declare the set of global variables from a
     module that form the interface of this entry point. The set of
     Interface symbols must be equal to or a superset of the
-    spv.globalVariables referenced by the entry point’s static call
+    `spv.globalVariable`s referenced by the entry point’s static call
     tree, within the interface’s storage classes.  Before version 1.4,
     the interface’s storage classes are limited to the Input and
     Output storage classes. Starting with version 1.4, the interface’s
@@ -140,14 +189,14 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
     Initializer is optional.  If Initializer is present, it will be
     the initial value of the variable’s memory content. Initializer
     must be an symbol defined from a constant instruction or other
-    spv.globalVariable operation in module scope. Initializer must
+    `spv.globalVariable` operation in module scope. Initializer must
     have the same type as the type of the defined symbol.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    variable-op ::= `spv.globalVariable` spirv-type string-literal
-                    (`initializer(` symbol-reference `)`)?
+    variable-op ::= `spv.globalVariable` spirv-type symbol-ref-id
+                    (`initializer(` symbol-ref-id `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
                     (`built_in(` string-literal `)`)?
                     attribute-dict?
@@ -160,10 +209,10 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
     For example:
 
     ```
-    spv.Variable !spv.ptr<f32, Input> @var0
-    spv.Variable !spv.ptr<f32, Output> @var2 initializer(@var0)
-    spv.Variable !spv.ptr<f32, Uniform> @var bind(1, 2)
-    spv.Variable !spv.ptr<vector<3xi32>> @var3 built_in("GlobalInvocationID")
+    spv.globalVariable @var0 : !spv.ptr<f32, Input> @var0
+    spv.globalVariable @var1 initializer(@var0) : !spv.ptr<f32, Output>
+    spv.globalVariable @var2 bind(1, 2) : !spv.ptr<f32, Uniform>
+    spv.globalVariable @var3 built_in("GlobalInvocationId") : !spv.ptr<vector<3xi32>, Input>
     ```
   }];
 
@@ -286,51 +335,79 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [InModuleScope, Terminator]> {
   let hasOpcode = 0;
 }
 
-def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
-  let summary = "The op that declares a SPIR-V constant";
+def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
+  let summary = "Reference a specialization constant.";
 
   let description = [{
-    This op declares a SPIR-V constant. SPIR-V has multiple constant
-    instructions covering different constant types:
-
-    * `OpConstantTrue` and `OpConstantFalse` for boolean constants
-    * `OpConstant` for scalar constants
-    * `OpConstantComposite` for composite constants
-    * `OpConstantNull` for null constants
-    * ...
-
-    Having such a plethora of constant instructions renders IR transformations
-    more tedious. Therefore, we use a single `spv.constant` op to represent
-    them all. Note that conversion between those SPIR-V constant instructions
-    and this op is purely mechanical; so it can be scoped to the binary
-    (de)serialzation process.
+    Specialization constant in module scope are defined using symbol names.
+    This op generates an SSA value that can be used to refer to the symbol
+    within function scope for use in ops that expect an SSA value.
+    This operation has no corresponding SPIR-V instruction; it's merely used
+    for modelling purpose in the SPIR-V dialect. This op's return type is
+    the same as the specialization constant.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    spv-constant-op ::= ssa-id `=` `spv.constant` (`spec`)? attribute-value
-                        (`:` spirv-type)?
+    spv-reference-of-op ::= ssa-id `=` `spv._reference_of` symbol-ref-id
+                                       `:` spirv-scalar-type
     ```
 
     For example:
 
     ```
-    %0 = spv.constant spec true
-    %1 = spv.constant dense<[2, 3]> : vector<2xf32>
-    %2 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.array<1xvector<2xf32>>
+    %0 = spv._reference_of @spec_const : f32
     ```
-
-    TODO(antiagainst): support constant structs
   }];
 
   let arguments = (ins
-    AnyAttr:$value,
-    UnitAttr:$is_spec_const
+    SymbolRefAttr:$spec_const
   );
 
   let results = (outs
-    SPV_Type:$constant
+    SPV_Type:$reference
   );
+
+  let hasOpcode = 0;
+}
+
+def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
+  let summary = "The op that declares a SPIR-V specialization constant";
+
+  let description = [{
+    This op declares a SPIR-V scalar specialization constant. SPIR-V has
+    multiple constant instructions covering different scalar types:
+
+    * `OpSpecConstantTrue` and `OpSpecConstantFalse` for boolean constants
+    * `OpSpecConstant` for scalar constants
+
+    Similar as `spv.constant`, this op represents all of the above cases.
+    `OpSpecConstantComposite` and `OpSpecConstantOp` are modelled with
+    separate ops.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
+                             `=` attribute-value (`:` spirv-type)?
+    ```
+
+    For example:
+
+    ```
+    spv.specConstant @spec_const1 = true
+    spv.specConstant @spec_const2 = 42 : i32
+    ```
+
+    TODO(antiagainst): support composite spec cosntants with another op
+  }];
+
+  let arguments = (ins
+    StrAttr:$sym_name,
+    AnyAttr:$default_value
+  );
+
+  let results = (outs);
 
   let hasOpcode = 0;
 }
