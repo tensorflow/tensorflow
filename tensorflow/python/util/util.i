@@ -105,6 +105,18 @@ Returns:
 %unignore tensorflow::swig::IsMapping;
 %noexception tensorflow::swig::IsMapping;
 
+%feature("docstring") tensorflow::swig::IsMappingView
+"""Returns True iff `instance` is a `collections.MappingView`.
+
+Args:
+  instance: An instance of a Python object.
+
+Returns:
+  True if `instance` is a `collections.MappingView`.
+"""
+%unignore tensorflow::swig::IsMappingView;
+%noexception tensorflow::swig::IsMappingView;
+
 %feature("docstring") tensorflow::swig::IsAttrs
 """Returns True iff `instance` is an instance of an `attr.s` decorated class.
 
