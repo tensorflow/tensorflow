@@ -310,6 +310,7 @@ TEST_F(ScannerTest, AllCharClasses) {
   EXPECT_EQ("123456789", ClassStr(Scanner::NON_ZERO_DIGIT));
   EXPECT_EQ("\t\n\v\f\r ", ClassStr(Scanner::SPACE));
   EXPECT_EQ("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ClassStr(Scanner::UPPERLETTER));
+  EXPECT_EQ(">", ClassStr(Scanner::RANGLE));
 }
 
 TEST_F(ScannerTest, Peek) {
