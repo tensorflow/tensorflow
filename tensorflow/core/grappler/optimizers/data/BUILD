@@ -31,6 +31,7 @@ cc_library(
         ":parallel_batch",
         ":shuffle_and_repeat_fusion",
         ":slack",
+        ":unbatch_and_batch_fusion",
     ],
 )
 
@@ -453,6 +454,27 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
     ],
+)
+
+cc_library(
+    name = "unbatch_and_batch_fusion",
+    srcs = ["unbatch_and_batch_fusion.cc"],
+    hdrs = [
+        "unbatch_and_batch_fusion.h",
+    ],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 cc_library(
