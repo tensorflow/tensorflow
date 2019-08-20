@@ -3,6 +3,7 @@
 //===----------------------------------------------------------------------===//
 // spv.AccessChain
 //===----------------------------------------------------------------------===//
+
 func @access_chain_struct() -> () {
   %0 = spv.constant 1: i32
   %1 = spv.Variable : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Function>
@@ -935,37 +936,71 @@ func @umod_scalar(%arg: i32) -> i32 {
 // spv.Variable
 //===----------------------------------------------------------------------===//
 
-func @variable_no_init(%arg0: f32) -> () {
+func @variable(%arg0: f32) -> () {
   // CHECK: spv.Variable : !spv.ptr<f32, Function>
   %0 = spv.Variable : !spv.ptr<f32, Function>
   return
 }
 
-func @variable_init() -> () {
+// -----
+
+func @variable_init_normal_constant() -> () {
   %0 = spv.constant 4.0 : f32
   // CHECK: spv.Variable init(%0) : !spv.ptr<f32, Function>
   %1 = spv.Variable init(%0) : !spv.ptr<f32, Function>
   return
 }
 
+// -----
+
+spv.module "Logical" "GLSL450" {
+  spv.globalVariable @global : !spv.ptr<f32, Workgroup>
+  func @variable_init_global_variable() -> () {
+    %0 = spv._address_of @global : !spv.ptr<f32, Workgroup>
+    // CHECK: spv.Variable init({{.*}}) : !spv.ptr<!spv.ptr<f32, Workgroup>, Function>
+    %1 = spv.Variable init(%0) : !spv.ptr<!spv.ptr<f32, Workgroup>, Function>
+    spv.Return
+  }
+} attributes {
+  capability = ["VariablePointers"],
+  extension = ["SPV_KHR_variable_pointers"]
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  spv.specConstant @sc = 42 : i32
+  // CHECK-LABEL: @variable_init_spec_constant
+  func @variable_init_spec_constant() -> () {
+    %0 = spv._reference_of @sc : i32
+    // CHECK: spv.Variable init(%0) : !spv.ptr<i32, Function>
+    %1 = spv.Variable init(%0) : !spv.ptr<i32, Function>
+    spv.Return
+  }
+}
+
+// -----
+
 func @variable_bind() -> () {
-  // CHECK: spv.Variable bind(1, 2) : !spv.ptr<f32, Function>
+  // expected-error @+1 {{cannot have 'descriptor_set' attribute (only allowed in spv.globalVariable)}}
   %0 = spv.Variable bind(1, 2) : !spv.ptr<f32, Function>
   return
 }
 
+// -----
+
 func @variable_init_bind() -> () {
   %0 = spv.constant 4.0 : f32
-  // CHECK: spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Function>
+  // expected-error @+1 {{cannot have 'binding' attribute (only allowed in spv.globalVariable)}}
   %1 = spv.Variable init(%0) {binding = 5 : i32} : !spv.ptr<f32, Function>
   return
 }
 
+// -----
+
 func @variable_builtin() -> () {
-  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
+  // expected-error @+1 {{cannot have 'built_in' attribute (only allowed in spv.globalVariable)}}
   %1 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
-  // CHECK: spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Function>
-  %2 = spv.Variable {built_in = "GlobalInvocationID"} : !spv.ptr<vector<3xi32>, Function>
   return
 }
 
@@ -980,7 +1015,7 @@ func @expect_ptr_result_type(%arg0: f32) -> () {
 // -----
 
 func @variable_init(%arg0: f32) -> () {
-  // expected-error @+1 {{op initializer must be the result of a spv.Constant or module-level spv.Variable op}}
+  // expected-error @+1 {{op initializer must be the result of a constant or spv.globalVariable op}}
   %0 = spv.Variable init(%arg0) : !spv.ptr<f32, Function>
   return
 }

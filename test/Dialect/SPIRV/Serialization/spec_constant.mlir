@@ -2,45 +2,29 @@
 
 func @spirv_module() -> () {
   spv.module "Logical" "GLSL450" {
+    // CHECK: spv.specConstant @sc_true = true
+    spv.specConstant @sc_true = true
+    // CHECK: spv.specConstant @sc_false = false
+    spv.specConstant @sc_false = false
 
-    // CHECK: spv.constant spec true
-    %0 = spv.constant spec true
-    // CHECK: spv.constant spec false
-    %1 = spv.constant spec false
+    // CHECK: spv.specConstant @sc_int = -5 : i32
+    spv.specConstant @sc_int = -5 : i32
 
-    // CHECK: spv.constant spec -5 : i32
-    %2 = spv.constant spec -5 : i32
+    // CHECK: spv.specConstant @sc_float = 1.000000e+00 : f32
+    spv.specConstant @sc_float = 1. : f32
 
-    // CHECK: spv.constant spec 1.000000e+00 : f32
-    %3 = spv.constant spec 1. : f32
+    // CHECK-LABEL: @use
+    func @use() -> (i32) {
+      // We materialize a `spv._reference_of` op at every use of a
+      // specialization constant in the deserializer. So two ops here.
+      // CHECK: %[[USE1:.*]] = spv._reference_of @sc_int : i32
+      // CHECK: %[[USE2:.*]] = spv._reference_of @sc_int : i32
+      // CHECK: spv.IAdd %[[USE1]], %[[USE2]]
 
-    // Bool vector
-    // CHECK: spv.constant spec dense<false> : vector<2xi1>
-    %4 = spv.constant spec dense<false> : vector<2xi1>
-    // CHECK: spv.constant spec dense<[true, true, true]> : vector<3xi1>
-    %5 = spv.constant spec dense<true> : vector<3xi1>
-    // CHECK: spv.constant spec dense<[false, true]> : vector<2xi1>
-    %6 = spv.constant spec dense<[false, true]> : vector<2xi1>
-
-    // Integer vector
-    // CHECK: spv.constant spec dense<0> : vector<2xi32>
-    %7 = spv.constant spec dense<0> : vector<2xi32>
-    // CHECK: spv.constant spec dense<1> : vector<3xi32>
-    %8 = spv.constant spec dense<1> : vector<3xi32>
-    // CHECK: spv.constant spec dense<[2, -3, 4]> : vector<3xi32>
-    %9 = spv.constant spec dense<[2, -3, 4]> : vector<3xi32>
-
-    // Fp vector
-    // CHECK: spv.constant spec dense<0.000000e+00> : vector<4xf32>
-    %10 = spv.constant spec dense<0.> : vector<4xf32>
-    // CHECK: spv.constant spec dense<-1.500000e+01> : vector<4xf32>
-    %11 = spv.constant spec dense<-15.> : vector<4xf32>
-    // CHECK: spv.constant spec dense<[7.500000e-01, -2.500000e-01, 1.000000e+01, 4.200000e+01]> : vector<4xf32>
-    %12 = spv.constant spec dense<[0.75, -0.25, 10., 42.]> : vector<4xf32>
-
-    // Array
-    // CHECK: spv.constant spec [dense<3.000000e+00> : vector<2xf32>, dense<[4.000000e+00, 5.000000e+00]> : vector<2xf32>] : !spv.array<2 x vector<2xf32>>
-    %13 = spv.constant spec [dense<3.0> : vector<2xf32>, dense<[4., 5.]> : vector<2xf32>] : !spv.array<2 x vector<2xf32>>
+      %0 = spv._reference_of @sc_int : i32
+      %1 = spv.IAdd %0, %0 : i32
+      spv.ReturnValue %1 : i32
+    }
   }
   return
 }

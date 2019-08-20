@@ -21,7 +21,7 @@ spv.module "Logical" "VulkanKHR" {
 spv.module "Logical" "VulkanKHR" {
   spv.globalVariable @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   func @foo() -> () {
-    // expected-error @+1{{expected spv.globalVariable symbol}}
+    // expected-error @+1 {{expected spv.globalVariable symbol}}
     %0 = spv._address_of @var2 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   }
 }
@@ -31,13 +31,12 @@ spv.module "Logical" "VulkanKHR" {
 spv.module "Logical" "VulkanKHR" {
   spv.globalVariable @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   func @foo() -> () {
-    // expected-error @+1{{mismatch in result type and type of global variable referenced}}
+    // expected-error @+1 {{result type mismatch with the referenced global variable's type}}
     %0 = spv._address_of @var1 : !spv.ptr<f32, Input>
   }
 }
 
 // -----
-
 
 //===----------------------------------------------------------------------===//
 // spv.constant
@@ -183,12 +182,22 @@ spv.module "Logical" "VulkanKHR" {
   spv.globalVariable @var0 : !spv.ptr<f32, Input>
 }
 
-// TODO: Fix test case after initialization with constant is addressed
+// TODO: Fix test case after initialization with normal constant is addressed
 // spv.module "Logical" "VulkanKHR" {
 //   %0 = spv.constant 4.0 : f32
 //   // CHECK1: spv.Variable init(%0) : !spv.ptr<f32, Private>
 //   spv.globalVariable @var1 init(%0) : !spv.ptr<f32, Private>
 // }
+
+// -----
+
+spv.module "Logical" "VulkanKHR" {
+  spv.specConstant @sc = 4.0 : f32
+  // CHECK: spv.globalVariable @var initializer(@sc) : !spv.ptr<f32, Private>
+  spv.globalVariable @var initializer(@sc) : !spv.ptr<f32, Private>
+}
+
+// -----
 
 spv.module "Logical" "VulkanKHR" {
   // CHECK: spv.globalVariable @var0 bind(1, 2) : !spv.ptr<f32, Uniform>
@@ -201,6 +210,8 @@ spv.module "Logical" "VulkanKHR" {
 //   // CHECK1: spv.globalVariable @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
 //   spv.globalVariable @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
 // }
+
+// -----
 
 spv.module "Logical" "VulkanKHR" {
   // CHECK: spv.globalVariable @var1 built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
@@ -219,7 +230,7 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 spv.module "Logical" "VulkanKHR" {
-  // expected-error @+1 {{op initializer must be result of a spv.globalVariable op}}
+  // expected-error @+1 {{op initializer must be result of a spv.specConstant or spv.globalVariable op}}
   spv.globalVariable @var0 initializer(@var1) : !spv.ptr<f32, Private>
 }
 
@@ -363,4 +374,96 @@ spv.module "Logical" "VulkanKHR" {
 func @module_end_not_in_module() -> () {
   // expected-error @+1 {{op must appear in a 'spv.module' block}}
   spv._module_end
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv._reference_of
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "GLSL450" {
+  spv.specConstant @sc1 = false
+  spv.specConstant @sc2 = 42 : i64
+  spv.specConstant @sc3 = 1.5 : f32
+
+  // CHECK-LABEL: @reference
+  func @reference() -> i1 {
+    // CHECK: spv._reference_of @sc1 : i1
+    %0 = spv._reference_of @sc1 : i1
+    spv.ReturnValue %0 : i1
+  }
+
+  // CHECK-LABEL: @initialize
+  func @initialize() -> i64 {
+    // CHECK: spv._reference_of @sc2 : i64
+    %0 = spv._reference_of @sc2 : i64
+    %1 = spv.Variable init(%0) : !spv.ptr<i64, Function>
+    %2 = spv.Load "Function" %1 : i64
+    spv.ReturnValue %2 : i64
+  }
+
+  // CHECK-LABEL: @compute
+  func @compute() -> f32 {
+    // CHECK: spv._reference_of @sc3 : f32
+    %0 = spv._reference_of @sc3 : f32
+    %1 = spv.constant 6.0 : f32
+    %2 = spv.FAdd %0, %1 : f32
+    spv.ReturnValue %2 : f32
+  }
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  func @foo() -> () {
+    // expected-error @+1 {{expected spv.specConstant symbol}}
+    %0 = spv._reference_of @sc : i32
+    spv.Return
+  }
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  spv.specConstant @sc = 42 : i32
+  func @foo() -> () {
+    // expected-error @+1 {{result type mismatch with the referenced specialization constant's type}}
+    %0 = spv._reference_of @sc : f32
+    spv.Return
+  }
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.specConstant
+//===----------------------------------------------------------------------===//
+
+spv.module "Logical" "GLSL450" {
+  spv.specConstant @sc1 = false
+  spv.specConstant @sc2 = 42 : i64
+  spv.specConstant @sc3 = 1.5 : f32
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  // expected-error @+1 {{default value bitwidth disallowed}}
+  spv.specConstant @sc = 15 : i4
+}
+
+// -----
+
+spv.module "Logical" "GLSL450" {
+  // expected-error @+1 {{default value can only be a bool, integer, or float scalar}}
+  spv.specConstant @sc = dense<[2, 3]> : vector<2xi32>
+}
+
+// -----
+
+func @use_in_function() -> () {
+  // expected-error @+1 {{op must appear in a 'spv.module' block}}
+  spv.specConstant @sc = false
+  return
 }
