@@ -16,7 +16,8 @@ limitations under the License.
 // This is the base operation definition file for TensorFlow.
 //
 // This file includes the definition for the TensorFlow dialect, base TensorFlow
-// op, and various commonly used TensorFlow types, attributes, and builders.
+// op, and various commonly used TensorFlow traits, types, attributes, and
+// builders.
 
 #ifdef TF_OP_BASE
 #else
@@ -51,6 +52,16 @@ TODO: Make invariants more structured so that we can reference them in ops.
 }
 
 //===----------------------------------------------------------------------===//
+// TensorFlow traits
+//===----------------------------------------------------------------------===//
+
+// Specify this trait if the op requires all outputs to have the same type and
+// the inputs either have the same type as result or a ref type corresponding to
+// the result type.
+def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
+  "TF::OperandsSameAsResultsTypeOrRef">;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 
@@ -80,7 +91,30 @@ def TF_I32Or64 : IntOfWidths<[32, 64]>;
 
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
-def TF_Int : IntOfWidths<[8, 16, 32, 64]>;
+def TF_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
+                    "TensorFlow uint8 type">,
+               BuildableType<"getType<mlir::TF::Uint8Type>()">;
+
+def TF_Uint16 : Type<CPred<"$_self.isa<mlir::TF::Uint16Type>()">,
+                     "TensorFlow uint16 type">,
+               BuildableType<"getType<mlir::TF::Uint16Type>()">;
+
+def TF_Uint32 : Type<CPred<"$_self.isa<mlir::TF::Uint32Type>()">,
+                     "TensorFlow uint32 type">,
+               BuildableType<"getType<mlir::TF::Uint32Type>()">;
+
+def TF_Uint64 : Type<CPred<"$_self.isa<mlir::TF::Uint64Type>()">,
+                     "TensorFlow uint64 type">,
+                BuildableType<"getType<mlir::TF::Uint64Type>()">;
+
+// Any unsigned integer type
+def TF_UInt : AnyTypeOf<[TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>;
+
+// Any signed integer type
+def TF_SInt : IntOfWidths<[8, 16, 32, 64]>;
+
+// Any integer type
+def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt]>;
 
 // Any integer tensor types
 def TF_IntTensor : TensorOf<[TF_Int]>;

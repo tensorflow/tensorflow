@@ -52,7 +52,7 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   VariantTensorDataReader reader(&data);
   int64 val_int64;
-  string val_string;
+  tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
             reader.ReadScalar("NonExistentKey", &val_int64).code());
@@ -544,6 +544,163 @@ TEST(DatasetUtilsTest, HashSubgraphDifferentGraphSamePartialGraph) {
   uint64 hash2 = HashSubgraph(gd, n1);
 
   EXPECT_EQ(hash1, hash2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphWithManyControlDependencies) {
+  GraphDef gd;
+  NodeDef* n;
+
+  for (int i = 0; i < 1000; ++i) {
+    n = gd.add_node();
+    NodeDefBuilder ndb(absl::StrCat("graph_1/node_", i), "Const");
+    ndb.Attr("value", 1);
+    ndb.Device("CPU:0");
+    for (int j = 0; j < i; ++j) {
+      ndb.ControlInput(absl::StrCat("graph_1/node_", j));
+    }
+    TF_CHECK_OK(ndb.Finalize(n));
+  }
+
+  // No checks here, because so long as this does not time out, we are OK.
+  HashSubgraph(gd, n);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphFunctionsWithControlDependencyLoop) {
+  GraphDef gd;
+
+  FunctionDefLibrary* fl1 = gd.mutable_library();
+  FunctionDef* f1 = fl1->add_function();
+
+  AttrValue a1;
+  NameAttrList* nal1 = a1.mutable_func();
+  nal1->set_name("AddAndMul");
+
+  std::pair<string, FunctionDefHelper::AttrValueWrapper> func_attr = {
+      "body", FunctionDefHelper::AttrValueWrapper(*nal1)};
+
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/"AddAndMul",
+      /*in_def=*/{"i: float"},
+      /*out_def=*/{"o: float"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {"ret"}},
+       // This creates a dependency on the same function.
+       {{"for"}, "For", {"i", "i", "i"}, {func_attr}, {"ret"}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/{{"o", "for:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+  *f1 = func;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  std::vector<NodeDefBuilder::NodeOut> func_inputs;
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(func_inputs)
+                  .ControlInput("graph_1/node_2")
+                  .Attr("body", a1)
+                  .Device("CPU:0")
+                  .Finalize(n2));
+
+  // No checks in the test, the fact that it runs and doesn't timeout or exhaust
+  // the stack means it is successful.
+  HashSubgraph(gd, n2);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphWithControlDependencyLoop) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_2")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_1")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .ControlInput("graph_1/node_1")
+                  .ControlInput("graph_1/node_2")
+                  .Finalize(n3));
+
+  // No checks in the test, the fact that it runs and doesn't timeout or exhaust
+  // the stack means it is successful.
+  HashSubgraph(gd, n3);
+}
+
+TEST(DatasetUtilsTest, HashSubgraphWithControlDependencyLoopDifferentNames) {
+  GraphDef gd1;
+
+  NodeDef* n1 = gd1.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_2")
+                  .Finalize(n1));
+
+  NodeDef* n2 = gd1.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_1")
+                  .Finalize(n2));
+
+  NodeDef* n3 = gd1.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
+                  .Device("CPU:0")
+                  .Input(n1->name(), 0, DT_INT32)
+                  .Input(n2->name(), 0, DT_INT32)
+                  .ControlInput("graph_1/node_1")
+                  .ControlInput("graph_1/node_2")
+                  .Finalize(n3));
+
+  GraphDef gd2;
+
+  NodeDef* n4 = gd2.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_5")
+                  .Finalize(n4));
+
+  NodeDef* n5 = gd2.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Const")
+                  .Attr("value", 2)
+                  .Device("CPU:0")
+                  .ControlInput("graph_1/node_4")
+                  .Finalize(n5));
+
+  NodeDef* n6 = gd2.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_6", "Add")
+                  .Device("CPU:0")
+                  .Input(n4->name(), 0, DT_INT32)
+                  .Input(n5->name(), 0, DT_INT32)
+                  .ControlInput("graph_1/node_4")
+                  .ControlInput("graph_1/node_5")
+                  .Finalize(n6));
+
+  EXPECT_EQ(HashSubgraph(gd1, n3), HashSubgraph(gd2, n6));
 }
 
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {

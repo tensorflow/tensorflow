@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -58,7 +57,6 @@ static llvm::cl::opt<bool> verify_passes(
 static std::vector<const mlir::PassRegistryEntry *> *pass_list;
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.

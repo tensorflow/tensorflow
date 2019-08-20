@@ -76,7 +76,14 @@ struct TFE_Context {
             async, device_mgr, device_mgr_owned, rendezvous,
             custom_kernel_creator)) {}
 
-  ~TFE_Context() { context->Unref(); }
+  ~TFE_Context() {
+    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
+    // don't send RPCs and block in destructor.
+    context->WaitForAndCloseRemoteContexts();
+    // context->RefCountIsOne() should be true here.
+    // TODO(iga): Remove EagerContext refcounting.
+    context->Unref();
+  }
 
   tensorflow::EagerContext* context;
 };
@@ -130,14 +137,8 @@ struct TFE_Op {
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
-struct TFE_ProfilerContext {
-  tensorflow::ProfilerContext profiler_context;
-};
-
 struct TFE_Profiler {
-  explicit TFE_Profiler(TFE_ProfilerContext* ctx) {
-    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
-  }
+  explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
@@ -289,6 +290,21 @@ struct TFE_TraceContext {
 
 struct TFE_CancellationManager {
   tensorflow::CancellationManager cancellation_manager;
+};
+
+struct TFE_Executor {
+  explicit TFE_Executor(bool async)
+      : owned_executor(new tensorflow::EagerExecutor(async)) {}
+
+  explicit TFE_Executor(tensorflow::EagerExecutor* executor)
+      : owned_executor(nullptr), unowned_executor(executor) {}
+
+  tensorflow::EagerExecutor* executor() {
+    return owned_executor == nullptr ? unowned_executor : owned_executor.get();
+  }
+
+  std::unique_ptr<tensorflow::EagerExecutor> owned_executor;
+  tensorflow::EagerExecutor* unowned_executor;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

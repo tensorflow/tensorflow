@@ -264,7 +264,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.DistributedDatasetsFromFunction(
+    return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
         input_contexts,

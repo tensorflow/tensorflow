@@ -39,15 +39,12 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
-struct ProfilerContext;
 
 #if GOOGLE_CUDA
-std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
-    const ProfilerContext*);
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer();
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
-    const ProfilerContext*) {
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer() {
   return nullptr;
 }
 #endif
@@ -111,21 +108,21 @@ class DeviceTracerTest : public ::testing::Test {
 };
 
 TEST_F(DeviceTracerTest, StartStop) {
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, StopBeforeStart) {
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Stop());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStart) {
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
   RunMetadata run_metadata;
   TF_EXPECT_OK(tracer->CollectData(&run_metadata));
@@ -133,7 +130,7 @@ TEST_F(DeviceTracerTest, CollectBeforeStart) {
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStop) {
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   RunMetadata run_metadata;
@@ -143,8 +140,8 @@ TEST_F(DeviceTracerTest, CollectBeforeStop) {
 }
 
 TEST_F(DeviceTracerTest, StartTwoTracers) {
-  auto tracer1 = CreateDeviceTracer(nullptr);
-  auto tracer2 = CreateDeviceTracer(nullptr);
+  auto tracer1 = CreateDeviceTracer();
+  auto tracer2 = CreateDeviceTracer();
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
@@ -157,7 +154,7 @@ TEST_F(DeviceTracerTest, StartTwoTracers) {
 
 TEST_F(DeviceTracerTest, RunWithTracer) {
   // On non-GPU platforms, we may not support DeviceTracer.
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -184,7 +181,7 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
 }
 
 TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
-  auto tracer = CreateDeviceTracer(nullptr);
+  auto tracer = CreateDeviceTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});

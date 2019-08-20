@@ -29,6 +29,9 @@ namespace {
 
 constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
 
+// Default share of available RAM that can be used by model's internal buffers.
+constexpr double kRamBudgetShare = 0.5;
+
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ModelDatasetOp(OpKernelConstruction* ctx)
@@ -47,22 +50,25 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, cpu_budget_ > 0,
                 errors::InvalidArgument("CPU budget must be positive but is ",
                                         cpu_budget_, "."));
+    ram_budget_ = kRamBudgetShare * port::AvailableRam();
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input, algorithm_, cpu_budget_);
+    *output = new Dataset(ctx, input, algorithm_, cpu_budget_, ram_budget_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            model::AutotuneAlgorithm algorithm, int64 cpu_budget)
+            model::AutotuneAlgorithm algorithm, int64 cpu_budget,
+            int64 ram_budget)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           algorithm_(algorithm),
-          cpu_budget_(cpu_budget) {
+          cpu_budget_(cpu_budget),
+          ram_budget_(ram_budget) {
       input_->Ref();
     }
 
@@ -84,6 +90,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -186,7 +196,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             }
             if (cancelled_) return;
           }
-          model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_);
+          model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_,
+                           dataset()->ram_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
           if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
@@ -209,10 +220,12 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* input_;
     const model::AutotuneAlgorithm algorithm_;
     const int64 cpu_budget_;
+    const int64 ram_budget_;
   };
 
   model::AutotuneAlgorithm algorithm_;
   int64 cpu_budget_;
+  int64 ram_budget_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),

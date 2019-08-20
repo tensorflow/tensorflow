@@ -34,11 +34,10 @@ void RegisterProfilerFactory(ProfilerFactory factory) {
 }
 
 void CreateProfilers(
-    const ProfilerContext* context,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
   absl::MutexLock lock(GetMutex());
   for (auto factory : *GetFactories()) {
-    if (auto profiler = factory(context)) {
+    if (auto profiler = factory()) {
       result->push_back(std::move(profiler));
     }
   }

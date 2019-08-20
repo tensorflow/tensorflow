@@ -103,7 +103,8 @@ def model_to_estimator(
       custom_objects=custom_objects,
       model_dir=model_dir,
       config=config,
-      checkpoint_format=checkpoint_format)
+      checkpoint_format=checkpoint_format,
+      use_v2_estimator=False)
 
 
 @keras_export('keras.estimator.model_to_estimator', v1=[])
@@ -161,7 +162,6 @@ def model_to_estimator_v2(
       custom_objects=custom_objects,
       model_dir=model_dir,
       config=config,
-      checkpoint_format=checkpoint_format)
+      checkpoint_format=checkpoint_format,
+      use_v2_estimator=True)
 # LINT.ThenChange(//tensorflow_estimator/python/estimator/keras.py)
-
-

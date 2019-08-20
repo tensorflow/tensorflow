@@ -71,6 +71,10 @@ int64 TakeDataset::Cardinality() const {
   return std::min(n, count_);
 }
 
+Status TakeDataset::CheckExternalState() const {
+  return input_->CheckExternalState();
+}
+
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit EmptyIterator(const Params& params)

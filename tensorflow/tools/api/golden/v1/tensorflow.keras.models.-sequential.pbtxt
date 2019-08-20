@@ -174,7 +174,7 @@ tf_class {
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\', \'distribute\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\', \'distribute\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -294,7 +294,7 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "save_weights"

@@ -33,6 +33,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
@@ -43,6 +44,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function,
     mlir::MLIRContext* context);
 }  // namespace tensorflow
 

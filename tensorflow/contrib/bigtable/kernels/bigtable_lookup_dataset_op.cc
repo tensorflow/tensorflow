@@ -97,12 +97,17 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
       return "BigtableLookupDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:
@@ -154,13 +159,13 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
           ::google::cloud::StatusOr<
               std::pair<bool, ::google::cloud::bigtable::Row>>
               row = dataset()->table_->table().ReadRow(
-                  input_tensors[0].scalar<string>()(), dataset()->filter_);
+                  input_tensors[0].scalar<tstring>()(), dataset()->filter_);
           if (!row.ok()) {
             return GcpStatusToTfStatus(row.status());
           }
           if (!row->first) {
             return errors::DataLoss("Row key '",
-                                    input_tensors[0].scalar<string>()(),
+                                    input_tensors[0].scalar<tstring>()(),
                                     "' not found.");
           }
           TF_RETURN_IF_ERROR(ParseRow(ctx, row->second, out_tensors));
@@ -172,13 +177,24 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return errors::Unimplemented("SaveInternal is currently not supported");
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        return errors::Unimplemented(
+            "RestoreInternal is currently not supported");
+      }
+
      private:
       Status ParseRow(IteratorContext* ctx,
                       const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) {
         out_tensors->reserve(dataset()->columns_.size() + 1);
         Tensor row_key_tensor(ctx->allocator({}), DT_STRING, {});
-        row_key_tensor.scalar<string>()() = string(row.row_key());
+        row_key_tensor.scalar<tstring>()() = tstring(row.row_key());
         out_tensors->emplace_back(std::move(row_key_tensor));
 
         if (row.cells().size() > 2 * dataset()->columns_.size()) {
@@ -196,7 +212,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
             if (cell_itr->family_name() == dataset()->column_families_[i] &&
                 string(cell_itr->column_qualifier()) ==
                     dataset()->columns_[i]) {
-              col_tensor.scalar<string>()() = string(cell_itr->value());
+              col_tensor.scalar<tstring>()() = tstring(cell_itr->value());
               found_column = true;
             }
           }

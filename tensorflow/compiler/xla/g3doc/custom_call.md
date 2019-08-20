@@ -128,8 +128,8 @@ using xla::ShapeUtil;
 Shape p0_shape = ShapeUtil::MakeTuple({
     ShapeUtil::MakeShape(F32, {32}),
     ShapeUtil::MakeTuple({
-        ShapeUtil::MakeTuple(F32, {64}),
-        ShapeUtil::MakeTuple(F32, {128}),
+        ShapeUtil::MakeShape(F32, {64}),
+        ShapeUtil::MakeShape(F32, {128}),
     }),
     ShapeUtil::MakeShape(F32, {256}),
 });
@@ -197,133 +197,18 @@ subbuffers of `output_tuple` are accessible by dereferencing `out`.
 ### Tuples in GPU custom-calls
 
 In GPU code, we have a function `do_custom_call(..., void** buffers, ...)`. In
-this case `buffers` is a host array of *nine* device pointers, one for each
-nested buffer. To generate the flat list, we iterate over the parameters and
-output, and then do preorder traversal of their shapes. Concretely:
+this case `buffers` is a host array of *six* device pointers, one for each leaf
+buffer in the input/output. To generate the flat list, we iterate over the
+parameters and output, and for each we do a preorder traversal of its shape.
+Concretely:
 
 ```c++
 // Layout of `buffers` parameter to GPU custom call function for custom-call
 // above.
-buffers[0] == param0
-buffers[1] == subbuf0 or null
-buffers[2] == subtuple or null
-buffers[3] == subbuf1 or null
-buffers[4] == subbuf2 or null
-buffers[5] == subbuf3 or null
-buffers[6] == output_tuple
-buffers[7] == output_subbuf0
-buffers[8] == output_subbuf1
+buffers[0] == subbuf0
+buffers[1] == subbuf1
+buffers[2] == subbuf2
+buffers[3] == subbuf3
+buffers[4] == output_subbuf0
+buffers[5] == output_subbuf1
 ```
-
-The `or null` part is significant. A sub-buffer of an input tuple will be
-non-null in the `buffers` list if XLA is able to statically analyze the program
-and figure out the address of the sub-buffer. This is usually the case, but may
-not be in programs with control flow and/or `select` ops over tuples.
-
-A correct custom-call implementation that accepts a tuple as input must always
-handle null input sub-buffers, by dereferencing the root tuple.
-
-The rule is reversed for output buffers. The output sub-buffers will always be
-populated, but it's up to the custom call to populate the root tuple at the end.
-
-See the following code.  Note that we leave out CUDA error handling for clarity,
-but you'll be thankful if you do it, because otherwise it can be hard to tell
-when a stream encounters an error.
-
-```c++
-void do_custom_call(CUstream stream, void** buffers, const char* opaque,
-                    size_t opaque_len) {
-  bool needs_sync = false;
-  const float* subbuf0 = reinterpret_cast<const float*>(buffers[1]);
-  if (subbuf0 == nullptr) {
-    needs_sync = true;
-    cudaMemcpyAsync(&subbuf0, buffers[0], sizeof(void*),
-                    cudaMemcpyDeviceToHost, stream);
-  }
-  const void** subtuple = reinterpret_cast<const void**>(buffers[2]);
-  if (subtuple == nullptr) {
-    needs_sync = true;
-    cudaMemcpyAsync(&subtuple, buffers[2], ...);
-  }
-
-  // ... similarly for other params ...
-
-  // Wait for copies enqueued above to complete.
-  if (needs_sync) {
-    cudaStreamSynchronize(stream);
-  }
-  needs_sync = false;
-
-  // Now that we have `subtuple`, we can get subbuf1 and subbuf2.
-  float* subbuf1 = buffers[3];
-  if (subbuf1 == nullptr) {
-    needs_sync = true;
-    cudaMemcpyAsync(&subbuf1, subtuple, ...);
-  }
-  float* subbuf2 = buffers[4];
-  if (subbuf2 == nullptr) {
-    needs_sync = true;
-    cudaMemcpyAsync(&subbuf2, subtuple + 1, ...);
-  }
-
-  // Wait for copies enqueued above to complete.
-  if (needs_sync) {
-    cudaStreamSynchronize(stream);
-  }
-
-  // ... actually run the kernel ...
-
-  // Fill the output tuple.
-  void* outputs[2] = {buffers[7], buffers[8]};
-  cudaMemcpyAsync(buffers[6], outputs, sizeof(outputs), cudaMemcpyHostToDevice,
-                  stream);
-
-  // Necessary to force the cudaMemcpyAsync above to complete before `outputs`
-  // goes out of scope.  A sync is only necessary in the tuple output case, and
-  // see below for a way to avoid this.
-  cudaStreamSynchronize(stream);
-}
-```
-
-The `cudaStreamSynchronize` at the end of the function is unfortunate, as it's
-not required in the non-tuple-output case, and it can be expensive.  One way to
-get around this would be to make `outputs` into a global variable and ensure
-that the previous cudaMemcpyAsync completed before overwriting the global and
-enqueueing another one.  This is sketched below.
-
-```
-void do_custom_call(CUstream stream, void** buffers, const char* opaque,
-                    size_t opaque_len) {
-
-  // ... Beginning of function is the same as above ...
-
-  // ... actually run the kernel ...
-
-  static std::atomic<bool> first_time{true};
-  static CUevent event;
-  static void* outputs[2];
-  if (first_time.fetch_and(false)) {
-    // First time running this function.  Initialize `event`.
-    cuEventCreate(&event, CU_EVENT_DISABLE_TIMING);
-  } else {
-    // Not first time running this function.  Wait for previous event to
-    // complete before touching `outputs`.
-    cuEventSynchronize(event);
-  }
-
-  // Fill the output tuple.
-  outputs[0] = buffers[7];
-  outputs[1] = buffers[8];
-  cudaMemcpyAsync(buffers[6], outputs, sizeof(outputs), cudaMemcpyHostToDevice,
-                  stream);
-
-  // Unblock `event` after the memcpy completes.
-  cuEventRecord(event, stream);
-}
-```
-
-This simple implementation would limit parallelism if you want to run this op on
-multiple GPUs concurrently (or on one GPU with multiple streams); in that case
-you might need multiple events and globals.  We have seen one implementation of
-this algorithm which keeps a pool of globals and events and periodically polls
-them (perhaps on each call to the op) to garbage collect.

@@ -70,10 +70,10 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-template <typename T>
-void CopyMultipleTimes(const T* in_data, int32_t in_size, int32_t multiplier,
+template <typename T, typename M>
+void CopyMultipleTimes(const T* in_data, int32_t in_size, M multiplier,
                        T* out_data) {
-  for (int i = 0; i < multiplier; ++i) {
+  for (M i = 0; i < multiplier; ++i) {
     const T* in_end = in_data + in_size;
     T* new_out_data = std::copy(in_data, in_end, out_data);
     in_data = out_data;
@@ -109,8 +109,9 @@ std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
   CopyMultipleTimes(out_data, total_tiled_stride_size,
                     multipliers[dimension] - 1,
                     out_data + total_tiled_stride_size);
-  return std::make_pair(total_stride_size,
-                        total_tiled_stride_size * multipliers[dimension]);
+  return std::make_pair(
+      total_stride_size,
+      static_cast<int>(total_tiled_stride_size * multipliers[dimension]));
 }
 
 template <typename T>

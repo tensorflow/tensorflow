@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -62,9 +61,9 @@ namespace {
 
 // Mark nodes created or optimized by a stage with a tag.
 constexpr char kAddOpsRewriteTag[] =
-    "_grappler:ArithmeticOptimizer:AddOpsRewriteStage";
+    "_grappler_ArithmeticOptimizer_AddOpsRewriteStage";
 constexpr char kMinimizeBroadcastsTag[] =
-    "_grappler:ArithmeticOptimizer:MinimizeBroadcasts";
+    "_grappler_ArithmeticOptimizer_MinimizeBroadcasts";
 
 // Extract values from a Const op to `values`. Returns true if succeeds.
 template <typename T>
@@ -866,7 +865,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     *shapes_match = true;
     unique_factors->reserve(node->input_size());
 
-    for (int i = 0; i < node->input_size() && shapes_match; ++i) {
+    for (int i = 0; i < node->input_size() && *shapes_match; ++i) {
       const string& input = node->input(i);
       if (IsControlInput(input)) {
         break;
@@ -1464,6 +1463,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         // in place for merging slices into splits.
         return false;
       }
+      if (NumControlOutputs(*node, *ctx().node_map) > 0) {
+        // TODO(ezhulenev): Unary ops after Split might have a control path to
+        // the Split node, and we currently do not propertly handle cycles.
+        return false;
+      }
       return num_split > 1 && !IsAlreadyOptimized(*node);
     }
     return false;
@@ -1519,6 +1523,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   // control inputs gathered from them to the concat or split node.
   Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
                            std::set<string>* ctrl_inputs, NodeDef* root_node) {
+    VLOG(3) << "Hoist unary op chain:"
+            << " root=" << root_node->name()
+            << " prefix_length=" << prefix_length << " ctrl_inputs=["
+            << absl::StrJoin(*ctrl_inputs, ", ") << "]";
+
     if (tails.empty()) {
       return Status::OK();
     }
@@ -2248,6 +2257,8 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
       FlipBooleanAttr(attr_a, new_op);
       new_op->set_input(0, a->input(0));
       ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
+    } else {
+      ctx().node_map->UpdateOutput(a->name(), node->name(), new_op->name());
     }
 
     if (b_is_foldable) {
@@ -2256,6 +2267,8 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
       FlipBooleanAttr(attr_b, new_op);
       new_op->set_input(1, b->input(0));
       ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
+    } else {
+      ctx().node_map->UpdateOutput(b->name(), node->name(), new_op->name());
     }
 
     std::vector<const NodeDef*> deps_to_forward = {node};
@@ -2759,7 +2772,6 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
         // input data type is not supported by expm1. Skip.
         return Status::OK();
       }
-      LOG(INFO) << "Got element = " << element;
       if (element != complex128(1)) {
         // current element is not 1. Skip.
         return Status::OK();

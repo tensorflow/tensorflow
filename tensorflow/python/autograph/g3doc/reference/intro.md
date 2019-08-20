@@ -4,15 +4,6 @@
 
 ## Introduction
 
-This document describes the semantics of AutoGraph's code transformations.
-
-For more information on AutoGraph, see the following articles:
-
-*   [AutoGraph tutorial](https://www.tensorflow.org/alpha/guide/autograph)
-*   [Eager tutorial](https://www.tensorflow.org/alpha/guide/eager)
-*   [TensorFlow 2.0 Alpha](https://www.tensorflow.org/alpha)
-*   [AutoGraph blog post](https://medium.com/tensorflow/autograph-converts-python-into-tensorflow-graphs-b2a871f87ec7)
-
 ### Terminology
 
 Typically, AutoGraph operates by converting a function into a new function with

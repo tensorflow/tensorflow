@@ -162,7 +162,7 @@ class ModelFnOps(
       loss_shape = loss.get_shape()
       if loss_shape.num_elements() not in (None, 1):
         raise ValueError('Loss must be scalar: %s.' % loss)
-      if not loss_shape.is_compatible_with(tensor_shape.scalar()):
+      if not loss_shape.is_compatible_with(tensor_shape.TensorShape([])):
         loss = array_ops.reshape(loss, [])
 
     # Validate predictions.

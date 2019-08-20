@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -105,7 +106,7 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
     .Input("tree_complexity: float")
     .Input("min_node_weight: float")
     .Attr("logits_dimension: int >= 1")
-    .Attr("split_type: {'inequality'} = 'inequality'")
+    .Attr("split_type: {'inequality', 'equality'} = 'inequality'")
     .Output("node_ids: int32")
     .Output("gains: float32")
     .Output("feature_dimensions: int32")
@@ -521,6 +522,71 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesUpdateEnsembleV2")
+    .Input("tree_ensemble_handle: resource")
+    .Input("feature_ids: int32")
+    .Input("dimension_ids: num_features * int32")
+    .Input("node_ids: num_features * int32")
+    .Input("gains: num_features * float")
+    .Input("thresholds: num_features * int32")
+    .Input("left_node_contribs: num_features * float")
+    .Input("right_node_contribs: num_features * float")
+    .Input("split_types: num_features * string")
+    .Input("max_depth: int32")
+    .Input("learning_rate: float")
+    .Input("pruning_mode: int32")
+    .Attr("num_features: int >= 0")  // Inferred.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle shape_handle;
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+
+      // Feature_ids, should be one for each feature.
+      shape_inference::ShapeHandle feature_ids_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &feature_ids_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->input(1), c->Vector(num_features), &shape_handle));
+
+      for (int i = 0; i < num_features; ++i) {
+        // Dimension ids.
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 2), 1, &shape_handle));
+
+        // Node ids.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features + 2), 1, &shape_handle));
+        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
+        auto shape_rank_2 = c->MakeShape({c->Dim(shape_handle, 0), 1});
+
+        // Gains.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 2 + 2), 1, &shape_handle));
+        // TODO(nponomareva): replace this with input("name",vector of shapes).
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 2 + 2),
+                                    shape_rank_1, &shape_handle));
+        // Thresholds.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 3 + 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 3 + 2),
+                                    shape_rank_1, &shape_handle));
+        // Left and right node contribs.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 4 + 2), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
+                                    shape_rank_2, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 5 + 2), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 5 + 2),
+                                    shape_rank_2, &shape_handle));
+
+        // Split types.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 6 + 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 6 + 2),
+                                    shape_rank_1, &shape_handle));
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesCenterBias")
     .Input("tree_ensemble_handle: resource")
     .Input("mean_gradients: float")
@@ -591,6 +657,20 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
       ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(num_features + 1), 0, &unused_input));
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesFlushQuantileSummaries")
+    .Attr("num_features: int >= 0")
+    .Input("quantile_stream_resource_handle: resource")
+    .Output("summaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      for (int i = 0; i < num_features; ++i) {
+        // the columns are value, weight, min_rank, max_rank.
+        c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
+      }
       return Status::OK();
     });
 

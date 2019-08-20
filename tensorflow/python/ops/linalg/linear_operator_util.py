@@ -157,6 +157,12 @@ def is_ref(x):
        hasattr(x, "shape")))
 
 
+def assert_not_ref_type(x, arg_name):
+  if is_ref(x):
+    raise TypeError(
+        "Argument %s cannot be reference type. Found: %s" % (arg_name, type(x)))
+
+
 ################################################################################
 # Asserts.
 ################################################################################
@@ -223,7 +229,9 @@ def assert_compatible_matrix_dimensions(operator, x):
   assert_same_dd = check_ops.assert_equal(
       array_ops.shape(x)[-2],
       operator.domain_dimension_tensor(),
-      message=("Incompatible matrix dimensions.  "
+      # This error message made to look similar to error raised by static check
+      # in the base class.
+      message=("Dimensions are not compatible.  "
                "shape[-2] of argument to be the same as this operator"))
 
   return assert_same_dd

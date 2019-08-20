@@ -47,8 +47,10 @@ public final class TensorFlowLite {
 
   /**
    * Load the TensorFlowLite runtime C library.
+   *
+   * @hide
    */
-  static boolean init() {
+  public static boolean init() {
     Throwable primaryLibException;
     try {
       System.loadLibrary(PRIMARY_LIBNAME);

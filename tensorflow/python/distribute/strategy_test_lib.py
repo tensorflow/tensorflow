@@ -52,6 +52,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util import nest
 
+
 class _TestException(Exception):
   pass
 
@@ -308,41 +309,32 @@ class DistributionTestBase(test.TestCase):
 
   def _test_input_fn_iterable(
       self, strategy, input_fn, expected_values, ignore_order=False):
-    if context.executing_eagerly():
-      self._test_input_fn_iterable_in_eager_mode(
-          strategy, input_fn, expected_values, ignore_order=False)
-    else:
-      self._test_input_fn_iterable_in_graph_mode(
-          strategy, input_fn, expected_values, ignore_order=False)
-
-  def _test_input_fn_iterable_in_graph_mode(
-      self, strategy, input_fn, expected_values, ignore_order=False):
-    with self.assertRaisesRegexp(RuntimeError, "only supported when eager "
-                                 "execution is enabled"):
-      strategy.experimental_distribute_datasets_from_function(input_fn)
-
-  def _test_input_fn_iterable_in_eager_mode(
-      self, strategy, input_fn, expected_values, ignore_order=False):
     assert_same = self.assertCountEqual if ignore_order else self.assertEqual
 
     iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
-    iterator = iter(iterable)
+    if context.executing_eagerly():
+      iterator = iter(iterable)
 
-    for expected_value in expected_values:
-      computed_value = self.evaluate(
-          list(strategy.experimental_local_results(next(iterator))))
-      assert_same(expected_value, computed_value)
+      for expected_value in expected_values:
+        computed_value = self.evaluate(
+            list(strategy.experimental_local_results(next(iterator))))
+        assert_same(expected_value, computed_value)
 
-    with self.assertRaises(StopIteration):
-      self.evaluate(strategy.experimental_local_results(next(iterator)))
+      with self.assertRaises(StopIteration):
+        self.evaluate(strategy.experimental_local_results(next(iterator)))
 
-    # After re-initializing the iterator, should be able to iterate again.
-    iterator = iter(iterable)
+      # After re-initializing the iterator, should be able to iterate again.
+      iterator = iter(iterable)
 
-    for expected_value in expected_values:
-      computed_value = self.evaluate(
-          list(strategy.experimental_local_results(next(iterator))))
-      assert_same(expected_value, computed_value)
+      for expected_value in expected_values:
+        computed_value = self.evaluate(
+            list(strategy.experimental_local_results(next(iterator))))
+        assert_same(expected_value, computed_value)
+    else:
+      iterator = dataset_ops.make_initializable_iterator(iterable)
+      self._test_input_fn_iterator(iterator, strategy.extended.worker_devices,
+                                   expected_values, test_reinitialize=True,
+                                   ignore_order=ignore_order)
 
   def _test_input_fn_iterator(self,
                               iterator,

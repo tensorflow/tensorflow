@@ -391,8 +391,13 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
       for (int i = 0; i < op_def_.attr_size(); ++i) {
         if (i > 0) strings::StrAppend(&attr_values, ", ");
         const auto& attr_name(op_def_.attr(i).name());
-        strings::StrAppend(&attr_values, "\"", attr_name, "\", _op.get_attr(\"",
-                           attr_name, "\")");
+        if (op_def_.attr(i).type() == "type") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_type(\"", attr_name, "\")");
+        } else {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op.get_attr(\"", attr_name, "\")");
+        }
       }
       strings::StrAppend(&attr_values, ")");
       strings::StrAppend(
@@ -722,7 +727,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
       "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
-      op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
+      op_def_.name(), "\", ", "name, _ctx.post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {

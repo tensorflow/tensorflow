@@ -109,6 +109,7 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
 }
 
 namespace {
+
 // We prefer multi-output fusions over other fusions over unfused ops, because
 // we want to preserve fusion opportunities if possible.
 HloInstruction* GetPreferredFusionCandidate(
@@ -125,6 +126,7 @@ HloInstruction* GetPreferredFusionCandidate(
   }
   return candidates.empty() ? nullptr : candidates[0];
 }
+
 }  // namespace
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
@@ -148,11 +150,9 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     for (HloInstruction* consumer : producer->users()) {
       VLOG(3) << "Looking at producer " << producer->name()
               << " and its consumer " << consumer->name();
-      // TODO(b/136623068): Use IsFusibleAsMultiOutputFusionRoot(...) to lift
-      // the restriction to input-fusible reductions.
-      if (!IsInputFusibleReduction(*consumer)) {
+      if (!IsFusibleAsMultiOutputFusionRoot(*consumer)) {
         VLOG(3) << "Consumer " << consumer->name()
-                << " is not an input-fusible reduction.";
+                << " is not eligible as multi-output fusion root.";
         continue;
       }
       if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {

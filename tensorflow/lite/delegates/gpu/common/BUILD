@@ -25,6 +25,15 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_info",
+    srcs = ["gpu_info.cc"],
+    hdrs = ["gpu_info.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],
@@ -32,11 +41,27 @@ cc_library(
 
 cc_library(
     name = "memory_management",
-    srcs = ["memory_management.cc"],
-    hdrs = ["memory_management.h"],
+    srcs = [
+        "memory_management.cc",
+        "memory_management/greedy_by_breadth_assignment.cc",
+        "memory_management/greedy_by_size_assignment.cc",
+        "memory_management/internal.cc",
+        "memory_management/min_cost_flow_assignment.cc",
+    ],
+    hdrs = [
+        "memory_management.h",
+        "memory_management/equality_assignment.h",
+        "memory_management/greedy_assignment.h",
+        "memory_management/greedy_by_breadth_assignment.h",
+        "memory_management/greedy_by_size_assignment.h",
+        "memory_management/internal.h",
+        "memory_management/min_cost_flow_assignment.h",
+        "memory_management/naive_assignment.h",
+    ],
     deps = [
         ":shape",
         ":status",
+        ":types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
@@ -77,6 +102,7 @@ cc_library(
         ":tensor",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
@@ -178,6 +204,15 @@ cc_library(
 cc_test(
     name = "memory_management_test",
     srcs = ["memory_management_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_management_internal_test",
+    srcs = ["memory_management/internal_test.cc"],
     deps = [
         ":memory_management",
         "@com_google_googletest//:gtest_main",

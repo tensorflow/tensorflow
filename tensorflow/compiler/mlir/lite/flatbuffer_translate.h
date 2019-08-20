@@ -27,6 +27,8 @@ extern bool emit_select_tf_ops;
 extern bool emit_custom_ops;
 // The flag to control whether to lower tensorlist ops into TF ops.
 extern bool lower_tensor_list_ops;
+// The flag to control whether debug info gets stripped on export.
+extern bool strip_debug_info;
 
 namespace tflite {
 

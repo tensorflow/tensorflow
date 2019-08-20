@@ -57,3 +57,6 @@ limitations under the License.
 %include "tensorflow/python/grappler/cost_analyzer.i"
 %include "tensorflow/python/grappler/graph_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
+
+%include "tensorflow/python/util/traceme.i"
+%include "tensorflow/python/util/scoped_annotation.i"

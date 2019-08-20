@@ -8,7 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],

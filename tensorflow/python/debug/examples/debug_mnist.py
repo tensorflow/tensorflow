@@ -26,11 +26,14 @@ from __future__ import print_function
 
 import argparse
 import sys
+import tempfile
 
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 IMAGE_SIZE = 28
@@ -125,10 +128,12 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess,
         ui_type=FLAGS.ui_type,
-        use_random_config_path=FLAGS.use_random_config_path)
+        config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:
     sess = tf_debug.TensorBoardDebugWrapperSession(
         sess, FLAGS.tensorboard_debug_address)

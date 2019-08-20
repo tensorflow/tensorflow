@@ -41,8 +41,7 @@ class CondBuilder {
   // else functions `then_fn` and `else_fn` respectively in the `graph`. The
   // functions should be available in `flib`.
   CondBuilder(Node* if_op, const NameAttrList& then_fn,
-              const NameAttrList& else_fn,
-              const FunctionLibraryDefinition& flib, bool keep_node_fetchable,
+              const NameAttrList& else_fn, bool keep_node_fetchable,
               Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
@@ -95,7 +94,6 @@ class CondBuilder {
   // executed for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
-  const FunctionLibraryDefinition& flib_;
   string name_;
   bool keep_node_fetchable_;
 
@@ -106,11 +104,9 @@ class CondBuilder {
 
 CondBuilder::CondBuilder(Node* if_op, const NameAttrList& then_fn,
                          const NameAttrList& else_fn,
-                         const FunctionLibraryDefinition& flib,
                          bool keep_node_fetchable, Graph* graph)
     : if_op_(if_op),
       graph_(graph),
-      flib_(flib),
       name_(if_op->name()),
       keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*if_op_),
@@ -272,8 +268,7 @@ Status CondBuilder::BuildLoweredIfOutput() {
 
 }  // namespace
 
-Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
-                     bool keep_node_fetchable) {
+Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
   VLOG(2) << "Lower If node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
 
@@ -286,8 +281,8 @@ Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
     return errors::InvalidArgument("Else branch function missing");
   }
 
-  CondBuilder cb(n, then_attr->func(), else_attr->func(), flib,
-                 keep_node_fetchable, g);
+  CondBuilder cb(n, then_attr->func(), else_attr->func(), keep_node_fetchable,
+                 g);
   TF_RETURN_IF_ERROR(cb.CreatePivotNodes());
   TF_RETURN_IF_ERROR(cb.AddInputs());
   TF_RETURN_IF_ERROR(cb.AddOutputs());

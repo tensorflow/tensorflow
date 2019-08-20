@@ -92,6 +92,13 @@ class AlgebraicSimplifierOptions {
     return enable_window_reduce_to_reduce_replacement_;
   }
 
+  // Sets the size of a gather operand that can be unrolled into many selects.
+  void set_very_small_gather_size(int64 size) {
+    very_small_gather_size_ = size;
+  }
+
+  int64 very_small_gather_size() const { return very_small_gather_size_; }
+
  private:
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   bool is_layout_sensitive_{false};
@@ -99,6 +106,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
+  int64 very_small_gather_size_{4};
 };
 
 // A pass which performs algebraic simplifications.

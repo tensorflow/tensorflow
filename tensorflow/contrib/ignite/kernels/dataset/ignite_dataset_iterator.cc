@@ -379,7 +379,7 @@ Status IgniteDatasetIterator::LoadNextPage() {
 
 Status IgniteDatasetIterator::ReceivePage(int32_t page_size) {
   remainder_ = page_size;
-  page_ = std::unique_ptr<uint8_t>(new uint8_t[remainder_]);
+  page_ = std::unique_ptr<uint8_t[]>(new uint8_t[remainder_]);
   ptr_ = page_.get();
 
   uint64 start = Env::Default()->NowMicros();

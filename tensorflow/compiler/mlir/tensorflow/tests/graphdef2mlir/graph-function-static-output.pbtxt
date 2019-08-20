@@ -1,5 +1,9 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
+# Verify that the return type of the functions is properly inferred
+#CHECK: func @get_zeros0(%arg0: tensor<*xi32>) -> tensor<2xi32>
+#CHECK: func @identity0(%arg0: tensor<*xi32>) -> tensor<*xi32>
+
 node {
   name: "Placeholder"
   op: "Placeholder"
@@ -139,16 +143,3 @@ versions {
   min_consumer: 12
 }
 
-#CHECK: func @main() {
-#CHECK-NEXT:   %0:2 = "_tf.Placeholder"() {device = "", dtype = "tfdtype$DT_BOOL", name = "Placeholder", shape = "tfshape$unknown_rank: true\0A"} : () -> (tensor<*xi1>, !_tf.control)
-#CHECK-NEXT:   %1:2 = "_tf.Placeholder"() {device = "", dtype = "tfdtype$DT_INT32", name = "Placeholder_1", shape = "tfshape$unknown_rank: true\0A"} : () -> (tensor<*xi32>, !_tf.control)
-#CHECK-NEXT:   %2:2 = "_tf.If"(%0#0, %1#0) {Tcond = "tfdtype$DT_BOOL", Tin = ["tfdtype$DT_INT32"], Tout = ["tfdtype$DT_INT32"], device = "", else_branch = @get_zeros0, name = "If", output_shapes = [], then_branch = @identity0} : (tensor<*xi1>, tensor<*xi32>) -> (tensor<*xi32>, !_tf.control)
-#CHECK-NEXT:   return
-#CHECK-NEXT: }
-#CHECK: func @get_zeros0(%arg0: tensor<*xi32>) -> tensor<2xi32> {
-#CHECK-NEXT:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "const", value = dense<[1, 2]> : tensor<2xi32>} : () -> (tensor<2xi32>, !_tf.control)
-#CHECK-NEXT:   return %0#0 : tensor<2xi32>
-#CHECK-NEXT: }
-#CHECK: func @identity0(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-#CHECK-NEXT:   return %arg0 : tensor<*xi32>
-#CHECK-NEXT: }

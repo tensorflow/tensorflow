@@ -48,9 +48,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -65,60 +65,97 @@ namespace TFL {
 // pass.
 namespace {
 
+// Returns the first result type of the given `op`.
+Type GetFirstResultType(Operation *op) { return *op->result_type_begin(); }
+// TODO(antiagainst): We need overload functions of the above to facilitate
+// changes brought by declarative rewrite rules. Remove this post variadic
+// operand support is improved.
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::TransposeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::ReshapeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(Value *val) { return val->getType(); }
+
 // Prepare TF operations in functions for subsequent legalization.
 struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
   void runOnFunction() override;
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
-// Inserts a "tfl.quantize" and "tfl.dequantize" op pair after the
+// Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
 // folding logic will use a "std.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
-// convert the output type to the next op.
+// convert the output type to the next op. Here are the transformations:
+//
+// input   min cst       max cst          input   min cst       max cst
+//  \       |             |                \       |             |
+//   \  (tf.Identity) (tf.Identity)   =>    \  (tf.Identity) (tf.Identity)
+//    \     |             |                  \     |             |
+//       tf.FakeQuantWithMinMaxVars       tf.FakeQuantWithMinMaxVars
+//                   |                                 |
+//                                                tf.quantize
+//                                                     |
+//                                                tf.dequantize
+//                                                     |
+// If the input is a constant, the result pattern will eventually converted to
+
+//            quant-emulated input
+//                   |
+//               tf.quantize
+//                   |
+//              tf.dequantize
+//                   |
 struct InsertTFLQuantOpsAfterTFFakeQuantOp : public RewritePattern {
   InsertTFLQuantOpsAfterTFFakeQuantOp(MLIRContext *context)
-      : RewritePattern(TF::FakeQuantWithMinMaxVarsOp::getOperationName(), 1,
+      : RewritePattern(TF::FakeQuantWithMinMaxVarsOp::getOperationName(), 3,
                        context) {}
-  struct MatchedState : public PatternState {
-    FloatAttr min;
-    FloatAttr max;
-    APInt num_bits;
-    bool narrow_range;
-  };
-
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
     auto tf_op = cast<TF::FakeQuantWithMinMaxVarsOp>(op);
+    // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res->hasOneUse() || isa<QuantizeOp>(*res->user_begin()))
       return matchFailure();
-    auto state = absl::make_unique<MatchedState>();
-    ElementsAttr min_value, max_value;
-    if (!matchPattern(tf_op.min(), m_Constant(&min_value)))
-      return matchFailure();
-    if (!matchPattern(tf_op.max(), m_Constant(&max_value)))
-      return matchFailure();
-    state->min = ExtractSingleElementAsFloat(min_value);
-    state->max = ExtractSingleElementAsFloat(max_value);
-    if (!state->min || !state->max) return matchFailure();
-    state->num_bits = tf_op.num_bits();
-    state->narrow_range = tf_op.narrow_range();
-    return matchSuccess(std::move(state));
-  }
 
-  void rewrite(Operation *op, std::unique_ptr<PatternState> state,
-               PatternRewriter &rewriter) const override {
-    auto &s = *static_cast<MatchedState *>(state.get());
-    Location loc = op->getLoc();
-    Value *copied = OpBuilder(op).clone(*op)->getResult(0);
-    Type res_type = copied->getType();
-    Type storage_type = rewriter.getIntegerType(s.num_bits.getSExtValue());
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, s.min, s.max,
-                                          storage_type, s.narrow_range);
-    Value *quantize_op =
-        rewriter.create<TFL::QuantizeOp>(loc, qtype.getValue(), copied, qtype);
-    rewriter.replaceOpWithNewOp<TFL::DequantizeOp>(op, res_type, quantize_op);
+    // Extract the min/max constant values from the operands. We also consider
+    // a special case that there are tf.Identity ops between the min/max
+    // constants and the tf.FakeQuantWithMinMaxVarsOp.
+    Value *min = tf_op.min(), *max = tf_op.max();
+    ElementsAttr min_value, max_value;
+    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min->getDefiningOp()))
+      min = id1.input();
+    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max->getDefiningOp()))
+      max = id2.input();
+    if (!matchPattern(min, m_Constant(&min_value))) return matchFailure();
+    if (!matchPattern(max, m_Constant(&max_value))) return matchFailure();
+    FloatAttr min_attr = ExtractSingleElementAsFloat(min_value);
+    FloatAttr max_attr = ExtractSingleElementAsFloat(max_value);
+    if (!min_attr || !max_attr) return matchFailure();
+
+    // Use the min/max from the operands and the num_bits and narrow_range
+    // attribute to create the quantization parameter for the new quantize op.
+    rewriter.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+    Type num_bits = rewriter.getIntegerType(tf_op.num_bits().getSExtValue());
+    bool narrow_range = tf_op.narrow_range();
+    Type res_type = tf_op.getType();
+    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_attr,
+                                          max_attr, num_bits, narrow_range);
+
+    // Finally, use the quantization parameter to create the quantize and
+    // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
+    // and its users.
+    Value *value = tf_op.outputs();
+    auto quantize = rewriter.create<TFL::QuantizeOp>(
+        op->getLoc(), qtype.getValue(), value, qtype);
+    auto dequantize = rewriter.create<TFL::DequantizeOp>(op->getLoc(), res_type,
+                                                         quantize.output());
+    value->replaceAllUsesWith(dequantize);
+    quantize.getOperation()->replaceUsesOfWith(dequantize, value);
+
+    return matchSuccess();
   }
 };
 
@@ -170,7 +207,7 @@ struct ConvertTFConvOp : public RewritePattern {
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return matchFailure();
 
-    auto state = llvm::make_unique<ConvertTFConvOpMatchState>();
+    auto state = std::make_unique<ConvertTFConvOpMatchState>();
 
     state->stride_height = height;
     state->stride_width = width;
@@ -352,25 +389,34 @@ class ConvertTFDepthwiseConv2dNative
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
+  // This pattern was intented to uses TFL QDQs to preserve the quantization
+  // parameters from the TF Quant ops, thus this pattern should run with the
+  // first `applyPatternsGreedily` method, which would otherwise removes the
+  // TF FakeQuant ops by the constant folding.
+  patterns.insert<InsertTFLQuantOpsAfterTFFakeQuantOp>(&getContext());
   TFL::populateWithGenerated(&getContext(), &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, std::move(patterns));
-  patterns.push_back(llvm::make_unique<ConvertTFConv2D>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<ConvertTFDepthwiseConv2dNative>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<InsertTFLQuantOpsAfterTFFakeQuantOp>(&getContext()));
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
+
+  // Load the generated pattern again, so new quantization pass-through
+  // will be applied.
+  patterns.clear();
+  TFL::populateWithGenerated(&getContext(), &patterns);
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      &getContext());
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-FunctionPassBase *CreatePrepareTFPass() { return new PrepareTFPass(); }
+std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
+}
 
 static PassRegistration<PrepareTFPass> pass(
     "tfl-prepare-tf", "Prepare TF for legalization to TensorFlow Lite dialect");

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <iomanip>
 #include <memory>
 #include <mutex>  // NOLINT(build/c++11)
@@ -178,17 +179,17 @@ int Main(int argc, char* argv[]) {
   std::unique_ptr<ImagenetModelEvaluator> evaluator;
   if (output_file_path.empty()) {
     LOG(ERROR) << "Invalid output file path.";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (num_threads <= 0) {
     LOG(ERROR) << "Invalid number of threads.";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (ImagenetModelEvaluator::Create(argc, argv, num_threads, &evaluator) !=
       kTfLiteOk)
-    return 0;
+    return EXIT_FAILURE;
 
   std::ofstream output_stream(output_file_path, std::ios::out);
   if (!output_stream) {
@@ -210,7 +211,10 @@ int Main(int argc, char* argv[]) {
       absl::make_unique<CSVWriter>(columns, &output_stream));
   evaluator->AddObserver(&results_writer);
   LOG(ERROR) << "Starting evaluation with: " << num_threads << " threads.";
-  evaluator->EvaluateModel();
+  if (evaluator->EvaluateModel() != kTfLiteOk) {
+    LOG(ERROR) << "Failed to evaluate the model!";
+    return EXIT_FAILURE;
+  }
 
   if (!proto_output_file_path.empty()) {
     std::ofstream proto_out_file(proto_output_file_path,
@@ -220,7 +224,7 @@ int Main(int argc, char* argv[]) {
     proto_out_file.close();
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace metrics

@@ -16,4 +16,12 @@ tf_module {
     name: "PythonState"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "disable_mixed_precision_graph_rewrite"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_mixed_precision_graph_rewrite"
+    argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
+  }
 }

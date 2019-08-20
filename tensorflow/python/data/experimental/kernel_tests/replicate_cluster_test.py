@@ -17,22 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
-class ReplicateClusterTest(test_base.DatasetTestBase):
+class ReplicateClusterTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
+    super(ReplicateClusterTest, self).setUp()
     # Start the local server.
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -43,7 +49,8 @@ class ReplicateClusterTest(test_base.DatasetTestBase):
     self._device2 = "/job:worker/replica:0/task:2/device:CPU:0"
     self._target = worker[0].target
 
-  @test_util.deprecated_graph_mode_only
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testBasic(self):
     with ops.device(self._device0):
       dataset0 = dataset_ops.Dataset.range(100)
@@ -64,7 +71,8 @@ class ReplicateClusterTest(test_base.DatasetTestBase):
         self.assertEqual(i, sess.run(get_next1()))
         self.assertEqual(i, sess.run(get_next2()))
 
-  @test_util.deprecated_graph_mode_only
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMap(self):
     with ops.device(self._device0):
       dataset0 = dataset_ops.Dataset.range(100).map(lambda x: x * 2)
@@ -85,7 +93,8 @@ class ReplicateClusterTest(test_base.DatasetTestBase):
         self.assertEqual(i * 2, sess.run(get_next1()))
         self.assertEqual(i * 2, sess.run(get_next2()))
 
-  @test_util.deprecated_graph_mode_only
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testVariableInput(self):
     with ops.device(self._device0):
       counter_var = variable_scope.get_variable(
@@ -99,8 +108,40 @@ class ReplicateClusterTest(test_base.DatasetTestBase):
       it1 = dataset_ops.make_initializable_iterator(dataset1)
     # We don't support stateful ops in functions as of now.
     with session.Session(self._target) as sess:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises(errors.FailedPreconditionError):
         sess.run(it1.initializer)
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
+  def testWhitelistStatefulOp(self):
+    with compat.forward_compatibility_horizon(2019, 9, 12):
+      with ops.device(self._device0):
+        dataset0 = dataset_ops.Dataset.range(100).map(
+            lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+                [],
+                minval=1,
+                maxval=10,
+                dtype=dtypes.float32))
+        opt = dataset_ops.Options()
+        opt.experimental_stateful_whitelist = ["RandomUniform"]
+        dataset0 = dataset0.with_options(opt)
+      replicated_ds = distribute.replicate(dataset0,
+                                           [self._device1, self._device2])
+      dataset1 = replicated_ds[self._device1]
+      dataset2 = replicated_ds[self._device2]
+
+      with ops.device(self._device0):
+        get_next0 = self.getNext(dataset0)
+      with ops.device(self._device1):
+        get_next1 = self.getNext(dataset1)
+      with ops.device(self._device2):
+        get_next2 = self.getNext(dataset2)
+
+      with session.Session(self._target) as sess:
+        for _ in range(100):
+          sess.run(get_next0())
+          sess.run(get_next1())
+          sess.run(get_next2())
 
 
 if __name__ == "__main__":

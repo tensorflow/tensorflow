@@ -106,6 +106,8 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      if not isinstance(layers, (list, tuple)):
+        layers = [layers]
       tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)

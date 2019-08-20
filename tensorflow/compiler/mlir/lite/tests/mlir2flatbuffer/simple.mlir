@@ -1,4 +1,5 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s --check-prefix=STRIP
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
@@ -16,6 +17,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 1,
 // CHECK-NEXT:       name: "input",
+// STRIP:            buffer: 1,
+// STRIP-NEXT:       name: "input",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -24,6 +27,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 2,
 // CHECK-NEXT:       name: "Const",
+// STRIP:            buffer: 2,
+// STRIP-NEXT:       name: "0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -32,6 +37,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 3,
 // CHECK-NEXT:       name: "sub",
+// STRIP:            buffer: 3,
+// STRIP-NEXT:       name: "1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -40,6 +47,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 4,
 // CHECK-NEXT:       name: "SameNameAsOutput1",
+// STRIP:            buffer: 4,
+// STRIP-NEXT:       name: "2",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -48,6 +57,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 5,
 // CHECK-NEXT:       name: "SameNameAsOutput",
+// STRIP:            buffer: 5,
+// STRIP-NEXT:       name: "SameNameAsOutput",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }

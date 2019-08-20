@@ -74,6 +74,11 @@ class PythonRefManager {
   std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
 };
 
+// A global PythonRefManager. Unless `CollectGarbage()` is called before
+// shutdown, this container will hold on to Python objects and thus cause a
+// leak. This behavior is similar to `tensorflow::ClearDecRefCache()`.
+PythonRefManager* GlobalPyRefManager();
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_REF_MANAGER_H_

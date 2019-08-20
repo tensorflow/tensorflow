@@ -23,8 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
@@ -95,23 +93,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     except AttributeError:
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
   ctx.ensure_initialized()
-  device = ctx.device_name
-  handle = ctx._handle  # pylint: disable=protected-access
-  if isinstance(value, (float,) + six.integer_types):
-    # Use a scalar cache. This will put each scalar of each type only once on
-    # each device. Scalars don't use much device memory but copying scalars can
-    # trigger memcpys which are slow.
-    cache_key = device, value, dtype, type(value)
-    scalar_cache = ctx.scalar_cache()
-    tensor = scalar_cache.get(cache_key, None)
-    if tensor is not None:
-      return ops.EagerTensor(
-          value, handle, device, dtype, tensor)
-    t = ops.EagerTensor(value, handle, device, dtype)
-    scalar_cache[cache_key] = t
-    return t
-  else:
-    return ops.EagerTensor(value, handle, device, dtype)
+  return ops.EagerTensor(value, ctx.device_name, dtype)
 
 
 @tf_export(v1=["constant"])

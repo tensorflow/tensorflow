@@ -123,6 +123,12 @@ TFL_Interpreter* TFL_NewInterpreter(
         TFL_InterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);
     }
+
+    for (auto* delegate : optional_options->delegates) {
+      if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
+        return nullptr;
+      }
+    }
   }
 
   return new TFL_Interpreter{model->impl, std::move(optional_error_reporter),

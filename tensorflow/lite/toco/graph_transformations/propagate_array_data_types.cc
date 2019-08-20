@@ -55,7 +55,6 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
   // Do the actual output data types propagation.
   switch (op->type) {
     case OperatorType::kDequantize:
-    case OperatorType::kResizeBilinear:
       // These operators unconditionally produce float outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kFloat);
       break;

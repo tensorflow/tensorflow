@@ -92,12 +92,14 @@ def stateless_random_uniform(shape,
     minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     if dtype.is_integer:
-      return gen_stateless_random_ops.stateless_random_uniform_int(
+      result = gen_stateless_random_ops.stateless_random_uniform_int(
           shape, seed=seed, minval=minval, maxval=maxval, name=name)
     else:
       rnd = gen_stateless_random_ops.stateless_random_uniform(
           shape, seed=seed, dtype=dtype)
-      return math_ops.add(rnd * (maxval - minval), minval, name=name)
+      result = math_ops.add(rnd * (maxval - minval), minval, name=name)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 @tf_export("random.stateless_normal")
@@ -134,7 +136,9 @@ def stateless_random_normal(shape,
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
-    return math_ops.add(rnd * stddev, mean, name=name)
+    result = math_ops.add(rnd * stddev, mean, name=name)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 @tf_export("random.stateless_truncated_normal")
@@ -177,7 +181,9 @@ def stateless_truncated_normal(shape,
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     rnd = gen_stateless_random_ops.stateless_truncated_normal(
         shape, seed, dtype)
-    return math_ops.add(rnd * stddev, mean, name=name)
+    result = math_ops.add(rnd * stddev, mean, name=name)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 @tf_export(v1=["random.stateless_multinomial"])
@@ -202,7 +208,7 @@ def stateless_multinomial(logits,
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
   samples = tf.random.stateless_categorical(
-      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
+      tf.math.log([[0.5, 0.5]]), 5, seed=[7, 17])
   ```
 
   Args:
@@ -241,7 +247,7 @@ def stateless_categorical(logits,
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
   samples = tf.random.stateless_categorical(
-      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
+      tf.math.log([[0.5, 0.5]]), 5, seed=[7, 17])
   ```
 
   Args:

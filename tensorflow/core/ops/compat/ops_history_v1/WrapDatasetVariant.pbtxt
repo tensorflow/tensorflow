@@ -1,0 +1,11 @@
+op {
+  name: "WrapDatasetVariant"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+}

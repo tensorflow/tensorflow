@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -27,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
-
 namespace {
 
 // Track whether there's an active ProfilerSession.
@@ -35,6 +37,31 @@ namespace {
 // use singletons that do not allow concurrent profiling request (e.g.,
 // DeviceTracer).
 std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
+
+// Given a node_name in the format "op_name:op_type", returns the "op_type".
+// If the "op_type" is missing, returns the node_name.
+// This is done so all ops with the same type appear in the same color in trace
+// viewer.
+inline std::string EventName(absl::string_view node_name) {
+  // NOTE: open source device tracer now append cupti kernel name after
+  // annotation as node_name, @@ is used as separator. kernel name is
+  // demangled and possibly contains "::" patterns.
+  std::vector<absl::string_view> segments = absl::StrSplit(node_name, "@@");
+  if (segments.size() > 1) {  // unparsed
+    // find the last annotation.
+    std::vector<absl::string_view> annotation_stack =
+        absl::StrSplit(segments.front(), "::");
+    // strip trace argument.
+    std::vector<absl::string_view> annotation_parts =
+        absl::StrSplit(annotation_stack.back(), '#');
+    std::vector<absl::string_view> parts =
+        absl::StrSplit(annotation_parts.front(), ':');
+    return std::string(parts.back());
+  } else {
+    std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
+    return std::string(parts.back());
+  }
+}
 
 void AssignLanes(RunMetadata* run_metadata) {
   for (size_t device_id = 0;
@@ -105,13 +132,18 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
       event->set_resource_id(node.thread_id());
-      event->set_name(node.node_name());
+      event->set_name(EventName(node.node_name()));
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *
           EnvTime::kMicrosToPicos);
       event->set_duration_ps(node.all_end_rel_micros() *
                              EnvTime::kMicrosToPicos);
-      (*args)["label"] = node.timeline_label();
+      if (!node.timeline_label().empty()) {
+        (*args)["label"] = node.timeline_label();
+      }
+      if (event->name() != node.node_name()) {
+        (*args)["long name"] = node.node_name();
+      }
     }
   }
 
@@ -119,9 +151,8 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }
 }  // namespace
 
-/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    ProfilerContext* const context) {
-  return absl::WrapUnique(new ProfilerSession(context));
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
+  return absl::WrapUnique(new ProfilerSession());
 }
 
 Status ProfilerSession::Status() {
@@ -162,7 +193,7 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(ProfilerContext* const context)
+ProfilerSession::ProfilerSession()
     : active_(!session_active.exchange(true)),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
@@ -173,7 +204,7 @@ ProfilerSession::ProfilerSession(ProfilerContext* const context)
 
   LOG(INFO) << "Profiler session started.";
 
-  CreateProfilers(context, &profilers_);
+  CreateProfilers(&profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {

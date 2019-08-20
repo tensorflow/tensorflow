@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -29,6 +29,7 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@local_config_nccl//:nccl",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

@@ -16,8 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {

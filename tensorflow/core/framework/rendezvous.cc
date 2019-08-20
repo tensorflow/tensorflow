@@ -187,7 +187,7 @@ class LocalRendezvousImpl : public Rendezvous {
 
     // Delete the queue when the last element has been consumed.
     if (queue->size() == 1) {
-      VLOG(2) << "Clean up Send/Recv queu (key:" << key.FullKey() << "). ";
+      VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
       table_.erase(key_hash);
     } else {
       queue->pop_front();
@@ -220,10 +220,53 @@ class LocalRendezvousImpl : public Rendezvous {
     if (queue->empty() || !queue->front()->IsSendValue()) {
       // There is no message to pick up.
       // Only recv-related fields need to be filled.
+      CancellationManager* cm = recv_args.cancellation_manager;
+      CancellationToken token = CancellationManager::kInvalidToken;
+      bool already_cancelled = false;
+      if (cm != nullptr) {
+        token = cm->get_cancellation_token();
+        already_cancelled = !cm->RegisterCallback(token, [this, token,
+                                                          key_hash] {
+          Item* item = nullptr;
+          {
+            mutex_lock l(mu_);
+            ItemQueue* queue = &table_[key_hash];
+            if (!queue->empty() && !queue->front()->IsSendValue()) {
+              for (auto it = queue->begin(); it != queue->end(); it++) {
+                if ((*it)->cancellation_token == token) {
+                  item = *it;
+                  if (queue->size() == 1) {
+                    table_.erase(key_hash);
+                  } else {
+                    queue->erase(it);
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
+          if (item != nullptr) {
+            item->waiter(StatusGroup::MakeDerived(
+                             errors::Cancelled("RecvAsync is cancelled.")),
+                         Args(), item->recv_args, Tensor(), /*is_dead=*/false);
+            delete item;
+          }
+        });
+      }
+      if (already_cancelled) {
+        mu_.unlock();
+        done(StatusGroup::MakeDerived(
+                 errors::Cancelled("RecvAsync is cancelled.")),
+             Args(), recv_args, Tensor(), /*is_dead=*/false);
+        return;
+      }
+
       VLOG(2) << "Enqueue Recv Item (key:" << key.FullKey() << "). ";
       Item* item = new Item;
       item->waiter = std::move(done);
       item->recv_args = recv_args;
+      item->cancellation_token = token;
       if (item->recv_args.device_context) {
         item->recv_args.device_context->Ref();
       }
@@ -239,7 +282,7 @@ class LocalRendezvousImpl : public Rendezvous {
 
     // Delete the queue when the last element has been consumed.
     if (queue->size() == 1) {
-      VLOG(2) << "Clean up Send/Recv queu (key:" << key.FullKey() << "). ";
+      VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
       table_.erase(key_hash);
     } else {
       queue->pop_front();
@@ -280,6 +323,7 @@ class LocalRendezvousImpl : public Rendezvous {
     bool is_dead = false;
     Args send_args;
     Args recv_args;
+    CancellationToken cancellation_token;
 
     ~Item() {
       if (send_args.device_context) {
@@ -287,6 +331,11 @@ class LocalRendezvousImpl : public Rendezvous {
       }
       if (recv_args.device_context) {
         recv_args.device_context->Unref();
+      }
+      auto* cm = recv_args.cancellation_manager;
+      if (cancellation_token != CancellationManager::kInvalidToken &&
+          cm != nullptr) {
+        cm->TryDeregisterCallback(cancellation_token);
       }
     }
 

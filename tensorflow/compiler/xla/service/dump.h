@@ -33,6 +33,9 @@ class BufferAssignment;
 class HloExecutionProfile;
 class HloSnapshot;
 
+// Create the filename we will use to dump in DumpToFileInDir.
+string FilenameFor(const HloModule& module, absl::string_view suffix);
+
 // Writes the given string to a file in the xla_dump_to directory specified by
 // module's DebugOptions.
 //

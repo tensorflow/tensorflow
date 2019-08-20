@@ -18,25 +18,34 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kOptimizerName[] = "tf_data_rebatcher";
+constexpr char kUseFallbackAttr[] = "use_fallback";
 
 class RebatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit RebatchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr(kUseFallbackAttr)) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseFallbackAttr, &use_fallback_));
+    }
+  }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_workers;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_workers", &num_workers));
+    int64 num_replicas;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "num_replicas", &num_replicas));
     OP_REQUIRES(
-        ctx, num_workers > 0,
-        errors::InvalidArgument("num_workers must be greater than zero."));
+        ctx, num_replicas > 0,
+        errors::InvalidArgument("num_replicas must be greater than zero."));
 
-    auto config_factory = [num_workers]() { return CreateConfig(num_workers); };
+    auto config_factory = [num_replicas, this]() {
+      return CreateConfig(num_replicas, this->use_fallback_);
+    };
 
     // We only want to optimize functions for some particular datasets like
     // FlatMapDataset, InterleaveDataset etc. So we disable generalized
@@ -48,19 +57,25 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  static RewriterConfig CreateConfig(int64 num_workers) {
+  static RewriterConfig CreateConfig(int64 num_replicas, bool use_fallback) {
     RewriterConfig rewriter_config;
     rewriter_config.set_fail_on_optimizer_errors(true);
     rewriter_config.add_optimizers(kOptimizerName);
     rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
     auto custom_optimizer = rewriter_config.add_custom_optimizers();
     custom_optimizer->set_name(kOptimizerName);
-    AttrValue num_workers_attr;
-    num_workers_attr.set_i(num_workers);
-    (*custom_optimizer->mutable_parameter_map())["num_workers"] =
-        num_workers_attr;
+    AttrValue num_replicas_attr;
+    num_replicas_attr.set_i(num_replicas);
+    (*custom_optimizer->mutable_parameter_map())["num_replicas"] =
+        num_replicas_attr;
+    AttrValue use_fallback_attr;
+    use_fallback_attr.set_b(use_fallback);
+    (*custom_optimizer->mutable_parameter_map())["use_fallback"] =
+        use_fallback_attr;
     return rewriter_config;
   }
+
+  bool use_fallback_ = true;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RebatchDataset").Device(DEVICE_CPU),
@@ -69,5 +84,6 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalRebatchDataset").Device(DEVICE_CPU),
                         RebatchDatasetOp);
 
 }  // anonymous namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

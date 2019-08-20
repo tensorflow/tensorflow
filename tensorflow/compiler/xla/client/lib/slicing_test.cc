@@ -102,7 +102,7 @@ XLA_TEST_F(SlicingTest, SimpleSliceUpdate) {
       {a_data.get(), b_data.get(), x_data.get(), y_data.get()});
 }
 
-XLA_TEST_F(SlicingTest, TorchGather) {
+XLA_TEST_F(SlicingTest, TorchGatherSparse) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
@@ -111,6 +111,20 @@ XLA_TEST_F(SlicingTest, TorchGather) {
   auto index_data =
       CreateR2Parameter<int>({{0, 0}, {1, 0}}, 1, "index", &builder, &index);
   TorchGather(input, index, 1);
+
+  ComputeAndCompareR2<int>(&builder, {{1, 1}, {4, 3}},
+                           {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, TorchGatherDense) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  auto input_data =
+      CreateR2Parameter<int>({{1, 2}, {3, 4}}, 0, "input", &builder, &input);
+  auto index_data =
+      CreateR2Parameter<int>({{0, 0}, {1, 0}}, 1, "index", &builder, &index);
+  TorchGather(input, index, 1, false);
 
   ComputeAndCompareR2<int>(&builder, {{1, 1}, {4, 3}},
                            {input_data.get(), index_data.get()});

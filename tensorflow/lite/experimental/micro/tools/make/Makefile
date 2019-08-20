@@ -107,13 +107,25 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
+tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/binary_function.h \
+tensorflow/lite/kernels/internal/reference/comparisons.h \
+tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
+tensorflow/lite/kernels/internal/reference/prelu.h \
+tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/strided_slice.h \
+tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
@@ -248,12 +260,16 @@ $(BINDIR)%.bin: $(BINDIR)%
 	$(OBJCOPY) $< $@ -O binary
 
 # Generate standalone makefile projects for all of the test targets.
-$(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
+$(foreach TEST_TARGET,$(filter-out tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+$(foreach TEST_TARGET,$(filter tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
+$(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
+
+generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
 
 # Gets rid of all generated files.
 clean:

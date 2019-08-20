@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
         "Model provided is schema version %d not equal "
         "to supported version %d.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
+    return 1;
   }
 
   // This pulls in all the operation implementations we need
@@ -48,6 +49,8 @@ int main(int argc, char* argv[]) {
   // Build an interpreter to run the model with
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
+
+  // Allocate memory from the tensor_arena for the model's tensors
   interpreter.AllocateTensors();
 
   // Obtain pointers to the model's input and output tensors
@@ -73,7 +76,8 @@ int main(int argc, char* argv[]) {
     // Run inference, and report any error
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed on x_val: %f\n", x_val);
+      error_reporter->Report("Invoke failed on x_val: %f\n",
+                             static_cast<double>(x_val));
       continue;
     }
 

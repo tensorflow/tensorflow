@@ -643,7 +643,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
-@tf_export("dtypes.cast", "cast")
+@tf_export("cast", "dtypes.cast")
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -1277,7 +1277,9 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
-  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+  g = getattr(self, "graph", None)
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g._building_function)):  # pylint: disable=protected-access
     return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -3297,6 +3299,61 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
 
+@tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
+def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
+  """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
+
+  By default, this op performs an inclusive cumulative log-sum-exp, which means
+  that the first element of the input is identical to the first element of
+  the output.
+
+  This operation is significantly more numerically stable than the equivalent
+  tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
+  computes the same result given infinite numerical precision. However, note
+  that in some cases, it may be less stable than `tf.math.reduce_logsumexp`
+  for a given element, as it applies the "log-sum-exp trick" in a different
+  way.
+
+  More precisely, where `tf.math.reduce_logsumexp` uses the following trick:
+
+  ```
+  log(sum(exp(x))) == log(sum(exp(x - max(x)))) + max(x)
+  ```
+
+  it cannot be directly used here as there is no fast way of applying it
+  to each prefix `x[:i]`. Instead, this function implements a prefix
+  scan using pairwise log-add-exp, which is a commutative and associative
+  (up to floating point precision) operator:
+
+  ```
+  log_add_exp(x, y) = log(exp(x) + exp(y))
+                    = log(1 + exp(min(x, y) - max(x, y))) + max(x, y)
+  ```
+
+  However, reducing using the above operator leads to a different computation
+  tree (logs are taken repeatedly instead of only at the end), and the maximum
+  is only computed pairwise instead of over the entire prefix. In general, this
+  leads to a different and slightly less precise computation.
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `float16`, `float32`,
+      `float64`.
+    axis: A `Tensor` of type `int32` or `int64` (default: 0). Must be in the
+      range `[-rank(x), rank(x))`.
+    exclusive: If `True`, perform exclusive cumulative log-sum-exp.
+    reverse: If `True`, performs the cumulative log-sum-exp in the reverse
+      direction.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same shape and type as `x`.
+  """
+  with ops.name_scope(name, "CumulativeLogsumexp", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops.cumulative_logsumexp(
+        x, axis, exclusive=exclusive, reverse=reverse, name=name)
+
+
 @tf_export("math.conj", v1=["math.conj", "conj"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
@@ -3409,7 +3466,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3455,7 +3512,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3502,7 +3559,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3578,7 +3635,7 @@ def sparse_segment_sum_v2(data,
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
@@ -3647,7 +3704,7 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3693,7 +3750,7 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
@@ -3769,7 +3826,7 @@ def sparse_segment_sqrt_n_v2(data,
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   Like `tf.sparse.segment_mean`, but instead of dividing by the size of the
@@ -3796,7 +3853,7 @@ def sparse_segment_sqrt_n_v2(data,
 
 @tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
-  r"""Tensor contraction of a and b along specified axes.
+  r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
   from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
@@ -3804,7 +3861,8 @@ def tensordot(a, b, axes, name=None):
   contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
   as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
   `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors.
+  integers that specify valid axes for each of the tensors. Additionally
+  outer product is supported by passing `axes=0`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
@@ -3814,7 +3872,10 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  Example 3: When `a` and `b` are matrices (order 2), the case `axes=0` gives
+  the outer product, a tensor of order 4.
+
+  Example 4: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
   tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
@@ -3831,7 +3892,8 @@ def tensordot(a, b, axes, name=None):
       b in order. If axes is a list or `Tensor` the first and second row contain
       the set of unique integers specifying axes along which the contraction is
       computed, for `a` and `b`, respectively. The number of axes for `a` and
-      `b` must be equal.
+      `b` must be equal. If `axes=0`, computes the outer product between `a` and
+      `b`.
     name: A name for the operation (optional).
 
   Returns:
@@ -4003,3 +4065,35 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.reciprocal_no_nan")
+def reciprocal_no_nan(x, name=None):
+  """Performs a safe reciprocal operation, element wise.
+
+  If a particular element is zero, the reciprocal for that element is
+  also set to zero.
+
+  For example:
+  ```python
+  x = tf.constant([2.0, 0.5, 0, 1], dtype=tf.float32)
+  tf.math.reciprocal_no_nan(x)  # [ 0.5, 2, 0.0, 1.0 ]
+  ```
+
+  Args:
+    x: A `Tensor` of type `float16`, `float32`, `float64` `complex64` or
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: x must be of a valid dtype.
+
+  """
+
+  with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
+    x = ops.convert_to_tensor(x, name="x")
+    one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
+    return gen_math_ops.div_no_nan(one, x, name=scope)

@@ -82,7 +82,8 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+
     def get_in_replica_handle(x):
       return x.handle if ds_values.is_distributed_variable(x) else x
 
@@ -94,7 +95,8 @@ class _WrapperFunction(function.ConcreteFunction):
     else:  # cross-replica context
       captured_inputs = list(
           map(get_cross_replica_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
+    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
+                                                    cancellation_manager)
 
 
 class Loader(object):
@@ -174,22 +176,27 @@ class Loader(object):
       if bound_inputs:
         for bound_input, internal_capture in zip(
             bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          concrete_function.graph.captures[bound_input] = internal_capture
-          if internal_capture.dtype == dtypes.resource:
-            if resource_variable_ops.is_resource_variable(bound_input):
-              try:
-                handle = bound_input.handle
-              except ValueError:
-                # For mirrored variables we'll copy handle data for components
-                # as they get captured.
-                pass
+          if ds_values.is_distributed_variable(bound_input):
+            concrete_function.graph.capture_distributed_variable(
+                bound_input, internal_capture)
+          else:
+            concrete_function.graph._captures[ops.tensor_id(bound_input)] = (  # pylint: disable=protected-access
+                bound_input, internal_capture)
+            if internal_capture.dtype == dtypes.resource:
+              if resource_variable_ops.is_resource_variable(bound_input):
+                try:
+                  handle = bound_input.handle
+                except ValueError:
+                  # For mirrored variables we'll copy handle data for components
+                  # as they get captured.
+                  pass
+                else:
+                  custom_gradient.copy_handle_data(handle, internal_capture)
               else:
-                custom_gradient.copy_handle_data(handle, internal_capture)
-            else:
-              custom_gradient.copy_handle_data(bound_input, internal_capture)
-          # Setting "captures" first means "capture" won't create a new
-          # placeholder for this input.
-          concrete_function.graph.capture(bound_input)
+                custom_gradient.copy_handle_data(bound_input, internal_capture)
+            # Setting "captures" first means "capture" won't create a new
+            # placeholder for this input.
+            concrete_function.graph.capture(bound_input)
 
   def _get_tensor_from_node(self, node_id):
     """Resolves a node id into a tensor to be captured for a function."""

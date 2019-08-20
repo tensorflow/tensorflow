@@ -1,0 +1,32 @@
+op {
+  name: "For"
+  input_arg {
+    name: "start"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "limit"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "delta"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "body"
+    type: "func"
+  }
+}

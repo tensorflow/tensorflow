@@ -1,6 +1,9 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
-# CHECK:  %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", name = "Const", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F464C4F41540A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20310A20207D0A7D0A"> : tensor<1xf32>} : () -> (tensor<1xf32>, !_tf.control)
+# This test is intended to verify the tensor_content field on import of an empty
+# tensor.
+# CHECK:  tf.Const
+# CHECK-SAME: value = dense<0.000000e+00>
 
 node {
   name: "Const"

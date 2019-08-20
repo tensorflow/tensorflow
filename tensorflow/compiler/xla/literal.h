@@ -130,13 +130,47 @@ class LiteralBase {
   // value into text.
   string GetSparseElementAsString(int64 sparse_element_number,
                                   const ShapeIndex& shape_index = {}) const;
+
+  // Return whether the value at the specified index is equal to the provided
+  // generic `value` (T must be an arithmetic type).
+  //
+  // Precondition: must be an array.
+  template <typename T>
+  typename std::enable_if<(std::is_arithmetic<T>::value ||
+                           std::is_same<T, Eigen::half>::value ||
+                           std::is_same<T, bfloat16>::value),
+                          bool>::type
+  IsEqualAt(absl::Span<const int64> multi_index, T value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value;
+    }
+    complex128 as_complex128 = *GetAsComplex128(multi_index);
+    return as_complex128.imag() == 0 && as_complex128.real() == value;
+  }
+
+  bool IsEqualAt(absl::Span<const int64> multi_index, complex128 value) const {
+    if (auto as_s64 = GetIntegralAsS64(multi_index)) {
+      return *as_s64 == value.real() && value.imag() == 0;
+    }
+    auto as_complex128 = GetAsComplex128(multi_index);
+    return *as_complex128 == value;
+  }
+
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
-  StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
+  absl::optional<int64> GetIntegralAsS64(
+      absl::Span<const int64> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  StatusOr<double> GetAsDouble(absl::Span<const int64> multi_index) const;
+  absl::optional<double> GetAsDouble(absl::Span<const int64> multi_index) const;
+
+  // As Get(), but determines the correct type, and converts the value into
+  // complex128. All floating point types can be converted into complex128.
+  //
+  // This literal must be an array.
+  absl::optional<complex128> GetAsComplex128(
+      absl::Span<const int64> multi_index) const;
 
   // Returns the multi-index of the element in a sparse literal at the given
   // sparse element number.  The sparse element number is the position with in

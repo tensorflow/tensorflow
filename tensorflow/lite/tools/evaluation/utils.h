@@ -24,6 +24,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
@@ -37,6 +38,9 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
                                 std::vector<std::string>* result);
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options);
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
 #if defined(__ANDROID__)

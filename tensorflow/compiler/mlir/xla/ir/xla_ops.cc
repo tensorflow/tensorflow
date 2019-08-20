@@ -17,16 +17,37 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h.inc"
 
 using namespace mlir;
 using namespace mlir::XLA;
 
-XLADialect::XLADialect(MLIRContext* context)
+XlaHloDialect::XlaHloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -37,9 +58,10 @@ XLADialect::XLADialect(MLIRContext* context)
   allowUnknownOperations();
 }
 
-Operation* XLADialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                           Type type, Location loc) {
-  // If this is an opaque elements attribute, then generate an xla.constant.
+Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
+                                              Attribute value, Type type,
+                                              Location loc) {
+  // If this is an opaque elements attribute, then generate an xla_hlo.constant.
   if (value.isa<OpaqueElementsAttr>())
     return builder.create<XLA::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
@@ -74,7 +96,7 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
   }
 
   // TODO: support other XLA specific types.
-  assert(type && "unsupported attribute type for building xla.constant");
+  assert(type && "unsupported attribute type for building xla_hlo.constant");
   result->types.push_back(type);
   result->addAttribute("value", value);
 }
@@ -186,13 +208,32 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.size() == 1 && "convert must take one operand");
-  auto operand = operands[0];
-  if (!operand) return {};
+  if (getOperand()->getType() == getType()) {
+    return getOperand();
+  }
 
-  if (auto elements = operand.dyn_cast<DenseElementsAttr>()) {
+  if (auto prev_op =
+          dyn_cast_or_null<ReshapeOp>(getOperand()->getDefiningOp())) {
+    setOperand(prev_op.getOperand());
+    return getResult();
+  }
+
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
     return elements.reshape(getResult()->getType().cast<ShapedType>());
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  for (auto it : llvm::enumerate(permutation().cast<DenseIntElementsAttr>())) {
+    if (it.index() != it.value()) {
+      return {};
+    }
+  }
+  return getOperand();
 }

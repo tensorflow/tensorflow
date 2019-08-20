@@ -78,12 +78,12 @@ bool try_asm_snippet(bool (*asm_snippet)()) {
 
 #include <setjmp.h>
 #include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
-#include <mutex>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>  // NOLINT(build/c++11)
 
 // Intentionally keep checking for __linux__ here in case we want to
 // extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
@@ -113,7 +113,7 @@ void wait_until_no_pending_sigill() {
 sigjmp_buf& global_sigjmp_buf_just_before_trying_snippet() {
   static sigjmp_buf g;
   return g;
-};
+}
 
 // SIGILL signal handler. Long-jumps to just before
 // we ran the snippet that we know is the only thing that could have generated
@@ -173,7 +173,7 @@ bool dotprod_asm_snippet() {
       : "x0", "v0", "v1");
   // Expecting 100 (input accumulator value) + 100 * 100 + ... (repeat 4 times)
   return result == 40100;
-};
+}
 
 bool DetectDotprodBySigIllMethod() {
   return try_asm_snippet(dotprod_asm_snippet);

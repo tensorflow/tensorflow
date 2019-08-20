@@ -265,10 +265,10 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override { return -1; }
+  int64 GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
 
     Status allocation_status(context_->allocate_temp(

@@ -249,9 +249,13 @@ def shared_embedding_columns(categorical_columns,
 class _TPUBaseEmbeddingColumn(object):
   """Base class for TPU Embedding Column."""
 
-  def __init__(self, categorical_column, max_sequence_length=0):
+  def __init__(self,
+               categorical_column,
+               max_sequence_length=0,
+               learning_rate_fn=None):
     self._tpu_categorical_column = categorical_column
     self._max_sequence_length = max_sequence_length
+    self._learning_rate_fn = learning_rate_fn
     if (self.is_sequence_column() and max_sequence_length < 1):
       raise ValueError('max_sequence_length must be greater than 0 for '
                        'sequence columns. Got max_sequence_length={} for '
@@ -299,6 +303,9 @@ class _TPUBaseEmbeddingColumn(object):
 
   def get_max_sequence_length(self):
     return self._max_sequence_length
+
+  def get_learning_rate_fn(self):
+    return self._learning_rate_fn
 
   def get_sequence_length_feature_key_name(self):
     """Get the key for the associated sequence length feature."""

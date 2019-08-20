@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -62,13 +63,6 @@ TEST(uKernels, IsZeroTest) {
       1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
       1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
   EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
-}
-
-TEST(uKernels, GeneratedIsZeroTest) {
-  constexpr int kVectorSize = 39;
-  std::vector<float> input(kVectorSize);
-  ZeroVector(input.data(), kVectorSize);
-  EXPECT_TRUE(IsZeroVector(input.data(), kVectorSize));
 }
 
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
@@ -717,15 +711,6 @@ TEST(uKernels, ApplyActivationToVectorTest) {
                           {0.0, -0.462117, 0.761594, -0.905148, 0.964028})));
 }
 
-TEST(uKernels, CopyVectorTest) {
-  constexpr int kVectorSize = 5;
-  static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
-  std::vector<float> output(kVectorSize);
-  CopyVector(input, kVectorSize, output.data());
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear({0.0, -0.5, 1.0, -1.5, 2.0})));
-}
-
 TEST(uKernels, Sub1VectorTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -733,14 +718,6 @@ TEST(uKernels, Sub1VectorTest) {
   Sub1Vector(input, kVectorSize, output.data());
   EXPECT_THAT(output,
               ElementsAreArray(ArrayFloatNear({1.0, 1.5, 0.0, 2.5, -1.0})));
-}
-
-TEST(uKernels, ZeroVectorTest) {
-  constexpr int kVectorSize = 5;
-  std::vector<float> output(kVectorSize);
-  ZeroVector(output.data(), kVectorSize);
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear({0.0, 0.0, 0.0, 0.0, 0.0})));
 }
 
 TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
@@ -874,7 +851,7 @@ TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
   std::vector<float> result(kVectorSize);
-  VectorShiftLeft(input, kVectorSize, 3.0);
+  VectorShiftLeft(input, kVectorSize, 3.0f);
   result.assign(input, input + kVectorSize);
   EXPECT_THAT(result,
               ElementsAreArray(ArrayFloatNear({-0.5, 1.0, -1.5, 2.0, 3.0})));

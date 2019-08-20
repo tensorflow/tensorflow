@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
+#include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/best_effort_calculator.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -257,6 +258,8 @@ class Delegate {
         options_.compile_options.preferred_gl_object_type);
     compile_options.dynamic_batch =
         static_cast<bool>(options_.compile_options.dynamic_batch_enabled);
+    compile_options.inline_parameters =
+        static_cast<bool>(options_.compile_options.inline_parameters);
     auto shaders = NewNodeShaderRegistry();
     GpuInfo gpu_info;
     RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
@@ -369,18 +372,6 @@ class Delegate {
   std::unique_ptr<InferenceContext> inference_context_;
 };
 
-// TODO(impjdi): Merge with MetalDelegate.
-bool IsAllFloatTensors(const TfLiteContext* context,
-                       const TfLiteIntArray* array) {
-  for (int i = 0; i < array->size; ++i) {
-    const TfLiteTensor* t = context->tensors + array->data[i];
-    if (t->allocation_type == kTfLiteArenaRw && t->type != kTfLiteFloat32) {
-      return false;
-    }
-  }
-  return true;
-}
-
 inline Delegate* GetGpuDelegate(TfLiteNode* node) {
   return reinterpret_cast<Delegate*>(node->user_data);
 }
@@ -460,6 +451,22 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
 }  // namespace gl
 }  // namespace gpu
 }  // namespace tflite
+
+TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault() {
+  TfLiteGlCompileOptions options;
+  options.precision_loss_allowed = 0;
+  options.preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
+  options.dynamic_batch_enabled = 0;
+  options.inline_parameters = 0;
+  return options;
+}
+
+TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault() {
+  TfLiteGpuDelegateOptions options;
+  options.metadata = nullptr;
+  options.compile_options = TfLiteGlCompileOptionsDefault();
+  return options;
+}
 
 TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options) {

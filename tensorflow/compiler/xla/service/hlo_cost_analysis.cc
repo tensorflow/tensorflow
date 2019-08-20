@@ -32,10 +32,10 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char HloCostAnalysis::kFlopsKey[];
-constexpr char HloCostAnalysis::kTranscendentalsKey[];
-constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kOptimalSecondsKey[];
+constexpr const char HloCostAnalysis::kFlopsKey[];
+constexpr const char HloCostAnalysis::kTranscendentalsKey[];
+constexpr const char HloCostAnalysis::kBytesAccessedKey[];
+constexpr const char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}

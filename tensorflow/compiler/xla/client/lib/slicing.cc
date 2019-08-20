@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -138,18 +140,54 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
   });
 }
 
-XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim) {
+XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
-    ShapeUtil::AppendMajorDimension(1, &index_shape);
-    std::vector<XlaOp> to_concat;
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
         input_shape.dimensions(dim) < std::numeric_limits<uint32>::max()) {
       index = ConvertElementType(index, U32);
       index_shape.set_element_type(U32);
     }
+    if (index_shape.rank() == 1) {
+      return TorchIndexSelect(input, index, 0);
+    }
+    if (!sparse) {
+      std::vector<int64> index_broacast_dims;
+      std::vector<int64> input_broacast_dims;
+      std::vector<int64> sizes;
+      for (int64 i = 0; i < index_shape.rank(); ++i) {
+        if (i < dim) {
+          input_broacast_dims.push_back(i);
+          index_broacast_dims.push_back(i);
+        } else if (i == dim) {
+          sizes.push_back(input_shape.dimensions(i));
+          input_broacast_dims.push_back(i);
+          index_broacast_dims.push_back(i + 1);
+        } else {
+          input_broacast_dims.push_back(i + 1);
+          index_broacast_dims.push_back(i + 1);
+        }
+        sizes.push_back(index_shape.dimensions(i));
+      }
+      auto mask = Eq(
+          BroadcastInDim(index, sizes, index_broacast_dims),
+          Iota(builder, ShapeUtil::MakeShape(index_shape.element_type(), sizes),
+               dim));
+      auto masked_input = Select(
+          mask, BroadcastInDim(input, sizes, input_broacast_dims),
+          Zeros(builder,
+                ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
+      return Reduce(masked_input, Zero(builder, input_shape.element_type()),
+                    CreateScalarIdentityWithZeroComputation(
+                        input_shape.element_type(), builder),
+                    {dim});
+    }
+
+    ShapeUtil::AppendMajorDimension(1, &index_shape);
+    std::vector<XlaOp> to_concat;
+
     to_concat.reserve(input_shape.rank());
     for (int64 i = 0; i < input_shape.rank(); ++i) {
       if (i == dim) {

@@ -1,9 +1,12 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_protos_all")
+
 package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 cc_library(
     name = "standalone",
@@ -14,6 +17,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "@com_google_absl//absl/memory",
     ],
 )
 

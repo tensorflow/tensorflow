@@ -15,15 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
-class EagerContext;
-struct ProfilerContext {
-  EagerContext* eager_context = nullptr;
-};
-
 namespace profiler {
 
 // Interface for tensorflow profiler plugins.
@@ -50,13 +48,11 @@ class ProfilerInterface {
 
 }  // namespace profiler
 
-using ProfilerFactory =
-    std::unique_ptr<profiler::ProfilerInterface> (*)(const ProfilerContext*);
+using ProfilerFactory = std::unique_ptr<profiler::ProfilerInterface> (*)();
 
 void RegisterProfilerFactory(ProfilerFactory factory);
 
 void CreateProfilers(
-    const ProfilerContext* context,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
 
 }  // namespace tensorflow

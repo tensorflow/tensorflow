@@ -43,6 +43,8 @@ struct TFL_InterpreterOptions {
   void (*error_reporter)(void* user_data, const char* format,
                          va_list args) = nullptr;
   void* error_reporter_user_data = nullptr;
+
+  std::vector<TfLiteDelegate*> delegates;
 };
 
 struct TFL_Interpreter {

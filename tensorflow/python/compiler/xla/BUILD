@@ -86,6 +86,7 @@ cuda_py_test(
     ],
     tags = [
         "no_mac",
+        "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
     xla_enable_strict_auto_jit = True,

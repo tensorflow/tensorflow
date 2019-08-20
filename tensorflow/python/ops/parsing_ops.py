@@ -1173,8 +1173,8 @@ def parse_sequence_example(serialized,
   [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   protos given in `serialized`.
 
-  This op parses serialized sequence examples into a tuple of dictionaries
-  mapping keys to `Tensor` and `SparseTensor` objects respectively.
+  This op parses serialized sequence examples into a tuple of dictionaries,
+  each mapping keys to `Tensor` and `SparseTensor` objects.
   The first dictionary contains mappings for keys appearing in
   `context_features`, and the second dictionary contains mappings for keys
   appearing in `sequence_features`.
@@ -1519,8 +1519,8 @@ def parse_single_sequence_example(
   Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
-  This op parses a serialized sequence example into a tuple of dictionaries
-  mapping keys to `Tensor` and `SparseTensor` objects respectively.
+  This op parses a serialized sequence example into a tuple of dictionaries,
+  each mapping keys to `Tensor` and `SparseTensor` objects.
   The first dictionary contains mappings for keys appearing in
   `context_features`, and the second dictionary contains mappings for keys
   appearing in `sequence_features`.
@@ -1562,6 +1562,10 @@ def parse_single_sequence_example(
   `example_name` may contain a descriptive name for the corresponding serialized
   proto. This may be useful for debugging purposes, but it has no effect on the
   output. If not `None`, `example_name` must be a scalar.
+
+  Note that the batch version of this function, `tf.parse_sequence_example`,
+  is written for better memory efficiency and will be faster on large
+  `SequenceExample`s.
 
   Args:
     serialized: A scalar (0-D Tensor) of type string, a single binary

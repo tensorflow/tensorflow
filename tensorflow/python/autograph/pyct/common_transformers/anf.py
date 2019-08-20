@@ -156,7 +156,8 @@ class AnfTransformer(transformer.Base):
   # A-normal form.  Thus they are left in by default, but could be pulled out
   # if the configuration calls for it.
   _literal_nodes = (
-      gast.Num, gast.Str, gast.Bytes, gast.NameConstant
+      gast.Num, gast.Str, gast.Bytes, gast.NameConstant,
+      gast.Name  # Name is here to cover True, False, and None in Python 2
   )
 
   def _match(self, pattern, parent, field, child):
@@ -198,7 +199,8 @@ class AnfTransformer(transformer.Base):
     """
     if node is None:
       return node
-    if isinstance(node, self._trivial_nodes):
+    if (isinstance(node, self._trivial_nodes) and
+        not _is_py2_name_constant(node)):
       return node
     if isinstance(node, list):
       # If something's field was actually a list, e.g., variadic arguments.
@@ -491,6 +493,10 @@ class AnfTransformer(transformer.Base):
     if not isinstance(node.ctx, gast.Store):
       self._ensure_fields_in_anf(node)
     return node
+
+
+def _is_py2_name_constant(node):
+  return isinstance(node, gast.Name) and node.id in ['True', 'False', 'None']
 
 
 def transform(node, ctx, config=None, gensym_source=None):

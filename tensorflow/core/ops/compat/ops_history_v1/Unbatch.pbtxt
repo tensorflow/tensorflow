@@ -1,0 +1,41 @@
+op {
+  name: "Unbatch"
+  input_arg {
+    name: "batched_tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "batch_index"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "id"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "unbatched_tensor"
+    type_attr: "T"
+  }
+  attr {
+    name: "timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

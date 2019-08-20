@@ -122,7 +122,7 @@ class ReduceJoinOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const auto input_flat = input.flat<string>();
+    const auto input_flat = input.flat<tstring>();
     const TensorShape& input_shape = input.shape();
     const int32 input_dims = input_shape.dims();
 
@@ -156,7 +156,7 @@ class ReduceJoinOp : public OpKernel {
         GetOutputShape(index_is_reduced, input_shape, keep_dims_);
     OP_REQUIRES_OK(context, context->allocate_output("output", output_shape,
                                                      &output_tensor));
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
 
     const int64 reduction_iter_size =
         GetReductionIterSize(reduced_indices, input_shape);

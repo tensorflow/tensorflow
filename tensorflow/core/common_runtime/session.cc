@@ -92,6 +92,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  session_created->GetCell()->Set(true);
   monitoring::StartExporter();
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {

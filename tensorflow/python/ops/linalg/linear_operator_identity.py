@@ -250,6 +250,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
         negative.
       ValueError:  If any of the following is not `True`:
         `{is_self_adjoint, is_non_singular, is_positive_definite}`.
+      TypeError:  If `num_rows` or `batch_shape` is ref-type (e.g. Variable).
     """
     dtype = dtype or dtypes.float32
     self._assert_proper_shapes = assert_proper_shapes
@@ -272,6 +273,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+
+      linear_operator_util.assert_not_ref_type(num_rows, "num_rows")
+      linear_operator_util.assert_not_ref_type(batch_shape, "batch_shape")
 
       self._num_rows = linear_operator_util.shape_tensor(
           num_rows, name="num_rows")
@@ -589,7 +593,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     self._assert_proper_shapes = assert_proper_shapes
 
     with ops.name_scope(name, values=[multiplier, num_rows]):
-      self._multiplier = ops.convert_to_tensor(multiplier, name="multiplier")
+      self._multiplier = linear_operator_util.convert_nonref_to_tensor(
+          multiplier, name="multiplier")
 
       # Check and auto-set hints.
       if not self._multiplier.dtype.is_complex:
@@ -601,19 +606,15 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       if not is_square:
         raise ValueError("A ScaledIdentity operator is always square.")
 
+      linear_operator_util.assert_not_ref_type(num_rows, "num_rows")
+
       super(LinearOperatorScaledIdentity, self).__init__(
-          dtype=self._multiplier.dtype,
+          dtype=self._multiplier.dtype.base_dtype,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
-
-      # Shape [B1,...Bb, 1, 1]
-      self._multiplier_matrix = array_ops.expand_dims(
-          array_ops.expand_dims(self.multiplier, -1), -1)
-      self._multiplier_matrix_conj = math_ops.conj(self._multiplier_matrix)
-      self._abs_multiplier = math_ops.abs(self.multiplier)
 
       self._num_rows = linear_operator_util.shape_tensor(
           num_rows, name="num_rows")
@@ -652,34 +653,34 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         imag_multiplier,
         message="LinearOperator was not self-adjoint")
 
+  def _make_multiplier_matrix(self, conjugate=False):
+    # Shape [B1,...Bb, 1, 1]
+    multiplier_matrix = array_ops.expand_dims(
+        array_ops.expand_dims(self.multiplier, -1), -1)
+    if conjugate:
+      multiplier_matrix = math_ops.conj(multiplier_matrix)
+    return multiplier_matrix
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x
-    if adjoint:
-      matrix = self._multiplier_matrix_conj
-    else:
-      matrix = self._multiplier_matrix
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(self, x)
       x = control_flow_ops.with_dependencies([aps], x)
-    return x * matrix
+    return x * self._make_multiplier_matrix(conjugate=adjoint)
 
   def _determinant(self):
     return self.multiplier**self._num_rows_cast_to_dtype
 
   def _log_abs_determinant(self):
     return self._num_rows_cast_to_real_dtype * math_ops.log(
-        self._abs_multiplier)
+        math_ops.abs(self.multiplier))
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    if adjoint:
-      matrix = self._multiplier_matrix_conj
-    else:
-      matrix = self._multiplier_matrix
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(self, rhs)
       rhs = control_flow_ops.with_dependencies([aps], rhs)
-    return rhs / matrix
+    return rhs / self._make_multiplier_matrix(conjugate=adjoint)
 
   def _trace(self):
     # Get Tensor of all ones of same shape as self.batch_shape.

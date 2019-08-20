@@ -472,7 +472,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     fusion_config = module->mutable_fusion_config();
     fusion_config->clear();
   }
-  for (auto* computation : module->MakeNonfusionComputations()) {
+
+  // Use sorted computations because fusion configuration is order-sensitive.
+  for (auto* computation : module->MakeNonfusionComputationsSorted()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
     reachability_ = HloReachabilityMap::Build(computation_);

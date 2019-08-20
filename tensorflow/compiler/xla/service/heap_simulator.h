@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -165,7 +166,8 @@ class HeapSimulator {
 
   Status RunComputation(const HloComputation& computation,
                         const HloInstructionSequence& instruction_sequence,
-                        const HloAliasAnalysis& alias_analysis);
+                        const HloAliasAnalysis& alias_analysis,
+                        HloLiveRange* live_range);
 
   bool IgnoreBuffer(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
@@ -255,6 +257,22 @@ class HeapAlgorithm {
   // Finish collects the buffer offset assignment results.  Free may only be
   // called once, after the Alloc and Free calls.
   virtual Result Finish() = 0;
+
+  // Heap algorithms can optionally make use of the instruction/computation
+  // schedule. These data structures are guaranteed to be valid while Finish()
+  // is being called.
+  virtual void SetSchedules(
+      const HloInstructionSequence* flattened_instruction_sequence,
+      const absl::flat_hash_map<const HloInstruction*, int64>*
+          instruction_schedule) {
+    flattened_instruction_sequence_ = flattened_instruction_sequence;
+    instruction_schedule_ = instruction_schedule;
+  }
+
+ protected:
+  const HloInstructionSequence* flattened_instruction_sequence_;
+  const absl::flat_hash_map<const HloInstruction*, int64>*
+      instruction_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -370,19 +388,24 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
 
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
-  // each BufferInterval, after calling GetSortedBufferIntervals. The
-  // ChunkCandidate returns the chunk and the final heap size if it chunk is to
-  // be committed. The Finish() method can then call CommitChunk to associate
-  // the chunk with the BufferInterval, if the final heap size is within the
-  // limits.
-  ChunkCandidate FindChunkCandidate(
-      const BufferInterval& buffer_interval) const;
+  // each BufferInterval, after calling GetSortedBufferIntervals. If a
+  // non-negative preferred_offset is provided, FindChunkCandidate attempts
+  // finding a chunk at this offset. The ChunkCandidate returns the chunk and
+  // the final heap size if it chunk is to be committed. The Finish() method can
+  // then call CommitChunk to associate the chunk with the BufferInterval, if
+  // the final heap size is within the limits.
+  ChunkCandidate FindChunkCandidate(const BufferInterval& buffer_interval,
+                                    int64 preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
+  // Adds the buffer and the chunk to the result chunk map.
+  virtual void AddToChunkMap(const HloValue* buffer, Chunk chunk);
+
+  absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
+  Result result_;
 
  private:
   int64 alignment_;
-  Result result_;
   Type type_;
 
   // The current time represented as an integer. It increments by 1 at each
@@ -396,7 +419,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   // returns all three of them.
   absl::flat_hash_set<const HloValue*> GetTransitiveColocations(
       const BufferInterval& interval) const;
-  absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to

@@ -16,7 +16,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -24,7 +23,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -37,8 +38,8 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
-using tensorflow::Status;
 
+// Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> print_function_result_mapping(
     "print-function-result-mapping",
@@ -99,7 +100,6 @@ static int PrintFunctionResultMapping(const std::string &result,
 }
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   // TODO(jpienaar): Revise the command line option parsing here.
   llvm::InitLLVM y(argc, argv);
 
@@ -135,11 +135,22 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
+  mlir::PassManager pm;
+  bool run_quantize =
+      tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
+  mlir::TFL::PassConfig pass_config{
+    emit_builtin_tflite_ops : emit_builtin_tflite_ops,
+    emit_quant_adaptor_ops : emit_quant_adaptor_ops,
+    lower_tensor_list_ops : lower_tensor_list_ops,
+    run_quantize : run_quantize
+  };
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+
   std::string result;
-  auto status = tensorflow::ConvertTFControlFlowToTFLOrFlatbuffer(
+  auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, &result);
+      lower_tensor_list_ops, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   auto output = mlir::openOutputFile(output_file_name);

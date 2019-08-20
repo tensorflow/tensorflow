@@ -93,9 +93,9 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor* input = &c->input(0);
     Tensor* output;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, input->shape(), &output),
-                         done);
-
+    OP_REQUIRES_OK_ASYNC(
+        c, c->forward_input_or_allocate_output({0}, 0, input->shape(), &output),
+        done);
     auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
@@ -112,7 +112,7 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -144,7 +144,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -181,7 +181,7 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 
@@ -215,7 +215,7 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(Name("_NcclBroadcastSend").Device(DEVICE_GPU),
@@ -252,7 +252,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(

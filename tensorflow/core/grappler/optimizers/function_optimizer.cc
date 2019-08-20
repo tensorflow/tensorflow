@@ -146,8 +146,7 @@ class FakeDevice : public Device {
 bool MarkedNoSpecialize(const FunctionDef& fdef) {
   const auto attr = AttrSlice(&fdef.attr());
   bool nospecialize = false;
-  return GetNodeAttr(attr, kNoSpecializeAttr, &nospecialize).ok() &&
-         nospecialize;
+  return TryGetNodeAttr(attr, kNoSpecializeAttr, &nospecialize) && nospecialize;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -784,18 +783,17 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 
-// Checks if boolean attribute is defined and it's value is 'true'.
+// Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && match;
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && match;
 }
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
-  string match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && !match.empty();
+  const string& value = GetNodeAttrString(n->attrs(), attr_name);
+  return !value.empty();
 }
 
 bool LowerUsingSwitchMergeIsOn(const Node* n) {
@@ -816,6 +814,39 @@ bool MarkedForXlaCompilation(const Node* n) {
   return CheckStringAttr(n, kXlaClusterAttr);
 }
 
+const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
+  static const auto* exemption = new absl::flat_hash_set<string>({
+      // LINT.IfChange
+      // Op types that should not run in program order, e.g. because they need
+      // to run asynchronously to avoid deadlock.
+      "CollectiveGather",
+      "CollectiveReduce",
+      "CollectiveBcastSend",
+      "CollectiveBcastRecv",
+      "NcclAllReduce",
+
+      // Legacy random ops.
+      // See details in tensorflow/python/framework/auto_control_deps.py.
+      "RandomUniform",
+      "RandomUniformInt",
+      "RandomStandardNormal",
+      "ParameterizedTruncatedNormal",
+      "TruncatedNormal",
+      "RandomShuffle",
+      "Multinomial",
+      "RandomGamma",
+      "RandomGammaGrad",
+      "RandomPoisson",
+      "RandomPoissonV2",
+      // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
+
+      // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
+      // but it can't generate any observable side-effect.
+      "ReadVariableOp",
+  });
+  return exemption->contains(op);
+}
+
 // Validates that all side effects inside function body will be executed after
 // function inlining. We do it by looking for a path from stateful ops, to one
 // of the output control sources.
@@ -826,19 +857,15 @@ Status ValidateSideEffectsExecution(
     const FunctionBody& fbody, OutputControlSource output_control_source,
     bool has_outgoing_control_edges,
     bool validate_outgoing_control_edge = true) {
-  // ReadVariableOp marked as stateful because it consumes DT_RESOURCE, but it
-  // can't generate any observable side-effect.
-  static constexpr const char* const kReadVariableOp = "ReadVariableOp";
-
   // Find all nodes that can produce side effects in the function body graph. We
   // use 'is_stateful()' bit as an approximation of "has side effects" property.
   std::vector<const Node*> fbody_side_effects;
-  absl::c_copy_if(fbody.graph->nodes(), std::back_inserter(fbody_side_effects),
-                  [](const Node* n) {
-                    return n->op_def().is_stateful() && !n->IsArg() &&
-                           !n->IsRetval() &&
-                           n->type_string() != kReadVariableOp;
-                  });
+  absl::c_copy_if(
+      fbody.graph->nodes(), std::back_inserter(fbody_side_effects),
+      [](const Node* n) {
+        return n->op_def().is_stateful() && !n->IsArg() && !n->IsRetval() &&
+               !IsExemptFromSideEffectsExecutionValidation(n->type_string());
+      });
 
   // When graph executed in TF-2.0 context with automatic control dependencies
   // tracking, absence of outgoing control edge indicates that no one is
@@ -1187,11 +1214,11 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
 
       if (n->IsIfNode()) {
-        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
       } else if (n->type_string() == "Case") {
-        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
-      } else if (n->type_string() == "While") {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
+      } else if (n->IsWhileNode()) {
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
       }
       continue;
     }

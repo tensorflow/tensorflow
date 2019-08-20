@@ -677,8 +677,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
-      !DataTypeIsInteger(dtype)) {
+  if (!TryGetNodeAttr(n->def(), "dtype", &dtype) || !DataTypeIsInteger(dtype)) {
     return false;
   }
 
@@ -695,7 +694,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+  if (!TryGetNodeAttr(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -901,8 +900,12 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   // dependencies on the 'from' cluster and another dependency leads to a
   // merging of the clusters.
   //
-  // TODO(b/117085735): We probably want to handle the reciprocal of this case
-  // where a cluster is producing data for multiple devices.
+  // Example:
+  // Cluster0:GPU0 -> Cluster1:GPU0
+  //               -> Cluster2:GPU1
+  // Even if, Cluster0 and Cluster1 could be combined, it would harm parallelism
+  // of the model by delaying execution of Cluster2 until all of Cluster1 had
+  // finished, rather than them being independent.
   for (const auto& in_id :
        cycles_graph_.Predecessors(cluster_to.cycles_graph_node_id())) {
     const Cluster* cluster_in = GetClusterForCyclesGraphNode(in_id);
@@ -914,6 +917,34 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
       }
       TF_ASSIGN_OR_RETURN(devices_compatible,
                           AreDevicesCompatible(cluster_from, *cluster_in));
+      if (!devices_compatible) {
+        return true;
+      }
+    }
+  }
+
+  // Do the operation described above, also in reverse. Parallelism can also be
+  // ruined by a producer that is used by the same device and other devices.
+  // Prevent clustering with its consumers to allow the other devices to be
+  // unblocked as soon as possible.
+  //
+  // Example:
+  // Cluster0:GPU0 -> Cluster2:GPU0
+  // Cluster1:GPU1 /
+  // Even if, Cluster0 and Cluster2 could be combined, it would harm parallelism
+  // of the model by delaying execution of Cluster0 until all of Cluster1 had
+  // finished, rather than them being independent.
+  for (const auto& out_id :
+       cycles_graph_.Successors(cluster_from.cycles_graph_node_id())) {
+    const Cluster* cluster_out = GetClusterForCyclesGraphNode(out_id);
+    if (cluster_out) {
+      TF_ASSIGN_OR_RETURN(bool devices_compatible,
+                          AreDevicesCompatible(cluster_from, *cluster_out));
+      if (!devices_compatible) {
+        return true;
+      }
+      TF_ASSIGN_OR_RETURN(devices_compatible,
+                          AreDevicesCompatible(cluster_to, *cluster_out));
       if (!devices_compatible) {
         return true;
       }
@@ -935,8 +966,8 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
     return absl::nullopt;
   }
 
-  string scope;
-  if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
+  const string& scope = GetNodeAttrString(node->attrs(), kXlaScopeAttr);
+  if (!scope.empty()) {
     return scope;
   }
 
@@ -970,8 +1001,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     int effective_cluster_size =
         (node->IsIdentity() || node->IsConstant()) ? 0 : 1;
 
-    bool has_functional_control_flow =
-        node->type_string() == "While" || node->IsIfNode();
+    bool has_functional_control_flow = node->IsWhileNode() || node->IsIfNode();
 
     absl::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {
@@ -1000,7 +1030,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     bool is_xla_compile_attr_true = false;
 
     bool xla_compile_attr;
-    if (GetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr).ok()) {
+    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 
@@ -1549,9 +1579,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level_ != OptimizerOptions::OFF);
 
-  if (!should_compile &&
-      registration->autoclustering_policy ==
-          XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+  if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
     static std::once_flag once;
     std::call_once(once, [] {

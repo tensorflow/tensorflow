@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/kernels/image_resize_ops.h"
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -255,6 +258,15 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
 
   ResizeConvolutionDims dims =
       ComputeResizeConvolutionParameters(in_size, out_size, align_corners);
+
+  if (dims.kernel_size[0] * dims.kernel_size[1] >
+      kMax2DKernelSize * kMax2DKernelSize) {
+    BroadcastOptimizationRemark(
+        XlaOptimizationRemark::SLOW_IMAGE_RESIZE_DIMENSIONS,
+        absl::StrFormat("%dx%d", dims.kernel_size[0], dims.kernel_size[1]))
+        .IgnoreError();
+  }
+
   xla::XlaOp output;
 
   // Concatenation and padding below currently assumes num_spatial_dims is 2 to

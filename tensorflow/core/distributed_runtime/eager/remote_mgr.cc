@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace eager {
@@ -32,10 +33,9 @@ void RemoteMgr::AddOperationOutputs(
   }
 }
 
-Status RemoteMgr::GetTensorHandle(
+Status RemoteMgr::GetTensorHandleImpl(
     const RemoteTensorHandleInternal& remote_handle,
     tensorflow::TensorHandle** handle) {
-  tf_shared_lock l(remote_tensor_handle_mu_);
   auto iter = remote_tensor_handle_map_.find(remote_handle);
   if (iter == remote_tensor_handle_map_.end()) {
     return errors::InvalidArgument(
@@ -45,6 +45,28 @@ Status RemoteMgr::GetTensorHandle(
 
   *handle = iter->second;
 
+  return Status::OK();
+}
+
+Status RemoteMgr::GetTensorHandle(
+    const RemoteTensorHandleInternal& remote_handle,
+    tensorflow::TensorHandle** handle) {
+  tf_shared_lock l(remote_tensor_handle_mu_);
+  return GetTensorHandleImpl(remote_handle, handle);
+}
+
+Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
+                                        int64* op_id, int32* output_num) {
+  TF_RETURN_IF_ERROR(
+      handle->RemoteAddress(handle->device(), op_id, output_num));
+  tensorflow::TensorHandle* h;
+  TF_RETURN_IF_ERROR(
+      GetTensorHandleImpl(RemoteTensorHandleInternal(*op_id, *output_num), &h));
+  if (handle != h) {
+    return errors::Internal(
+        "Found two different tensor handles with the same op_id:", *op_id,
+        " and output_num:", *output_num);
+  }
   return Status::OK();
 }
 
@@ -66,22 +88,54 @@ Status RemoteMgr::DeleteTensorHandle(
 
 Status RemoteMgr::SerializeRemoteTensorHandle(TensorHandle* in,
                                               RemoteTensorHandle* out,
-                                              Device* device) {
-  // TODO(fishx): support serializing local tensor handle.
+                                              Device* device,
+                                              const string& device_name) {
   int64 op_id;
   int32 output_num;
-  TF_RETURN_IF_ERROR(in->RemoteAddress(device, &op_id, &output_num));
+  if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
+    mutex_lock l(remote_tensor_handle_mu_);
+    if (!GetRemoteTensorHandle(in, &op_id, &output_num).ok()) {
+      op_id = NextOpId();
+      output_num = 0;
+      in->SetRemoteOpIdAndOutputNumToLocalTensorHandle(op_id, output_num);
+      in->Ref();
+      remote_tensor_handle_map_.emplace(
+          RemoteTensorHandleInternal(op_id, output_num), in);
+    }
+  }
   out->Clear();
   out->set_op_id(op_id);
   out->set_output_num(output_num);
+  out->set_op_device(in->op_device() ? in->op_device()->name() : "");
+  out->set_device(device_name);
+  out->set_dtype(in->dtype);
   return Status::OK();
 }
 
 Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
                                                 TensorHandle** out) {
-  // TODO(fishx): support the case when the remote tensor handle does not exist
-  // in the map.
-  TF_RETURN_IF_ERROR(GetTensorHandle(RemoteTensorHandleInternal(in), out));
+  Device* device;
+  if (parent_->local_device_mgr()->LookupDevice(in.op_device(), &device).ok() ||
+      parent_->local_device_mgr()->LookupDevice(in.device(), &device).ok()) {
+    TF_RETURN_IF_ERROR(GetTensorHandle(RemoteTensorHandleInternal(in), out));
+    (*out)->Ref();
+  } else {
+    // Create a remote TensorHandle for remote tensors which have not been
+    // copied to the local worker yet.
+    const string& device_name =
+        in.op_device().empty() ? in.device() : in.op_device();
+    TF_RETURN_IF_ERROR(
+        parent_->FindDeviceFromName(device_name.c_str(), &device));
+    EagerClient* eager_client;
+    TF_RETURN_IF_ERROR(parent_->GetClient(device, &eager_client));
+    auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
+        in.op_id(), in.output_num(), eager_client, parent_->GetContextId(),
+        parent_);
+    remote_handle_data->ReleaseRemoteTensorHandle();
+    TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
+        std::move(remote_handle_data), in.dtype(), device, parent_, out));
+  }
+
   return Status::OK();
 }
 

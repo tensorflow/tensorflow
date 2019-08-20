@@ -466,8 +466,8 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
 
   // All the node types handled here have their output datatype set in
   // either attribute 'dtype' or 'T'.
-  if (!GetNodeAttr(node, "dtype", type).ok() &&
-      !GetNodeAttr(node, "T", type).ok()) {
+  if (!TryGetNodeAttr(node, "dtype", type) &&
+      !TryGetNodeAttr(node, "T", type)) {
     return errors::InvalidArgument(
         "Could not determine output type for feed node: ", node.name(),
         " of type ", node.op());
@@ -610,7 +610,7 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_device= */ nullptr,
+                /* default_local_device= */ nullptr,
                 session_options_ == nullptr ||
                     session_options_->config.allow_soft_placement(),
                 session_options_ != nullptr &&
@@ -757,8 +757,8 @@ Status GraphExecutionState::OptimizeGraph(
 
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(new_graph),
+                                              optimized_graph->get()));
     // The graph conversion sets the requested device names but not the
     // assigned device names. However, since at this point the graph is placed
     // TF expects an assigned device name for every node. Therefore we copy
@@ -848,7 +848,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
           for (const NodeDef& ndef : fdef->node_def()) {
             if (ndef.op() == "CollectiveReduce" ||
                 ndef.op() == "CollectiveBcastSend" ||
-                ndef.op() == "CollectiveBcastRecv") {
+                ndef.op() == "CollectiveBcastRecv" ||
+                ndef.op() == "CollectiveGather") {
               int32 instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));

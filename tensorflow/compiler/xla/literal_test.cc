@@ -2021,5 +2021,46 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
             LiteralUtil::CreateR2<int32>({{9, 9}, {9, 9}}));
 }
 
+TEST_F(LiteralUtilTest, GetAsComplex128) {
+  complex128 value = {1, 0};
+  Literal c1 = LiteralUtil::CreateR0<complex128>(value);
+  EXPECT_EQ(*c1.GetAsComplex128({}), value);
+  Literal c2 = LiteralUtil::CreateR0<double>(1);
+  EXPECT_EQ(*c2.GetAsComplex128({}), value);
+  complex64 float_value = {1, 0};
+  Literal c4 = LiteralUtil::CreateR0<complex64>(float_value);
+  EXPECT_EQ(*c4.GetAsComplex128({}), value);
+  complex128 other_value = {1, 2};
+  Literal c5 = LiteralUtil::CreateR0<complex128>(other_value);
+  EXPECT_EQ(*c5.GetAsComplex128({}), other_value);
+  Literal c6 = LiteralUtil::CreateR0<int64>(1);
+  EXPECT_FALSE(c6.GetAsComplex128({}).has_value());
+}
+
+TEST_F(LiteralUtilTest, IsEqualAt) {
+  double val_double = 10.0;
+  int val_integral = 10;
+  Literal c1 = LiteralUtil::CreateR0<int>(10);
+  EXPECT_TRUE(c1.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c1.IsEqualAt({}, val_integral));
+  Literal c2 = LiteralUtil::CreateR0<double>(10);
+  EXPECT_TRUE(c2.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c2.IsEqualAt({}, val_integral));
+  complex128 val_complex = {10, 0};
+  EXPECT_TRUE(c2.IsEqualAt({}, val_complex));
+  EXPECT_TRUE(c1.IsEqualAt({}, val_complex));
+  Literal c3 = LiteralUtil::CreateR0<complex128>(val_complex);
+  EXPECT_TRUE(c3.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c3.IsEqualAt({}, val_integral));
+  EXPECT_TRUE(c3.IsEqualAt({}, val_complex));
+  double val_inf = 1. / 0;
+  EXPECT_FALSE(c3.IsEqualAt({}, val_inf));
+  complex128 val_true_complex = {10, 3};
+  complex64 val_smaller_complex = {10, 3};
+  Literal c4 = LiteralUtil::CreateR0<complex128>(val_true_complex);
+  EXPECT_TRUE(c4.IsEqualAt({}, val_true_complex));
+  EXPECT_TRUE(c4.IsEqualAt({}, val_smaller_complex));
+}
+
 }  // namespace
 }  // namespace xla

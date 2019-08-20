@@ -382,7 +382,7 @@ class WishartCholeskyTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "cannot be less than"):
         distributions.WishartCholesky(
             df=2, scale=chol_scale, validate_args=False)
-      with self.assertRaisesRegexp(TypeError, "Argument tril must have dtype"):
+      with self.assertRaisesRegexp(TypeError, "."):
         distributions.WishartCholesky(
             df=4.,
             scale=np.asarray(

@@ -46,7 +46,7 @@ void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
                                          absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
       std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
-  string ptx_str(static_cast<GpuExecutable*>(executable.get())->ptx());
+  string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
   StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());

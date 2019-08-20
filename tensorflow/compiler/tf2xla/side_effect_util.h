@@ -38,6 +38,9 @@ extern const char kXlaTokenArgNodeName[];
 // This node have XlaRecvAtHost/XlaSendFromHost in its associated functions.
 extern const char kXlaHasHostTransferAttrName[];
 
+// This attribute is the replica id for an outside compilation node node.
+extern const char kXlaReplicaIdAttrName[];
+
 // Sets device ordinal attribute for nodes with attribute
 // `kXlaHasHostTransferAttrName`.
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal);

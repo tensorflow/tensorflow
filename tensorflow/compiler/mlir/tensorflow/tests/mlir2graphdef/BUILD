@@ -13,7 +13,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/tensorflow:tf-mlir-translate",
+        "//tensorflow/compiler/mlir:tf-mlir-translate",
         "@llvm//:FileCheck",
     ],
 )

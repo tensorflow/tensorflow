@@ -56,7 +56,7 @@ SingleOpModel::SingleOpModel(Operation&& operation, const std::vector<TensorRef<
     output->tensor = outputs[i];
     graph_.SetProducer(node->id, output->id).IgnoreError();
     TensorFloat32 tensor;
-    tensor.id = output->tensor.ref;
+    tensor.id = output->id;
     tensor.shape = output->tensor.shape;
     outputs_.emplace_back(std::move(tensor));
   }
@@ -79,7 +79,6 @@ Status SingleOpModel::Invoke() {
   options.accumulator_precision = RuntimeOptions::Precision::FP32;
   CompiledModel compiled_model;
   RETURN_IF_ERROR(Compile(graph_, options, &compiled_model));
-  std::string err = "res: ";
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 

@@ -156,12 +156,14 @@ class InterpreterInfo : public GraphInfo {
 
 Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
-                   std::vector<std::unique_ptr<Subgraph>>* subgraphs)
+                   std::vector<std::unique_ptr<Subgraph>>* subgraphs,
+                   ResourceVariableMap* resource_variables)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
-      subgraphs_(subgraphs) {
+      subgraphs_(subgraphs),
+      resource_variables_(resource_variables) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -523,8 +525,11 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
     TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
                       kTfLiteArenaRwPersistent);
     TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-
-    memset(tensor.data.raw, 0, tensor.bytes);
+    int value = 0;
+    if (tensor.type == kTfLiteInt8) {
+      value = tensor.params.zero_point;
+    }
+    memset(tensor.data.raw, value, tensor.bytes);
   }
   return kTfLiteOk;
 }
@@ -1053,6 +1058,9 @@ void Subgraph::SwitchToKernelContext() {
 }
 
 TfLiteStatus Subgraph::UndoAllDelegates() {
+  // Return early if there is nothing to reset to.
+  if (pre_delegation_execution_plan_.empty()) return kTfLiteOk;
+
   // First free all delegate nodes.
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); ++execution_plan_index) {
@@ -1066,6 +1074,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
 
   // Reset execution plan.
   execution_plan_ = pre_delegation_execution_plan_;
+  pre_delegation_execution_plan_.clear();
 
   // Delegate nodes are appended to nodes_and_registration_. Therefore,
   // cleanup nodes_and_registration_ to only contain nodes from
@@ -1096,6 +1105,16 @@ TfLiteStatus Subgraph::RedoAllDelegates() {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::EnsureMemoryAllocations() {
+  if (memory_planner_) {
+    state_ = kStateUninvokable;
+    TF_LITE_ENSURE_OK(&context_, memory_planner_->PlanAllocations());
+  }
+  TF_LITE_ENSURE_OK(&context_, AllocateTensors());
+  TF_LITE_ENSURE_EQ(&context_, state_, kStateInvokable);
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
@@ -1111,6 +1130,9 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
                                      0, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
+      // Make sure that we are in a defined ready state before returning.
+      // Plan and allocate tensors before returning.
+      TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
       ReportError(
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors.");
@@ -1131,33 +1153,41 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   // Setup additional context interface.
   SwitchToDelegateContext();
 
+  auto reset_delegation_if_not_ok = [this](TfLiteStatus status) {
+    if (status != kTfLiteOk) {
+      // This will undo all delegate nodes currently in the graph.
+      TF_LITE_ENSURE_STATUS(this->UndoAllDelegates());
+      // This will call AllocateTensors, thus-reapplying any (successfully
+      // applied) previous delegates.
+      TF_LITE_ENSURE_STATUS(this->EnsureMemoryAllocations());
+      ReportError(
+          "Restored previous execution plan after delegate application "
+          "failure.");
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  };
+
   TfLiteStatus status = delegate->Prepare(&context_, delegate);
 
   // Remove additional context info.
   SwitchToKernelContext();
 
-  TF_LITE_ENSURE_OK(&context_, status);
-
-  // If the memory planner has already been created, we need to execute
-  // planning again to account for the updated graph topology.
-  if (memory_planner_) {
-    state_ = kStateUninvokable;
-    TF_LITE_ENSURE_OK(&context_, memory_planner_->PlanAllocations());
-  }
+  TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));
 
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
-    TF_LITE_ENSURE_OK(&context_, AllocateTensors());
-    TF_LITE_ENSURE_EQ(&context_, state_, kStateInvokable);
+    TF_LITE_ENSURE_STATUS(
+        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;
   } else if (was_invokable_before_delegate) {
     // If the graph was invokable prior to delegate application, flush
     // allocation now to leave it in a consistent state.
-    TF_LITE_ENSURE_OK(&context_, AllocateTensors());
-    TF_LITE_ENSURE_EQ(&context_, state_, kStateInvokable);
+    TF_LITE_ENSURE_STATUS(
+        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
   }
   delegates_applied_.push_back(delegate);
 

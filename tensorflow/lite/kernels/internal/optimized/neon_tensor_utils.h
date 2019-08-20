@@ -59,6 +59,75 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
                    result_stride);
 }
 
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int16_t* output) {
+  PortableMatrixBatchVectorMultiplyAccumulate(
+      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
+      gate_bias, n_batch, n_input, n_output, output_zp, output);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int8_t* output) {
+  PortableMatrixBatchVectorMultiplyAccumulate(
+      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
+      gate_bias, n_batch, n_input, n_output, output_zp, output);
+}
+
+void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
+                    const int32_t* bias, int32_t layer_norm_scale_a,
+                    int32_t layer_norm_scale_b, int32_t variance_limit,
+                    int n_batch, int n_input, int16_t* output) {
+  PortableApplyLayerNorm(input, layer_norm_weights, bias, layer_norm_scale_a,
+                         layer_norm_scale_b, variance_limit, n_batch, n_input,
+                         output);
+}
+
+void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
+                  int16_t* output) {
+  PortableApplySigmoid(input, n_batch, n_input, output);
+}
+
+void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output) {
+  PortableApplyTanh3(input, n_batch, n_input, output);
+}
+
+void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output) {
+  PortableApplyTanh4(input, n_batch, n_input, output);
+}
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int shift, int16_t* output) {
+  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
+}
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int shift, int8_t* output) {
+  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
+}
+
+void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
+              int n_input, int16_t* output) {
+  PortableCwiseAdd(input_1, input_2, n_batch, n_input, output);
+}
+
+void CwiseClipping(int16_t* input, const int16_t clipping_value,
+                   int32_t n_batch, int32_t n_input) {
+  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+}
+
+void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
+                   int32_t n_input) {
+  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+}
+
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
                               int v_size, float* result) {
   NEON_OR_PORTABLE(VectorVectorCwiseProduct, vector1, vector2, v_size, result);
@@ -103,11 +172,6 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector) {
-  PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
-}
-
 void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
   PortableApplySigmoidToVector(vector, v_size, result);
 }
@@ -117,16 +181,8 @@ void ApplyActivationToVector(const float* vector, int v_size,
   PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 
-void CopyVector(const float* vector, int v_size, float* result) {
-  PortableCopyVector(vector, v_size, result);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
-}
-
-void ZeroVector(float* vector, int v_size) {
-  PortableZeroVector(vector, v_size);
 }
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
@@ -150,10 +206,6 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                              float* max_value, float* scaling_factor) {
   NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
                    min_value, max_value, scaling_factor);
-}
-
-void VectorShiftLeft(float* vector, int v_size, float shift_value) {
-  NEON_OR_PORTABLE(VectorShiftLeft, vector, v_size, shift_value);
 }
 
 void ReductionSumVector(const float* input_vector, float* output_vector,

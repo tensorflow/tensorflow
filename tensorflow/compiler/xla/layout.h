@@ -136,6 +136,7 @@ class Layout {
     Equal& MinorToMajorOnly() {
       ignore_tiles_ = true;
       ignore_element_size_ = true;
+      ignore_memory_space_ = true;
       return *this;
     }
 

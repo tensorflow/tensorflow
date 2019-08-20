@@ -3,12 +3,54 @@
 This document will help you start working with TensorFlow Lite for
 Microcontrollers.
 
-## Sample code
+Start by reading through and running our [Examples](#examples).
 
-To get started, you can explore the following example:
+Note: If you need a device to get started, we recommend the
+[SparkFun Edge Powered by TensorFlow](https://www.sparkfun.com/products/15170).
+It was designed in conjunction with the TensorFlow Lite team to offer a flexible
+platform for experimenting with deep learning on microcontrollers.
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech">Micro
-speech example</a>
+For a walkthrough of the code required to run inference, see the *Run inference*
+section below.
+
+## Examples
+
+There are several examples that demonstrate how to build embedded machine
+learning applications with TensorFlow Lite:
+
+### Hello World example
+
+This example is designed to demonstrate the absolute basics of using TensorFlow
+Lite for Microcontrollers. It includes the full end-to-end workflow of training
+a model, converting it for use with TensorFlow Lite, and running inference on a
+microcontroller.
+
+In the example, a model is trained to replicate a sine function. When deployed
+to a microcontroller, its predictions are used to either blink LEDs or control
+an animation.
+
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world">Hello
+World example</a>
+
+The example code includes a Jupyter notebook that demonstrates how the model is
+trained and converted:
+
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb">create_sine_model.ipynb</a>
+
+The process of building and converting a model is also covered in the guide
+[Build and convert models](build_convert.md).
+
+To see how inference is performed, take a look at
+[hello_world_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/hello_world/hello_world_test.cc).
+
+The example is tested on the following platforms:
+
+-   [SparkFun Edge Powered by TensorFlow (Apollo3 Blue)](https://www.sparkfun.com/products/15170)
+-   [Arduino MKRZERO](https://store.arduino.cc/usa/arduino-mkrzero)
+-   [STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
+-   Mac OS X
+
+### Micro Speech example
 
 This example uses a simple
 [audio recognition model](https://www.tensorflow.org/tutorials/sequences/audio_recognition)
@@ -16,48 +58,43 @@ to identify keywords in speech. The sample code captures audio from a device's
 microphones. The model classifies this audio in real time, determining whether
 the word "yes" or "no" has been spoken.
 
-The sample works end-to-end (including audio capture and inference) on the
-following platforms:
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech">Micro
+Speech example</a>
+
+The [Run inference](#run_inference) section walks through the code of the Micro
+Speech sample and explains how it works.
+
+The example is tested on the following platforms:
 
 -   [SparkFun Edge Powered by TensorFlow (Apollo3 Blue)](https://www.sparkfun.com/products/15170)
 -   [STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
 -   Mac OS X
 
-### SparkFun Edge
-
-If you need a device to get started, we recommend the
-[SparkFun Edge Powered by TensorFlow](https://www.sparkfun.com/products/15170).
-It was designed in conjunction with the TensorFlow Lite team to offer a flexible
-platform for experimenting with deep learning on microcontrollers.
-
-To get started using the Edge board, we recommend following
+Note: To get started using the SparkFun Edge board, we recommend following
 [Machine learning on a microcontroller with SparkFun TensorFlow](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow),
-a codelab that introduces you to the development workflow.
+a codelab that introduces you to the development workflow using the Micro Speech
+example.
 
-## Workflow
+### Micro Vision example
 
-Using TensorFlow Lite for Microcontrollers involves four major steps:
+This example shows how you can use TensorFlow Lite to run a 250 kilobyte neural
+network to recognize people in images captured by a camera. It is designed to
+run on systems with small amounts of memory such as microcontrollers and DSPs.
 
-1.  Create or find a model architecture.
-2.  Train a model.
-3.  Convert the model.
-4.  Write code to run inference.
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_vision">Micro
+Vision example</a>
 
-The first three steps are covered in the guide
-[Build and convert models](build_convert.md). The sample code comes with a
-pretrained model, and includes scripts to train a model that recognizes
-different spoken words. Instructions on training are in
-[README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/README.md#creating-your-own-model).
+The example is tested on the following platforms:
 
-In this document, we will focus on the code that will feed processed audio data
-into the model and execute it, resulting in a prediction of which word was
-spoken. This process is called *inference*.
+-   [SparkFun Edge Powered by TensorFlow (Apollo3 Blue)](https://www.sparkfun.com/products/15170)
+-   [STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
+-   Mac OS X
 
 ## Run inference
 
-The sample's
+The following section walks through the [Micro Speech](#micro_speech) sample's
 [main.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/examples/micro_speech/main.cc)
-contains the code that runs inference. We'll now walk through the key parts.
+and explains how it used TensorFlow Lite for Microcontrollers to run inference.
 
 ### Includes
 
@@ -277,48 +314,9 @@ recognition results across a number of frames. This is defined in
 The same technique can be used to improve reliability when processing any
 continuous stream of data.
 
-## Build the sample
-
-The sample contains build scripts that will download all required dependencies
-and compile a binary that can be run on a device.
-
-Note: The build process has been tested on MacOS and Linux, but not on Windows.
-
-To build the sample, take the following steps:
-
-1.  Clone the TensorFlow repository from GitHub to a convenient place.
-
-    ```bash
-    git clone --depth 1 https://github.com/tensorflow/tensorflow.git
-    ```
-
-1.  Enter the directory that was created in the previous step.
-
-    ```bash
-    cd tensorflow
-    ```
-
-1.  If you are using MacOS, run the following command. If you are using Linux,
-    you do not need to do this.
-
-    ```bash
-    PATH=tensorflow/lite/experimental/micro/tools/make/downloads/gcc_embedded/bin/:$PATH
-    ```
-
-1.  To download all of the required dependencies and initiate the build process,
-    issue the following command. You can set `TARGET` depending on which
-    platform you want to build for. Explore
-    [`targets/`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/tools/make/targets)
-    for the current options.
-
-    ```bash
-    make -f tensorflow/lite/experimental/micro/tools/make/Makefile
-    TARGET=sparkfun_edge micro_speech_bin
-    ```
-
 ## Next steps
 
-Once you have built and run the sample, read the following documents:
+Once you have built and run the samples, read the following documents:
 
 *   Learn how to work with models in
     [Build and convert models](build_convert.md).

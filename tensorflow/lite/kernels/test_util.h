@@ -117,10 +117,11 @@ struct TensorData {
 
 class SingleOpResolver : public OpResolver {
  public:
-  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
+  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration,
+                   int version = 1)
       : op_(op), registration_(*registration) {
     registration_.builtin_code = static_cast<int32_t>(op);
-    registration_.version = 1;
+    registration_.version = version;
   }
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override {
@@ -149,6 +150,8 @@ class SingleOpModel {
   void SetApplyDelegate(std::function<void(Interpreter*)> apply_delegate_fn) {
     apply_delegate_fn_ = apply_delegate_fn;
   }
+
+  void ApplyDelegate();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
@@ -254,13 +257,14 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        int num_threads, bool allow_fp32_relax_to_fp16);
+                        int num_threads, bool allow_fp32_relax_to_fp16,
+                        bool apply_delegate = true);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16);
+                        bool allow_fp32_relax_to_fp16, bool apply_delegate);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
@@ -288,9 +292,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -308,9 +314,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -353,6 +361,7 @@ class SingleOpModel {
 
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
+  static bool GetForceUseNnapi();
 
  protected:
   int32_t GetTensorSize(int index) const;

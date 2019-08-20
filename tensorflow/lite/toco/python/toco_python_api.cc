@@ -28,11 +28,10 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
-#else
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #endif
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace toco {
 
@@ -91,7 +90,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   tensorflow::GraphDebugInfo debug_info;
-  if (debug_info_txt_raw) {
+  if (debug_info_txt_raw && debug_info_txt_raw != Py_None) {
     std::string debug_info_txt = ConvertArg(debug_info_txt_raw, &error);
     if (error) {
       PyErr_SetString(PyExc_ValueError, "Input DebugInfo is invalid.");
@@ -125,13 +124,13 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-#if defined(PLATFORM_GOOGLE)
+#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
     status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
         model_flags, toco_flags, debug_info, graph_def,
         &output_file_contents_txt);
 #else
     // TODO(b/124314620): Remove this condition.
-    PyErr_SetString(PyExc_Exception,
+    PyErr_SetString(PyExc_RuntimeError,
                     "This flag is not supported by this version of the "
                     "TFLite converter. This functionality is being "
                     "actively worked on.");

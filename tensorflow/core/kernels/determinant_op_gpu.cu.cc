@@ -95,7 +95,7 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
   // since this cheap O(n) kernel always follows an O(n^3) LU factorization.
   // The main purpose is to avoid having to copy the LU decomposition to
   // host memory.
-  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
     // Initialize sign to (-1)^order.
     const int order = PermutationOrder(n, all_pivots + o_idx * n);
     Scalar prod_sign = order % 2 ? Scalar(-1) : Scalar(1);

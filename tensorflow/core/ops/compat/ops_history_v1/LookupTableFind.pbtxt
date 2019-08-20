@@ -1,0 +1,28 @@
+op {
+  name: "LookupTableFind"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "default_value"
+    type_attr: "Tout"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+}

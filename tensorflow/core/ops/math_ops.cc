@@ -142,10 +142,23 @@ REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, half, float, double, int32, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
+
+REGISTER_OP("_MklBatchMatMulV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 #endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
@@ -1594,6 +1607,16 @@ REGISTER_OP("Cumprod")
     .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CumulativeLogsumexp")
+    .Input("x : T")
+    .Input("axis: Tidx")
+    .Attr("exclusive: bool = false")
+    .Attr("reverse: bool = false")
+    .Output("out: T")
+    .Attr("T: {float16, float32, float64}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 

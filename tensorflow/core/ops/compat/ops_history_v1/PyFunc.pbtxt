@@ -1,0 +1,26 @@
+op {
+  name: "PyFunc"
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  is_stateful: true
+}

@@ -259,6 +259,32 @@ TEST(NNAPIDelegate, StatefulDelegateWithAcceleratorName) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
+// Sanity check for the state-ful NNAPI delegate with invalid accelerator_name
+// specified.
+TEST(NNAPIDelegate, StatefulDelegateWithInvalidAcceleratorName) {
+  if (!NnApiImplementation()->ANeuralNetworksDevice_getName) {
+    GTEST_SKIP();
+  }
+  testing::internal::CaptureStderr();
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.accelerator_name = "foo";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              testing::HasSubstr(
+                  "Could not find the specified NNAPI accelerator: foo"));
+
+  // Execution should fall back to the default CPU path.
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
 // Sanity check for the state-ful NNAPI delegate with compilation caching
 // enabled.
 TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
@@ -4422,6 +4448,35 @@ class BaseReduceOpModel : public SingleOpModelWithNNAPI {
   int axis_;
   int output_;
 };
+
+// Model for the tests case where axis is a dynamic tensor.
+class MeanOpDynamicModel : public BaseReduceOpModel {
+ public:
+  MeanOpDynamicModel(const TensorData& input, const TensorData& output,
+                     const TensorData& axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddInput(axis);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_MEAN, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+TEST(DynamicFloatMeanOpTest, NotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MeanOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                       {TensorType_FLOAT32, {2}}, {TensorType_INT32, {4}},
+                       false);
+  std::vector<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({12, 13})));
+}
 
 // Model for the tests case where axis is a const tensor.
 class MeanOpConstModel : public BaseReduceOpModel {

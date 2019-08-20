@@ -62,7 +62,7 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
   """
 
   # Start a new TensorFlow session.
-  sess = tf.InteractiveSession()
+  sess = tf.compat.v1.InteractiveSession()
 
   model_settings = models.prepare_model_settings(
       0, sample_rate, clip_duration_ms, window_size_ms, window_stride_ms,
@@ -124,12 +124,12 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
 
 def main(_):
   # We want to see all the logging messages.
-  tf.logging.set_verbosity(tf.logging.INFO)
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
   wav_to_features(FLAGS.sample_rate, FLAGS.clip_duration_ms,
                   FLAGS.window_size_ms, FLAGS.window_stride_ms,
                   FLAGS.feature_bin_count, FLAGS.quantize, FLAGS.preprocess,
                   FLAGS.input_wav, FLAGS.output_c_file)
-  tf.logging.info('Wrote to "%s"' % (FLAGS.output_c_file))
+  tf.compat.v1.logging.info('Wrote to "%s"' % (FLAGS.output_c_file))
 
 
 if __name__ == '__main__':
@@ -182,4 +182,4 @@ if __name__ == '__main__':
       help='Where to save the generated C source file containing the features')
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

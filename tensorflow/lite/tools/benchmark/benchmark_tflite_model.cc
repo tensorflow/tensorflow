@@ -23,12 +23,17 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#endif
+
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
@@ -55,9 +60,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class ProfilingListener : public BenchmarkListener {
  public:
   explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter),
-        profiler_(max_num_entries),
-        has_profiles_(false) {
+      : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
   }
@@ -72,7 +75,6 @@ class ProfilingListener : public BenchmarkListener {
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
   profiling::ProfileSummarizer summarizer_;
-  bool has_profiles_;
 };
 
 // Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
@@ -91,7 +93,7 @@ void ProfilingListener::OnSingleRunStart(RunType run_type) {
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (has_profiles_) {
+  if (summarizer_.HasProfiles()) {
     TFLITE_LOG(INFO) << summarizer_.GetOutputString();
   }
 }
@@ -99,7 +101,6 @@ void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  has_profiles_ = !profile_events.empty();
   summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
@@ -119,37 +120,11 @@ void GemmlowpProfilingListener::OnBenchmarkEnd(
 }
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::istringstream input(str);
   std::vector<std::string> results;
-  std::string item;
-  while (std::getline(input, item, delim)) {
-    results.push_back(item);
+  if (!util::SplitAndParse(str, delim, &results)) {
+    results.clear();
   }
   return results;
-}
-
-template <typename T>
-bool SplitAndParse(const std::string& str, char delim, std::vector<T>* values) {
-  std::istringstream input(str);
-  bool first = true;
-  while (!input.eof()) {
-    if (!first) {
-      char c;
-      input >> c;
-      if (c != delim) {
-        return false;
-      }
-    } else {
-      first = false;
-    }
-    T val;
-    input >> val;
-    if (!input.eof() && !input.good()) {
-      return false;
-    }
-    values->push_back(val);
-  }
-  return true;
 }
 
 template <typename T>
@@ -173,9 +148,10 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
   }
 }
 
-bool PopulateInputLayerInfo(
+TfLiteStatus PopulateInputLayerInfo(
     const string& names_string, const string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
+  info->clear();
   std::vector<std::string> names = Split(names_string, ',');
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
@@ -188,7 +164,7 @@ bool PopulateInputLayerInfo(
                       << names.size() << " items)."
                       << " For example --input_layer=input1,input2"
                       << " --input_layer_shape=1,224,224,4:1,20";
-    return false;
+    return kTfLiteError;
   }
 
   for (int i = 0; i < names.size(); ++i) {
@@ -197,19 +173,19 @@ bool PopulateInputLayerInfo(
 
     input.name = names[i];
 
-    TFLITE_BENCHMARK_CHECK(SplitAndParse(shapes[i], ',', &input.shape))
+    TFLITE_BENCHMARK_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
     for (int dim : input.shape) {
       if (dim == -1) {
         TFLITE_LOG(ERROR)
             << "Any unknown sizes in the shapes (-1's) must be replaced"
             << " with the size you want to benchmark with.";
-        return false;
+        return kTfLiteError;
       }
     }
   }
 
-  return true;
+  return kTfLiteOk;
 }
 
 std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
@@ -233,8 +209,19 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("nnapi_accelerator_name",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
+#if defined(__ANDROID__)
+  default_params.AddParam("gpu_precision_loss_allowed",
+                          BenchmarkParam::Create<bool>(true));
+  default_params.AddParam(
+      "gpu_gl_object_type",
+      BenchmarkParam::Create<int32_t>(TFLITE_GL_OBJECT_TYPE_FASTEST));
+#endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("require_full_delegation",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam(
       "enable_op_profiling",
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
@@ -265,17 +252,30 @@ BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
-      CreateFlag<std::string>("graph", &params_, "graph file name"),
-      CreateFlag<std::string>("input_layer", &params_, "input layer names"),
-      CreateFlag<std::string>("input_layer_shape", &params_,
-                              "input layer shape"),
-      CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
-      CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
-      CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-      CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
-      CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
-      CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries")};
+    CreateFlag<std::string>("graph", &params_, "graph file name"),
+    CreateFlag<std::string>("input_layer", &params_, "input layer names"),
+    CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
+    CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
+    CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
+    CreateFlag<std::string>(
+        "nnapi_accelerator_name", &params_,
+        "the name of the nnapi accelerator to use (requires Android Q+)"),
+    CreateFlag<bool>("use_gpu", &params_, "use gpu"),
+#if defined(__ANDROID__)
+    CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
+                     "Allow to process computation in lower precision than "
+                     "FP32 in GPU. By default, it's enabled."),
+    CreateFlag<int32_t>("gpu_gl_object_type", &params_,
+                        "The preferred GL object type to represent tensors in "
+                        "GPU. By default, it's TFLITE_GL_OBJECT_TYPE_FASTEST"),
+#endif
+    CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
+    CreateFlag<bool>("require_full_delegation", &params_,
+                     "require delegate to run the entire graph"),
+    CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
+    CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
+                        "max profiling buffer entries")
+  };
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
   return flags;
@@ -291,9 +291,21 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
+  if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
+    TFLITE_LOG(INFO) << "nnapi accelerator name: ["
+                     << params_.Get<string>("nnapi_accelerator_name") << "]";
+  }
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
+#if defined(__ANDROID__)
+  TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
+                   << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
+  TFLITE_LOG(INFO) << "Preferred GL object type in gpu : ["
+                   << params_.Get<int32_t>("gpu_gl_object_type") << "]";
+#endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
+  TFLITE_LOG(INFO) << "Require full delegation : ["
+                   << params_.Get<bool>("require_full_delegation") << "]";
   TFLITE_LOG(INFO) << "Enable op profiling: ["
                    << params_.Get<bool>("enable_op_profiling") << "]";
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
@@ -301,35 +313,35 @@ void BenchmarkTfLiteModel::LogParams() {
                    << "]";
 }
 
-bool BenchmarkTfLiteModel::ValidateParams() {
+TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
-    return false;
+    return kTfLiteError;
   }
   return PopulateInputLayerInfo(params_.Get<std::string>("input_layer"),
                                 params_.Get<std::string>("input_layer_shape"),
-                                &inputs);
+                                &inputs_);
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
-  TFLITE_BENCHMARK_CHECK(interpreter);
+  TFLITE_BENCHMARK_CHECK(interpreter_);
   uint64_t total_input_bytes = 0;
-  for (int input : interpreter->inputs()) {
-    auto* t = interpreter->tensor(input);
+  for (int input : interpreter_->inputs()) {
+    auto* t = interpreter_->tensor(input);
     total_input_bytes += t->bytes;
   }
   return total_input_bytes;
 }
 
-void BenchmarkTfLiteModel::PrepareInputData() {
-  auto interpreter_inputs = interpreter->inputs();
+TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
+  auto interpreter_inputs = interpreter_->inputs();
   const size_t input_size = interpreter_inputs.size();
   CleanUp();
 
   for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter->tensor(i);
+    TfLiteTensor* t = interpreter_->tensor(i);
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
     for (int i = 0; i < sizes.size(); ++i) {
@@ -341,6 +353,12 @@ void BenchmarkTfLiteModel::PrepareInputData() {
       t_data.data.raw = new char[t_data.bytes];
       FillRandomValue<float>(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
+      });
+    } else if (t->type == kTfLiteInt64) {
+      t_data.bytes = sizeof(int64_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int64_t>(t_data.data.i64, num_elements, []() {
+        return static_cast<int64_t>(rand()) % 100;
       });
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
@@ -371,33 +389,41 @@ void BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;
+      return kTfLiteError;
     }
     inputs_data_.push_back(t_data);
   }
+  return kTfLiteOk;
 }
 
-void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
-  auto interpreter_inputs = interpreter->inputs();
+TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
+  auto interpreter_inputs = interpreter_->inputs();
   // Set the values of the input tensors from inputs_data_.
   for (int j = 0; j < interpreter_inputs.size(); ++j) {
     int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter->tensor(i);
+    TfLiteTensor* t = interpreter_->tensor(i);
     if (t->type == kTfLiteFloat32) {
-      std::memcpy(interpreter->typed_tensor<float>(i), inputs_data_[j].data.f,
+      std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
                   inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt64) {
+      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
+                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt32) {
-      std::memcpy(interpreter->typed_tensor<int32_t>(i),
+      std::memcpy(interpreter_->typed_tensor<int32_t>(i),
                   inputs_data_[j].data.i32, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt64) {
+      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
+                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt16) {
-      std::memcpy(interpreter->typed_tensor<int16_t>(i),
+      std::memcpy(interpreter_->typed_tensor<int16_t>(i),
                   inputs_data_[j].data.i16, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteUInt8) {
-      std::memcpy(interpreter->typed_tensor<uint8_t>(i),
+      std::memcpy(interpreter_->typed_tensor<uint8_t>(i),
                   inputs_data_[j].data.uint8, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt8) {
-      std::memcpy(interpreter->typed_tensor<int8_t>(i),
+      std::memcpy(interpreter_->typed_tensor<int8_t>(i),
                   inputs_data_[j].data.int8, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteString) {
       tflite::DynamicBuffer buffer;
@@ -405,61 +431,86 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
       FillRandomString(&buffer, sizes, []() {
         return "we're have some friends over saturday to hang out in the yard";
       });
-      buffer.WriteToTensor(interpreter->tensor(i), /*new_shape=*/nullptr);
+      buffer.WriteToTensor(interpreter_->tensor(i), /*new_shape=*/nullptr);
     } else {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
                         << " of type " << t->type;
+      return kTfLiteError;
     }
   }
+
+  return kTfLiteOk;
 }
 
-void BenchmarkTfLiteModel::Init() {
+TfLiteStatus BenchmarkTfLiteModel::Init() {
   std::string graph = params_.Get<std::string>("graph");
-  model = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model) {
-    TFLITE_LOG(FATAL) << "Failed to mmap model " << graph;
+  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  if (!model_) {
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
-  model->error_reporter();
+  model_->error_reporter();
   TFLITE_LOG(INFO) << "resolved reporter";
 
   auto resolver = GetOpResolver();
 
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
-  tflite::InterpreterBuilder(*model, *resolver)(&interpreter, num_threads);
-  if (!interpreter) {
-    TFLITE_LOG(FATAL) << "Failed to construct interpreter";
+  tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
+  if (!interpreter_) {
+    TFLITE_LOG(ERROR) << "Failed to construct interpreter";
+    return kTfLiteError;
   }
 
-  interpreter->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
+  interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
 
   delegates_ = GetDelegates();
   for (const auto& delegate : delegates_) {
-    if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
+    if (interpreter_->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      TFLITE_LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+      TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      return kTfLiteError;
     } else {
+      if (params_.Get<bool>("require_full_delegation")) {
+        bool fully_delegated = true;
+        if (interpreter_->execution_plan().size() != 1) {
+          fully_delegated = false;
+        } else {
+          int first_node_id = interpreter_->execution_plan()[0];
+          const TfLiteNode first_node =
+              interpreter_->node_and_registration(first_node_id)->first;
+          if (delegate.second.get() != first_node.delegate) {
+            fully_delegated = false;
+          }
+        }
+
+        if (!fully_delegated) {
+          TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+          return kTfLiteError;
+        }
+      }
+
       TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
 
-  interpreter->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
+  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  auto interpreter_inputs = interpreter->inputs();
+  auto interpreter_inputs = interpreter_->inputs();
 
-  if (!inputs.empty()) {
-    TFLITE_BENCHMARK_CHECK_EQ(inputs.size(), interpreter_inputs.size())
+  if (!inputs_.empty()) {
+    TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
         << "Inputs mismatch: Model inputs #:" << interpreter_inputs.size()
-        << " expected: " << inputs.size();
+        << " expected: " << inputs_.size();
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
   // TODO(ycling): Consider to make this an error again when the new converter
   // create tensors with consistent naming.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter->tensor(i);
+    TfLiteTensor* t = interpreter_->tensor(i);
     if (input.name != t->name) {
       TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
                        << " but flags call it " << input.name;
@@ -467,23 +518,24 @@ void BenchmarkTfLiteModel::Init() {
   }
 
   // Resize all non-string tensors.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter->tensor(i);
+    TfLiteTensor* t = interpreter_->tensor(i);
     if (t->type != kTfLiteString) {
-      interpreter->ResizeInputTensor(i, input.shape);
+      interpreter_->ResizeInputTensor(i, input.shape);
     }
   }
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
+  if (interpreter_->AllocateTensors() != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
   }
 
   // Install profilers if necessary.
   if (params_.Get<bool>("enable_op_profiling")) {
     profiling_listener_.reset(new ProfilingListener(
-        interpreter.get(),
+        interpreter_.get(),
         params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
@@ -491,14 +543,50 @@ void BenchmarkTfLiteModel::Init() {
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());
 #endif
+
+  return kTfLiteOk;
 }
+
+#if defined(__ANDROID__)
+bool IsValidGLObjectTypeInGPU(int32_t type) {
+  if (type < TFLITE_GL_OBJECT_TYPE_FASTEST ||
+      type > TFLITE_GL_OBJECT_TYPE_BUFFER) {
+    TFLITE_LOG(WARN) << "The specified GL object type in GPU is invalid: "
+                     << type;
+    return false;
+  }
+  return true;
+}
+#endif
 
 BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     const {
   TfLiteDelegatePtrMap delegates;
   if (params_.Get<bool>("use_gpu")) {
+#if defined(__ANDROID__)
+    TfLiteGpuDelegateOptions gpu_opts = TfLiteGpuDelegateOptionsDefault();
+    gpu_opts.metadata =
+        model_ ? TfLiteGpuDelegateGetModelMetadata(model_->GetModel())
+               : nullptr;
+    gpu_opts.compile_options.precision_loss_allowed =
+        params_.Get<bool>("gpu_precision_loss_allowed") ? 1 : 0;
+    int32_t gl_obj_type = params_.Get<int32_t>("gpu_gl_object_type");
+    // We overwrite the gl object type to the recommended value if the specified
+    // isn't valid.
+    if (!IsValidGLObjectTypeInGPU(gl_obj_type)) {
+      gl_obj_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
+    }
+    gpu_opts.compile_options.preferred_gl_object_type = gl_obj_type;
+    gpu_opts.compile_options.dynamic_batch_enabled = 0;
     Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model.get());
+        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+#else
+    TFLITE_LOG(WARN) << "The GPU delegate compile options aren't supported to "
+                        "be benchmarked on non-Android platforms.";
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateGPUDelegate(model_.get());
+#endif
+
     if (!delegate) {
       TFLITE_LOG(WARN) << "GPU acceleration is unsupported on this platform.";
     } else {
@@ -506,12 +594,24 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     }
   }
   if (params_.Get<bool>("use_nnapi")) {
-    Interpreter::TfLiteDelegatePtr delegate = evaluation::CreateNNAPIDelegate();
+    StatefulNnApiDelegate::Options options;
+    std::string accelerator_name =
+        params_.Get<std::string>("nnapi_accelerator_name");
+    if (!accelerator_name.empty()) {
+      options.accelerator_name = accelerator_name.c_str();
+    }
+    Interpreter::TfLiteDelegatePtr delegate =
+        evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
       TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
+  } else if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
+    TFLITE_LOG(WARN)
+        << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
+        << params_.Get<std::string>("nnapi_accelerator_name")
+        << ") to be used.";
   }
   return delegates;
 }
@@ -529,11 +629,7 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 
-void BenchmarkTfLiteModel::RunImpl() {
-  if (interpreter->Invoke() != kTfLiteOk) {
-    TFLITE_LOG(FATAL) << "Failed to invoke!";
-  }
-}
+TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }
 
 }  // namespace benchmark
 }  // namespace tflite
