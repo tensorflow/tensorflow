@@ -590,7 +590,7 @@ int CuptiTracer::NumGpus() {
     if (cuDeviceGetCount(&gpu_count) != CUDA_SUCCESS) {
       return 0;
     }
-    LOG(INFO) << "xprof found " << gpu_count << " GPUs";
+    LOG(INFO) << "Profiler found " << gpu_count << " GPUs";
     return gpu_count;
   }();
   return num_gpus;
@@ -709,7 +709,8 @@ Status CuptiTracer::DisableActivityTracing() {
 
 uint64 CuptiTracer::GetTimestamp() {
   uint64_t tsc;
-  if (cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
+  if (cupti_interface_ &&
+      cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
     return tsc;
   }
   // Return 0 on error. If an activity timestamp is 0, the activity will be
