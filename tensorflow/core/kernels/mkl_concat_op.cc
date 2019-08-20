@@ -466,7 +466,7 @@ class MklConcatOp : public OpKernel {
             dst_md = MklDnnData<T>::CreateBlockedMemDesc(
                 dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
           } else {
-          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+            dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
                                 mkl_common_format);
           }
         } else if (dst_dims.size() == 2 &&
