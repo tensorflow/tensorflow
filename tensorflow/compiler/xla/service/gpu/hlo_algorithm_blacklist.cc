@@ -23,6 +23,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+constexpr absl::string_view kDefaultBlacklist = R"pb(
+  entries {
+    hlo: "(f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(f16[256,224,224,4]{3,2,1,0}, f16[7,7,4,64]{2,1,0,3}), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convForward\", backend_config=\"{conv_result_scale:1}\""
+    cc { major: 7 }
+    cudnn_version { major: 7 minor: 6 patch: 2 }
+    blas_version: "10201"
+    algos { id: 1 tensor_ops: true }
+  }
+  entries {
+    hlo: "(f16[7,7,4,64]{2,1,0,3}, u8[0]{0}) custom-call(f16[256,224,224,4]{3,2,1,0}, f16[256,112,112,64]{3,2,1,0}), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target=\"__cudnn$convBackwardFilter\", backend_config=\"{conv_result_scale:1}\""
+    cc { major: 7 }
+    cudnn_version { major: 7 minor: 6 patch: 2 }
+    blas_version: "10201"
+    algos { id: 1 tensor_ops: true }
+  })pb";
+
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
 GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
                              tensorflow::CudnnVersion cudnn_version,
@@ -42,6 +58,9 @@ GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
     if (!file_path.empty()) {
       TF_CHECK_OK(tensorflow::ReadTextProto(tensorflow::Env::Default(),
                                             file_path, &proto));
+    } else {
+      CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+          std::string(kDefaultBlacklist), &proto));
     }
     for (const auto& entry : proto.entries()) {
       for (const auto& algo : entry.algos()) {
