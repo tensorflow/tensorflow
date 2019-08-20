@@ -2581,10 +2581,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    weak_variables = weakref.WeakSet(m.variables)
-    self.assertLen(weak_variables, 2)
+    variable_refs = list({v.experimental_ref() for v in m.variables})
+    self.assertLen(variable_refs, 2)
     del m
-    self.assertEqual([], list(weak_variables))
+
+    # Verifying if the variables are only referenced from variable_refs.
+    # We expect the reference counter to be 1, but `sys.getrefcount` reports
+    # one higher reference counter because a temporary is created when we call
+    # sys.getrefcount().  Hence check if the number returned is 2.
+    # https://docs.python.org/3/library/sys.html#sys.getrefcount
+    self.assertEqual(sys.getrefcount(variable_refs[0].deref()), 2)
+    self.assertEqual(sys.getrefcount(variable_refs[1].deref()), 2)
 
   def testExecutorType(self):
     @function.defun

@@ -3958,7 +3958,7 @@ def gather(params,
       return _batch_gather(params, indices, batch_dims, axis)
   if axis is None:
     axis = batch_dims
-  if axis != 0:
+  if tensor_util.constant_value(axis) != 0:
     # Note that we do a sparse_read here to avoid snapshotting the entire
     # resource variable and doing a gather, which can be inefficient and lead to
     # subtle race conditions. TODO(apassos) implement axis != 0 on sparse_read

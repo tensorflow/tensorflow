@@ -365,7 +365,7 @@ class Tensor(_TensorLike):
   }
 
   # Whether to allow hashing or numpy-style equality
-  _USE_EQUALITY = False
+  _USE_EQUALITY = tf2.enabled()
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -4519,9 +4519,13 @@ class Graph(object):
       return self._control_inputs_val
 
     def add_op(self, op):
+      if isinstance(op, Tensor):
+        op = op.experimental_ref()
       self._seen_nodes.add(op)
 
     def op_in_group(self, op):
+      if isinstance(op, Tensor):
+        op = op.experimental_ref()
       return op in self._seen_nodes
 
   def _push_control_dependencies_controller(self, controller):
