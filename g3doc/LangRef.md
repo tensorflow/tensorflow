@@ -940,8 +940,8 @@ function ::= `func` function-signature function-attributes? function-body?
 
 function-signature ::= symbol-ref-id `(` argument-list `)`
                        (`->` function-result-type)?
-argument-list ::= named-argument (`,` named-argument)* | /*empty*/
-argument-list ::= type attribute-dict? (`,` type attribute-dict?)* | /*empty*/
+argument-list ::= (named-argument (`,` named-argument)*) | /*empty*/
+argument-list ::= (type attribute-dict? (`,` type attribute-dict?)*) | /*empty*/
 named-argument ::= ssa-id `:` type attribute-dict?
 
 function-attributes ::= `attributes` attribute-dict
@@ -1003,7 +1003,7 @@ it would have been legal to use them as operands to the enclosing operation.
 Example:
 
 ```mlir {.mlir}
-func $@accelerator_compute(i64, i1) -> i64 {
+func @accelerator_compute(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
   cond_br %cond, ^bb1, ^bb2
 
@@ -1436,7 +1436,7 @@ Syntax:
 ``` {.ebnf}
 operation ::= `dma_start` ssa-use`[`ssa-use-list`]` `,`
                ssa-use`[`ssa-use-list`]` `,` ssa-use `,`
-               ssa-use`[`ssa-use-list`]` (`,` ssa-use, ssa-use)?
+               ssa-use`[`ssa-use-list`]` (`,` ssa-use `,` ssa-use)?
               `:` memref-type `,` memref-type `,` memref-type
 ```
 
@@ -1468,8 +1468,8 @@ Example:
 %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
 %idx = constant 0 : index
 dma_start %src[%i, %j], %dst[%k, %l], %size, %tag[%idx] :
-     memref<40 x 8 x vector<16xf32>, (d0) -> (d0), 0>,
-     memref<2 x 4 x vector<16xf32>, (d0) -> (d0), 2>,
+     memref<40 x 8 x vector<16xf32>, (d0, d1) -> (d0, d1), 0>,
+     memref<2 x 4 x vector<16xf32>, (d0, d1) -> (d0, d1), 2>,
      memref<1 x i32>, (d0) -> (d0), 4>
 ```
 
@@ -1490,7 +1490,7 @@ load/store indices.
 Example:
 
 ```mlir {.mlir}
-dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
+dma_wait %tag[%idx], %size : memref<1 x i32, (d0) -> (d0), 4>
 ```
 
 #### 'extract_element' operation
@@ -1644,6 +1644,12 @@ supported by HLO and LLVM.
 
 #### 'addi' operation
 
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `addi` ssa-use `,` ssa-use `:` type
+```
+
 Examples:
 
 ```mlir {.mlir}
@@ -1663,6 +1669,12 @@ whose element type is integer, or a tensor of integers. It has no standard
 attributes.
 
 #### 'addf' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `addf` ssa-use `,` ssa-use `:` type
+```
 
 Examples:
 
@@ -1694,7 +1706,7 @@ Bitwise integer and.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `and` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `and` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -1717,6 +1729,12 @@ attributes.
 
 #### 'cmpi' operation
 
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `cmpi` string-literal `,` ssa-id `,` ssa-id `:` type
+```
+
 Examples:
 
 ```mlir {.mlir}
@@ -1731,7 +1749,7 @@ Examples:
 
 // Generic form of the same operation.
 %x = "std.cmpi"(%lhs, %rhs){predicate: 0}
-    : (vector<4xi64>, vector<4xi64> -> vector<4xi1>
+    : (vector<4xi64>, vector<4xi64>) -> vector<4xi1>
 ```
 
 The `cmpi` operation is a generic comparison for integer-like types. Its two
@@ -1826,7 +1844,7 @@ value divided by -1) is TBD; do NOT assume any specific behavior.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `divis` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `divis` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -1859,7 +1877,7 @@ behavior.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `diviu` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `diviu` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -1905,6 +1923,12 @@ operation is invalid if converting to a mismatching constant dimension.
 
 #### 'mulf' operation
 
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `mulf` ssa-use `,` ssa-use `:` type
+```
+
 Examples:
 
 ```mlir {.mlir}
@@ -1935,7 +1959,7 @@ Bitwise integer or.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `or` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `or` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -1967,7 +1991,7 @@ behavior.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `remis` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `remis` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -1999,7 +2023,7 @@ behavior.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `remiu` ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `remiu` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
@@ -2025,7 +2049,7 @@ standard attributes.
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `select` ssa-use, ssa-use, ssa-use `:` type
+operation ::= ssa-id `=` `select` ssa-use `,` ssa-use `,` ssa-use `:` type
 ```
 
 Examples:
