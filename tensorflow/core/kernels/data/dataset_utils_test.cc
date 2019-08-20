@@ -52,7 +52,7 @@ TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   VariantTensorDataReader reader(&data);
   int64 val_int64;
-  string val_string;
+  tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
             reader.ReadScalar("NonExistentKey", &val_int64).code());

@@ -91,3 +91,7 @@ opt<bool> convert_legacy_fed_inputs(
     llvm::cl::desc(
         "Eliminate LegacyFedInput nodes by replacing them with Placeholder "),
     llvm::cl::init(false));
+
+opt<bool> graph_as_function("tf-graph-as-function",
+                            llvm::cl::desc("Treat main graph as a function "),
+                            llvm::cl::init(false));

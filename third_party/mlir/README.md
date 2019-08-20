@@ -96,7 +96,7 @@ git clone https://github.com/llvm/llvm-project.git
 git clone https://github.com/tensorflow/mlir llvm-project/llvm/projects/mlir
 mkdir llvm-project/build
 cd llvm-project/build
-cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TARGETS_TO_BUILD="host"
+cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_TARGETS_TO_BUILD="host"
 cmake --build . --target check-mlir
 ```
 
@@ -104,13 +104,13 @@ To compile and test on Windows using Visual Studio 2017:
 
 ```bat
 REM In shell with Visual Studio environment set up, e.g., with command such as
-REM   <visual-studio-install>\Auxiliary\Build\vcvarsall.bat" x64
+REM   $visual-studio-install\Auxiliary\Build\vcvarsall.bat" x64
 REM invoked.
 git clone https://github.com/llvm/llvm-project.git
 git clone https://github.com/tensorflow/mlir llvm-project\llvm\projects\mlir
 mkdir llvm-project\build
 cd llvm-project\build
-cmake ..\llvm -G "Visual Studio 15 2017 Win64" -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TARGETS_TO_BUILD="host" -DCMAKE_BUILD_TYPE=Release -Thost=x64
+cmake ..\llvm -G "Visual Studio 15 2017 Win64" -DLLVM_BUILD_EXAMPLES=ON -DLLVM_TARGETS_TO_BUILD="host" -DCMAKE_BUILD_TYPE=Release -Thost=x64
 cmake --build . --target check-mlir
 ```
 

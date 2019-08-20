@@ -118,7 +118,7 @@ def word2vec_basic(log_dir):
   #   This is the original text but words are replaced by their codes
   # count - map of words(strings) to count of occurrences
   # dictionary - map of words(strings) to their codes(integers)
-  # reverse_dictionary - maps codes(integers) to words(strings)
+  # reverse_dictionary - map of codes(integers) to words(strings)
   data, count, unused_dictionary, reverse_dictionary = build_dataset(
       vocabulary, vocabulary_size)
   del vocabulary  # Hint to reduce memory.
@@ -204,8 +204,9 @@ def word2vec_basic(log_dir):
     # Compute the average NCE loss for the batch.
     # tf.nce_loss automatically draws a new sample of the negative labels each
     # time we evaluate the loss.
-    # Explanation of the meaning of NCE loss:
+    # Explanation of the meaning of NCE loss and why choosing NCE over tf.nn.sampled_softmax_loss:
     #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
+    #   http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf
     with tf.name_scope('loss'):
       loss = tf.reduce_mean(
           tf.nn.nce_loss(

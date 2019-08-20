@@ -249,13 +249,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   }
 }
 
-void PortableVectorBatchVectorAssign(const float* vector, int v_size,
-                                     int n_batch, float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    memcpy(batch_vector + b * v_size, vector, v_size * sizeof(float));
-  }
-}
-
 void PortableApplySigmoidToVector(const float* vector, int v_size,
                                   float* result) {
   auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);
@@ -273,18 +266,10 @@ void PortableApplyActivationToVector(const float* vector, int v_size,
   }
 }
 
-void PortableCopyVector(const float* vector, int v_size, float* result) {
-  memcpy(result, vector, v_size * sizeof(float));
-}
-
 void PortableSub1Vector(const float* vector, int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ = 1.0f - *vector++;
   }
-}
-
-void PortableZeroVector(float* vector, int v_size) {
-  memset(vector, 0, v_size * sizeof(float));
 }
 
 void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,

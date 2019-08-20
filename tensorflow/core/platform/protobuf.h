@@ -79,6 +79,17 @@ inline void SetProtobufStringSwapAllowed(string* src, Cord* dest) {
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
+inline bool SerializeToTString(const protobuf::MessageLite& proto,
+                               tstring* output) {
+#ifdef USE_TSTRING
+  size_t size = proto.ByteSizeLong();
+  output->resize_uninitialized(size);
+  return proto.SerializeToArray(output->data(), static_cast<int>(size));
+#else   // USE_TSTRING
+  return proto.SerializeToString(output);
+#endif  // USE_TSTRING
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_

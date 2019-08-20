@@ -28,6 +28,32 @@ using namespace mlir;
 using namespace mlir::detail;
 
 //===----------------------------------------------------------------------===//
+// Type
+//===----------------------------------------------------------------------===//
+
+bool Type::isBF16() { return getKind() == StandardTypes::BF16; }
+bool Type::isF16() { return getKind() == StandardTypes::F16; }
+bool Type::isF32() { return getKind() == StandardTypes::F32; }
+bool Type::isF64() { return getKind() == StandardTypes::F64; }
+
+bool Type::isIndex() { return isa<IndexType>(); }
+
+/// Return true if this is an integer type with the specified width.
+bool Type::isInteger(unsigned width) {
+  if (auto intTy = dyn_cast<IntegerType>())
+    return intTy.getWidth() == width;
+  return false;
+}
+
+bool Type::isIntOrIndex() { return isa<IndexType>() || isa<IntegerType>(); }
+
+bool Type::isIntOrIndexOrFloat() {
+  return isa<IndexType>() || isa<IntegerType>() || isa<FloatType>();
+}
+
+bool Type::isIntOrFloat() { return isa<IntegerType>() || isa<FloatType>(); }
+
+//===----------------------------------------------------------------------===//
 // Integer Type
 //===----------------------------------------------------------------------===//
 

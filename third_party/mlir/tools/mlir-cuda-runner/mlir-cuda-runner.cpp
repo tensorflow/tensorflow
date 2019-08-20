@@ -98,8 +98,8 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
                        "cuLinkComplete");
 
   char *cubinAsChar = static_cast<char *>(cubinData);
-  OwnedCubin result = llvm::make_unique<std::vector<char>>(
-      cubinAsChar, cubinAsChar + cubinSize);
+  OwnedCubin result =
+      std::make_unique<std::vector<char>>(cubinAsChar, cubinAsChar + cubinSize);
 
   // This will also destroy the cubin data.
   RETURN_ON_CUDA_ERROR(cuLinkDestroy(linkState), "cuLinkDestroy");

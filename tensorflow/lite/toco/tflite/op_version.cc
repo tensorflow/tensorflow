@@ -54,7 +54,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kCast, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 2}, "1.14.0"},
-          {{OperatorType::kDepthToSpace, 1}, "1.5.0"},
+          {{OperatorType::kDepthToSpace, 1}, kPendingReleaseOpVersion},
           {{OperatorType::kFakeQuant, 1}, "1.5.0"},
           {{OperatorType::kFakeQuant, 2}, "1.10.0"},
           {{OperatorType::kFullyConnected, 1}, "1.5.0"},

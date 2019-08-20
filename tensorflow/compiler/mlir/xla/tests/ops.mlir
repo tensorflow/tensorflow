@@ -314,6 +314,14 @@ func @tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
 // -----
 
+func @exp_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.exp' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.exp"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @reshape_same_shape
 func @reshape_same_shape(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = "xla_hlo.reshape"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>

@@ -38,8 +38,8 @@ void StripDebugInfo::runOnFunction() {
 }
 
 /// Creates a pass to strip debug information from a function.
-FunctionPassBase *mlir::createStripDebugInfoPass() {
-  return new StripDebugInfo();
+std::unique_ptr<FunctionPassBase> mlir::createStripDebugInfoPass() {
+  return std::make_unique<StripDebugInfo>();
 }
 
 static PassRegistration<StripDebugInfo>

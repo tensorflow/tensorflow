@@ -307,6 +307,12 @@ class DfsHloVisitorBase {
     visit_state_.erase(visit_state_.begin(), visit_state_.end());
   }
 
+  // Useful when we want to free up the memory used by the visit state without
+  // destroying the actual visitor subclass.
+  void DestroyVisitState() {
+    visit_state_ = absl::flat_hash_map<int, VisitState>{};
+  }
+
   void SetVisitState(int id, VisitState state) { visit_state_[id] = state; }
 
   // Sets the visitation state of the given instruction as kVisiting.

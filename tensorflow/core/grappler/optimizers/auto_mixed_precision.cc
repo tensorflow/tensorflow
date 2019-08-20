@@ -1067,16 +1067,25 @@ std::pair<int, int> GetDeviceGPUArch(
     const DeviceProperties& device_properties) {
   if (device_properties.type() != "GPU") return {0, 0};
   string arch_str = device_properties.environment().at("architecture");
-  std::vector<int32> arch_pieces;
-  if (!str_util::SplitAndParseAsInts(arch_str, '.', &arch_pieces) ||
-      arch_pieces.empty()) {
+  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
+  if (split_arch_str.empty()) {
     return {0, 0};
   }
-  std::pair<int, int> arch(arch_pieces[0], 0);
-  if (arch_pieces.size() > 1) {
-    arch.second = arch_pieces[1];
+
+  int major, minor;
+  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+    return {0, 0};
   }
-  return arch;
+
+  if (split_arch_str.size() > 1) {
+    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+      return {major, minor};
+    } else {
+      return {0, 0};
+    }
+  } else {
+    return {major, 0};
+  }
 }
 
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {

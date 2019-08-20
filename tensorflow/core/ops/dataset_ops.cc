@@ -705,6 +705,7 @@ REGISTER_OP("DeserializeIterator")
 
 REGISTER_OP("DatasetToGraph")
     .Input("input_dataset: variant")
+    .Attr("stateful_whitelist: list(string) >= 0 = []")
     .Output("graph: string")
     .SetShapeFn(shape_inference::ScalarShape);
 

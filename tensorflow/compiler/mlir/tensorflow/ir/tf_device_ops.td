@@ -51,7 +51,9 @@ def TfDevice_Dialect : Dialect {
 class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
-def TfDevice_LaunchOp : TfDevice_Op<"launch", [SingleBlockImplicitTerminator<"ReturnOp">]> {
+def TfDevice_LaunchOp : TfDevice_Op<"launch",
+                                    [SingleBlockImplicitTerminator<"ReturnOp">]>
+{
   let summary = [{The `tf_device.launch` op captures all needed live-in values
                   and launches containing operations on target device.}];
 
@@ -68,9 +70,21 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch", [SingleBlockImplicitTerminator<"Re
   let extraClassDeclaration = [{
     StringRef getDevice() { return device(); }
   }];
+
+  let builders = [
+    OpBuilder<[{Builder *builder, OperationState *result,
+                StringAttr device, ArrayRef<Type> result_types}],
+      [{
+        result->addAttribute("device", device);
+        result->addTypes(result_types);
+        result->addRegion();
+      }]
+    >
+  ];
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator, HasParent<"LaunchOp">]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return",
+                                    [Terminator, HasParent<"LaunchOp">]> {
   let summary = [{
     The `tf_device.return` operation terminates and returns values from
     `tf_device.launch` operation;

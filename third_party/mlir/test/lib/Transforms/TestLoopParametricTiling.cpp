@@ -55,9 +55,9 @@ public:
 };
 } // end namespace
 
-FunctionPassBase *
+std::unique_ptr<FunctionPassBase>
 mlir::createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes) {
-  return new SimpleParametricLoopTilingPass(outerLoopSizes);
+  return std::make_unique<SimpleParametricLoopTilingPass>(outerLoopSizes);
 }
 
 static PassRegistration<SimpleParametricLoopTilingPass>
@@ -65,7 +65,8 @@ static PassRegistration<SimpleParametricLoopTilingPass>
         "test application of parametric tiling to the outer loops so that the "
         "ranges of outer loops become static",
         [] {
-          auto *pass = new SimpleParametricLoopTilingPass({});
+          auto pass = std::make_unique<SimpleParametricLoopTilingPass>(
+              ArrayRef<int64_t>{});
           pass->sizes.assign(clOuterLoopSizes.begin(), clOuterLoopSizes.end());
           return pass;
         });

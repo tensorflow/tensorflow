@@ -350,14 +350,14 @@ LinalgFusionPass::LinalgFusionPass(ArrayRef<int64_t> sizes)
     this->tileSizes.assign(sizes.begin(), sizes.end());
 }
 
-FunctionPassBase *
+std::unique_ptr<FunctionPassBase>
 mlir::linalg::createLinalgFusionPass(ArrayRef<int64_t> tileSizes) {
-  return new LinalgFusionPass(tileSizes);
+  return std::make_unique<LinalgFusionPass>(tileSizes);
 }
 
 static PassRegistration<LinalgFusionPass>
     pass("linalg-fusion", "Fuse operations in the linalg dialect", [] {
-      auto *pass = new LinalgFusionPass();
+      auto pass = std::make_unique<LinalgFusionPass>();
       pass->tileSizes.assign(clTileSizes.begin(), clTileSizes.end());
       return pass;
     });

@@ -96,8 +96,8 @@ public:
 
 } // namespace
 
-FunctionPassBase *mlir::createLoopCoalescingPass() {
-  return new LoopCoalescingPass;
+std::unique_ptr<FunctionPassBase> mlir::createLoopCoalescingPass() {
+  return std::make_unique<LoopCoalescingPass>();
 }
 
 static PassRegistration<LoopCoalescingPass>

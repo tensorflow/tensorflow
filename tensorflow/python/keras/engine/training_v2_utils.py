@@ -28,6 +28,7 @@ import functools
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
@@ -36,6 +37,7 @@ from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
 
@@ -264,7 +266,7 @@ def train_on_batch(
   if reset_metrics:
     model.reset_metrics()
 
-  outputs['batch_size'] = batch_size
+  outputs['batch_size'] = math_ops.cast(batch_size, dtypes.int64)
   return outputs
 
 
@@ -327,7 +329,7 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   if reset_metrics:
     model.reset_metrics()
 
-  outputs['batch_size'] = batch_size
+  outputs['batch_size'] = math_ops.cast(batch_size, dtypes.int64)
   return outputs
 
 

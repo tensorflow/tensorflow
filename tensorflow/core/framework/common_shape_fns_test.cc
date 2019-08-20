@@ -963,9 +963,15 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,?,1]", "[d0_0,2,2,2,d1_4]");
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,?]", "[d0_0,2,2,2,d1_4]");
 
-  // input depths must match.
-  INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
-              "[1,2,2,2,10];[1,1,1,10000,20]");
+  // input depth must be multiple of filter depth for group convolutions
+  INFER_ERROR(
+      "Depth of input (10) is not a multiple of input depth of filter (6)", op,
+      "[1,2,2,2,10];[1,1,1,6,20]");
+
+  // Output dimensions must be multiple of group number
+  INFER_ERROR(
+      "Depth of output (1) is not a multiple of the number of groups (2)", op,
+      "[1,2,2,2,10];[1,1,1,5,1]");
 
   // 2x2x2 filter
   set_op({{1, 1, 1, 1, 1}}, "VALID");
@@ -982,6 +988,17 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1, 1}}, "SAME");
   INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // test output multiple of group size is ok
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // Depthwise convolution first step
+  // 4x4 input of depth 10, 2x2 filter with depth 1, 1x1 stride
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,1,10]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
 
   // with SAME, filter doesn't matter except for last dim.
   set_op({{1, 1, 1, 1, 1}}, "SAME");

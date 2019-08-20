@@ -30,6 +30,160 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
+def SPV_AddressOfOp : SPV_Op<"_address_of", [NoSideEffect]> {
+  let summary = "Get the address of a global variable.";
+
+  let description = [{
+    Variables in module scope are defined using symbol names. This
+    instruction generates an SSA value that can be used to refer to
+    the symbol within function scope for use in instructions that
+    expect an SSA value. This operation has no equivalent SPIR-V
+    instruction. Since variables in module scope in SPIR-V dialect are
+    of pointer type, this instruction returns a pointer type as well,
+    and the type is same as the variable referenced.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    address-of-op ::= ssa-id `=` `spv.addressOf` `@`string-literal : pointer-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.addressOf @var1 : !spv.ptr<f32, Input>
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$variable
+  );
+
+  let results = (outs
+    SPV_AnyPtr:$pointer
+  );
+
+  let hasOpcode = 0;
+}
+
+def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
+  let summary = [{
+    Declare an entry point, its execution model, and its interface.
+  }];
+
+  let description = [{
+    Execution Model is the execution model for the entry point and its
+    static call tree. See Execution Model.
+
+    Entry Point must be the Result <id> of an OpFunction instruction.
+
+    Name is a name string for the entry point. A module cannot have two
+    OpEntryPoint instructions with the same Execution Model and the same
+    Name string.
+
+    Interface is a list of symbol references to spv.globalVariable
+    operations. These declare the set of global variables from a
+    module that form the interface of this entry point. The set of
+    Interface symbols must be equal to or a superset of the
+    spv.globalVariables referenced by the entry point’s static call
+    tree, within the interface’s storage classes.  Before version 1.4,
+    the interface’s storage classes are limited to the Input and
+    Output storage classes. Starting with version 1.4, the interface’s
+    storage classes are all storage classes used in declaring all
+    global variables referenced by the entry point’s call tree.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    execution-model ::= "Vertex" | "TesellationControl" |
+                        <and other SPIR-V execution models...>
+
+    entry-point-op ::= ssa-id `=` `spv.EntryPoint` execution-model
+                       symbol-reference (`, ` symbol-reference)*
+    ```
+
+    For example:
+
+    ```
+    spv.EntryPoint "GLCompute" @foo
+    spv.EntryPoint "Kernel" @foo, @var1, @var2
+
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ExecutionModelAttr:$execution_model,
+    SymbolRefAttr:$fn,
+    OptionalAttr<SymbolRefArrayAttr>:$interface
+  );
+
+  let results = (outs);
+  let autogenSerialization = 0;
+}
+
+
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [ModuleOnly]> {
+  let summary = [{
+    Allocate an object in memory at module scope. The object is
+    referenced using a symbol name.
+  }];
+
+  let description = [{
+    The variable type must be an OpTypePointer. Its type operand is the type of
+    object in memory.
+
+    Storage Class is the Storage Class of the memory holding the object. It
+    cannot be Generic. It must be the same as the Storage Class operand of
+    the variable types. Only those storage classes that are valid at module
+    scope (like Input, Output, StorageBuffer, etc.) are valid.
+
+    Initializer is optional.  If Initializer is present, it will be
+    the initial value of the variable’s memory content. Initializer
+    must be an symbol defined from a constant instruction or other
+    spv.globalVariable operation in module scope. Initializer must
+    have the same type as the type of the defined symbol.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    variable-op ::= `spv.globalVariable` spirv-type string-literal
+                    (`initializer(` symbol-reference `)`)?
+                    (`bind(` integer-literal, integer-literal `)`)?
+                    (`built_in(` string-literal `)`)?
+                    attribute-dict?
+    ```
+
+    where `initializer` specifies initializer and `bind` specifies the
+    descriptor set and binding number. `built_in` specifies SPIR-V
+    BuiltIn decoration associated with the op.
+
+    For example:
+
+    ```
+    spv.Variable !spv.ptr<f32, Input> @var0
+    spv.Variable !spv.ptr<f32, Output> @var2 initializer(@var0)
+    spv.Variable !spv.ptr<f32, Uniform> @var bind(1, 2)
+    spv.Variable !spv.ptr<vector<3xi32>> @var3 built_in("GlobalInvocationID")
+    ```
+  }];
+
+  let arguments = (ins
+    TypeAttr:$type,
+    StrAttr:$sym_name,
+    OptionalAttr<SymbolRefAttr>:$initializer
+  );
+
+  let results = (outs);
+
+  let hasOpcode = 0;
+
+  let extraClassDeclaration = [{
+    ::mlir::spirv::StorageClass storageClass() {
+      return this->type().cast<::mlir::spirv::PointerType>().getStorageClass();
+    }
+  }];
+}
+
 def SPV_ModuleOp : SPV_Op<"module",
                           [SingleBlockImplicitTerminator<"ModuleEndOp">,
                            NativeOpTrait<"SymbolTable">]> {

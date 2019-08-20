@@ -48,7 +48,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Support/TargetSelect.h"
@@ -263,7 +262,6 @@ static Error compileAndExecuteSingleFloatReturnFunction(
 int mlir::JitRunnerMain(
     int argc, char **argv,
     llvm::function_ref<LogicalResult(mlir::ModuleOp)> mlirTransformer) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   initializeLLVM();

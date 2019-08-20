@@ -17,12 +17,30 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
+
+namespace ops {
+namespace builtin {
+
+// Tanh kernel registrations.
+TfLiteRegistration* Register_TANH_REF();
+TfLiteRegistration* Register_TANH_GENERIC_OPT();
+TfLiteRegistration* Register_TANH_FIXED_POINT_OPT();
+
+// Logistic kernel registrations.
+TfLiteRegistration* Register_LOGISTIC_REF();
+TfLiteRegistration* Register_LOGISTIC_GENERIC_OPT();
+TfLiteRegistration* Register_LOGISTIC_FIXED_POINT_OPT();
+
+}  // namespace builtin
+}  // namespace ops
+
 namespace {
 
 using ::testing::ElementsAreArray;
@@ -41,6 +59,21 @@ class BaseActivationsOpModel : public SingleOpModel {
       output_ = AddOutput({input.type, {}});
     }
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
+                         TensorData input) {
+    input_ = AddInput(input);
+    if (input.type == TensorType_UINT8) {
+      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
+    } else if (input.type == TensorType_INT8) {
+      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256, -128});
+    } else {
+      output_ = AddOutput({input.type, {}});
+    }
+    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -79,6 +112,15 @@ class BaseActivationsOpModel : public SingleOpModel {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
+                         const TensorData& input, const TensorData& output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
+    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -133,6 +175,32 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
                          GetZeroPoint(output_));
+  }
+};
+
+const auto kTanhKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_TANH_REF()},
+    {"GenericOptimized", ops::builtin::Register_TANH_GENERIC_OPT()},
+    {"FixedPointOptimized", ops::builtin::Register_TANH_FIXED_POINT_OPT()},
+});
+
+class TanhOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kTanhKernelMap;
+  }
+};
+
+const auto kLogisticKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_LOGISTIC_REF()},
+    {"GenericOptimized", ops::builtin::Register_LOGISTIC_GENERIC_OPT()},
+    {"FixedPointOptimized", ops::builtin::Register_LOGISTIC_FIXED_POINT_OPT()},
+});
+
+class LogisticOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kLogisticKernelMap;
   }
 };
 
@@ -366,8 +434,8 @@ TEST(QuantizedActivationsOpTest, HardSwishBias) {
                                       -0.3905796f, 24.50887f, 0.035);
 }
 
-TEST(FloatActivationsOpTest, Tanh) {
-  FloatActivationsOpModel m(BuiltinOperator_TANH,
+TEST_P(TanhOpTest, Tanh) {
+  FloatActivationsOpModel m(GetRegistration(), BuiltinOperator_TANH,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
   m.SetInput({
       0, -6, 2, 4,   //
@@ -499,57 +567,125 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
-TEST(QuantizedActivationsOpTest, TanhUint8) {
+TEST_P(TanhOpTest, TanhUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedActivationsOpModel m(
-      BuiltinOperator_TANH,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, kMin, kMax});
+      GetRegistration(), BuiltinOperator_TANH,
+      /*input=*/{TensorType_UINT8, {2, 6, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_UINT8, {2, 6, 4, 1}, kMin, kMax});
   m.SetInput<uint8_t>({
-      0, -6, 2, 4,   //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
       -4, -2, 8, 1,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.0, -0.999987, 0.964027, 0.999329,     //
-                      -0.999329, -0.96402, 0.99999, 0.76159,  //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
                   },
                   kQuantizedTolerance)));
-  EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 0, 251, 255, 0, 5, 255, 225}));
+  if (GetParam() == "Reference") {
+    EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                            128, 0, 251, 255,  //
+                                            0,   5, 255, 225,  //
+                                        }));
+  }
 }
 
-TEST(QuantizedActivationsOpTest, TanhInt8) {
+TEST_P(TanhOpTest, TanhInt8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedActivationsOpModel m(
-      BuiltinOperator_TANH,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, kMin, kMax});
+      GetRegistration(), BuiltinOperator_TANH,
+      /*input=*/{TensorType_INT8, {2, 6, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {2, 6, 4, 1}, kMin, kMax});
   m.SetInput<int8_t>({
-      0, -6, 2, 4,   //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
+      -4, -2, 8, 1,  //
+      0,  -6, 2, 4,  //
       -4, -2, 8, 1,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.0, -0.999987, 0.964027, 0.999329,     //
-                      -0.999329, -0.96402, 0.99999, 0.76159,  //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
+                      0.0,       -0.999987, 0.964027, 0.999329,  //
+                      -0.999329, -0.96402,  0.99999,  0.76159,   //
                   },
                   kQuantizedTolerance)));
-  EXPECT_THAT(m.GetOutput<int8_t>(),
-              ElementsAreArray({0, -128, 123, 127, -128, -123, 127, 97}));
+  if (GetParam() == "Reference") {
+    EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                           0,    -128, 123, 127,  //
+                                           -128, -123, 127, 97,   //
+                                       }));
+  }
 }
 
-TEST(QuantizedActivationsOpTest, TanhInt16) {
+TEST_P(TanhOpTest, TanhInt16) {
   const float kMin = -1;
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
-      BuiltinOperator_TANH,
+      GetRegistration(), BuiltinOperator_TANH,
       /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
       /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
   m.SetInput<int16_t>({
@@ -566,8 +702,8 @@ TEST(QuantizedActivationsOpTest, TanhInt16) {
                   kQuantizedToleranceInt16)));
 }
 
-TEST(FloatActivationsOpTest, Sigmoid) {
-  FloatActivationsOpModel m(BuiltinOperator_LOGISTIC,
+TEST_P(LogisticOpTest, Sigmoid) {
+  FloatActivationsOpModel m(GetRegistration(), BuiltinOperator_LOGISTIC,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
   m.SetInput({
       0, -6, 2, 4,   //
@@ -580,11 +716,17 @@ TEST(FloatActivationsOpTest, Sigmoid) {
                              })));
 }
 
-TEST(QuantizedActivationsOpTest, SigmoidUint8) {
+TEST_P(LogisticOpTest, SigmoidUint8) {
   QuantizedActivationsOpModel m(
-      BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_UINT8, {1, 6, 4, 1}, -10, 10});
+      GetRegistration(), BuiltinOperator_LOGISTIC,
+      /*input=*/{TensorType_UINT8, {2, 6, 4, 1}, -10, 10});
   m.SetInput<uint8_t>({
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
       0, -6, 2,  4,  //
       3, -2, 10, 1,  //
       0, -6, 2,  4,  //
@@ -602,41 +744,86 @@ TEST(QuantizedActivationsOpTest, SigmoidUint8) {
                       0.952574, 0.119203, 0.999955, 0.731059,  //
                       0.5,      0.002473, 0.880797, 0.982014,  //
                       0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
                   },
                   kQuantizedTolerance)));
-  EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({
-                  128, 1, 227, 251, 244, 32, 255, 188,  //
-                  128, 1, 227, 251, 244, 32, 255, 188,  //
-                  128, 1, 227, 251, 244, 32, 255, 188,  //
-              }));
+  if (GetParam() == "Reference") {
+    EXPECT_THAT(m.GetOutput<uint8_t>(),
+                ElementsAreArray({
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                    128, 1, 227, 251, 244, 32, 255, 188,  //
+                }));
+  }
 }
 
-TEST(QuantizedActivationsOpTest, SigmoidInt8) {
+TEST_P(LogisticOpTest, SigmoidInt8) {
   QuantizedActivationsOpModel m(
-      BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -10, 10});
+      GetRegistration(), BuiltinOperator_LOGISTIC,
+      /*input=*/{TensorType_INT8, {2, 6, 4, 1}, -10, 10});
   m.SetInput<int8_t>({
-      0, -6, 2, 4,   //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
+      3, -2, 10, 1,  //
+      0, -6, 2,  4,  //
       3, -2, 10, 1,  //
   });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      0.5, 0.002473, 0.880797, 0.982014,       //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
+                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.5,      0.002473, 0.880797, 0.982014,  //
                       0.952574, 0.119203, 0.999955, 0.731059,  //
                   },
                   kQuantizedTolerance)));
-  EXPECT_THAT(m.GetOutput<int8_t>(),
-              ElementsAreArray({0, -127, 99, 123, 116, -99, 127, 60}));
+  if (GetParam() == "Reference") {
+    EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                           0,   -127, 99,  123,  //
+                                           116, -99,  127, 60,   //
+                                       }));
+  }
 }
 
-TEST(QuantizedActivationsOpTest, SigmoidInt16) {
+TEST_P(LogisticOpTest, SigmoidInt16) {
   const float kMin = -1;
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
-      BuiltinOperator_LOGISTIC,
+      GetRegistration(), BuiltinOperator_LOGISTIC,
       /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
       /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
   m.SetInput<int16_t>({
@@ -1248,5 +1435,14 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
                                  1.0f, -0.5f, -1.0f,  // Row 2
                              }));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    TanhOpTest, TanhOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kTanhKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    LogisticOpTest, LogisticOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLogisticKernelMap)));
+
 }  // namespace
 }  // namespace tflite

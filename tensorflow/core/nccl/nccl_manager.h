@@ -30,8 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
-#endif
-#if TENSORFLOW_USE_ROCM
+#elif TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"

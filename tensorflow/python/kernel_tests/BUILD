@@ -234,7 +234,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_gpu",  # TODO(b/131773093): Re-enable.
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
@@ -861,6 +860,8 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
+    # TODO(b/128347673): Re-enable.
+    tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3130,7 +3131,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
+    shard_count = 15,
     xla_enable_strict_auto_jit = True,
 )
 

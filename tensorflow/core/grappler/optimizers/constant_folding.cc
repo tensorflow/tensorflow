@@ -60,7 +60,7 @@ namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 // We only fold/materialize constants smaller than 10 MiB.
-static const int64 kMaxConstantSize = 10 * 1024 * 1024;
+const int64 kMaxConstantSize = 10 * 1024 * 1024;
 
 namespace {
 template <typename T>
@@ -1033,14 +1033,25 @@ bool ConstantFolding::IsFoldable(const NodeDef& node,
   // If we know the output shapes, make sure that the outputs are small enough
   // to materialize.
   if (properties != nullptr && properties->HasOutputProperties(node.name())) {
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        properties->GetInputProperties(node.name());
     const std::vector<OpInfo::TensorProperties>& output_props =
         properties->GetOutputProperties(node.name());
+    // Compute total size of inputs.
+    int64 input_size_bytes = 0;
+    for (const auto& input_prop : input_props) {
+      const PartialTensorShape input_shape(input_prop.shape());
+      if (input_shape.IsFullyDefined()) {
+        input_size_bytes +=
+            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+      }
+    }
     for (const auto& output_prop : output_props) {
       const PartialTensorShape output_shape(output_prop.shape());
       if (output_shape.IsFullyDefined()) {
         const int64 num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
-        if (num_bytes > kMaxConstantSize) {
+        if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
           // Notice that this is not exactly the same check used in
           // CreateNodeDef() where the actual encoded size is checked.
@@ -2831,9 +2842,6 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
 
 bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
                                        NodeDef* node) {
-  // TODO(rmlarsen): Consider enabling for subtractions if we are comfortable
-  // with the potential loss of numerical accuracy due to re-association.
-  //
   // Consider the transformation
   //
   //                      +                +       = parent
@@ -2901,13 +2909,6 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
     return false;
   }
 
-  // TODO(rmlarsen): Consider enabling for subtractions if we are comfortable
-  // with the potential loss of numerical accuracy due to re-association.
-  // Notice that subtraction is not really different from addition in this
-  // regard.
-  if (is_sub || is_child_sub) {
-    return false;
-  }
   const bool is_child_symmetric = is_child_add || is_child_mul;
   // Make sure that it is safe to change the value of the child node result.
   if (op_child->input_size() < 2 ||
@@ -2916,8 +2917,14 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
     return false;
   }
   // Do not rewrite integer expressions with subtraction or division.
+  //  if (node->name().find("filter_boxes") != std::string::npos) return false;
   if (!CheckAttrExists(*node, "T").ok()) return false;
   DataType dtype = node->attr().at("T").type();
+  if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
+    // Don't apply reassociation to floating point types of low precision.
+    // The danger of significant numerical changes is too high.
+    return false;
+  }
   if (!(is_symmetric && is_child_symmetric) &&
       !(DataTypeIsFloating(dtype) || DataTypeIsComplex(dtype))) {
     return false;
@@ -2946,6 +2953,9 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
       left_child_is_constant ? node->input(0) : node->input(1);
   const string input_op =
       left_child_is_constant ? node->input(1) : node->input(0);
+
+  VLOG(1) << "\n++++++++ Reordering node " << node->name() << ": " << node->op()
+          << "(" << left_child->op() << ", " << right_child->op() << ")\n";
 
   // Now we have identified the nodes to swap (non_const_leaf_input and
   // const_child).
@@ -2980,22 +2990,19 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
     //              / \      / \      / \        / \     / \      / \
     //             C   Y    C   Y    Y   C      Y   C   C   Y    Y   C
     //
-    NodeDef* non_const_leaf = left_leaf_is_constant ? right_leaf : left_leaf;
-    NodeDef* maybe_const_leaf =
-        non_const_leaf == right_leaf ? left_leaf : right_leaf;
 
     // First, let's determine the effective sign of each term in the original
     // expression
-    auto is_leaf_negated = [&](const NodeDef* node) -> bool {
-      bool leaf_negated = !is_child_symmetric && (node == right_leaf);
+    auto is_leaf_negated = [&](const bool is_right_leaf) -> bool {
+      bool leaf_negated = !is_child_symmetric && is_right_leaf;
       bool child_negated = !is_symmetric && (op_child == right_child);
       return leaf_negated != child_negated;
     };
     const string symmetric_op = (is_add || is_sub) ? "Add" : "Mul";
     const string nonsymmetric_op = (is_add || is_sub) ? "Sub" : "Div";
     bool neg_c = !is_symmetric && (const_child == right_child);
-    bool neg_x = is_leaf_negated(non_const_leaf);
-    bool neg_y = is_leaf_negated(maybe_const_leaf);
+    bool neg_x = is_leaf_negated(left_leaf_is_constant);
+    bool neg_y = is_leaf_negated(!left_leaf_is_constant);
     // Rewrite the parent node.
     node->set_op((neg_x || (neg_c && neg_y)) ? nonsymmetric_op : symmetric_op);
     node->set_input(0, neg_x ? input_op : input_x);
@@ -3378,12 +3385,12 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
   parent_inputs.Swap(parent->mutable_input());
   std::vector<string> ctrl_output;
   // TODO(rmlarsen): IF the child occurs more than once, is it beneficial to
-  // collapse it into the parent multiple times? Probablyu not.
+  // collapse it into the parent multiple times? Probably not.
   for (const auto& input : parent_inputs) {
     if (IsSameInput(input, node->name())) {
       for (int j = 0; j < num_regular_inputs - 1; ++j) {
-        // Add tensor inputs to first child concat tensors (exceptthe final axis
-        // input) to the parent's inputs.
+        // Add tensor inputs to first child concat tensors (except the final
+        // axis input) to the parent's inputs.
         parent->add_input(node->input(j));
         node_map_->UpdateInput(parent->name(), node->name(), node->input(j));
       }

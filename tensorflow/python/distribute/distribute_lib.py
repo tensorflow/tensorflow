@@ -845,7 +845,12 @@ class Strategy(object):
           return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
-      denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      if v.shape.rank == 1:
+        # TODO(b/139422050): Currently tf.shape is not supported in TPU dynamic
+        # padder, use tf.size instead to workaround if the rank is 1.
+        denom = array_ops.size(v, out_type=dtypes.int64)
+      else:
+        denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom

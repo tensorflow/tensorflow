@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
+#include <iterator>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -50,7 +52,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -94,6 +98,20 @@ class ImporterBase {
         specs_(specs),
         debug_info_(debug_info) {}
 
+  // Returns the inferred function signature of the given function body. Input
+  // types are unranked tensor of the respective datatype in the function and
+  // result types are inferred by the shape_refiner_. Result types need not be
+  // unranked tensors and could be ranked tensors in cases where result type
+  // depends on an op with static output shape like tf.Const.
+  StatusOr<mlir::FunctionType> InferLibFunctionType(const FunctionBody& fbody);
+
+  // Extracts arg and ret nodes from FunctionBody.
+  void GetArgsAndRetsFromFunctionBody(
+      const FunctionBody& fbody,
+      absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+      absl::InlinedVector<OutputTensor, 4>* ret_nodes,
+      absl::InlinedVector<Node*, 4>* control_ret_nodes);
+
   // Prepares converting the graph to an MLIR module. This step removes the
   // backedges of the graph, orders the nodes and infers the shapes.
   Status PrepareConvert(const Graph& graph);
@@ -104,6 +122,7 @@ class ImporterBase {
   Status Convert(llvm::StringRef func_name, mlir::FunctionType func_type,
                  const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+                 const absl::InlinedVector<Node*, 4>& control_ret_nodes,
                  llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
   // Returns the list of nodes in the graph. Nodes are presented in the reverse
@@ -119,13 +138,6 @@ class ImporterBase {
  private:
   // Most types with subtypes have only one subtype.
   using ElementSubtypes = llvm::SmallVector<mlir::TensorType, 1>;
-
-  // Returns the inferred function signature of the given function body. Input
-  // types are unranked tensor of the respective datatype in the function and
-  // result types are inferred by the shape_refiner_. Result types need not be
-  // unranked tensors and could be ranked tensors in cases where result type
-  // depends on an op with static output shape like tf.Const.
-  StatusOr<mlir::FunctionType> InferLibFunctionType(const FunctionBody& fbody);
 
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
@@ -221,7 +233,8 @@ class ImporterBase {
       mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
       llvm::ArrayRef<mlir::Type> arg_types,
       const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
-      const absl::InlinedVector<OutputTensor, 4>& ret_nodes);
+      const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+      const absl::InlinedVector<Node*, 4>& control_ret_nodes);
 
   // Gets the location information of the given node. It uses the
   // "original_node_name" in the NodeDef to get the corresponding file location
@@ -757,6 +770,21 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
   }
 }
 
+void ImporterBase::GetArgsAndRetsFromFunctionBody(
+    const FunctionBody& fbody, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
+    absl::InlinedVector<OutputTensor, 4>* ret_nodes,
+    absl::InlinedVector<Node*, 4>* control_ret_nodes) {
+  arg_nodes->reserve(fbody.arg_nodes.size());
+  ret_nodes->reserve(fbody.ret_nodes.size());
+  for (auto arg : fbody.arg_nodes) {
+    arg_nodes->emplace_back(arg, 0);
+  }
+  for (auto ret : fbody.ret_nodes) {
+    ret_nodes->emplace_back(ret, 0);
+  }
+  *control_ret_nodes = fbody.control_ret_nodes;
+}
+
 Status ImporterBase::ConvertLibFunction(const std::string& func_name) {
   // If the library function has been converted already, nothing needs to be
   // done.
@@ -823,18 +851,13 @@ Status ImporterBase::ConvertLibFunction(const std::string& func_name) {
                       child_importer.InferLibFunctionType(*fbody));
 
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
-  arg_nodes.reserve(fbody->arg_nodes.size());
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
-  ret_nodes.reserve(fbody->ret_nodes.size());
-  for (auto arg : fbody->arg_nodes) {
-    arg_nodes.emplace_back(arg, 0);
-  }
-  for (auto ret : fbody->ret_nodes) {
-    ret_nodes.emplace_back(ret, 0);
-  }
+  absl::InlinedVector<Node*, 4> control_ret_nodes;
+  GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
+                                 &control_ret_nodes);
 
   TF_RETURN_IF_ERROR(child_importer.Convert(
-      mlir_func_name, func_type, arg_nodes, ret_nodes,
+      mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
       llvm::makeArrayRef(attributes.begin(), attributes.end())));
   return Status::OK();
 }
@@ -849,6 +872,7 @@ Status ImporterBase::Convert(
     llvm::StringRef func_name, mlir::FunctionType func_type,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+    const absl::InlinedVector<Node*, 4>& control_ret_nodes,
     llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
   auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
@@ -874,14 +898,15 @@ Status ImporterBase::Convert(
   TF_RETURN_IF_ERROR(AddBackedges());
 
   return ConvertFunctionArgAndRets(bb, graph, func_type.getInputs(), arg_nodes,
-                                   ret_nodes);
+                                   ret_nodes, control_ret_nodes);
 }
 
 Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
     llvm::ArrayRef<mlir::Type> arg_types,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
-    const absl::InlinedVector<OutputTensor, 4>& ret_nodes) {
+    const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
+    const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
   for (int i = 0, e = arg_types.size(); i < e; ++i) {
     // The lookup can't fail here: otherwise some nodes in the function haven't
     // be converted to mlir operations and don't have a mapping.
@@ -945,7 +970,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     inst->erase();
   }
 
-  llvm::SmallVector<mlir::Value*, 8> inst_to_returned;
+  llvm::SmallVector<mlir::Value*, 8> inst_to_return;
   for (const auto& ret : ret_nodes) {
     auto* inst = node_values_[ret.node->id()];
     auto op = absl::string_view(ret.node->type_string());
@@ -959,25 +984,29 @@ Status ImporterBase::ConvertFunctionArgAndRets(
       // control dependencies.
       if (inner_op->getNumOperands() != 1)
         return errors::Unimplemented("Return node with multiple inputs.");
-      inst_to_returned.push_back(inner_op->getOperand(0));
+      inst_to_return.push_back(inner_op->getOperand(0));
       inst->dropAllReferences();
       inst->erase();
     } else {
-      inst_to_returned.push_back(inst->getResult(ret.index));
+      inst_to_return.push_back(inst->getResult(ret.index));
     }
+  }
+
+  for (Node* control_ret : control_ret_nodes) {
+    auto* inst = node_values_[control_ret->id()];
+    inst_to_return.push_back(*std::prev(inst->result_end()));
   }
 
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
   builder_->setInsertionPointToEnd(&graph_op.body().front());
   builder_->create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
-                                               inst_to_returned);
-  inst_to_returned.assign(graph_op.getResults().begin(),
-                          graph_op.getResults().end());
+                                               inst_to_return);
+  inst_to_return.assign(graph_op.getResults().begin(),
+                        graph_op.getResults().end());
   builder_->setInsertionPointToEnd(bb);
-  builder_->create<mlir::ReturnOp>(
-      mlir::UnknownLoc::get(context_),
-      llvm::makeArrayRef(inst_to_returned.begin(), inst_to_returned.end()));
+  builder_->create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
+                                   inst_to_return);
   return Status::OK();
 }
 
@@ -1092,12 +1121,14 @@ mlir::Operation* ImporterBase::createOperation(
   auto loc = result.location;
   // Dispatch based on the name and create the appropriate operation.
   if (node.IsSwitch()) {
+    // Switch and _SwitchN both are in switch class, differentiate based on
+    // number of outputs.
+    if (node.num_outputs() > 2) {
+      return builder_->create<mlir::tf_executor::SwitchNOp>(
+          loc, types, operands, result.attributes);
+    }
     return builder_->create<mlir::tf_executor::SwitchOp>(loc, types, operands,
                                                          result.attributes);
-  }
-  if (op_name == "tf.SwitchN") {
-    return builder_->create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
-                                                          result.attributes);
   }
   if (node.IsMerge()) {
     return builder_->create<mlir::tf_executor::MergeOp>(loc, types, operands,
@@ -1432,34 +1463,72 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
 
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
                             &tf_name_to_mlir_name);
-  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
 
-  // Collects the argument and return nodes by looking up the node names
-  // specified by the user.
+  mlir::FunctionType func_type;
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
-  TF_ASSIGN_OR_RETURN(
-      auto func_type,
-      importer.InferMainFunctionType(specs, context, &arg_nodes, &ret_nodes));
-
-  // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
-  // tf.versions) shared by importer and exporter in a centralized place.
-  // Record the input and output mapping.
+  absl::InlinedVector<Node*, 4> control_ret_nodes;
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
-  if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
-    mlir::Builder b(context);
-    std::string s;
-    llvm::raw_string_ostream ss(s);
-    mlir::interleaveComma(
-        specs.inputs, ss,
-        [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; });
-    auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
-    s.clear();
-    mlir::interleaveComma(specs.output_arrays, ss);
-    auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+  std::unique_ptr<FunctionBody> graph_fbody;
+  if (specs.graph_as_function) {
+    if (specs.prune_unused_nodes || !specs.inputs.empty() ||
+        !specs.output_arrays.empty() || !specs.output_arrays_order.empty())
+      return errors::InvalidArgument(
+          "Pruning of graph is currently unsupported when the main graph is "
+          "converted to a function.");
+    // Converts graph into a FunctionDef.
+    FunctionDef graph_fdef;
+    TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, "main", &graph_fdef));
 
-    attrs.push_back(b.getNamedAttr("tf.entry_function",
-                                   b.getDictionaryAttr({inputs, outputs})));
+    // Converts FunctionDef into a FunctionBody.
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(graph_fdef, AttrSlice(),
+                                               &flib_def, &graph_fbody));
+
+    TF_RETURN_IF_ERROR(importer.PrepareConvert(*graph_fbody->graph));
+    TF_ASSIGN_OR_RETURN(func_type, importer.InferLibFunctionType(*graph_fbody));
+    importer.GetArgsAndRetsFromFunctionBody(*graph_fbody, &arg_nodes,
+                                            &ret_nodes, &control_ret_nodes);
+
+    if (!arg_nodes.empty() || !ret_nodes.empty()) {
+      mlir::Builder b(context);
+      std::string s;
+      llvm::raw_string_ostream ss(s);
+      auto node_name = [&](const Node* node) { ss << node->name(); };
+      mlir::interleaveComma(graph_fbody->arg_nodes, ss, node_name);
+      auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
+      s.clear();
+      mlir::interleaveComma(graph_fbody->ret_nodes, ss, node_name);
+      auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+
+      attrs.push_back(b.getNamedAttr("tf.entry_function",
+                                     b.getDictionaryAttr({inputs, outputs})));
+    }
+  } else {
+    TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
+
+    // Collects the argument and return nodes by looking up the node names
+    // specified by the user.
+    TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
+                                       specs, context, &arg_nodes, &ret_nodes));
+
+    // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
+    // tf.versions) shared by importer and exporter in a centralized place.
+    // Record the input and output mapping.
+    if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
+      mlir::Builder b(context);
+      std::string s;
+      llvm::raw_string_ostream ss(s);
+      mlir::interleaveComma(
+          specs.inputs, ss,
+          [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; });
+      auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
+      s.clear();
+      mlir::interleaveComma(specs.output_arrays, ss);
+      auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+
+      attrs.push_back(b.getNamedAttr("tf.entry_function",
+                                     b.getDictionaryAttr({inputs, outputs})));
+    }
   }
 
   // Record version info.
@@ -1478,7 +1547,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
                       {producer, min_consumer, bad_consumers})));
 
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(
-      "main", func_type, arg_nodes, ret_nodes, attrs));
+      "main", func_type, arg_nodes, ret_nodes, control_ret_nodes, attrs));
   return module;
 }
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -135,11 +136,18 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
+  mlir::PassManager pm;
+  bool run_quantize =
+      tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
+  tensorflow::AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
+                                         emit_quant_adaptor_ops,
+                                         lower_tensor_list_ops, &pm);
+
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, &result);
+      lower_tensor_list_ops, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   auto output = mlir::openOutputFile(output_file_name);

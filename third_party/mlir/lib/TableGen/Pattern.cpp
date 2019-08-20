@@ -122,7 +122,7 @@ Operator &tblgen::DagNode::getDialectOp(RecordOperatorMap *mapper) const {
   auto it = mapper->find(opDef);
   if (it != mapper->end())
     return *it->second;
-  return *mapper->try_emplace(opDef, llvm::make_unique<Operator>(opDef))
+  return *mapper->try_emplace(opDef, std::make_unique<Operator>(opDef))
               .first->second;
 }
 
@@ -193,6 +193,7 @@ int tblgen::SymbolInfoMap::SymbolInfo::getStaticValueCount() const {
   case Kind::Result:
     return op->getNumResults();
   }
+  llvm_unreachable("unknown kind");
 }
 
 std::string
@@ -212,6 +213,7 @@ tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
     return formatv("{0} {1};\n", op->getQualCppClassName(), name);
   }
   }
+  llvm_unreachable("unknown kind");
 }
 
 std::string
@@ -243,6 +245,7 @@ tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(StringRef name,
     return name;
   }
   }
+  llvm_unreachable("unknown kind");
 }
 
 bool tblgen::SymbolInfoMap::bindOpArgument(StringRef symbol, const Operator &op,
