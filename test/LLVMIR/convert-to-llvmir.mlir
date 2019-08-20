@@ -510,6 +510,31 @@ func @fcmp(f32, f32) -> () {
   %12 = cmpf "ule", %arg0, %arg1 : f32
   %13 = cmpf "une", %arg0, %arg1 : f32
   %14 = cmpf "uno", %arg0, %arg1 : f32
-  
-  return 
+
+  return
+}
+
+// CHECK-LABEL: @vec_bin
+func @vec_bin(%arg0: vector<2x2x2xf32>) -> vector<2x2x2xf32> {
+  %0 = addf %arg0, %arg0 : vector<2x2x2xf32>
+  return %0 : vector<2x2x2xf32>
+
+//  CHECK-NEXT: llvm.undef : !llvm<"[2 x [2 x <2 x float>]]">
+
+// This block appears 2x2 times
+//  CHECK-NEXT: llvm.extractvalue %{{.*}}[0 : index, 0 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//  CHECK-NEXT: llvm.extractvalue %{{.*}}[0 : index, 0 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//  CHECK-NEXT: llvm.fadd %{{.*}} : !llvm<"<2 x float>">
+//  CHECK-NEXT: llvm.insertvalue %{{.*}}[0 : index, 0 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+
+// We check the proper indexing of extract/insert in the remaining 3 positions.
+//       CHECK: llvm.extractvalue %{{.*}}[0 : index, 1 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//       CHECK: llvm.insertvalue %{{.*}}[0 : index, 1 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//       CHECK: llvm.extractvalue %{{.*}}[1 : index, 0 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//       CHECK: llvm.insertvalue %{{.*}}[1 : index, 0 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//       CHECK: llvm.extractvalue %{{.*}}[1 : index, 1 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+//       CHECK: llvm.insertvalue %{{.*}}[1 : index, 1 : index] : !llvm<"[2 x [2 x <2 x float>]]">
+
+// And we're done
+//   CHECK-NEXT: return
 }

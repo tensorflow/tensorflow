@@ -67,21 +67,26 @@ public:
   /// Array type utilities.
   LLVMType getArrayElementType();
   unsigned getArrayNumElements();
+  bool isArrayTy();
 
   /// Vector type utilities.
   LLVMType getVectorElementType();
+  bool isVectorTy();
 
   /// Function type utilities.
   LLVMType getFunctionParamType(unsigned argIdx);
   unsigned getFunctionNumParams();
   LLVMType getFunctionResultType();
+  bool isFunctionTy();
 
   /// Pointer type utilities.
   LLVMType getPointerTo(unsigned addrSpace = 0);
   LLVMType getPointerElementTy();
+  bool isPointerTy();
 
   /// Struct type utilities.
   LLVMType getStructElementType(unsigned i);
+  bool isStructTy();
 
   /// Utilities used to generate floating point types.
   static LLVMType getDoubleTy(LLVMDialect *dialect);
