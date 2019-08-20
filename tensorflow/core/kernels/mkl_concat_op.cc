@@ -461,8 +461,14 @@ class MklConcatOp : public OpKernel {
               dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
           // Set the output format same as the most common format of inputs
           // to avoid layout conversions.
-          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
-                                mkl_common_format);
+          if (mkl_common_format == memory::format::blocked) {
+            VLOG(1) << "mkl_common_format == memory::format::blocked";
+            dst_md = MklDnnData<T>::CreateBlockedMemDesc(
+                dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
+          } else {
+            dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+                                  mkl_common_format);
+          }
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
           // When memory::format::nc, dst_dims are already in MKL-DNN order
