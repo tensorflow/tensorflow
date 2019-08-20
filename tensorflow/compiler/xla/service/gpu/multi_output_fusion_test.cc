@@ -16,10 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
+#include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -789,6 +796,130 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
     })")
                     .ValueOrDie();
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
+// This test a case where we want to postpone some fusion up to the
+// MOF fusion.
+TEST_F(MultiOutputFusionTest, MultiOutputFusionPostpone) {
+  auto module = ParseAndReturnVerifiedModule(R"(HloModule postpone_mof
+%scalar_ge_of_first32bits_computation (scalar_lhs: u64[], scalar_rhs: u64[]) -> u64[] {
+  %scalar_lhs = u64[] parameter(0)
+  %convert.2 = u16[] convert(u64[] %scalar_lhs)
+  %bitcast-convert.2 = f16[] bitcast-convert(u16[] %convert.2)
+  %scalar_rhs = u64[] parameter(1)
+  %convert.3 = u16[] convert(u64[] %scalar_rhs)
+  %bitcast-convert.3 = f16[] bitcast-convert(u16[] %convert.3)
+  %compare = pred[] compare(f16[] %bitcast-convert.2, f16[] %bitcast-convert.3), direction=GE
+  ROOT %select = u64[] select(pred[] %compare, u64[] %scalar_lhs, u64[] %scalar_rhs)
+}
+
+%write (scalar_lhs.1: f16[], scalar_rhs.1: f16[]) -> f16[] {
+  %scalar_lhs.1 = f16[] parameter(0)
+  ROOT %scalar_rhs.1 = f16[] parameter(1)
+}
+
+ENTRY %computation.49 (arg0.1: f16[128,64,112,112]) -> f16[128,64,112,112] {
+  %constant.360 = f16[] constant(0)
+  %broadcast.6 = f16[102760448]{0} broadcast(f16[] %constant.360), dimensions={}
+  %arg0.1 = f16[128,64,112,112]{3,2,1,0} parameter(0), parameter_replication={false}
+  %bitcast-convert = u16[128,64,112,112]{3,2,1,0} bitcast-convert(f16[128,64,112,112]{3,2,1,0} %arg0.1)
+  %convert = u64[128,64,112,112]{3,2,1,0} convert(u16[128,64,112,112]{3,2,1,0} %bitcast-convert)
+  %iota = u64[102760448]{0} iota(), iota_dimension=0
+  %constant = u64[] constant(32)
+  %broadcast.9 = u64[102760448]{0} broadcast(u64[] %constant), dimensions={}
+  %shift-left.1 = u64[102760448]{0} shift-left(u64[102760448]{0} %iota, u64[102760448]{0} %broadcast.9)
+  %bitcast = u64[128,64,112,112]{3,2,1,0} bitcast(u64[102760448]{0} %shift-left.1)
+  %add = u64[128,64,112,112]{3,2,1,0} add(u64[128,64,112,112]{3,2,1,0} %convert, u64[128,64,112,112]{3,2,1,0} %bitcast)
+  %constant.8 = u64[] constant(64512)
+  %reduce-window = u64[128,64,56,56]{3,2,1,0} reduce-window(u64[128,64,112,112]{3,2,1,0} %add, u64[] %constant.8), window={size=1x1x2x2 stride=1x1x2x2}, to_apply=%scalar_ge_of_first32bits_computation
+  %broadcast.1 = u64[128,64,56,56]{3,2,1,0} broadcast(u64[] %constant), dimensions={}
+  %shift-right-logical = u64[128,64,56,56]{3,2,1,0} shift-right-logical(u64[128,64,56,56]{3,2,1,0} %reduce-window, u64[128,64,56,56]{3,2,1,0} %broadcast.1)
+  %convert.4 = u32[128,64,56,56]{3,2,1,0} convert(u64[128,64,56,56]{3,2,1,0} %shift-right-logical)
+  %iota.1 = u32[128,64,56,56]{3,2,1,0} iota(), iota_dimension=0
+  %constant.1 = u32[] constant(802816)
+  %broadcast.2 = u32[128,64,56,56]{3,2,1,0} broadcast(u32[] %constant.1), dimensions={}
+  %multiply = u32[128,64,56,56]{3,2,1,0} multiply(u32[128,64,56,56]{3,2,1,0} %iota.1, u32[128,64,56,56]{3,2,1,0} %broadcast.2)
+  %subtract = u32[128,64,56,56]{3,2,1,0} subtract(u32[128,64,56,56]{3,2,1,0} %convert.4, u32[128,64,56,56]{3,2,1,0} %multiply)
+  %iota.2 = u32[128,64,56,56]{3,2,1,0} iota(), iota_dimension=1
+  %constant.2 = u32[] constant(12544)
+  %broadcast.3 = u32[128,64,56,56]{3,2,1,0} broadcast(u32[] %constant.2), dimensions={}
+  %multiply.1 = u32[128,64,56,56]{3,2,1,0} multiply(u32[128,64,56,56]{3,2,1,0} %iota.2, u32[128,64,56,56]{3,2,1,0} %broadcast.3)
+  %subtract.1 = u32[128,64,56,56]{3,2,1,0} subtract(u32[128,64,56,56]{3,2,1,0} %subtract, u32[128,64,56,56]{3,2,1,0} %multiply.1)
+  %convert.6 = u16[128,64,56,56]{3,2,1,0} convert(u32[128,64,56,56]{3,2,1,0} %subtract.1)
+  %constant.3 = u16[] constant(112)
+  %broadcast.4 = u16[128,64,56,56]{3,2,1,0} broadcast(u16[] %constant.3), dimensions={}
+  %divide = u16[128,64,56,56]{3,2,1,0} divide(u16[128,64,56,56]{3,2,1,0} %convert.6, u16[128,64,56,56]{3,2,1,0} %broadcast.4)
+  %iota.3 = u16[128,64,56,56]{3,2,1,0} iota(), iota_dimension=2
+  %subtract.2 = u16[128,64,56,56]{3,2,1,0} subtract(u16[128,64,56,56]{3,2,1,0} %divide, u16[128,64,56,56]{3,2,1,0} %iota.3)
+  %constant.4 = u16[] constant(2)
+  %broadcast.5 = u16[128,64,56,56]{3,2,1,0} broadcast(u16[] %constant.4), dimensions={}
+  %multiply.2 = u16[128,64,56,56]{3,2,1,0} multiply(u16[128,64,56,56]{3,2,1,0} %subtract.2, u16[128,64,56,56]{3,2,1,0} %broadcast.5)
+  %remainder = u16[128,64,56,56]{3,2,1,0} remainder(u16[128,64,56,56]{3,2,1,0} %convert.6, u16[128,64,56,56]{3,2,1,0} %broadcast.4)
+  %iota.4 = u16[128,64,56,56]{3,2,1,0} iota(), iota_dimension=3
+  %subtract.3 = u16[128,64,56,56]{3,2,1,0} subtract(u16[128,64,56,56]{3,2,1,0} %remainder, u16[128,64,56,56]{3,2,1,0} %iota.4)
+  %add.1 = u16[128,64,56,56]{3,2,1,0} add(u16[128,64,56,56]{3,2,1,0} %multiply.2, u16[128,64,56,56]{3,2,1,0} %subtract.3)
+  %convert.7 = u8[128,64,56,56]{3,2,1,0} convert(u16[128,64,56,56]{3,2,1,0} %add.1)
+  %convert.8 = u16[128,64,56,56]{3,2,1,0} convert(u8[128,64,56,56]{3,2,1,0} %convert.7)
+  %constant.5 = u16[] constant(1)
+  %broadcast.7 = u16[128,64,56,56]{3,2,1,0} broadcast(u16[] %constant.5), dimensions={}
+  %shift-right-logical.1 = u16[128,64,56,56]{3,2,1,0} shift-right-logical(u16[128,64,56,56]{3,2,1,0} %convert.8, u16[128,64,56,56]{3,2,1,0} %broadcast.7)
+  %add.2 = u16[128,64,56,56]{3,2,1,0} add(u16[128,64,56,56]{3,2,1,0} %shift-right-logical.1, u16[128,64,56,56]{3,2,1,0} %iota.3)
+  %multiply.3 = u16[128,64,56,56]{3,2,1,0} multiply(u16[128,64,56,56]{3,2,1,0} %add.2, u16[128,64,56,56]{3,2,1,0} %broadcast.4)
+  %add.3 = u16[128,64,56,56]{3,2,1,0} add(u16[128,64,56,56]{3,2,1,0} %multiply.3, u16[128,64,56,56]{3,2,1,0} %iota.4)
+  %and = u16[128,64,56,56]{3,2,1,0} and(u16[128,64,56,56]{3,2,1,0} %convert.8, u16[128,64,56,56]{3,2,1,0} %broadcast.7)
+  %add.4 = u16[128,64,56,56]{3,2,1,0} add(u16[128,64,56,56]{3,2,1,0} %add.3, u16[128,64,56,56]{3,2,1,0} %and)
+  %convert.9 = u32[128,64,56,56]{3,2,1,0} convert(u16[128,64,56,56]{3,2,1,0} %add.4)
+  %add.5 = u32[128,64,56,56]{3,2,1,0} add(u32[128,64,56,56]{3,2,1,0} %convert.9, u32[128,64,56,56]{3,2,1,0} %multiply)
+  %add.6 = u32[128,64,56,56]{3,2,1,0} add(u32[128,64,56,56]{3,2,1,0} %add.5, u32[128,64,56,56]{3,2,1,0} %multiply.1)
+  %bitcast.1 = u32[25690112]{0} bitcast(u32[128,64,56,56]{3,2,1,0} %add.6)
+  %convert.5 = u16[128,64,56,56]{3,2,1,0} convert(u64[128,64,56,56]{3,2,1,0} %reduce-window)
+  %bitcast-convert.4 = f16[128,64,56,56]{3,2,1,0} bitcast-convert(u16[128,64,56,56]{3,2,1,0} %convert.5)
+  %bitcast.2 = f16[25690112]{0} bitcast(f16[128,64,56,56]{3,2,1,0} %bitcast-convert.4)
+  %scatter = f16[102760448]{0} scatter(f16[102760448]{0} %broadcast.6, u32[25690112]{0} %bitcast.1, f16[25690112]{0} %bitcast.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%write
+  ROOT %bitcast.3 = f16[128,64,112,112]{3,2,1,0} bitcast(f16[102760448]{0} %scatter)
+})")
+                    .ValueOrDie();
+  // Same passes as in gpu_compiler.cc
+  HloPassFix<HloPassPipeline> fusion("fusion");
+  // HloPassPipeline fusion("fusion");
+
+  // We try to split variadic ops with many parameters into several such ops
+  // to avoid exceeding the parameter space.
+  fusion.AddPass<VariadicOpSplitter>();
+  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+   * fixing the ticket. */
+  fusion.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false,
+      LayoutAssignment::InstructionCanChangeLayout);
+  fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
+  fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
+  fusion.AddPass<FusionMerger>();
+  fusion.AddPass<GpuMultiOutputFusion>();
+  fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                         /*only_fusion_computations=*/true);
+  fusion.AddPass<HloDCE>();
+
+  ASSERT_TRUE(fusion.Run(module.get()).ValueOrDie());
+  // fusion.Run(module.get());
+  ASSERT_TRUE(module.get()->entry_computation() != nullptr);
+  auto computation = module.get()->entry_computation();
+  printf("!!!!!%s\n", module.get()->ToString().c_str());
+  bool found_ifusion = false;
+  bool found_lfusion = false;
+  for (auto instr : computation->instructions()) {
+    if (instr->IsLoopFusion()) {
+      ASSERT_TRUE(instr->shape().IsTuple());
+      ASSERT_EQ(instr->shape().tuple_shapes(0).element_type(), U8);
+      ASSERT_EQ(instr->shape().tuple_shapes(1).element_type(), U16);
+      found_lfusion = true;
+    } else if (instr->IsInputFusion()) {
+      ASSERT_EQ(instr->shape().element_type(), F16);
+      found_ifusion = true;
+    }
+  }
+  ASSERT_EQ(found_ifusion, true);
+  ASSERT_EQ(found_lfusion, true);
 }
 
 }  // namespace gpu
