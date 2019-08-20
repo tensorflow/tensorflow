@@ -238,6 +238,17 @@ func @QDQFollowedByReshape(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
 // CHECK: return %2
 }
 
+// CHECK-LABEL: QDQFollowedByRank
+func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
+  %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
+  %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
+  %2 = "tf.Rank"(%1): (tensor<1x2xf32>) -> tensor<i32>
+  return %2 : tensor<i32>
+
+// CHECK-NEXT: %[[R:.*]] = "tf.Rank"(%arg0)
+// CHECK-NEXT: return %[[R]] : tensor<i32>
+}
+
 // CHECK-LABEL: fakeQuantWithConv2D
 func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
