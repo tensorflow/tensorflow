@@ -837,10 +837,6 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  if (new_instruction->raw_backend_config_string().empty()) {
-    new_instruction->set_raw_backend_config_string(
-        old_instruction->raw_backend_config_string());
-  }
   if (new_instruction->frontend_attributes().map().empty()) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
