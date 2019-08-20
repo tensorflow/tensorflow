@@ -85,8 +85,7 @@ class SamplingDatasetOpTest
 
     // Step 4: Create a dataset kernel to test, passing in attributes of the
     // kernel.
-    TF_RETURN_IF_ERROR(
-        CreateSamplingDatasetOpKernel(*dataset_params, &dataset_kernel_));
+    TF_RETURN_IF_ERROR(MakeDatasetOpKernel(*dataset_params, &dataset_kernel_));
 
     // Step 5: Create a context in which the kernel will operate. This is where
     // the kernel gets initialized with its inputs
@@ -108,13 +107,12 @@ class SamplingDatasetOpTest
     return Status::OK();
   }
 
- protected:
   // Creates a new `SamplingDataset` op kernel.
   // Doesn't initialize the kernel's static parameters because they are inputs,
   // not attributes.
-  Status CreateSamplingDatasetOpKernel(
+  Status MakeDatasetOpKernel(
       const SamplingDatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* sampling_dataset_op_kernel) {
+      std::unique_ptr<OpKernel>* sampling_dataset_op_kernel) override {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(SamplingDatasetOp::kDatasetType),
         // Inputs
@@ -152,10 +150,6 @@ SamplingDatasetParams ZeroPercentSampleParams() {
           /*node_name=*/kNodeName};
 }
 
-class ParameterizedGetNextTest : public SamplingDatasetOpTest,
-                                 public ::testing::WithParamInterface<
-                                     GetNextTestCase<SamplingDatasetParams>> {};
-
 std::vector<GetNextTestCase<SamplingDatasetParams>> GetNextTestCases() {
   return {
       // Test case 1: 100% sample should return all inputs
@@ -173,47 +167,45 @@ std::vector<GetNextTestCase<SamplingDatasetParams>> GetNextTestCases() {
       {/*dataset_params=*/ZeroPercentSampleParams(), /*expected_outputs=*/{}}};
 }
 
-TEST_P(ParameterizedGetNextTest, GetNext) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(
-      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
+ITERATOR_GET_NEXT_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                         GetNextTestCases());
+
+std::vector<DatasetNodeNameTestCase<SamplingDatasetParams>>
+DatasetNodeNameTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_node_name=*/kNodeName}};
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    SamplingDatasetOpTest, ParameterizedGetNextTest,
-    ::testing::ValuesIn(std::vector<GetNextTestCase<SamplingDatasetParams>>(
-        GetNextTestCases())));
+DATASET_NODE_NAME_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                         DatasetNodeNameTestCases());
 
-TEST_F(SamplingDatasetOpTest, DatasetNodeName) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
+std::vector<DatasetTypeStringTestCase<SamplingDatasetParams>>
+DatasetTypeStringTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_dataset_type_string=*/name_utils::OpName(
+               SamplingDatasetOp::kDatasetType)}};
 }
 
-TEST_F(SamplingDatasetOpTest, DatasetTypeString) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetTypeString(
-      name_utils::OpName(SamplingDatasetOp::kDatasetType)));
+DATASET_TYPE_STRING_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                           DatasetTypeStringTestCases());
+
+std::vector<DatasetOutputDtypesTestCase<SamplingDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-TEST_F(SamplingDatasetOpTest, DatasetOutputDtypes) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
+DATASET_OUTPUT_DTYPES_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                             DatasetOutputDtypesTestCases());
+
+std::vector<DatasetOutputShapesTestCase<SamplingDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_F(SamplingDatasetOpTest, DatasetOutputShapes) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
-}
-
-class ParameterizedCardinalityTest
-    : public SamplingDatasetOpTest,
-      public ::testing::WithParamInterface<
-          CardinalityTestCase<SamplingDatasetParams>> {};
+DATASET_OUTPUT_SHAPES_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                             DatasetOutputShapesTestCases());
 
 std::vector<CardinalityTestCase<SamplingDatasetParams>> CardinalityTestCases() {
   return {{/*dataset_params=*/OneHundredPercentSampleParams(),
@@ -224,40 +216,36 @@ std::vector<CardinalityTestCase<SamplingDatasetParams>> CardinalityTestCases() {
            /*expected_cardinality=*/kUnknownCardinality}};
 }
 
-TEST_P(ParameterizedCardinalityTest, Cardinality) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality));
+DATASET_CARDINALITY_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                           CardinalityTestCases());
+
+std::vector<IteratorOutputDtypesTestCase<SamplingDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    SamplingDatasetOpTest, ParameterizedCardinalityTest,
-    ::testing::ValuesIn(std::vector<CardinalityTestCase<SamplingDatasetParams>>(
-        CardinalityTestCases())));
+ITERATOR_OUTPUT_DTYPES_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                              IteratorOutputDtypesTestCases());
 
-TEST_F(SamplingDatasetOpTest, IteratorOutputDtypes) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
+std::vector<IteratorOutputShapesTestCase<SamplingDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_F(SamplingDatasetOpTest, IteratorOutputShapes) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
+ITERATOR_OUTPUT_SHAPES_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                              IteratorOutputShapesTestCases());
+
+std::vector<IteratorPrefixTestCase<SamplingDatasetParams>>
+IteratorOutputPrefixTestCases() {
+  return {{/*dataset_params=*/TenPercentSampleParams(),
+           /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
+               SamplingDatasetOp::kDatasetType, kIteratorPrefix)}};
 }
 
-TEST_F(SamplingDatasetOpTest, IteratorOutputPrefix) {
-  auto dataset_params = TenPercentSampleParams();
-  TF_ASSERT_OK(Initialize(&dataset_params));
-  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
-      SamplingDatasetOp::kDatasetType, kIteratorPrefix)));
-}
-
-class ParameterizedIteratorSaveAndRestoreTest
-    : public SamplingDatasetOpTest,
-      public ::testing::WithParamInterface<
-          IteratorSaveAndRestoreTestCase<SamplingDatasetParams>> {};
+ITERATOR_PREFIX_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                       IteratorOutputPrefixTestCases());
 
 std::vector<IteratorSaveAndRestoreTestCase<SamplingDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
@@ -274,18 +262,8 @@ IteratorSaveAndRestoreTestCases() {
            /*expected_outputs=*/{}}};
 }
 
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      kIteratorPrefix, test_case.expected_outputs, test_case.breakpoints));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    SamplingDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
-    ::testing::ValuesIn(
-        std::vector<IteratorSaveAndRestoreTestCase<SamplingDatasetParams>>(
-            IteratorSaveAndRestoreTestCases())));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,
+                                 IteratorSaveAndRestoreTestCases());
 
 }  // namespace
 }  // namespace experimental
