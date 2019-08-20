@@ -1,5 +1,3 @@
 add_subdirectory(AffineOps)
 add_subdirectory(Dialect)
 add_subdirectory(EDSC)
-add_subdirectory(Linalg)
-add_subdirectory(VectorOps)
