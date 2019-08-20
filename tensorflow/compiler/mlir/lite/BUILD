@@ -468,6 +468,7 @@ tf_cc_binary(
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
@@ -485,6 +486,7 @@ tf_cc_binary(
     deps = [
         ":flatbuffer_translate_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/default/build_config:base",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",

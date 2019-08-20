@@ -304,7 +304,6 @@ tf_native_cc_binary(
         "operator_writer_gen.cc",
     ],
     deps = [
-        "@llvm//:config",
         "@llvm//:support",
         "@llvm//:tablegen",
         "@local_config_mlir//:TableGen",
