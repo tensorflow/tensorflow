@@ -28,6 +28,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/StringExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 
@@ -84,6 +85,9 @@ private:
   /// Method to process an OpDecorate instruction.
   LogicalResult processDecoration(ArrayRef<uint32_t> words);
 
+  // Method to process an OpMemberDecorate instruction.
+  LogicalResult processMemberDecoration(ArrayRef<uint32_t> words);
+
   /// Processes the SPIR-V function at the current `offset` into `binary`.
   /// The operands to the OpFunction instruction is passed in as ``operands`.
   /// This method processes each instruction inside the function and dispatches
@@ -121,6 +125,8 @@ private:
   LogicalResult processArrayType(ArrayRef<uint32_t> operands);
 
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
+
+  LogicalResult processStructType(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
   // Constant
@@ -231,6 +237,9 @@ private:
 
   // Result <id> to type decorations.
   DenseMap<uint32_t, uint32_t> typeDecorations;
+
+  // Result <id> to member decorations.
+  DenseMap<uint32_t, DenseMap<uint32_t, uint32_t>> memberDecorationMap;
 
   // List of instructions that are processed in a defered fashion (after an
   // initial processing of the entire binary). Some operations like
@@ -364,6 +373,23 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
+  }
+  return success();
+}
+
+LogicalResult Deserializer::processMemberDecoration(ArrayRef<uint32_t> words) {
+  // The binary layout of OpMemberDecorate is different comparing to OpDecorate
+  if (words.size() != 4) {
+    return emitError(unknownLoc, "OpMemberDecorate must have 4 operands");
+  }
+
+  switch (static_cast<spirv::Decoration>(words[2])) {
+  case spirv::Decoration::Offset:
+    memberDecorationMap[words[0]][words[1]] = words[3];
+    break;
+  default:
+    return emitError(unknownLoc, "unhandled OpMemberDecoration case: ")
+           << words[2];
   }
   return success();
 }
@@ -653,6 +679,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     return processArrayType(operands);
   case spirv::Opcode::OpTypeFunction:
     return processFunctionType(operands);
+  case spirv::Opcode::OpTypeStruct:
+    return processStructType(operands);
   default:
     return emitError(unknownLoc, "unhandled type instruction");
   }
@@ -719,6 +747,46 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
     returnTypes = llvm::makeArrayRef(returnType);
   }
   typeMap[operands[0]] = FunctionType::get(argTypes, returnTypes, context);
+  return success();
+}
+
+LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
+  // TODO(ravishankarm) : Regarding to the spec spv.struct must support zero
+  // amount of members.
+  if (operands.size() < 2) {
+    return emitError(unknownLoc, "OpTypeStruct must have at least 2 operand");
+  }
+
+  SmallVector<Type, 0> memberTypes;
+  for (auto op : llvm::drop_begin(operands, 1)) {
+    Type memberType = getType(op);
+    if (!memberType) {
+      return emitError(unknownLoc, "OpTypeStruct references undefined <id> ")
+             << op;
+    }
+    memberTypes.push_back(memberType);
+  }
+
+  SmallVector<spirv::StructType::LayoutInfo, 0> layoutInfo;
+  // Check for layoutinfo
+  auto memberDecorationIt = memberDecorationMap.find(operands[0]);
+  if (memberDecorationIt != memberDecorationMap.end()) {
+    // Each member must have an offset
+    const auto &offsetDecorationMap = memberDecorationIt->second;
+    auto offsetDecorationMapEnd = offsetDecorationMap.end();
+    for (auto memberIndex : llvm::seq<uint32_t>(0, memberTypes.size())) {
+      // Check that specific member has an offset
+      auto offsetIt = offsetDecorationMap.find(memberIndex);
+      if (offsetIt == offsetDecorationMapEnd) {
+        return emitError(unknownLoc, "OpTypeStruct with <id> ")
+               << operands[0] << " must have an offset for " << memberIndex
+               << "-th member";
+      }
+      layoutInfo.push_back(
+          static_cast<spirv::StructType::LayoutInfo>(offsetIt->second));
+    }
+  }
+  typeMap[operands[0]] = spirv::StructType::get(memberTypes, layoutInfo);
   return success();
 }
 
@@ -993,6 +1061,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypeVector:
   case spirv::Opcode::OpTypeArray:
   case spirv::Opcode::OpTypeFunction:
+  case spirv::Opcode::OpTypeStruct:
   case spirv::Opcode::OpTypePointer:
     return processType(opcode, operands);
   case spirv::Opcode::OpConstant:
@@ -1015,6 +1084,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processConstantNull(operands);
   case spirv::Opcode::OpDecorate:
     return processDecoration(operands);
+  case spirv::Opcode::OpMemberDecorate:
+    return processMemberDecoration(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
   default:
