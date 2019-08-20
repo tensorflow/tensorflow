@@ -17,7 +17,6 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/tensorflow",

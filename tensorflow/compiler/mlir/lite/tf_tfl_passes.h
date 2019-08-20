@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 
 namespace tensorflow {
 
@@ -29,9 +28,20 @@ namespace tensorflow {
 // file with main method.
 bool ShouldRunQuantizePasses(mlir::ModuleOp m);
 
-// Add the TF to TFLite passes, specified in the pass_config, into a
-// pass_manager.
-void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
+// TODO(b/139535802) - Simplify this signature, and fix the comments.
+// Add the MLIR passes that convert TF dialect to TF Lite dialect
+// to a MLIR `pass_manager`. These passes first raise the control flow in the TF
+// control flow dialect, decode the constant tensors, and then legalize the
+// module to TF Lite dialect with some optimizations afterwards.
+// If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
+// added, which produces TF Lite ops. If `run_quantize` is true, quantization
+// passes will be added. If `emit_quant_adaptor_ops` is true, Quantize and
+// Dequantize ops are added to the inputs and outputs of the quantized model.
+// If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
+// TF ops before legalization to TF Lite dialect.
+void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
+                                bool emit_quant_adaptor_ops,
+                                bool lower_tensor_list_ops,
                                 mlir::PassManager* pass_manager);
 
 }  // namespace tensorflow
