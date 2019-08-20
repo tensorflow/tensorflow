@@ -28,6 +28,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/StringExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/raw_ostream.h"
@@ -147,6 +148,11 @@ private:
                                       uint32_t resultId) {
     return emitError(loc, "unhandled decoraion for type:") << type;
   }
+
+  /// Process member decoration
+  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberNum,
+                                        spirv::Decoration decorationType,
+                                        uint32_t value);
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -411,6 +417,16 @@ LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
   }
   return success();
 }
+
+LogicalResult
+Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
+                                    spirv::Decoration decorationType,
+                                    uint32_t value) {
+  SmallVector<uint32_t, 4> args(
+      {structID, memberIndex, static_cast<uint32_t>(decorationType), value});
+  return encodeInstructionInto(decorations, spirv::Opcode::OpMemberDecorate,
+                               args);
+}
 } // namespace
 
 LogicalResult Serializer::processFuncOp(FuncOp op) {
@@ -615,6 +631,31 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
     typeEnum = spirv::Opcode::OpTypePointer;
     operands.push_back(static_cast<uint32_t>(ptrType.getStorageClass()));
     operands.push_back(pointeeTypeID);
+    return success();
+  }
+
+  if (auto structType = type.dyn_cast<spirv::StructType>()) {
+    bool hasLayout = structType.hasLayout();
+    for (auto elementIndex :
+         llvm::seq<uint32_t>(0, structType.getNumElements())) {
+      uint32_t elementTypeID = 0;
+      if (failed(processType(loc, structType.getElementType(elementIndex),
+                             elementTypeID))) {
+        return failure();
+      }
+      operands.push_back(elementTypeID);
+      if (hasLayout) {
+        // Decorate each struct member with an offset
+        if (failed(processMemberDecoration(
+                resultID, elementIndex, spirv::Decoration::Offset,
+                static_cast<uint32_t>(structType.getOffset(elementIndex))))) {
+          return emitError(loc, "cannot decorate ")
+                 << elementIndex << "-th member of : " << structType
+                 << "with its offset";
+        }
+      }
+    }
+    typeEnum = spirv::Opcode::OpTypeStruct;
     return success();
   }
 
