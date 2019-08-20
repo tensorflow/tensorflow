@@ -258,7 +258,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  #TODO(b/139745667)
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
