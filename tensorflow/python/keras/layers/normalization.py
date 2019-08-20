@@ -960,7 +960,7 @@ class LayerNormalization(Layer):
     axis = sorted(self.axis)
     err = False
     if axis[-1] - axis[0] != len(axis) - 1:
-        err = True
+      err = True
 
     if axis[-1] != ndims-1:
       err = True

@@ -664,11 +664,11 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_fused_layernorm_correctness(self):
     if not tf_test_util.is_gpu_available():
-        self.skipTest('No GPU available')
+      self.skipTest('No GPU available')
     device = "/gpu:0"
     with ops.device(device):
-       _run_fused_layernorm_correctness_test(
-           normalization.LayerNormalization, [-2, -1], dtype='float32')
+      _run_fused_layernorm_correctness_test(
+          normalization.LayerNormalization, [-2, -1], dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_mixed_precision(self):
