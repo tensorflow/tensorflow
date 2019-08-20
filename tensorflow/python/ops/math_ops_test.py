@@ -557,16 +557,6 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
         tf_result = math_ops.div_no_nan(nums, divs).eval()
         self.assertAllEqual(tf_result, np_result)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testdTypeException(self):
-    dtype_list = [np.float16, np.float32, np.int32, np.float64]
-    for i, dt in enumerate(dtype_list):
-      nums = np.random.rand(5, 5).astype(dt)
-      divs = np.random.rand(5, 5).astype(dtype_list[(i-1)%len(dtype_list)])
-      with self.assertRaisesRegexp(TypeError,
-                                   "x and y must have the same dtype"):
-        math_ops.div_no_nan(nums, divs)
-
 
 class MultiplyNoNanTest(test_util.TensorFlowTestCase):
 

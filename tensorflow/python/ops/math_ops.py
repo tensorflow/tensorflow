@@ -1105,19 +1105,11 @@ def div_no_nan(x, y, name=None):
 
   Returns:
     The element-wise value of the x divided by y.
-  
-  Raises:
-    TypeError: if x and y are not of the same dtype.
   """
 
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
+    x = ops.convert_to_tensor(x, name="x", dtype=x.dtype.base_dtype)
+    y = ops.convert_to_tensor(y, name="y", )
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
