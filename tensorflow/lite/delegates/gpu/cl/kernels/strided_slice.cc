@@ -53,7 +53,9 @@ std::string GetStridedSliceCode(
   c += "  int s_y = Y * stride.y + offset.y;\n";
   if (alignedx4) {
     c += "  int s_z = Z + offset.z;\n";
-    c += "  FLT4 result = " + src_tensor.Read3D("s_x", "s_y", "s_z") + ";\n";
+    c += "  FLT4 result = " +
+         src_tensor.Read3D("s_x", "s_y", "s_z", TextureAddressMode::DONT_CARE) +
+         ";\n";
   } else {
     c += "  FLT4 result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
@@ -63,7 +65,10 @@ std::string GetStridedSliceCode(
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
       c += "    int s_z = s_ch >> 2;\n";
       c += "    int s_z_rem = s_ch & 3;\n";
-      c += "    FLT4 t = " + src_tensor.Read3D("s_x", "s_y", "s_z") + ";\n";
+      c += "    FLT4 t = " +
+           src_tensor.Read3D("s_x", "s_y", "s_z",
+                             TextureAddressMode::DONT_CARE) +
+           ";\n";
       c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
       c += "    result." + postfixes[i] + " = t_ar[s_z_rem];\n";
       c += "  }\n";

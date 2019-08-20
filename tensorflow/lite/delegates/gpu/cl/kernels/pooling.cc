@@ -117,7 +117,9 @@ std::string GetMaxPoolingKernelCode(
   code += "      int x_c = X * stride.x - padding.x + kx;\n";
   code += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
   code += "      if (!outside_x && !outside_y) {\n";
-  code += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
+  code += "        FLT4 src = " +
+          src_tensor.Read3D("x_c", "y_c", "Z", TextureAddressMode::DONT_CARE) +
+          ";\n";
   if (output_indices) {
     code += "        if (src.x > maximum.x) {\n";
     code += "          indexes.x = index_counter;\n";

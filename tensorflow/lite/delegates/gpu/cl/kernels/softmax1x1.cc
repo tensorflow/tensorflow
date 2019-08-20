@@ -50,7 +50,9 @@ std::string GetSoftmaxKernelCode(
   code += "    if (z < size.x) {\n";
   code += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
   code +=
-      "      float4 src = " + src_tensor.ReadAsFloat3D("0", "0", "z") + ";\n";
+      "      float4 src = " +
+      src_tensor.ReadAsFloat3D("0", "0", "z", TextureAddressMode::DONT_CARE) +
+      ";\n";
   code += "      sum += dot(mask_temp, exp(src));\n";
   code += "      offset += 32;\n";
   code += "    }\n";
@@ -82,7 +84,8 @@ std::string GetSoftmaxKernelCode(
   code += "    if (z < size.x) {\n";
   code += "    " + dst_tensor.GetAddress("address", "0", "0", "z") + "\n";
   code += "      FLT4 value = TO_FLT4(exp(" +
-          src_tensor.ReadAsFloat3D("address") + ") * sum);\n";
+          src_tensor.ReadAsFloat3D("address", TextureAddressMode::DONT_CARE) +
+          ") * sum);\n";
   code += PostProcess(linked_operations, "value", "z", "address");
   code += "    " + dst_tensor.Write3D("value", "address");
   code += "      offset += 32;\n";
