@@ -947,7 +947,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "ldr r5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
 
         // Load 4 lhs_sums values.
-        "vld1.32 q11, [r2]\n"
+        "vld1.32 {d22, d23}, [r2]\n"
         "vdup.32 d13, r5\n" // rhs_zero_point
 
         // Compute lhs_sums * rhs_zero_point.
