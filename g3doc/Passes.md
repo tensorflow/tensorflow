@@ -76,7 +76,7 @@ value is returned, packed into an LLVM IR struct type. Function calls and
 returns are updated accordingly. Block argument types are updated to use LLVM IR
 types.
 
-## DMA generation (`-affine-dma-generate`)
+## Data Copy DMA generation (`-affine-data-copy-generate`)
 
 Replaces all loads and stores on memref's living in 'slowMemorySpace' by
 introducing DMA operations (strided DMA if necessary) to transfer data to/from
@@ -100,7 +100,7 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
     affine.for %i1 = 0 to 1024 step 32 {
       affine.for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 32)(%i0) {
         affine.for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 32)(%i1) {
-          %1 = load %0[%i2, %i3] : memref<256x1024xf32>
+          %1 = affine.load %0[%i2, %i3] : memref<256x1024xf32>
         }
       }
     }
@@ -109,37 +109,31 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
 }
 ```
 
-Output
+Output (with flags: -affine-data-copy-generate -affine-data-copy-generate-fast-mem-space=2)
 
 ```mlir
-#map1 = (d0) -> (d0)
-#map2 = (d0) -> (d0 + 32)
-#map3 = (d0, d1) -> (-d0 + d1)
-func @loop_nest_tiled() -> memref<256x1024xf32> {
-  %c1024 = constant 1024 : index
-  %c32 = constant 32 : index
-  %c0 = constant 0 : index
-  %0 = alloc() : memref<256x1024xf32>
-  affine.for %i0 = 0 to 256 step 32 {
-    affine.for %i1 = 0 to 1024 step 32 {
-      %1 = affine.apply #map1(%i0)
-      %2 = affine.apply #map1(%i1)
-      %3 = alloc() : memref<32x32xf32, 1>
-      %4 = alloc() : memref<1xi32>
-      dma_start %0[%1, %2], %3[%c0, %c0], %c1024, %4[%c0], %c1024, %c32 : memref<256x1024xf32>, memref<32x32xf32, 1>, memref<1xi32>
-      dma_wait %4[%c0], %c1024 : memref<1xi32>
-      affine.for %i2 = #map1(%i0) to #map2(%i0) {
-        affine.for %i3 = #map1(%i1) to #map2(%i1) {
-          %5 = affine.apply #map3(%i0, %i2)
-          %6 = affine.apply #map3(%i1, %i3)
-          %7 = load %3[%5, %6] : memref<32x32xf32, 1>
+module {
+  func @loop_nest_tiled() -> memref<256x1024xf32> {
+    %c262144 = constant 262144 : index
+    %c0 = constant 0 : index
+    %0 = alloc() : memref<256x1024xf32>
+    %1 = alloc() : memref<256x1024xf32, 2>
+    %2 = alloc() : memref<1xi32>
+    affine.dma_start %0[%c0, %c0], %1[%c0, %c0], %2[%c0], %c262144 : memref<256x1024xf32>, memref<256x1024xf32, 2>, memref<1xi32>
+    affine.dma_wait %2[%c0], %c262144 : memref<1xi32>
+    affine.for %arg0 = 0 to 256 step 32 {
+      affine.for %arg1 = 0 to 1024 step 32 {
+        affine.for %arg2 = #map1(%arg0) to #map2(%arg0) {
+          affine.for %arg3 = #map1(%arg1) to #map2(%arg1) {
+            %3 = affine.load %1[%arg2, %arg3] : memref<256x1024xf32, 2>
+          }
         }
       }
-      dealloc %4 : memref<1xi32>
-      dealloc %3 : memref<32x32xf32, 1>
     }
+    dealloc %2 : memref<1xi32>
+    dealloc %1 : memref<256x1024xf32, 2>
+    return %0 : memref<256x1024xf32>
   }
-  return %0 : memref<256x1024xf32>
 }
 ```
 
@@ -197,12 +191,8 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
   %m = alloc() : memref<10x10xf32>
   affine.for %i0 = 0 to 10 {
     affine.for %i1 = 0 to 10 {
-      %t0 = affine.apply (d0, d1) -> (d1 + 1)(%i0, %i1)
-      %t1 = affine.apply (d0, d1) -> (d0)(%i0, %i1)
-      %idx0 = affine.apply (d0, d1) -> (d1) (%t0, %t1)
-      %idx1 = affine.apply (d0, d1) -> (d0 - 1) (%t0, %t1)
-      store %cf7, %m[%idx0, %idx1] : memref<10x10xf32>
-      %v0 = load %m[%i0, %i1] : memref<10x10xf32>
+      affine.store %cf7, %m[%i0, %i1] : memref<10x10xf32>
+      %v0 = affine.load %m[%i0, %i1] : memref<10x10xf32>
       %v1 = addf %v0, %v0 : f32
     }
   }
@@ -213,21 +203,20 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 Output
 
 ```mlir
-#map1 = (d0, d1) -> (d1)
-#map2 = (d0, d1) -> (d0 - 1)
-func @store_load_affine_apply() -> memref<10x10xf32> {
-  %cst = constant 7.000000e+00 : f32
-  %0 = alloc() : memref<10x10xf32>
-  affine.for %i0 = 0 to 10 {
-    affine.for %i1 = 0 to 10 {
-      %3 = affine.apply #map1(%1, %2)
-      %4 = affine.apply #map2(%1, %2)
-      store %cst, %0[%3, %4] : memref<10x10xf32>
-      %5 = addf %cst, %cst : f32
+module {
+  func @store_load_affine_apply() -> memref<10x10xf32> {
+    %cst = constant 7.000000e+00 : f32
+    %0 = alloc() : memref<10x10xf32>
+    affine.for %arg0 = 0 to 10 {
+      affine.for %arg1 = 0 to 10 {
+        affine.store %cst, %0[%arg0, %arg1] : memref<10x10xf32>
+        %1 = addf %cst, %cst : f32
+      }
     }
+    return %0 : memref<10x10xf32>
   }
-  return %0 : memref<10x10xf32>
 }
+
 ```
 
 ## Memref dependence analysis (`-memref-dependence-check`)
@@ -254,51 +243,56 @@ dma_start operations with respect to other operations.
 Input
 
 ```mlir
+func @pipelinedatatransfer() {
   %0 = alloc() : memref<256xf32>
   %1 = alloc() : memref<32xf32, 1>
   %2 = alloc() : memref<1xf32>
   %c0 = constant 0 : index
   %c128 = constant 128 : index
   affine.for %i0 = 0 to 8 {
-    dma_start %0[%i0], %1[%i0], %c128, %2[%c0] : memref<256xf32>, memref<32xf32, 1>, memref<1xf32>
-    dma_wait %2[%c0], %c128 : memref<1xf32>
-    %3 = load %1[%i0] : memref<32xf32, 1>
+    affine.dma_start %0[%i0], %1[%i0], %2[%c0], %c128 : memref<256xf32>, memref<32xf32, 1>, memref<1xf32>
+    affine.dma_wait %2[%c0], %c128 : memref<1xf32>
+    %3 = affine.load %1[%i0] : memref<32xf32, 1>
     %4 = "compute"(%3) : (f32) -> f32
-    store %4, %1[%i0] : memref<32xf32, 1>
+    affine.store %4, %1[%i0] : memref<32xf32, 1>
   }
+  return
+}
 ```
 
 Output
 
 ```mlir
-#map2 = (d0) -> (d0 mod 2)
-#map3 = (d0) -> (d0 - 1)
-#map4 = (d0) -> ((d0 - 1) mod 2)
-
-  %c128 = constant 128 : index
-  %c0 = constant 0 : index
-  %c7 = constant 7 : index
-  %c1 = constant 1 : index
-  %0 = alloc() : memref<256xf32>
-  %1 = alloc() : memref<2x32xf32, 1>
-  %2 = alloc() : memref<2x1xf32>
-  dma_start %0[%c0], %1[%c0, %c0], %c128, %2[%c0, %c0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
-  affine.for %i0 = 1 to 8 {
-    %3 = affine.apply #map2(%i0)
-    %4 = affine.apply #map2(%i0)
-    dma_start %0[%i0], %1[%3, %i0], %c128, %2[%4, %c0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
-    %5 = affine.apply #map3(%i0)
-    %6 = affine.apply #map4(%i0)
-    %7 = affine.apply #map4(%i0)
-    dma_wait %2[%6, %c0], %c128 : memref<2x1xf32>
-    %8 = load %1[%7, %5] : memref<2x32xf32, 1>
-    %9 = "compute"(%8) : (f32) -> f32
-    store %9, %1[%7, %5] : memref<2x32xf32, 1>
+module {
+  func @pipelinedatatransfer() {
+    %c8 = constant 8 : index
+    %c0 = constant 0 : index
+    %0 = alloc() : memref<256xf32>
+    %c0_0 = constant 0 : index
+    %c128 = constant 128 : index
+    %1 = alloc() : memref<2x32xf32, 1>
+    %2 = alloc() : memref<2x1xf32>
+    affine.dma_start %0[%c0], %1[%c0 mod 2, %c0], %2[%c0 mod 2, symbol(%c0_0)], %c128 : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
+    affine.for %arg0 = 1 to 8 {
+      affine.dma_start %0[%arg0], %1[%arg0 mod 2, %arg0], %2[%arg0 mod 2, symbol(%c0_0)], %c128 : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
+      %8 = affine.apply #map3(%arg0)
+      %9 = affine.apply #map4(%8)
+      %10 = affine.apply #map4(%8)
+      affine.dma_wait %2[%8 mod 2, symbol(%c0_0)], %c128 : memref<2x1xf32>
+      %11 = affine.load %1[%8 mod 2, %8] : memref<2x32xf32, 1>
+      %12 = "compute"(%11) : (f32) -> f32
+      affine.store %12, %1[%8 mod 2, %8] : memref<2x32xf32, 1>
+    }
+    %3 = affine.apply #map3(%c8)
+    %4 = affine.apply #map4(%3)
+    %5 = affine.apply #map4(%3)
+    affine.dma_wait %2[%3 mod 2, symbol(%c0_0)], %c128 : memref<2x1xf32>
+    %6 = affine.load %1[%3 mod 2, %3] : memref<2x32xf32, 1>
+    %7 = "compute"(%6) : (f32) -> f32
+    affine.store %7, %1[%3 mod 2, %3] : memref<2x32xf32, 1>
+    dealloc %2 : memref<2x1xf32>
+    dealloc %1 : memref<2x32xf32, 1>
+    return
   }
-  dma_wait %2[%c1, %c0], %c128 : memref<2x1xf32>
-  %10 = load %1[%c1, %c7] : memref<2x32xf32, 1>
-  %11 = "compute"(%10) : (f32) -> f32
-  store %11, %1[%c1, %c7] : memref<2x32xf32, 1>
-  dealloc %2 : memref<2x1xf32>
-  dealloc %1 : memref<2x32xf32, 1>
+}
 ```
