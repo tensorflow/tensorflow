@@ -467,7 +467,7 @@ class MklConcatOp : public OpKernel {
                 dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
           } else {
             dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
-                                mkl_common_format);
+                                  mkl_common_format);
           }
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
