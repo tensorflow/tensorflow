@@ -24,7 +24,7 @@
 #else
 #define LINALG_LIBRARY_OPS
 
-include "mlir/AffineOps/AffineOpsBase.td"
+include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 
 class LinalgParametricNativeOpTrait<string prop, string parameters> :

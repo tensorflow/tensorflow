@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_AFFINEOPS_AFFINEOPS_H
-#define MLIR_AFFINEOPS_AFFINEOPS_H
+#ifndef MLIR_DIALECT_AFFINEOPS_AFFINEOPS_H
+#define MLIR_DIALECT_AFFINEOPS_AFFINEOPS_H
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -540,7 +540,7 @@ void fullyComposeAffineMapAndOperands(AffineMap *map,
                                       llvm::SmallVectorImpl<Value *> *operands);
 
 #define GET_OP_CLASSES
-#include "mlir/AffineOps/AffineOps.h.inc"
+#include "mlir/Dialect/AffineOps/AffineOps.h.inc"
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
 bool isForInductionVar(Value *val);

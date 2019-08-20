@@ -23,7 +23,7 @@
 #include "linalg3/Intrinsics.h"
 #include "linalg3/TensorOps.h"
 
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Transforms/LoopUtils.h"

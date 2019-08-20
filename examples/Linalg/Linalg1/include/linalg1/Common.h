@@ -18,9 +18,9 @@
 #ifndef LINALG1_COMMON_H_
 #define LINALG1_COMMON_H_
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Verifier.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"

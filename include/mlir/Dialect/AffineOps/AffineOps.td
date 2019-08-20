@@ -28,7 +28,7 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-include "mlir/AffineOps/AffineOpsBase.td"
+include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 
 def Affine_Dialect : Dialect {
   let name = "affine";
