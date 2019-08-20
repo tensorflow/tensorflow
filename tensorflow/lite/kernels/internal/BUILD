@@ -507,6 +507,7 @@ cc_library(
         "reference/portable_tensor_utils_impl.h",
     ],
     deps = [
+        ":common",
         ":compatibility",
         ":round",
         ":types",

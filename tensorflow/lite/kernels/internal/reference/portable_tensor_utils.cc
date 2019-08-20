@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/round.h"
@@ -174,6 +175,236 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
       *result += dotprod * batch_scaling_factor;
     }  // for row
   }    // for batch
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int16_t* output) {
+  const int16_t output_max = std::numeric_limits<int16_t>::max();
+  const int16_t output_min = std::numeric_limits<int16_t>::min();
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int row = 0; row < n_output; ++row) {
+      int32_t acc = gate_bias == nullptr ? 0 : gate_bias[row];
+      for (int col = 0; col < n_input; ++col) {
+        int8 input_val = input[batch * n_input + col];
+        int8 weights_val = input_to_gate_weights[row * n_input + col];
+        acc += (input_val - input_zeropoint) * weights_val;
+      }
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += output_zp;
+      acc += output[batch * n_output + row];
+      if (acc > output_max) {
+        acc = output_max;
+      }
+      if (acc < output_min) {
+        acc = output_min;
+      }
+      output[batch * n_output + row] = static_cast<int16_t>(acc);
+    }
+  }
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
+    int32_t n_output, int32_t output_zp, int8_t* output) {
+  const int8_t output_max = std::numeric_limits<int8_t>::max();
+  const int8_t output_min = std::numeric_limits<int8_t>::min();
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int row = 0; row < n_output; ++row) {
+      int32_t acc = gate_bias == nullptr ? 0 : gate_bias[row];
+      for (int col = 0; col < n_input; ++col) {
+        int8 input_val = input[batch * n_input + col];
+        int8 weights_val = input_to_gate_weights[row * n_input + col];
+        acc += (input_val - input_zeropoint) * weights_val;
+      }
+      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += output_zp;
+      acc += output[batch * n_output + row];
+      if (acc > output_max) {
+        acc = output_max;
+      }
+      if (acc < output_min) {
+        acc = output_min;
+      }
+      output[batch * n_output + row] = static_cast<int8_t>(acc);
+    }
+  }
+}
+
+void PortableApplyLayerNorm(const int16_t* input,
+                            const int16_t* layer_norm_weights,
+                            const int32_t* bias, int32_t layer_norm_scale_a,
+                            int32_t layer_norm_scale_b, int32_t variance_limit,
+                            int n_batch, int n_input, int16_t* output) {
+  const int32_t int16_max = std::numeric_limits<int16_t>::max();
+  const int32_t int16_min = std::numeric_limits<int16_t>::min();
+  static const int kOverflowGuard = 1 << 20;
+  for (int i = 0; i < n_batch; ++i) {
+    int64_t sum = 0;
+    int64_t sum_sq = 0;
+    for (int j = 0; j < n_input; ++j) {
+      const int32_t index = i * n_input + j;
+      int32_t val = static_cast<int32_t>(input[index]);
+      sum += val;
+      sum_sq += val * val;
+    }
+    int32_t mean =
+        static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
+    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
+    int32 temp = kOverflowGuard / n_input;
+    int64_t variance =
+        sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
+    int32_t variance2 = static_cast<int32>(variance / kOverflowGuard);
+    if (variance2 < 1) {
+      variance2 = variance_limit;
+    }
+    int32_t stddev_inverse_a;
+    int stddev_inverse_b;
+    GetInvSqrtQuantizedMultiplierExp(variance2, /*reverse_shift*/ -1,
+                                     &stddev_inverse_a, &stddev_inverse_b);
+
+    for (int j = 0; j < n_input; ++j) {
+      const int32 index = i * n_input + j;
+      int32 val = static_cast<int32_t>(input[index]);
+      int32 shifted = 1024 * val - mean;
+      int32 rescaled = MultiplyByQuantizedMultiplier(shifted, stddev_inverse_a,
+                                                     stddev_inverse_b);
+      // TODO(jianlijianli): Saturate this.
+      int64_t val3 = rescaled * layer_norm_weights[j] + bias[j];
+      int32 val4 =
+          static_cast<int32>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
+      int32 val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
+                                                 layer_norm_scale_b + 12);
+      val5 = std::min(std::max(int16_min, val5), int16_max);
+      output[index] = static_cast<int16_t>(val5);
+    }
+  }
+}
+
+void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
+                          int32_t n_input, int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int c = 0; c < n_input; c++) {
+      using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+      using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+      const int index = batch * n_input + c;
+      F3 sigmoid_input = F3::FromRaw(input[index]);
+      F0 sigmoid_output = gemmlowp::logistic(sigmoid_input);
+      output[index] = sigmoid_output.raw();
+    }
+  }
+}
+
+void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
+                        int16_t* output) {
+  using FX = gemmlowp::FixedPoint<std::int16_t, 3>;
+  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      FX tanh_input = FX::FromRaw(input[index]);
+      F0 tanh_output = gemmlowp::tanh(tanh_input);
+      output[index] = tanh_output.raw();
+    }
+  }
+}
+
+void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
+                        int16_t* output) {
+  using FX = gemmlowp::FixedPoint<std::int16_t, 4>;
+  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      FX tanh_input = FX::FromRaw(input[index]);
+      F0 tanh_output = gemmlowp::tanh(tanh_input);
+      output[index] = tanh_output.raw();
+    }
+  }
+}
+
+void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                      int n_batch, int n_input, int shift, int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      const int16_t a = input_1[index];
+      const int16_t b = input_2[index];
+      int64_t x = a * b;
+      if (x > std::numeric_limits<std::int32_t>::max()) {
+        x = std::numeric_limits<std::int32_t>::max();
+      }
+      const int32_t value = static_cast<int32_t>(x);
+      output[index] =
+          static_cast<int16_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+    }
+  }
+}
+
+void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                      int n_batch, int n_input, int shift, int8_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      const int16_t a = input_1[index];
+      const int16_t b = input_2[index];
+      int64_t x = a * b;
+      if (x > std::numeric_limits<std::int32_t>::max()) {
+        x = std::numeric_limits<std::int32_t>::max();
+      }
+      const int32_t value = static_cast<int32_t>(x);
+      output[index] =
+          static_cast<int8_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+    }
+  }
+}
+
+void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
+                      int n_batch, int n_input, int16_t* output) {
+  const int32 int16_max = std::numeric_limits<int16>::max();
+  const int32 int16_min = std::numeric_limits<int16>::min();
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      int32_t sum = input_1[index] + input_2[index];
+      const int32 sum_clamped = std::min(int16_max, std::max(int16_min, sum));
+      output[index] = static_cast<int16_t>(sum_clamped);
+    }
+  }
+}
+
+void PortableCwiseClipping(int16_t* input, const int16_t clipping_value,
+                           int32_t n_batch, int32_t n_input) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      if (input[index] > clipping_value) {
+        input[index] = clipping_value;
+      }
+      if (input[index] < -clipping_value) {
+        input[index] = -clipping_value;
+      }
+    }
+  }
+}
+
+void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
+                           int32_t n_batch, int32_t n_input) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      if (input[index] > clipping_value) {
+        input[index] = clipping_value;
+      }
+      if (input[index] < -clipping_value) {
+        input[index] = -clipping_value;
+      }
+    }
+  }
 }
 
 void PortableVectorVectorCwiseProduct(const float* vector1,
