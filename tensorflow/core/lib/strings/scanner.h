@@ -60,6 +60,7 @@ class Scanner {
     NON_ZERO_DIGIT,
     SPACE,
     UPPERLETTER,
+    RANGLE,
   };
 
   explicit Scanner(StringPiece source) : cur_(source) { RestartCapture(); }
@@ -223,6 +224,8 @@ class Scanner {
         return IsSpace(ch);
       case UPPERLETTER:
         return ch >= 'A' && ch <= 'Z';
+      case RANGLE:
+        return ch == '>';
     }
     return false;
   }
