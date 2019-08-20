@@ -39,6 +39,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace mlir;
 
@@ -253,43 +254,28 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
   return array;
 }
 
-// Generates LLVM IR that produces a value representing the name of the
-// given kernel function. The generated IR consists essentially of the
-// following:
+// Generates an LLVM IR dialect global that contains the name of the given
+// kernel function as a C string, and returns a pointer to its beginning.
+// The code is essentially:
 //
-// %0 = alloca(strlen(name) + 1)
-// %0[0] = constant name[0]
-// ...
-// %0[n] = constant name[n]
-// %0[n+1] = 0
+// llvm.global constant @kernel_name("function_name\00")
+// func(...) {
+//   %0 = llvm.addressof @kernel_name
+//   %1 = llvm.constant (0 : index)
+//   %2 = llvm.getelementptr %0[%1, %1] : !llvm<"i8*">
+// }
 Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
     FuncOp kernelFunction, Location &loc, OpBuilder &builder) {
-  // TODO(herhut): Make this a constant once this is supported.
-  auto kernelNameSize = builder.create<LLVM::ConstantOp>(
-      loc, getInt32Type(),
-      builder.getI32IntegerAttr(kernelFunction.getName().size() + 1));
-  auto kernelName = builder.create<LLVM::AllocaOp>(
-      loc, getPointerType(), kernelNameSize, /*alignment=*/1);
-  for (auto byte : llvm::enumerate(kernelFunction.getName())) {
-    auto index = builder.create<LLVM::ConstantOp>(
-        loc, getInt32Type(), builder.getI32IntegerAttr(byte.index()));
-    auto gep = builder.create<LLVM::GEPOp>(loc, getPointerType(), kernelName,
-                                           ArrayRef<Value *>{index});
-    auto value = builder.create<LLVM::ConstantOp>(
-        loc, getInt8Type(),
-        builder.getIntegerAttr(builder.getIntegerType(8), byte.value()));
-    builder.create<LLVM::StoreOp>(loc, value, gep);
-  }
-  // Add trailing zero to terminate string.
-  auto index = builder.create<LLVM::ConstantOp>(
-      loc, getInt32Type(),
-      builder.getI32IntegerAttr(kernelFunction.getName().size()));
-  auto gep = builder.create<LLVM::GEPOp>(loc, getPointerType(), kernelName,
-                                         ArrayRef<Value *>{index});
-  auto value = builder.create<LLVM::ConstantOp>(
-      loc, getInt8Type(), builder.getIntegerAttr(builder.getIntegerType(8), 0));
-  builder.create<LLVM::StoreOp>(loc, value, gep);
-  return kernelName;
+  // Make sure the trailing zero is included in the constant.
+  std::vector<char> kernelName(kernelFunction.getName().begin(),
+                               kernelFunction.getName().end());
+  kernelName.push_back('\0');
+
+  std::string globalName =
+      llvm::formatv("{0}_kernel_name", kernelFunction.getName());
+  return LLVM::createGlobalString(
+      loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
+      llvmDialect);
 }
 
 // Emits LLVM IR to launch a kernel function. Expects the module that contains
