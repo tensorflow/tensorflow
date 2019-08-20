@@ -59,7 +59,7 @@ __global__ void concat_fixed_kernel(
 // cannot be in anonymous namespace due to extern shared memory
 template <typename T, typename IntType, bool useSmem>
 __global__ void concat_variable_kernel(
-    GpuDeviceArrayStruct<const T*> __restrict__ input_ptr_data,
+    GpuDeviceArrayStruct<const T*> input_ptr_data,
     GpuDeviceArrayStruct<IntType> output_scan, IntType total_rows,
     IntType total_cols, T* output) {
   const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
