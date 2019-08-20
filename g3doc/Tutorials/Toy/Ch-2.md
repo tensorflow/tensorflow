@@ -25,7 +25,7 @@ terminology) or types.
 
 ## MLIR Module, Functions, Blocks, and Operations
 
-[Language reference](LangRef.md#operations)
+[Language reference](../../LangRef.md#operations)
 
 In MLIR (like in LLVM), the top level structure for the IR is a Module
 (equivalent to a translation unit in C/C++). A module contains a list of
