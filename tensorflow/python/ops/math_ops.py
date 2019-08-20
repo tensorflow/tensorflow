@@ -1108,8 +1108,8 @@ def div_no_nan(x, y, name=None):
   """
 
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x", dtype=x.dtype.base_dtype)
-    y = ops.convert_to_tensor(y, name="y", )
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
