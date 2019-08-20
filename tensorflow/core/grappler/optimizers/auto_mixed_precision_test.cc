@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/list_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -614,40 +615,40 @@ TEST_F(AutoMixedPrecisionTest, RecurrentEdgeColorMismatch) {
   }
 }
 
-TEST_F(AutoMixedPrecisionTest, TensorArray) {
+TEST_F(AutoMixedPrecisionTest, TensorListSetGet) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto ta1 = ops::TensorArray(s.WithOpName("ta1"), 8, DT_FLOAT);
+  tensorflow::Input shape = {32, 32};
+  auto tl1 = ops::TensorListReserve(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output idx1 = ops::Const(s.WithOpName("idx1"), 1);
   Output idx2 = ops::Const(s.WithOpName("idx2"), 2);
   Output idx3 = ops::Const(s.WithOpName("idx3"), 3);
-  Output ta1w1 = ops::TensorArrayWrite(s.WithOpName("ta1w1"), ta1.handle, idx1,
-                                       input, ta1.flow)
-                     .flow_out;
+  auto tl1w1 =
+      ops::TensorListSetItem(s.WithOpName("tl1w1"), tl1.handle, idx1, input);
   Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  Output ta1w2 = ops::TensorArrayWrite(s.WithOpName("ta1w2"), ta1.handle, idx2,
-                                       wht1, ta1.flow)
-                     .flow_out;
-  Output ta1r1 = ops::TensorArrayRead(s.WithOpName("ta1r1"), ta1.handle, idx2,
-                                      ta1w2, DT_FLOAT)
-                     .value;
-  Output gry1 = ops::Tanh(s.WithOpName("gry1"), ta1r1);
+  auto tl1w2 =
+      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, wht1);
+  Output tl1r1 =
+      ops::TensorListGetItem(s.WithOpName("tl1r1"), tl1w2.output_handle, idx2,
+                             shape, DT_FLOAT)
+          .item;
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
   Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
-  Output ta1w3 = ops::TensorArrayWrite(s.WithOpName("ta1w3"), ta1.handle, idx3,
-                                       wht2, ta1.flow)
-                     .flow_out;
-  Output ta1r2 = ops::TensorArrayRead(s.WithOpName("ta1r2"), ta1.handle, idx3,
-                                      ta1w3, DT_FLOAT)
-                     .value;
-  auto ta2 = ops::TensorArray(s.WithOpName("ta2"), 8, DT_FLOAT);
-  Output ta2w1 = ops::TensorArrayWrite(s.WithOpName("ta2w1"), ta2.handle, idx1,
-                                       input, ta2.flow)
-                     .flow_out;
-  Output ta2r1 = ops::TensorArrayRead(s.WithOpName("ta2r1"), ta2.handle, idx1,
-                                      ta2w1, DT_FLOAT)
-                     .value;
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), ta1r2);
-  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), ta2r1);
+  auto tl1w3 =
+      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, wht2);
+  Output tl1r2 =
+      ops::TensorListGetItem(s.WithOpName("tl1r2"), tl1w3.output_handle, idx3,
+                             shape, DT_FLOAT)
+          .item;
+  auto tl2 = ops::TensorListReserve(s.WithOpName("tl2"), shape, 8, DT_FLOAT);
+  auto tl2w1 =
+      ops::TensorListSetItem(s.WithOpName("tl2w1"), tl2.handle, idx1, input);
+  Output tl2r1 =
+      ops::TensorListGetItem(s.WithOpName("tl2r1"), tl2w1.output_handle, idx1,
+                             shape, DT_FLOAT)
+          .item;
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), tl1r2);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), tl2r1);
 
   GrapplerItem item;
   item.fetch = {"fetch1", "fetch2"};
@@ -662,17 +663,18 @@ TEST_F(AutoMixedPrecisionTest, TensorArray) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
-  EXPECT_EQ(output_view.GetNode("ta1")->attr().at("dtype").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("ta1w1")->attr().at("T").type(), DT_HALF);
+  const char* type_key = "element_dtype";
+  EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("ta1w2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("ta1r1")->attr().at("dtype").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("ta1w3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("ta2")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("ta2w1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("ta2r1")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2r1")->attr().at(type_key).type(), DT_FLOAT);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -682,27 +684,39 @@ TEST_F(AutoMixedPrecisionTest, TensorArray) {
   }
 }
 
-TEST_F(AutoMixedPrecisionTest, StackV2) {
-  // TODO(benbarsdell): Add execution and numerical checks to this test
-  // (difficult because there is currently no C API for creating Stack ops).
-  GraphDef graph;
-  AddSimpleNode("handle1", "Const", {}, &graph);
-  AddSimpleNode("stack1", "StackV2", {"handle1"}, &graph);
-  AddSimpleNode("input", "Placeholder", {}, &graph);
-  AddSimpleNode("psh1", "StackPushV2", {"stack1", "input"}, &graph);
-  AddSimpleNode("wht1", "MatMul", {"input", "input"}, &graph);
-  AddSimpleNode("psh2", "StackPushV2", {"stack1", "wht1"}, &graph);
-  AddSimpleNode("pop1", "StackPopV2", {"stack1"}, &graph);
-  AddSimpleNode("gry1", "Tanh", {"pop1"}, &graph);
-  AddSimpleNode("wht2", "MatMul", {"gry1", "gry1"}, &graph);
-  AddSimpleNode("psh3", "StackPushV2", {"stack1", "wht2"}, &graph);
-  AddSimpleNode("handle2", "Const", {}, &graph);
-  AddSimpleNode("stack2", "StackV2", {"handle2"}, &graph);
-  AddSimpleNode("psh1-2", "StackPushV2", {"stack2", "input"}, &graph);
-  AddSimpleNode("pop1-2", "StackPopV2", {"stack2"}, &graph);
+TEST_F(AutoMixedPrecisionTest, TensorListPushPop) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Input shape = {32, 32};
+  auto tl1 = ops::EmptyTensorList(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  auto tl1w1 =
+      ops::TensorListPushBack(s.WithOpName("tl1w1"), tl1.handle, input);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  auto tl1w2 =
+      ops::TensorListPushBack(s.WithOpName("tl1w2"), tl1w1.output_handle, wht1);
+  Output tl1r1 = ops::TensorListPopBack(s.WithOpName("tl1r1"),
+                                        tl1w2.output_handle, shape, DT_FLOAT)
+                     .tensor;
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  auto tl1w3 = ops::TensorListPushBack(s.WithOpName("tl1w3"), tl1.handle, wht2);
+  Output tl1r2 = ops::TensorListPopBack(s.WithOpName("tl1r2"),
+                                        tl1w3.output_handle, shape, DT_FLOAT)
+                     .tensor;
+  auto tl2 = ops::EmptyTensorList(s.WithOpName("tl2"), shape, 8, DT_FLOAT);
+  auto tl2w1 =
+      ops::TensorListPushBack(s.WithOpName("tl2w1"), tl2.handle, input);
+  Output tl2r1 = ops::TensorListPopBack(s.WithOpName("tl2r1"),
+                                        tl2w1.output_handle, shape, DT_FLOAT)
+                     .tensor;
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), tl1r2);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), tl2r1);
 
   GrapplerItem item;
-  item.graph = graph;
+  item.fetch = {"fetch1", "fetch2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
   AutoMixedPrecision optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -710,22 +724,26 @@ TEST_F(AutoMixedPrecisionTest, StackV2) {
   VLOG(1) << output.DebugString();
 
   GraphView output_view(&output);
-  EXPECT_EQ(output.node_size(), graph.node_size() + 1);
-  EXPECT_EQ(output_view.GetNode("stack1")->attr().at("elem_type").type(),
-            DT_HALF);
-  EXPECT_EQ(output_view.GetNode("psh1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  const char* type_key = "element_dtype";
+  EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("psh2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("pop1")->attr().at("elem_type").type(),
-            DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("psh3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("stack2")->attr().at("elem_type").type(),
-            DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("psh1-2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("pop1-2")->attr().at("elem_type").type(),
-            DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2r1")->attr().at(type_key).type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
 }
 
 int GetCudaVersion(const Cluster& cluster) {
