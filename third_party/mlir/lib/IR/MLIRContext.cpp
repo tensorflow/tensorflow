@@ -582,7 +582,7 @@ AffineMap AffineMap::getImpl(unsigned dimCount, unsigned symbolCount,
     results = copyArrayRefInto(impl.affineAllocator, results);
 
     // Initialize the memory using placement new.
-    new (res) detail::AffineMapStorage{dimCount, symbolCount, results};
+    new (res) detail::AffineMapStorage{dimCount, symbolCount, results, context};
     return AffineMap(res);
   });
 }

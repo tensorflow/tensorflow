@@ -62,8 +62,7 @@ Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 //===----------------------------------------------------------------------===//
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return Base::get(value.getResult(0).getContext(),
-                   StandardAttributes::AffineMap, value);
+  return Base::get(value.getContext(), StandardAttributes::AffineMap, value);
 }
 
 AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
