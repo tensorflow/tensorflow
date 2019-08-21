@@ -161,20 +161,20 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
-  def _as_serialized_graph(self, stateful_whitelist=None):
+  def _as_serialized_graph(self, allow_stateful=None):
     """Produces serialized graph representation of the dataset.
 
     Args:
-      stateful_whitelist: Comma separated list of ops whose stateful attribute
-        should be ignored during serialization.
+      allow_stateful: If true, we allow stateful ops to be present in the graph
+      def. In that case, the state in these ops would be thrown away.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 9, 10) or stateful_whitelist:
+    if compat.forward_compatible(2019, 9, 16) or allow_stateful:
       return gen_dataset_ops.dataset_to_graph(self._variant_tensor,
-                                              stateful_whitelist)
+                                              allow_stateful=allow_stateful)
     else:
       return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
 
@@ -2255,14 +2255,15 @@ class Options(options_lib.OptionsBase):
       "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
-  experimental_stateful_whitelist = options_lib.create_option(
-      name="experimental_stateful_whitelist",
-      ty=list,
+  experimental_allow_stateful = options_lib.create_option(
+      name="experimental_allow_stateful",
+      ty=bool,
       docstring="By default, tf.data will refuse to serialize a dataset or "
       "checkpoint its iterator if the dataset contains a stateful op as the "
       "serialization / checkpointing won't be able to capture its state. "
       "Users can -- at their own risk -- override this restriction by "
-      "explicitly whitelisting stateful ops by specifying them in this list.")
+      "explicitly specifying that they are fine throwing away the state "
+      "in these ops when they turn this option on.")
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""

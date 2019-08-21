@@ -1243,6 +1243,9 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler/utils:traversal",
+        "//tensorflow/core/kernels/data:captured_function",
     ],
 )
 
