@@ -99,7 +99,8 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_AVX512 0
 #endif
 
-#if RUY_USE_X86_ENHANCEMENTS && RUY_PLATFORM(X86) && defined(__AVX2__)
+#if defined(RUY_ENABLE_AVX2_ENHANCEMENTS) && RUY_USE_X86_ENHANCEMENTS && \
+    RUY_PLATFORM(X86) && defined(__AVX2__)
 #define RUY_DONOTUSEDIRECTLY_AVX2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_AVX2 0

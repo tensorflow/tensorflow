@@ -356,6 +356,21 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_avx2",
+    srcs = [
+        "kernel_avx2.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":kernel_common",
+        ":opt_set",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "kernel",
     hdrs = [
         "kernel.h",
@@ -367,6 +382,7 @@ cc_library(
         ":common",
         ":internal_matrix",
         ":kernel_arm",  # fixdeps: keep
+        ":kernel_avx2",  # fixdeps: keep
         ":kernel_avx512",  # fixdeps: keep
         ":kernel_common",
         ":matrix",
@@ -437,6 +453,23 @@ cc_library(
 )
 
 cc_library(
+    name = "pack_avx2",
+    srcs = [
+        "pack_avx2.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "pack",
     hdrs = [
         "pack.h",
@@ -450,6 +483,7 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":pack_arm",  # fixdeps: keep
+        ":pack_avx2",  # fixdeps: keep
         ":pack_avx512",  # fixdeps: keep
         ":pack_common",
         ":path",

@@ -73,8 +73,12 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
   RUY_DCHECK_EQ(Layout::kCols, 16);
   RUY_DCHECK_EQ(Layout::kRows, 4);
   RUY_DCHECK_EQ(kHalfLayoutCols, 8);
+  // Each Layout::Rows is 4 contiguous input, contiguous packed elements.
+  // We process 8 of these chunks at a time, padding short input chunks.
+  constexpr int kNumRowChunks = 8;
+  constexpr int kNumChunkedSrcRows = kNumRowChunks * Layout::kRows;
 
-  std::int8_t in_data[kHalfLayoutCols][kHalfLayoutCols][Layout::kRows];
+  std::int8_t in_data[kHalfLayoutCols][kNumRowChunks][Layout::kRows];
 
   const std::int8_t* src_ptr0 = src_ptr;
   const std::int8_t* src_ptr1 = src_ptr0 + src_stride;
@@ -84,10 +88,6 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
   const std::int8_t* src_ptr5 = src_ptr4 + src_stride;
   const std::int8_t* src_ptr6 = src_ptr5 + src_stride;
   const std::int8_t* src_ptr7 = src_ptr6 + src_stride;
-  // Each Layout::Rows is 4 contiguous input, contiguous packed elements.
-  // We process 8 of these chunks at a time, padding short input chunks.
-  constexpr int kNumRowChunks = 8;
-  constexpr int kNumChunkedSrcRows = kNumRowChunks * Layout::kRows;
   std::int64_t src_inc0 = kNumChunkedSrcRows;
   std::int64_t src_inc1 = kNumChunkedSrcRows;
   std::int64_t src_inc2 = kNumChunkedSrcRows;
