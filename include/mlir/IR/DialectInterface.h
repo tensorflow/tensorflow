@@ -18,9 +18,8 @@
 #ifndef MLIR_IR_DIALECTINTERFACE_H
 #define MLIR_IR_DIALECTINTERFACE_H
 
-#include "mlir/IR/Dialect.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 
 namespace mlir {
 class Dialect;
@@ -82,6 +81,25 @@ namespace detail {
 /// This class is the base class for a collection of instances for a specific
 /// interface kind.
 class DialectInterfaceCollectionBase {
+  /// DenseMap info for dialect interfaces that allows lookup by the dialect.
+  struct InterfaceKeyInfo : public DenseMapInfo<const DialectInterface *> {
+    using DenseMapInfo<const DialectInterface *>::isEqual;
+
+    static unsigned getHashValue(Dialect *key) { return llvm::hash_value(key); }
+    static unsigned getHashValue(const DialectInterface *key) {
+      return getHashValue(key->getDialect());
+    }
+
+    static bool isEqual(Dialect *lhs, const DialectInterface *rhs) {
+      if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+        return false;
+      return lhs == rhs->getDialect();
+    }
+  };
+
+  /// A set of registered dialect interface instances.
+  using InterfaceSetT = DenseSet<const DialectInterface *, InterfaceKeyInfo>;
+
 public:
   DialectInterfaceCollectionBase(MLIRContext *ctx, ClassID *interfaceKind);
   virtual ~DialectInterfaceCollectionBase();
@@ -93,12 +111,13 @@ protected:
 
   /// Get the interface for the given dialect.
   const DialectInterface *getInterfaceFor(Dialect *dialect) const {
-    return interfaces.lookup(dialect);
+    auto it = interfaces.find_as(dialect);
+    return it == interfaces.end() ? nullptr : *it;
   }
 
 private:
-  /// A map of registered dialect interface instances.
-  DenseMap<Dialect *, const DialectInterface *> interfaces;
+  /// A set of registered dialect interface instances.
+  InterfaceSetT interfaces;
 };
 } // namespace detail
 
