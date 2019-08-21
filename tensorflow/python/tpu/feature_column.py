@@ -52,7 +52,8 @@ def embedding_column(categorical_column,
                      dimension,
                      combiner='mean',
                      initializer=None,
-                     max_sequence_length=0):
+                     max_sequence_length=0,
+                     learning_rate_fn=None):
   """TPU embedding_column for `tf.feature_column.embedding_column`.
 
   Note that the interface for TPU embedding_column is different from the non-TPU
@@ -79,6 +80,8 @@ def embedding_column(categorical_column,
       length. Any sequence shorter then this will be padded with 0 embeddings
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
+    learning_rate_fn: A function that takes global step and returns learning
+      rate for the embedding table.
 
   Returns:
     A  _TPUEmbeddingColumn.
@@ -124,7 +127,8 @@ def embedding_column(categorical_column,
       tensor_name_in_ckpt=None,
       max_norm=None,
       trainable=True,
-      max_sequence_length=max_sequence_length)
+      max_sequence_length=max_sequence_length,
+      learning_rate_fn=learning_rate_fn)
   # For Embedding column, the initializer is hidden inside the creator Fn, which
   # is not accessiable later. So, we attach it to a speicial field. Also note
   # that non-TPU Embedding column and non-TPU shared Embedding column handle the
@@ -138,7 +142,8 @@ def shared_embedding_columns(categorical_columns,
                              combiner='mean',
                              initializer=None,
                              shared_embedding_collection_name=None,
-                             max_sequence_lengths=None):
+                             max_sequence_lengths=None,
+                             learning_rate_fn=None):
   """List of dense columns that convert from sparse, categorical input.
 
   Note that the interface for TPU embedding_column is different from the non-TPU
@@ -171,6 +176,8 @@ def shared_embedding_columns(categorical_columns,
       to sequence columns specify the max sequence length for the column. Any
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
+    learning_rate_fn: A function that takes global step and returns learning
+      rate for the embedding table.
 
   Returns:
     A  _TPUEmbeddingColumn.
@@ -240,7 +247,8 @@ def shared_embedding_columns(categorical_columns,
         tensor_name_in_ckpt=None,
         max_norm=None,
         trainable=True,
-        max_sequence_length=max_sequence_length)
+        max_sequence_length=max_sequence_length,
+        learning_rate_fn=learning_rate_fn)
     tpu_columns.append(column)
 
   return tpu_columns
@@ -325,7 +333,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
               tensor_name_in_ckpt=None,
               max_norm=None,
               trainable=True,
-              max_sequence_length=0):
+              max_sequence_length=0,
+              learning_rate_fn=None):
     # Note, args ckpt_to_load_from, tensor_name_in_ckpt, max_norm and trainable
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
@@ -349,9 +358,13 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
                tensor_name_in_ckpt=None,
                max_norm=None,
                trainable=True,
-               max_sequence_length=0):
-    _TPUBaseEmbeddingColumn.__init__(self, categorical_column,
-                                     max_sequence_length=max_sequence_length)
+               max_sequence_length=0,
+               learning_rate_fn=None):
+    _TPUBaseEmbeddingColumn.__init__(
+        self,
+        categorical_column,
+        max_sequence_length=max_sequence_length,
+        learning_rate_fn=learning_rate_fn)
     self._key = None
 
   def get_combiner(self):
@@ -452,7 +465,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
               tensor_name_in_ckpt=None,
               max_norm=None,
               trainable=True,
-              max_sequence_length=0):
+              max_sequence_length=0,
+              learning_rate_fn=None):
     return fc._SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -475,10 +489,14 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
                tensor_name_in_ckpt=None,
                max_norm=None,
                trainable=True,
-               max_sequence_length=0):
+               max_sequence_length=0,
+               learning_rate_fn=None):
 
-    _TPUBaseEmbeddingColumn.__init__(self, categorical_column,
-                                     max_sequence_length=max_sequence_length)
+    _TPUBaseEmbeddingColumn.__init__(
+        self,
+        categorical_column,
+        max_sequence_length=max_sequence_length,
+        learning_rate_fn=learning_rate_fn)
     self._key = None
 
   def get_combiner(self):
