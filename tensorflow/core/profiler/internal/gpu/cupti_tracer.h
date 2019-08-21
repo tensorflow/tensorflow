@@ -216,6 +216,7 @@ class CuptiTracer {
   Status EnableActivityTracing();
   Status DisableApiTracing();
   Status DisableActivityTracing();
+  Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
 
   absl::optional<CuptiTracerOptions> option_;
