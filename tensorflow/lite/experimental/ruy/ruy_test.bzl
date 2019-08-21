@@ -1,10 +1,5 @@
 # Provides the ruy_test macro for type-parametrized tests.
-
-"""
-ruy_test is a macro for building a test with multiple paths
-corresponding to tuples of types for LHS, RHS, accumulator
-and destination.
-"""
+"""ruy_test is a macro for building a test with multiple paths corresponding to tuples of types for LHS, RHS, accumulator and destination."""
 
 def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = []):
     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
