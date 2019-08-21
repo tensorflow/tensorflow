@@ -88,11 +88,17 @@ private:
   // Method to process an OpMemberDecorate instruction.
   LogicalResult processMemberDecoration(ArrayRef<uint32_t> words);
 
+  /// Gets the FuncOp associated with a result <id> of OpFunction.
+  FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
+
   /// Processes the SPIR-V function at the current `offset` into `binary`.
   /// The operands to the OpFunction instruction is passed in as ``operands`.
   /// This method processes each instruction inside the function and dispatches
   /// them to their handler method accordingly.
   LogicalResult processFunction(ArrayRef<uint32_t> operands);
+
+  /// Gets the constant's attribute and type associated with the given <id>.
+  Optional<std::pair<Attribute, Type>> getConstant(uint32_t id);
 
   /// Returns a symbol to be used for the specialization constant with the given
   /// result <id>. This tries to use the specialization constant's OpName if
@@ -109,9 +115,6 @@ private:
   /// defined at module scope and will be deserialized into a spv.globalVariable
   /// instruction.
   LogicalResult processGlobalVariable(ArrayRef<uint32_t> operands);
-
-  /// Gets the FuncOp associated with a result <id> of OpFunction.
-  FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
 
   /// Gets the global variable associated with a result <id> of OpVariable.
   spirv::GlobalVariableOp getGlobalVariable(uint32_t id) {
@@ -165,9 +168,9 @@ private:
 
   /// Get the Value associated with a result <id>.
   ///
-  /// This method inserts "casting" ops (`spv._address_of` and
-  /// `spv._reference_of`) to turn an symbol into a SSA value for handling uses
-  /// of module scope constants/variables in functions.
+  /// This method materializes normal constants and inserts "casting" ops
+  /// (`spv._address_of` and `spv._reference_of`) to turn an symbol into a SSA
+  /// value for handling uses of module scope constants/variables in functions.
   Value *getValue(uint32_t id);
 
   /// Slices the first instruction out of `binary` and returns its opcode and
@@ -225,14 +228,24 @@ private:
   // Result <id> to type mapping.
   DenseMap<uint32_t, Type> typeMap;
 
-  // Result <id> to function mapping.
-  DenseMap<uint32_t, FuncOp> funcMap;
+  // Result <id> to constant attribute and type mapping.
+  ///
+  /// In the SPIR-V binary format, all constants are placed in the module and
+  /// shared by instructions at module level and in subsequent functions. But in
+  /// the SPIR-V dialect, we materialize the constant to where it's used in the
+  /// function. So when seeing a constant instruction in the binary format, we
+  /// don't immediately emit a constant op into the module, we keep its value
+  /// (and type) here. Later when it's used, we materialize the constant.
+  DenseMap<uint32_t, std::pair<Attribute, Type>> constantMap;
 
   // Result <id> to variable mapping.
   DenseMap<uint32_t, spirv::SpecConstantOp> specConstMap;
 
   // Result <id> to variable mapping.
   DenseMap<uint32_t, spirv::GlobalVariableOp> globalVariableMap;
+
+  // Result <id> to function mapping.
+  DenseMap<uint32_t, FuncOp> funcMap;
 
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
@@ -508,6 +521,13 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   return success();
 }
 
+Optional<std::pair<Attribute, Type>> Deserializer::getConstant(uint32_t id) {
+  auto constIt = constantMap.find(id);
+  if (constIt == constantMap.end())
+    return llvm::None;
+  return constIt->getSecond();
+}
+
 std::string Deserializer::getSpecConstantSymbol(uint32_t id) {
   auto constName = nameMap.lookup(id).str();
   if (constName.empty()) {
@@ -716,24 +736,18 @@ LogicalResult Deserializer::processArrayType(ArrayRef<uint32_t> operands) {
   }
 
   unsigned count = 0;
-  auto *countValue = getValue(operands[2]);
-  if (!countValue) {
-    return emitError(unknownLoc, "OpTypeArray references undefined <id> ")
-           << operands[2];
+  // TODO(antiagainst): The count can also come frome a specialization constant.
+  auto countInfo = getConstant(operands[2]);
+  if (!countInfo) {
+    return emitError(unknownLoc, "OpTypeArray count <id> ")
+           << operands[2] << "can only come from normal constant right now";
   }
 
-  auto *defOp = countValue->getDefiningOp();
-  if (auto constOp = dyn_cast<spirv::ConstantOp>(defOp)) {
-    if (auto intVal = constOp.value().dyn_cast<IntegerAttr>()) {
-      count = intVal.getInt();
-    } else {
-      return emitError(unknownLoc, "OpTypeArray count must come from a "
-                                   "scalar integer constant instruction");
-    }
+  if (auto intVal = countInfo->first.dyn_cast<IntegerAttr>()) {
+    count = intVal.getInt();
   } else {
-    return emitError(unknownLoc,
-                     "unsupported OpTypeArray count generated from ")
-           << defOp->getName();
+    return emitError(unknownLoc, "OpTypeArray count must come from a "
+                                 "scalar integer constant instruction");
   }
 
   typeMap[operands[0]] = spirv::ArrayType::get(
@@ -880,8 +894,9 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
           opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
       specConstMap[resultID] = op;
     } else {
-      auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr);
-      valueMap[resultID] = op.getResult();
+      // For normal constants, we just record the attribute (and its type) for
+      // later materialization at use sites.
+      constantMap.try_emplace(resultID, attr, intType);
     }
 
     return success();
@@ -917,16 +932,16 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
           opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
       specConstMap[resultID] = op;
     } else {
-      auto op =
-          opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr);
-      valueMap[resultID] = op.getResult();
+      // For normal constants, we just record the attribute (and its type) for
+      // later materialization at use sites.
+      constantMap.try_emplace(resultID, attr, floatType);
     }
 
     return success();
   }
 
-    return emitError(unknownLoc, "OpConstant can only generate values of "
-                                 "scalar integer or floating-point type");
+  return emitError(unknownLoc, "OpConstant can only generate values of "
+                               "scalar integer or floating-point type");
 }
 
 LogicalResult Deserializer::processConstantBool(bool isTrue,
@@ -947,9 +962,9 @@ LogicalResult Deserializer::processConstantBool(bool isTrue,
         opBuilder.create<spirv::SpecConstantOp>(unknownLoc, symName, attr);
     specConstMap[resultID] = op;
   } else {
-    auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc,
-                                                  opBuilder.getI1Type(), attr);
-    valueMap[resultID] = op.getResult();
+    // For normal constants, we just record the attribute (and its type) for
+    // later materialization at use sites.
+    constantMap.try_emplace(resultID, attr, opBuilder.getI1Type());
   }
 
   return success();
@@ -975,36 +990,28 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
   SmallVector<Attribute, 4> elements;
   elements.reserve(operands.size() - 2);
   for (unsigned i = 2, e = operands.size(); i < e; ++i) {
-    Value *value = getValue(operands[i]);
-    if (!value) {
-      return emitError(unknownLoc,
-                       "OpConstantComposite references undefined <id> ")
-             << operands[i];
+    auto elementInfo = getConstant(operands[i]);
+    if (!elementInfo) {
+      return emitError(unknownLoc, "OpConstantComposite component <id> ")
+             << operands[i] << " must come from a normal constant";
     }
-    auto *defOp = value->getDefiningOp();
-    if (auto elementOp = dyn_cast<spirv::ConstantOp>(defOp)) {
-      elements.push_back(elementOp.value());
-    } else {
-      return emitError(
-                 unknownLoc,
-                 "unsupported OpConstantComposite component generated from ")
-             << defOp->getName();
-    }
+    elements.push_back(elementInfo->first);
   }
 
-  spirv::ConstantOp op;
+  auto resultID = operands[1];
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
     auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+    // For normal constants, we just record the attribute (and its type) for
+    // later materialization at use sites.
+    constantMap.try_emplace(resultID, attr, resultType);
   } else if (auto arrayType = resultType.dyn_cast<spirv::ArrayType>()) {
     auto attr = opBuilder.getArrayAttr(elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+    constantMap.try_emplace(resultID, attr, resultType);
   } else {
     return emitError(unknownLoc, "unsupported OpConstantComposite type: ")
            << resultType;
   }
 
-  valueMap[operands[1]] = op.getResult();
   return success();
 }
 
@@ -1020,18 +1027,18 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
            << operands[0];
   }
 
-  spirv::ConstantOp op;
+  auto resultID = operands[1];
   if (resultType.isa<IntegerType>() || resultType.isa<FloatType>() ||
       resultType.isa<VectorType>()) {
     auto attr = opBuilder.getZeroAttr(resultType);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
-  } else {
-    return emitError(unknownLoc, "unsupported OpConstantNull type: ")
-           << resultType;
+    // For normal constants, we just record the attribute (and its type) for
+    // later materialization at use sites.
+    constantMap.try_emplace(resultID, attr, resultType);
+    return success();
   }
 
-  valueMap[operands[1]] = op.getResult();
-  return success();
+    return emitError(unknownLoc, "unsupported OpConstantNull type: ")
+           << resultType;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1039,6 +1046,11 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
 //===----------------------------------------------------------------------===//
 
 Value *Deserializer::getValue(uint32_t id) {
+  if (auto constInfo = getConstant(id)) {
+    // Materialize a `spv.constant` op at every use site.
+    return opBuilder.create<spirv::ConstantOp>(unknownLoc, constInfo->second,
+                                               constInfo->first);
+  }
   if (auto varOp = getGlobalVariable(id)) {
     auto addressOfOp = opBuilder.create<spirv::AddressOfOp>(
         unknownLoc, varOp.type(),
