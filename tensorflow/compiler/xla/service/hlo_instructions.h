@@ -1077,10 +1077,15 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count() const { return feature_group_count_; }
-
+  void set_feature_group_count(int64 num_feature_groups) {
+    feature_group_count_ = num_feature_groups;
+  }
   // The number of feature groups. Must be a divisor of the input batch
   // dimension.
   int64 batch_group_count() const { return batch_group_count_; }
+  void set_batch_group_count(int64 num_batch_groups) {
+    batch_group_count_ = num_batch_groups;
+  }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend

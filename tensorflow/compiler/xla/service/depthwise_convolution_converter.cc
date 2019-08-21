@@ -154,11 +154,8 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
     transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
     transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                           input_batch_dimension);
-    std::vector<int64> transpose_reshape_dims = lhs->shape().dimensions();
-    transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
-                                 input_batch_dimension);
-    transpose_reshape_dims.insert(
-        transpose_reshape_dims.begin() + input_feature_dimension, num_groups);
+    std::vector<int64> transpose_reshape_dims =
+        ComposePermutations(lhs->shape().dimensions(), transpose_dims);
     lhs = add(HloInstruction::CreateTranspose(
         ShapeUtil::MakeShape(lhs->shape().element_type(),
                              transpose_reshape_dims),
@@ -171,10 +168,13 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(HloInstruct
                              input_feature * num_groups);
     lhs = add(HloInstruction::CreateReshape(new_shape, lhs));
 
-    auto new_convolution = add(HloInstruction::CreateConvolve(
-        transformed_filter_grad_shape, lhs, rhs,
-        /*feature_group_count=*/num_groups, /*batch_group_count=*/1,
-        convolution->window(), dim_numbers, convolution->precision_config()));
+    std::vector<HloInstruction*> new_operands = {lhs, rhs};
+    auto new_conv = convolution->CloneWithNewOperands(
+        transformed_filter_grad_shape, new_operands);
+    new_conv->set_feature_group_count(num_groups);
+    new_conv->set_batch_group_count(1);
+    new_conv->set_convolution_dimension_numbers(dim_numbers);
+    auto new_convolution = computation_->AddInstruction(std::move(new_conv));
 
     // Another reshape is required since the filter grad shape as a result of
     // the 'new convolution` will be [kh, kw, C_i/G = 1, C_o = C_i = G ] but the
