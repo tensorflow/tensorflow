@@ -550,7 +550,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         gather_slice_sizes.push_back(bound);
       }
       instruction = CreateGather(shape, operands(0), operands(1),
-                                 *gather_dimension_numbers, gather_slice_sizes);
+                                 *gather_dimension_numbers, gather_slice_sizes,
+                                 proto.indices_are_sorted());
       break;
     }
     case HloOpcode::kScatter: {
@@ -563,7 +564,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           absl::make_unique<ScatterDimensionNumbers>(
               proto.scatter_dimension_numbers());
       instruction = CreateScatter(shape, operands(0), operands(1), operands(2),
-                                  computations(0), *scatter_dimension_numbers);
+                                  computations(0), *scatter_dimension_numbers,
+                                  proto.indices_are_sorted());
       break;
     }
     case HloOpcode::kIota:
@@ -1372,19 +1374,21 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    absl::Span<const int64> slice_sizes) {
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
   return absl::make_unique<HloGatherInstruction>(
-      shape, operand, start_indices, gather_dim_numbers, slice_sizes);
+      shape, operand, start_indices, gather_dim_numbers, slice_sizes,
+      indices_are_sorted);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateScatter(
     const Shape& shape, HloInstruction* operand,
     HloInstruction* scatter_indices, HloInstruction* updates,
     HloComputation* update_computation,
-    const ScatterDimensionNumbers& scatter_dim_numbers) {
+    const ScatterDimensionNumbers& scatter_dim_numbers,
+    bool indices_are_sorted) {
   return absl::make_unique<HloScatterInstruction>(
       shape, operand, scatter_indices, updates, update_computation,
-      scatter_dim_numbers);
+      scatter_dim_numbers, indices_are_sorted);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
