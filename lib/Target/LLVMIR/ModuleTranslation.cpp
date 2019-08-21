@@ -90,12 +90,12 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
                                   splatAttr.getSplatValue(), loc);
     return llvm::ConstantVector::getSplat(vectorType->getNumElements(), child);
   }
-  if (auto elementsAttr = attr.dyn_cast<ElementsAttr>()) {
+  if (auto denseAttr = attr.dyn_cast<DenseElementsAttr>()) {
     auto *vectorType = cast<llvm::VectorType>(llvmType);
     SmallVector<llvm::Constant *, 8> constants;
     uint64_t numElements = vectorType->getNumElements();
     constants.reserve(numElements);
-    for (auto n : elementsAttr.getValues<Attribute>()) {
+    for (auto n : denseAttr.getAttributeValues()) {
       constants.push_back(
           getLLVMConstant(vectorType->getElementType(), n, loc));
       if (!constants.back())
