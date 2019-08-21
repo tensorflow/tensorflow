@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PLATFORM_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PLATFORM_H_
 
+#ifdef __ANDROID_NDK__
+#include <android/ndk-version.h>
+#endif
+
 #define RUY_PLATFORM(X) ((RUY_DONOTUSEDIRECTLY_##X) != 0)
 
 // Architecture-level platform detection.
@@ -78,8 +82,15 @@ limitations under the License.
 //
 // NOTE: Consider guarding by !defined(__APPLE__) when removing Linux-only
 // restriction.
-#if defined(RUY_FORCE_ENABLE_X86_ENHANCEMENTS) || \
-    (defined(__clang__) && defined(__linux__))
+//
+// __EMSCRIPTEN__ is checked because the runtime Path resolution can use asm.
+//
+// The Android NDK logic excludes earlier and very broken versions of intrinsics
+// headers.
+#if defined(RUY_FORCE_ENABLE_X86_ENHANCEMENTS) ||                            \
+    (defined(__clang__) && defined(__linux__) && !defined(__EMSCRIPTEN__) && \
+     (!defined(__ANDROID_NDK__) ||                                           \
+      (defined(__NDK_MAJOR__) && (__NDK_MAJOR__ >= 20))))
 #define RUY_DONOTUSEDIRECTLY_X86_ENHANCEMENTS 1
 #else
 #define RUY_DONOTUSEDIRECTLY_X86_ENHANCEMENTS 0

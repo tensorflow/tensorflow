@@ -2,6 +2,7 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
+load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_skylake")
 load(":ruy_visibility.bzl", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
@@ -370,7 +371,7 @@ cc_library(
     srcs = [
         "kernel_avx512.cc",
     ],
-    copts = RUY_COPTS,
+    copts = RUY_COPTS + ruy_copts_skylake(),
     deps = [
         ":check_macros",
         ":kernel_common",
@@ -385,7 +386,7 @@ cc_library(
     srcs = [
         "kernel_avx2.cc",
     ],
-    copts = RUY_COPTS,
+    copts = RUY_COPTS + ruy_copts_avx2(),
     deps = [
         ":check_macros",
         ":kernel_common",
@@ -465,7 +466,7 @@ cc_library(
     srcs = [
         "pack_avx512.cc",
     ],
-    copts = RUY_COPTS,
+    copts = RUY_COPTS + ruy_copts_skylake(),
     deps = [
         ":check_macros",
         ":matrix",
@@ -482,7 +483,7 @@ cc_library(
     srcs = [
         "pack_avx2.cc",
     ],
-    copts = RUY_COPTS,
+    copts = RUY_COPTS + ruy_copts_avx2(),
     deps = [
         ":check_macros",
         ":matrix",
