@@ -132,7 +132,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         init_func=self._init_func,
         next_func=self._next_func,
         finalize_func=self._finalize_func,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_PerDeviceGenerator, self).__init__(variant_tensor)
 
   def _inputs(self):
@@ -175,7 +175,7 @@ class _ReincarnatedPerDeviceGenerator(dataset_ops.DatasetV2):
         init_func=self._init_func,
         next_func=self._next_func,
         finalize_func=self._finalize_func,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_ReincarnatedPerDeviceGenerator, self).__init__(variant_tensor)
 
   def _inputs(self):
@@ -235,7 +235,7 @@ class MultiDeviceIterator(object):
               devices=self._devices,
               shared_name=shared_name,
               container="",
-              **dataset_ops.flat_structure(self._dataset)))
+              **self._dataset._flat_structure))
       if context.executing_eagerly():
         # Delete the resource when this object is deleted
         self._resource_deleter = resource_variable_ops.EagerResourceDeleter(

@@ -461,7 +461,7 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
 
     variant_tensor = ged_ops.experimental_unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -112,7 +112,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       ds_variant = gen_dataset_ops.unwrap_dataset_variant(wrap_ds_variant)
       resource = gen_dataset_ops.anonymous_iterator(
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)
       with ops.control_dependencies(
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
@@ -174,7 +174,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)
       with ops.control_dependencies([
           resource_variable_ops.destroy_resource_op(
               iterator_resource, ignore_lookup_error=True)]):
@@ -208,7 +208,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           init_func=self._init_func,
           next_func=self._next_func,
           finalize_func=self._finalize_func,
-          **dataset_ops.flat_structure(self._input_dataset))
+          **self._input_dataset._flat_structure)
     super(_CopyToDeviceDataset, self).__init__(input_dataset, variant_tensor)
 
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function
@@ -243,7 +243,7 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_MapOnGpuDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):

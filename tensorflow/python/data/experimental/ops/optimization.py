@@ -304,7 +304,7 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
             num_elements_per_branch=num_elements_per_branch,
             branches=[f.function for f in self._funcs],
             other_arguments_lengths=self._capture_lengths,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ChooseFastestBranchDataset, self).__init__(input_dataset,
                                                       variant_tensor)
 

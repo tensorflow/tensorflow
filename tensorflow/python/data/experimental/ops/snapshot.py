@@ -33,7 +33,7 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
     variant_tensor = ged_ops.snapshot_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         path=self._path,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
