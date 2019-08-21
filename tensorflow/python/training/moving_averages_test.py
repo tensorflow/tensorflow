@@ -312,7 +312,6 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual([17.5], self.evaluate(v1_avg))
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
   def testBasicEager(self):
     v0 = variables.Variable(1.0)
     v1 = variables.Variable(2.0)
