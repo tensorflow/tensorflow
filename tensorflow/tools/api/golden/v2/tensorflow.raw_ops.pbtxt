@@ -582,7 +582,7 @@ tf_module {
   }
   member_method {
     name: "BoostedTreesUpdateEnsembleV2"
-    argspec: "args=[\'tree_ensemble_handle\', \'feature_ids\', \'dimension_ids\', \'node_ids\', \'gains\', \'thresholds\', \'left_node_contribs\', \'right_node_contribs\', \'split_types\', \'max_depth\', \'learning_rate\', \'pruning_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tree_ensemble_handle\', \'feature_ids\', \'dimension_ids\', \'node_ids\', \'gains\', \'thresholds\', \'left_node_contribs\', \'right_node_contribs\', \'split_types\', \'max_depth\', \'learning_rate\', \'pruning_mode\', \'logits_dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "BroadcastArgs"

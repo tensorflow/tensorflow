@@ -536,6 +536,7 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
     .Input("learning_rate: float")
     .Input("pruning_mode: int32")
     .Attr("num_features: int >= 0")  // Inferred.
+    .Attr("logits_dimension: int = 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle shape_handle;
       int num_features;
@@ -547,6 +548,8 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
       TF_RETURN_IF_ERROR(
           c->Merge(c->input(1), c->Vector(num_features), &shape_handle));
 
+      int logits_dimension;
+      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
       for (int i = 0; i < num_features; ++i) {
         // Dimension ids.
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 2), 1, &shape_handle));
@@ -555,7 +558,8 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
         TF_RETURN_IF_ERROR(
             c->WithRank(c->input(i + num_features + 2), 1, &shape_handle));
         auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
-        auto shape_rank_2 = c->MakeShape({c->Dim(shape_handle, 0), 1});
+        auto shape_rank_2 =
+            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
 
         // Gains.
         TF_RETURN_IF_ERROR(
