@@ -306,10 +306,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     x = np.ones((100, 3))
     y = np.zeros((100, 2))
     expected_log = (
-        r'.*1/2\n'
-        r'.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*\n'
-        r'.*2/2\n'
-        r'.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+        r'.*1\/2\n'
+        r'.*80\/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*\n'
+        r'.*2\/2\n'
+        r'.*80\/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
