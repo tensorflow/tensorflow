@@ -905,6 +905,10 @@ tf_module {
     argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "batch_gemm"
+    argspec: "args=[\'a\', \'b\', \'c\', \'transpose_a\', \'transpose_b\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'1.0\', \'0.0\', \'None\'], "
+  }
+  member_method {
     name: "batch_scatter_update"
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
