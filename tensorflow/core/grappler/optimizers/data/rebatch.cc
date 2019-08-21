@@ -522,7 +522,7 @@ Status AppendFlatMap(const NodeDef& batch_node, int64 num_workers,
   TF_RETURN_IF_ERROR(
       graph_utils::GetDatasetOutputTypesAttr(batch_node, &dtypes));
   TF_RETURN_IF_ERROR(
-      CreateFlatMapFnWithBatch(dtypes, num_workers, &flat_map_fn));
+      CreateFlatMapFnWithBatch(dtypes, num_replicas, &flat_map_fn));
 
   NodeDef* flat_map_node;
 
