@@ -61,10 +61,11 @@ string DebugString(const nvinfer1::Dims& dims) {
   return out;
 }
 nvinfer1::Dims ShapeHandleToTrtDims(const ShapeHandle& shape,
-                                    InferenceContext* c) {
+                                    InferenceContext* c,bool skip_first=false) {
   nvinfer1::Dims dim;
   int rank = InferenceContext::Rank(shape);
-  for (int i = 0; i < rank; ++i) {
+  int start_dim=(skip_first?1:0);
+  for (int i = start_dim; i < rank; ++i) {
     auto dval = c->Dim(shape, i);
     if (c->ValueKnown(dval)) {
       dim.d[i] = c->Value(dval);
@@ -103,7 +104,8 @@ Status TRTPluginShapeFunction(
     }
     // we should not ignore batch dim since it may not have a meaning for a
     // plugin.
-    plugin_shapes.emplace_back(ShapeHandleToTrtDims(input_shapes.back(), c));
+    // But we are ignoring here since rest of the validation core requires that!
+    plugin_shapes.emplace_back(ShapeHandleToTrtDims(input_shapes.back(), c,true));
     VLOG(1) << plugin_name << " input " << i << ": " << DebugString(plugin_shapes.back());
   }
   if (unknown_rank) {
@@ -130,6 +132,10 @@ Status TRTPluginShapeFunction(
     VLOG(1) << plugin_name << " output " << i << ": " << DebugString(output_dimensions.back());
     const nvinfer1::Dims& dim = output_dimensions[i];
     std::vector<tensorflow::shape_inference::DimensionHandle> dims;
+  // Add fake batch dimension back in. Use first dimension of first input as batch.
+  // We have to do this unfortunate hack since rest of the code evolved to corner 
+  // itself in plugins case
+    dims.emplace_back(c->MakeDim(c->Value(c->Dim(input_shapes.at(0),0))));
     for (int k = 0; k < dim.nbDims; ++k) {
       dims.emplace_back(std::move(c->MakeDim(dim.d[k])));
     }

@@ -270,9 +270,6 @@ Status ValidateTensorProperties(const string& producer_node_type,
   // Convert data type.
   TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, trt_dtype));
 
-  if (producer_node_type == "TRTPluginOp" && validation_only) {
-    return Status::OK();
-  }
   // Convert shape.
   if (shape.dims() < 0) {
     return errors::InvalidArgument("Input tensor rank is unknown.");
