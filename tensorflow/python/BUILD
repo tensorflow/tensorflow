@@ -3201,6 +3201,36 @@ cuda_py_test(
 )
 
 py_library(
+    name = "loss_scaling_gradient_tape",
+    srcs = ["training/experimental/loss_scaling_gradient_tape.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":loss_scale",
+        ":unconnected_gradients",
+        ":util",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+py_test(
+    name = "loss_scaling_gradient_tape_test",
+    size = "medium",
+    srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":loss_scale",
+        ":loss_scaling_gradient_tape",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
     name = "math_grad",
     srcs = ["ops/math_grad.py"],
     srcs_version = "PY2AND3",
@@ -3762,6 +3792,7 @@ py_library(
         ":linalg_ops",
         ":logging_ops",
         ":lookup_ops",
+        ":loss_scaling_gradient_tape",
         ":manip_grad",
         ":manip_ops",
         ":math_grad",
