@@ -3,11 +3,15 @@
 func @spirv_module() -> () {
   spv.module "Logical" "GLSL450" {
     // CHECK-LABEL: @bool_const
-    func @bool_const() -> (i1) {
+    func @bool_const() -> () {
       // CHECK: spv.constant true
       %0 = spv.constant true
+      // CHECK: spv.constant false
+      %1 = spv.constant false
 
-      spv.ReturnValue %0 : i1
+      %2 = spv.Variable init(%0): !spv.ptr<i1, Function>
+      %3 = spv.Variable init(%1): !spv.ptr<i1, Function>
+      spv.Return
     }
 
     // CHECK-LABEL: @i32_const

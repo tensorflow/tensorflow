@@ -62,7 +62,7 @@ func @bf16_type(!spv.array<4xbf16>) -> ()
 
 // -----
 
-// expected-error @+1 {{only 8/16/32/64-bit integer type allowed but found 'i256'}}
+// expected-error @+1 {{only 1/8/16/32/64-bit integer type allowed but found 'i256'}}
 func @i256_type(!spv.array<4xi256>) -> ()
 
 // -----
@@ -86,10 +86,13 @@ func @array_type_zero_stide(!spv.array<4xi32 [0]>) -> ()
 // PointerType
 //===----------------------------------------------------------------------===//
 
-// CHECK: func @scalar_ptr_type(!spv.ptr<f32, Uniform>)
+// CHECK: @bool_ptr_type(!spv.ptr<i1, Uniform>)
+func @bool_ptr_type(!spv.ptr<i1, Uniform>) -> ()
+
+// CHECK: @scalar_ptr_type(!spv.ptr<f32, Uniform>)
 func @scalar_ptr_type(!spv.ptr<f32, Uniform>) -> ()
 
-// CHECK: func @vector_ptr_type(!spv.ptr<vector<4xi32>, PushConstant>)
+// CHECK: @vector_ptr_type(!spv.ptr<vector<4xi32>, PushConstant>)
 func @vector_ptr_type(!spv.ptr<vector<4xi32>,PushConstant>) -> ()
 
 // -----
