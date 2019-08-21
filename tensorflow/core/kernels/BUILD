@@ -3682,6 +3682,7 @@ cc_library(
         ":aggregate_ops",
         ":argmax_op",
         ":batch_matmul_op",
+        ":batch_gemm_op",
         ":betainc_op",
         ":bincount_op",
         ":bucketize_op",
@@ -3729,6 +3730,14 @@ tf_mkl_kernel_library(
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = ["batch_matmul_op_impl.h"],
     deps = MATH_DEPS + mkl_deps(),
+)
+
+tf_kernel_library(
+    name = "batch_gemm_op",
+    prefix = "batch_gemm_op",
+    deps = MATH_DEPS + [
+        ":batch_matmul_op"
+    ],
 )
 
 tf_kernel_library(

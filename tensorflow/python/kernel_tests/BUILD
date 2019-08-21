@@ -1638,6 +1638,21 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "batch_gemm_op_test",
+    size = "small",
+    srcs = ["batch_gemm_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+    ],
+    shard_count = 20,
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "batchtospace_op_test",
     size = "small",
     srcs = ["batchtospace_op_test.py"],
