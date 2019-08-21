@@ -10,8 +10,6 @@ package_group(
     name = "friends",
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/python/...",
     ],
