@@ -418,6 +418,7 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
+      .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
              return buffer.DeviceBuffer() == nullptr;
