@@ -609,10 +609,10 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
 }
 
 void CuptiTracer::Disable() {
+  DisableApiTracing().IgnoreError();
   if (option_->enable_activity_api) {
     DisableActivityTracing().IgnoreError();
   }
-  DisableApiTracing().IgnoreError();
   cupti_interface_->CleanUp();
   collector_->Flush();
   collector_ = nullptr;
