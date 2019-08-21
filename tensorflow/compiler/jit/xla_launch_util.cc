@@ -42,6 +42,13 @@ namespace tensorflow {
 namespace {
 using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
+
+const char kPossibleNonVariableResourceHintMessage[] =
+    "If the error is similar to `Trying to access resource using the wrong "
+    "type`, this is likely because XLA only accepts Resource Variables as "
+    "inputs by snapshotting their values. Other TensorFlow resource types like "
+    "TensorList/TensorArray/Stack are not supported. Try removing non-variable "
+    "resource inputs to XLA.";
 }  // anonymous namespace
 
 VariableInfo::VariableInfo(int index, Var* var) : index_(index), var_(var) {}
@@ -88,7 +95,12 @@ static Status GetVariableInfosFromCtxInputs(
       [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
 
   std::vector<core::RefCountPtr<Var>> variables;
-  TF_RETURN_IF_ERROR(LookupResources(ctx, resource_handles, &variables));
+
+  Status s = LookupResources(ctx, resource_handles, &variables);
+  if (!s.ok()) {
+    errors::AppendToMessage(&s, kPossibleNonVariableResourceHintMessage);
+    return s;
+  }
 
   result->clear();
   result->reserve(variable_indices.size());
