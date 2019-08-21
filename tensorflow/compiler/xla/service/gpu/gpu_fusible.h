@@ -106,14 +106,14 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
 bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
-// It is impossible to get optimal fusion group by being greedy.
+// It is impossible to get optimal fusion group by being always greedy.
 // Here we determine some cases that we want to postpone to later.
 // The caller site of this function should only call it in the first iteration
 // of the fixed point fusion pipeline.
-// This give a fall back if postponed case isn't fused in later phase.
-// Currently we only postpone some case of downcast convert.
+// This gives a fall back if the postponed cases isn't fused in later phases.
+// Currently we only postpone some cases of downcast convert.
 // If we do not do this, it would get fused first on its consumer.
-// It is more efficient to fuse it to its producer.
+// It is more efficient to fuse it to its producer as it lower memory IO.
 // Currently we expect the downcast to be fusible in the MOF pass.
 // Otherwise we do not postpone it.
 bool PostponeFusion(const HloInstruction& producer,

@@ -455,7 +455,7 @@ bool ShouldFuseProducerConsumerMOF(const HloInstruction& producer,
 bool PostponeFusion(const HloInstruction& producer,
                     const HloInstruction& consumer) {
   bool downcast_try_to_postpone = false;
-  auto is_downcast = [](const HloInstruction& instr) {
+  auto is_downcast = [](const HloInstruction& instr) -> bool {
     return instr.opcode() == HloOpcode::kConvert &&
            ShapeUtil::ByteSizeOf(instr.operand(0)->shape()) >
                ShapeUtil::ByteSizeOf(instr.shape());
@@ -470,7 +470,7 @@ bool PostponeFusion(const HloInstruction& producer,
          is_downcast(
              *consumer.fused_instructions_computation()->root_instruction()))) {
       return false;
-      // A downcast of a parameter can't be merged into its producer.
+    // A downcast of a parameter can't be merged into its producer.
     } else if (producer.operand(0)->opcode() == HloOpcode::kParameter) {
       return false;
     } else {
@@ -495,9 +495,17 @@ bool PostponeFusion(const HloInstruction& producer,
     return false;
   }
 
-  // As the fusion pipeline run until fixed point, we do need to check
-  // for possible cycles in the graph.
-
+  // We should postpone a node fusion only when it will be fused in
+  // following passes (here the MOF fusion passes). So we should only
+  // postpone if a later fusion of it won't cause a cycle.  Calling
+  // the cycle detection code here isn't trivial and it could be slow.
+  // But it is not strictly needed as there is a fallback that would
+  // still merge the postponed fusion even if the later pass does not
+  // fuse it. All fusion passes are wrapped by a fixed point
+  // optimization. All calling site of this function call it only on
+  // the first iteration of the fixed point optimization. So if a
+  // postponed fusion is not fused by later pass, it would get fused
+  // in the second iteration. So we can skip the cycle detection here.
   return true;
 }
 }  // namespace gpu

@@ -250,7 +250,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // fusion emitter.
   // TODO(b/119692968): Remove this once the fusion emitter can handle arbitrary
   // fusion nodes.
-  if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+  if (absl::c_any_of(fusion->users(), [&](const HloInstruction* user) {
         return FusedIrEmitter::IsFusedIrEmitterInefficient(/*consumer=*/user,
                                                            /*producer=*/fusion);
       })) {
@@ -263,7 +263,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 
   // Postpone 'fusion' instruction if we think fusing it later will be better.
   if (postpone_ &&
-      absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+      absl::c_any_of(fusion->users(), [&](const HloInstruction* user) {
         return PostponeFusion(*fusion, *user);
       })) {
     VLOG(3) << "Postpone fusion " << fusion->name()
@@ -279,7 +279,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 
   // Skip 'fusion' instruction if merging it into at least one of the users
   // would make the fusion too big.
-  if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+  if (absl::c_any_of(fusion->users(), [&](const HloInstruction* user) {
         return FusionWouldBeTooLarge(*fusion, *user);
       })) {
     VLOG(3) << "Not merging " << fusion->name()
@@ -300,7 +300,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " merged_to_current_bytes_ratio: " << merged_to_current_bytes_ratio
           << " into users { "
           << absl::StrJoin(users, ", ",
-                           [](string* out, HloInstruction* user) {
+                           [](string* out, const HloInstruction* user) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";
