@@ -20,7 +20,9 @@ package_group(
 filegroup(
     name = "xla_ops_td_files",
     srcs = [
+        "ir/lxla_ops.td",
         "ir/xla_ops.td",
+        "ir/xla_ops_base.td",
         "@local_config_mlir//:OpBaseTdFiles",
     ],
 )
@@ -39,6 +41,44 @@ gentbl(
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/xla_ops.td",
+    td_srcs = [
+        ":xla_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "xla_ops_base_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "ir/xla_ops_base.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "ir/xla_ops_base.cc.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "ir/xla_ops_base.td",
+    td_srcs = [
+        ":xla_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "lxla_ops_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "ir/lxla_ops.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "ir/lxla_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "ir/lxla_ops.td",
     td_srcs = [
         ":xla_ops_td_files",
     ],
@@ -148,7 +188,34 @@ cc_library(
     copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
+        ":xla_ops_base_inc_gen",
         ":xla_ops_inc_gen",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lxla",
+    srcs = [
+        "ir/lxla_ops.cc",
+        "ir/lxla_ops.cc.inc",
+        "ir/lxla_ops.h.inc",
+    ],
+    hdrs = [
+        "ir/lxla_ops.h",
+        "transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":lxla_ops_inc_gen",
+        ":xla_ops_base_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -166,6 +233,7 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     copts = ["-std=c++14"],
     deps = [
+        ":lxla",
         ":xla",
         "@local_config_mlir//:IR",
     ],
@@ -315,12 +383,14 @@ genrule(
     srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         "//tensorflow/compiler/mlir/xla:ir/xla_ops.td",
+        "//tensorflow/compiler/mlir/xla:ir/xla_ops_base.td",
     ],
     outs = [
         "operator_writers.inc",
     ],
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/local_config_mlir/include " +
-           "$(location //tensorflow/compiler/mlir/xla:ir/xla_ops.td) " + " -o $@"),
+           "$(location //tensorflow/compiler/mlir/xla:ir/xla_ops.td) " +
+           " -o $@"),
     tools = [":operator_writer_gen"],
 )

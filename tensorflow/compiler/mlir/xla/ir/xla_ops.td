@@ -24,6 +24,11 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+#ifdef XLA_OPS_BASE
+#else
+include "tensorflow/compiler/mlir/xla/ir/xla_ops_base.td"
+#endif
+
 def XLA_Dialect : Dialect {
   let name = "xla_hlo";
   let cppNamespace = "XLA";
@@ -39,15 +44,11 @@ class XLA_Op<string mnemonic, list<OpTrait> traits> :
 // XLA type definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_Int : IntOfWidths<[8, 16, 32, 64]>;
-
 // Any integer tensor types
 def XLA_IntTensor : StaticShapeTensorOf<[XLA_Int]>;
 
 // Any floating-point tensor types
 def XLA_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
-
-def XLA_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 def XLA_PredTensor : StaticShapeTensorOf<[XLA_Pred]>;
 
@@ -64,13 +65,7 @@ def XLA_TensorOrTuple : AnyTypeOf<[XLA_Tensor, XLA_Tuple]>;
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_ConstOp : XLA_Op<"constant", [NoSideEffect]> {
-  let summary = "Constant operator";
-
-  let description = [{
-    Represents a constant value.
-  }];
-
+def XLA_ConstOp : BXLA_ConstOp, XLA_Op<"constant", [NoSideEffect]> {
   let arguments = (ins
     ElementsAttr:$value
   );
@@ -89,13 +84,7 @@ def XLA_ConstOp : XLA_Op<"constant", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_IotaOp : XLA_Op<"iota", [NoSideEffect]> {
-  let summary = "Iota operator";
-
-  let description = [{
-    Creates a rank 1 array of values starting at zero and incrementing by one.
-  }];
-
+def XLA_IotaOp : BXLA_IotaOp, XLA_Op<"iota", [NoSideEffect]> {
   let arguments = (ins I64Attr:$iota_dimension);
 
   let results = (outs XLA_Tensor:$output);
@@ -117,28 +106,10 @@ class XLA_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
     let results = (outs XLA_Tensor);
 }
 
-def XLA_AbsOp: XLA_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Absolute value operator";
-
-  let description = [{
-    Returns `abs(operand)` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
+def XLA_AbsOp: XLA_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BXLA_AbsOp;
 
 def XLA_ConvertOp : XLA_UnaryElementwiseOp<
-      "convert", [NoSideEffect, SameOperandsAndResultShape]> {
-  let summary = "Convert operator";
-
-  let description = [{
-    Performs element-wise conversion of values from one type to another, e.g.
-    float to int.
-
-    See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
-  }];
-
+      "convert", [NoSideEffect, SameOperandsAndResultShape]>, BXLA_ConvertOp {
   let hasFolder = 1;
 
   // TODO(b/130357376) Convert has a special constructor. Use a custom
@@ -146,68 +117,18 @@ def XLA_ConvertOp : XLA_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ExpOp: XLA_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Exponential operator";
+def XLA_ExpOp: XLA_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BXLA_ExpOp;
 
-  let description = [{
-    Returns `e^(operand)` element-wise.
+def XLA_NegOp: XLA_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BXLA_NegOp;
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
-def XLA_NegOp: XLA_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Negation operator";
-
-  let description = [{
-    Returns `-operand` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
-def XLA_SignOp: XLA_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]> {
-  let summary = "Sign operator";
-
-  let description = [{
-    Returns `sign(operand)` element-wise, where
-
-    ```
-    sign(x) = -1  : x < 0
-            = -0  : x = -0
-            = NaN : x = NaN
-            = +0  : x = +0
-            = 1   : x > 0
-    ```
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
+def XLA_SignOp: XLA_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BXLA_SignOp;
 
 def XLA_TanhOp: XLA_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Tanh operator";
-
-  let description = [{
-    Returns `tanh(operand)` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
+    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BXLA_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
-
-// The broadcasting dimensions correspond to a tuple that describes how a
-// smaller rank shape is broadcast into a larger rank shape. For example,
-// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
-// matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<ElementsAttr>;
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 class XLA_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
@@ -223,86 +144,32 @@ class XLA_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 }
 
 def XLA_AddOp : XLA_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Addition operator";
-
-  let description = [{
-    Returns `lhs + rhs` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_AddOp;
 
 def XLA_DivOp : XLA_BinaryElementwiseOp<"div",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Division operator";
-
-  let description = [{
-    Returns `lhs / rhs` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_DivOp;
 
 def XLA_MaxOp : XLA_BinaryElementwiseOp<"max",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Maximum operator";
-
-  let description = [{
-    Returns `max(lhs, rhs)` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MaxOp;
 
 def XLA_MinOp : XLA_BinaryElementwiseOp<"min",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Minimum operator";
-
-  let description = [{
-    Returns `min(lhs, rhs)` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MinOp;
 
 def XLA_MulOp : XLA_BinaryElementwiseOp<"mul",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Multiplication operator";
-
-  let description = [{
-    Returns `lhs * rhs` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MulOp;
 
 def XLA_SubOp : XLA_BinaryElementwiseOp<"sub",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Subtraction operator";
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_SubOp;
 
-  let description = [{
-    Returns `lhs - rhs` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
-  }];
-}
-
-def XLA_AndOp: XLA_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>;
+def XLA_AndOp: XLA_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BXLA_AndOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "While operator";
+  string summary = "While operator";
 
-  let description = [{
+  string description = [{
     Returns the result of executing a body function until the cond body returns
     true.
 
@@ -321,15 +188,7 @@ def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]> {
-  let summary = "Reduce operator";
-
-  let description = [{
-    Returns the result of executing a reduction function on one or more arrays
-    in parallel.
-
-    See https://www.tensorflow.org/xla/operation_semantics#reduce.
-  }];
+def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]>, BXLA_ReduceOp {
 
   let arguments = (ins
     Variadic<XLA_TensorOrTuple>:$operands_and_init,
@@ -346,15 +205,7 @@ def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
-def XLA_GetTupleElementOp: XLA_Op<"get_tuple_element", [NoSideEffect]> {
-  let summary = "GetTupleElement operator";
-
-  let description = [{
-    Returns a member of a tuple specified by an index.
-
-    See https://www.tensorflow.org/xla/operation_semantics#gettupleelement.
-  }];
-
+def XLA_GetTupleElementOp: XLA_Op<"get_tuple_element", [NoSideEffect]>, BXLA_GetTupleElementOp {
   let arguments = (ins
     XLA_Tuple,
     I32Attr:$index
@@ -366,15 +217,7 @@ def XLA_GetTupleElementOp: XLA_Op<"get_tuple_element", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_TupleOp : XLA_Op<"tuple", [NoSideEffect]> {
-   let summary = "XLA's tuple op";
-
-   let description = [{
-     Groups a set of tensor inputs into a single tuple object.
-
-     See https://www.tensorflow.org/xla/operation_semantics#tuple.
-   }];
-
+def XLA_TupleOp : XLA_Op<"tuple", [NoSideEffect]>, BXLA_TupleOp {
    let arguments = (ins Variadic<XLA_TensorOrTuple>:$val);
    let results = (outs XLA_Tuple);
 
@@ -382,49 +225,8 @@ def XLA_TupleOp : XLA_Op<"tuple", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-//===----------------------------------------------------------------------===//
-// Precision Config enum definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA PrecisionConfig proto enum.
-def XLA_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
-def XLA_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
-def XLA_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
-
-def XLA_PrecisionAttr : StrEnumAttr<"Precision",
-    "XLA precision for an operand. Has backend specific meaning.",
-    [XLA_PRECISION_DEFAULT,  XLA_PRECISION_HIGH, XLA_PRECISION_HIGHEST]>;
-
-// TODO(b/129153247) See if it's possible to also validate the size.
-def XLA_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<XLA_PrecisionAttr, "Precision Config attribute">>;
-
-//===----------------------------------------------------------------------===//
-// Comparison op definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA ComparisonDirection enum.
-def XLA_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
-def XLA_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
-def XLA_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
-def XLA_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
-def XLA_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
-def XLA_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
-
-def XLA_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
-    "Which comparison operation to perform.",
-    [
-      XLA_COMPARISON_DIRECTION_EQ,
-      XLA_COMPARISON_DIRECTION_NE,
-      XLA_COMPARISON_DIRECTION_GE,
-      XLA_COMPARISON_DIRECTION_GT,
-      XLA_COMPARISON_DIRECTION_LE,
-      XLA_COMPARISON_DIRECTION_LT
-    ]>;
-
 def XLA_CompareOp: XLA_Op<"compare",
-      [NoSideEffect, SameOperandsAndResultShape]> {
+      [NoSideEffect, SameOperandsAndResultShape]>, BXLA_CompareOp {
   let arguments = (ins
       XLA_Tensor:$lhs,
       XLA_Tensor:$rhs,
@@ -432,14 +234,6 @@ def XLA_CompareOp: XLA_Op<"compare",
       XLA_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs XLA_PredTensor);
-  let summary = "Comparison operator";
-
-  let description = [{
-    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -458,14 +252,6 @@ def XLA_SliceOp: XLA_Op<
 
   let results = (outs XLA_Tensor);
 
-  let summary = "Slice operator";
-
-  let description = [{
-    Slices a portion of the `operand` into a new configuration.
-
-    See https://www.tensorflow.org/xla/operation_semantics#slice.
-  }];
-
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
   let hasCustomHLOConverter = 1;
@@ -481,15 +267,6 @@ def XLA_DynamicUpdateSliceOp: XLA_Op<"dynamic-update-slice",
 
   let results = (outs XLA_Tensor:$result);
 
-  let summary = "Dynamic Update Slice operator";
-
-  let description = [{
-    DynamicUpdateSlice generates a result which is the value of the input array
-    operand, with a slice update overwritten at start_indices.
-
-    See https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice.
-  }];
-
   // TODO(b/129422361) Requires a custom constructor.
   let hasCustomHLOConverter = 1;
 }
@@ -499,14 +276,8 @@ def XLA_DynamicUpdateSliceOp: XLA_Op<"dynamic-update-slice",
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_BatchNormInferenceOp : XLA_Op<"batch_norm_inference", [NoSideEffect]> {
-  let summary = "Batch Normalization for Inference";
-
-  let description = [{
-    Normalizes an array across batch and spatial dimensions.
-
-    See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
-  }];
+def XLA_BatchNormInferenceOp : XLA_Op<"batch_norm_inference", [NoSideEffect]>,
+    BXLA_BatchNormInferenceOp {
 
   let arguments = (ins
     XLA_Tensor:$operand,
@@ -522,21 +293,7 @@ def XLA_BatchNormInferenceOp : XLA_Op<"batch_norm_inference", [NoSideEffect]> {
 }
 
 def XLA_BroadcastOp : XLA_Op<"broadcast",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
-
-  let description = [{
-    Broadcasts the operand tensor to a higher rank by prepending
-    `broadcast_sizes` to the dimensions. The current values of the operand are
-    copied into the other dimensions.
-
-    This is a more limited form of broadcasting, that corresponds to the XLA
-    client Broadcast method. For a more general form of broadcasting, see the
-    BroadcastInDimOp.
-
-    See https://www.tensorflow.org/xla/operation_semantics#broadcast.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_BroadcastOp {
   let arguments = (ins
     XLA_Tensor:$operand,
     ElementsAttr:$broadcast_sizes
@@ -594,26 +351,7 @@ def XLA_BroadcastOp : XLA_Op<"broadcast",
 }
 
 def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Broadcast a tensor into the given shape by adding dimensions.";
-
-  let description = [{
-    Broadcasts the `operand` tensor to a higher rank. This is not the limited
-    form of broadcasting exposed as the XLA client broadcast op, but rather the
-    more powerful "InDim" broadcasting, which is closer to the HLO broadcast op
-    and exposed in the XLA client BroadcastInDim method.
-
-    `broadcast_dimensions` maps the operand dimension number to the target shape
-    dimension number. It must have the same size as the rank of the operand. The
-    mapped dimensions must either be the same size or the dimension being
-    broadcast from must be size 1 (degenerate broadcasting).
-
-    For a scalar (0D tensor) operand, `broadcast_dimensions` must be empty. The
-    The scalar value will be broadcast to every element in the target shape.
-
-    See https://www.tensorflow.org/xla/broadcasting.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_BroadcastInDimOp {
   let arguments = (ins
     XLA_Tensor:$operand,
     BroadcastDimAttr:$broadcast_dimensions
@@ -693,19 +431,7 @@ def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
 }
 
 def XLA_ClampOp : XLA_Op<"clamp",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Clamp operator";
-
-  let description = [{
-    Clamps an operand to within the range between a minimum and maximum value.
-
-    Note: All three arrays must be the same shape. Alternatively, as a
-          restricted form of broadcasting, min and/or max can be a scalar (0D
-          tensor) of the element type of the tensor operand.
-
-    See https://www.tensorflow.org/xla/operation_semantics#clamp.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ClampOp {
   let arguments = (ins
     XLA_Tensor:$min,
     XLA_Tensor:$operand,
@@ -746,14 +472,7 @@ def XLA_ClampOp : XLA_Op<"clamp",
 }
 
 def XLA_ConcatenateOp : XLA_Op<"concatenate",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-   let summary = "XLA's concantenate op";
-
-   let description = [{
-     Concatenates a set of tensors along the specified dimension.
-
-     See https://www.tensorflow.org/xla/operation_semantics#concatenate.
-   }];
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ConcatenateOp {
 
    let arguments = (
      ins Variadic<XLA_Tensor>:$val,
@@ -793,15 +512,7 @@ def XLA_ConcatenateOp : XLA_Op<"concatenate",
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ConvOp : XLA_Op<"conv", [NoSideEffect]> {
-  let summary = "Convolution operator";
-
-  let description = [{
-    Computes a convolution of the kind used in neural networks.
-
-    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
-  }];
-
+def XLA_ConvOp : XLA_Op<"conv", [NoSideEffect]>, BXLA_ConvOp {
   let arguments = (ins
     XLA_Tensor:$lhs,
     XLA_Tensor:$rhs
@@ -815,9 +526,9 @@ def XLA_ConvOp : XLA_Op<"conv", [NoSideEffect]> {
 }
 
 def XLA_CopyOp: XLA_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Copy operator";
+  string summary = "Copy operator";
 
-  let description = [{
+  string description = [{
     Returns a copy of `operand`.
   }];
 
@@ -829,23 +540,16 @@ def XLA_CopyOp: XLA_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_DotOp: XLA_Op<"dot", [NoSideEffect]> {
+def XLA_DotOp: XLA_Op<"dot", [NoSideEffect]>, BXLA_DotOp {
   let arguments = (
         ins XLA_Tensor:$lhs,
         XLA_Tensor:$rhs,
         XLA_PrecisionConfigAttr:$precision_config
     );
   let results = (outs XLA_Tensor);
-
-  let description = [{
-    Performs dot products between vectors, vector/matrix and matrix/matrix
-    multiplication.
-
-    See https://www.tensorflow.org/xla/operation_semantics#dot.
-  }];
 }
 
-def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]> {
+def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]>, BXLA_GatherOp {
   let arguments = (
       ins XLA_Tensor:$operand,
           XLA_IntTensor:$start_indices,
@@ -858,33 +562,16 @@ def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]> {
 
   let results = (outs XLA_Tensor);
 
-  let summary = "Gather operator";
-
-  let description = [{
-    Stitches together several slices of an input array.
-
-    See https://www.tensorflow.org/xla/operation_semantics#gather.
-  }];
-
   // TODO(b/129422361) Attributes are not by the codegen. The optional argument
   // (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
 def XLA_ReshapeOp: XLA_Op<"reshape",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ReshapeOp {
   let arguments = (ins XLA_Tensor:$operand);
 
   let results = (outs XLA_Tensor);
-
-  let summary = "Reshape operator";
-
-  let description = [{
-    Reshapes the dimensions of `operand` into a new configuration.
-
-    See https://www.tensorflow.org/xla/operation_semantics#reshape.
-  }];
-
   let hasFolder = 1;
 
   // TODO(b/129422361) One of the required arguments comes from the new shape,
@@ -894,22 +581,7 @@ def XLA_ReshapeOp: XLA_Op<"reshape",
 }
 
 
-def XLA_SelectOp: XLA_Op<"select", [NoSideEffect]> {
-  let summary = "Select operator";
-
-  let description = [{
-    Constructs an output tensor from the elements of `on_true` and `on_false`
-    based on the values of `pred`.
-
-    `on_true` and `on_false` must be the same shape. For each element of `pred`,
-    `res` has the corresponding element of `on_true` or `on_false` depending on
-    the value in `pred`. `pred` must be the same shape as `on_true` and
-    `on_false` or a scalar, in which case `res` is equal to either `on_true` or
-    `on_false`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#select.
-  }];
-
+def XLA_SelectOp: XLA_Op<"select", [NoSideEffect]>, BXLA_SelectOp {
   let arguments = (ins
     XLA_PredTensor:$pred,
     XLA_Tensor:$on_true,
@@ -948,16 +620,7 @@ def XLA_SelectOp: XLA_Op<"select", [NoSideEffect]> {
 }
 
 def XLA_ReverseOp: XLA_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Reverse operator";
-
-  let description = [{
-    Reverses the specified dimensions of `operand` according to the given
-    `dimensions`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#rev_reverse.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ReverseOp {
   let arguments = (ins
     XLA_Tensor:$operand,
     ElementsAttr:$dimensions
@@ -970,16 +633,7 @@ def XLA_ReverseOp: XLA_Op<"reverse",
 }
 
 def XLA_PadOp: XLA_Op<"pad",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Pad operator";
-
-  let description = [{
-    Pads the edges of `operand` with the `padding_value` and according to
-    the passed configuration.
-
-    See https://www.tensorflow.org/xla/operation_semantics#pad.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_PadOp {
   let arguments = (ins
     XLA_Tensor:$operand,
     XLA_Tensor:$padding_value,
@@ -1044,17 +698,7 @@ def XLA_PadOp: XLA_Op<"pad",
 }
 
 def XLA_TransposeOp: XLA_Op<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = "Transpose operator";
-
-  let description = [{
-    Permutes the dimensions of `operand` according to the given `permutation`.
-
-    `res_dimensions[i] = operand_dimensions[permutation[i]]`
-
-    See https://www.tensorflow.org/xla/operation_semantics#transpose.
-  }];
-
+      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_TransposeOp {
   let arguments = (ins
     XLA_Tensor:$operand,
     ElementsAttr:$permutation

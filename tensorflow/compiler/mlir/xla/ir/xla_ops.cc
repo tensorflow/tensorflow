@@ -55,7 +55,7 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
       >();
 
   // Support unknown operations because not all XLA operations are registered.
-  allowUnknownOperations();
+  // allowUnknownOperations();
 }
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
