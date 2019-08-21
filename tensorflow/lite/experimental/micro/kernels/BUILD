@@ -398,5 +398,6 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/kernels/internal:tensor",
     ],
 )
