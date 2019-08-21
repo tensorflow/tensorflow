@@ -49,9 +49,6 @@ patch_am_sdk() {
   sed -i -e $'22s/\*(.text\*)/\*(.text\*)\\\n\\\n\\\t\/\* These are the C++ global constructors.  Stick them all here and\\\n\\\t \* then walk through the array in main() calling them all.\\\n\\\t \*\/\\\n\\\t_init_array_start = .;\\\n\\\tKEEP (\*(SORT(.init_array\*)))\\\n\\\t_init_array_end = .;\\\n\\\n\\\t\/\* XXX Currently not doing anything for global destructors. \*\/\\\n/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e $'70s/} > SRAM/} > SRAM\\\n    \/\* Add this to satisfy reference to symbol "end" from libnosys.a(sbrk.o)\\\n     \* to denote the HEAP start.\\\n     \*\/\\\n   end = .;/g' "${dest_dir}/apollo3evb.ld"
 
-  # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
-  sed -i -e $'s/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\\\nextern "C" {\\\n#endif\\\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
-
   # Add a delay after establishing serial connection
   sed -ir -E $'s/    with serial\.Serial\(args\.port, args\.baud, timeout=12\) as ser:/    with serial.Serial(args.port, args.baud, timeout=12) as ser:\\\n        # Patched.\\\n        import time\\\n        time.sleep(0.25)\\\n        # End patch./g' "${am_dir}/tools/apollo3_scripts/uart_wired_update.py"
 
