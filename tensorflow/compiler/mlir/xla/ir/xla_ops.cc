@@ -229,7 +229,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  for (auto it : llvm::enumerate(permutation().cast<DenseIntElementsAttr>())) {
+  for (auto it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {
       return {};
     }
