@@ -23,6 +23,7 @@ import shutil
 import tempfile
 from absl.testing import parameterized
 import numpy as np
+import warnings
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
@@ -335,6 +336,50 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                  r'element\(s\)\.'):
       hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_sequential_weight_loading_group_name_with_incorrect_length_with_skip_mismatch(self):
+    if h5py is None:
+      return
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    num_hidden = 5
+    input_dim = 3
+    num_classes = 2
+    with self.cached_session():
+      ref_model = keras.models.Sequential()
+      ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
+                                       name='d1'))
+      ref_model.add(keras.layers.Dense(num_classes, name='d2'))
+      ref_model.compile(loss=keras.losses.MSE,
+                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        metrics=[keras.metrics.categorical_accuracy])
+
+      f_ref_model = h5py.File(h5_path, 'w')
+      hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+
+      f_model = h5py.File(h5_path, 'r')
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden, use_bias=False,
+                                   input_dim=input_dim, name='d1'))
+      # This shape is modified.
+      model.add(keras.layers.Dense(num_classes + 1, name='d2'))
+      model.compile(loss=keras.losses.MSE,
+                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    metrics=[keras.metrics.categorical_accuracy])
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+
+      hdf5_format.load_weights_from_hdf5_group_by_name(
+          f_model,
+          model.layers,
+          skip_mismatch=True)
+
+      assert len(w) == 1
+      assert "due to mismatch in number of weights" in str(w[-1].message)
+
   @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
@@ -374,6 +419,47 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    r'shape \(3, 10\), but the saved weight has '
                                    r'shape \(3, 5\)\.'):
         hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+
+  @test_util.run_deprecated_v1
+  def test_sequential_weight_loading_group_name_with_incorrect_shape_with_skip_mismatch(self):
+    if h5py is None:
+      return
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    num_hidden = 5
+    input_dim = 3
+    num_classes = 2
+    with self.cached_session():
+      ref_model = keras.models.Sequential()
+      ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
+                                       name='d1'))
+      ref_model.add(keras.layers.Dense(num_classes, name='d2'))
+      ref_model.compile(loss=keras.losses.MSE,
+                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        metrics=[keras.metrics.categorical_accuracy])
+
+      f_ref_model = h5py.File(h5_path, 'w')
+      hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+
+      f_model = h5py.File(h5_path, 'r')
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden + 5, input_dim=input_dim,
+                                   name='d1'))
+      model.add(keras.layers.Dense(num_classes, name='d2'))
+      model.compile(loss=keras.losses.MSE,
+                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    metrics=[keras.metrics.categorical_accuracy])
+
+      with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers, skip_mismatch=True)
+
+        assert len(w) == 1
+        assert "but the saved weight has shape" in str(w[-1].message)
 
 
 class TestWholeModelSaving(test.TestCase):

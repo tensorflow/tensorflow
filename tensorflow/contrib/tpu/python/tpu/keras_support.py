@@ -2139,8 +2139,11 @@ class KerasTPUModel(models.Model):
     self._cpu_model.set_weights(weights)
     self._tpu_weights_initialized = False
 
-  def load_weights(self, filepath, by_name=False):
-    self._cpu_model.load_weights(filepath, by_name)
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+    self._cpu_model.load_weights(
+        filepath,
+        by_name=by_name,
+        skip_mismatch=skip_mismatch)
     self._tpu_weights_initialized = False
 
 

@@ -1291,7 +1291,7 @@ class Network(base_layer.Layer):
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
-  def load_weights(self, filepath, by_name=False):
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
     If `by_name` is False weights are loaded based on the network's
@@ -1318,6 +1318,9 @@ class Network(base_layer.Layer):
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
+        skip_mismatch: Boolean, whether to skip loading of layers where there is
+            a mismatch in the number of weights, or a mismatch in the shape of
+            the weight (only valid when `by_name`=True).
 
     Returns:
         When loading a weight file in TensorFlow format, returns the same status
@@ -1368,7 +1371,10 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(f, self.layers)
+        saving.load_weights_from_hdf5_group_by_name(
+            f,
+            self.layers,
+            skip_mismatch=skip_mismatch)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
 
