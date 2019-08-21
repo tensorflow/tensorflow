@@ -239,7 +239,7 @@ def assert_compatible_matrix_dimensions(operator, x):
 
 def assert_is_batch_matrix(tensor):
   """Static assert that `tensor` has rank `2` or higher."""
-  sh = tensor.get_shape()
+  sh = tensor.shape
   if sh.ndims is not None and sh.ndims < 2:
     raise ValueError(
         "Expected [batch] matrix to have at least two dimensions.  Found: "
@@ -327,14 +327,14 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     # x.shape =    [2, j, k]  (batch shape =    [2])
     # y.shape = [3, 1, l, m]  (batch shape = [3, 1])
     # ==> bcast_batch_shape = [3, 2]
-    bcast_batch_shape = batch_matrices[0].get_shape()[:-2]
+    bcast_batch_shape = batch_matrices[0].shape[:-2]
     for mat in batch_matrices[1:]:
       bcast_batch_shape = array_ops.broadcast_static_shape(
           bcast_batch_shape,
-          mat.get_shape()[:-2])
+          mat.shape[:-2])
     if bcast_batch_shape.is_fully_defined():
       for i, mat in enumerate(batch_matrices):
-        if mat.get_shape()[:-2] != bcast_batch_shape:
+        if mat.shape[:-2] != bcast_batch_shape:
           bcast_shape = array_ops.concat(
               [bcast_batch_shape.as_list(), array_ops.shape(mat)[-2:]], axis=0)
           batch_matrices[i] = array_ops.broadcast_to(mat, bcast_shape)

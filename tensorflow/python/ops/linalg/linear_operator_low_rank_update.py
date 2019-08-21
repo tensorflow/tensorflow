@@ -271,7 +271,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     """Static check that shapes are compatible."""
     # Broadcast shape also checks that u and v are compatible.
     uv_shape = array_ops.broadcast_static_shape(
-        self.u.get_shape(), self.v.get_shape())
+        self.u.shape, self.v.shape)
 
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape, uv_shape[:-2])
@@ -282,9 +282,9 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
     if self._diag_update is not None:
       tensor_shape.dimension_at_index(uv_shape, -1).assert_is_compatible_with(
-          self._diag_update.get_shape()[-1])
+          self._diag_update.shape[-1])
       array_ops.broadcast_static_shape(
-          batch_shape, self._diag_update.get_shape()[:-1])
+          batch_shape, self._diag_update.shape[:-1])
 
   def _set_diag_operators(self, diag_update, is_diag_update_positive):
     """Set attributes self._diag_update and self._diag_operator."""
@@ -335,7 +335,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   def _shape(self):
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape,
-        self.u.get_shape()[:-2])
+        self.u.shape[:-2])
     return batch_shape.concatenate(self.base_operator.shape[-2:])
 
   def _shape_tensor(self):
