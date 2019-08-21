@@ -647,7 +647,6 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
   int cur_iteration = 0;
   auto expected_outputs_it = expected_outputs.begin();
   for (int breakpoint : breakpoints) {
@@ -660,12 +659,15 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
                                  *dataset_, &iterator));
 
     while (cur_iteration <= breakpoint) {
+      std::vector<Tensor> out_tensors;
       TF_RETURN_IF_ERROR(iterator->GetNext(iterator_ctx_.get(), &out_tensors,
                                            &end_of_sequence));
       if (!end_of_sequence) {
         EXPECT_NE(expected_outputs_it, expected_outputs.end());
-        TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
-        expected_outputs_it++;
+        for (const auto& out_tensor : out_tensors) {
+          TF_EXPECT_OK(ExpectEqual(out_tensor, *expected_outputs_it));
+          expected_outputs_it++;
+        }
       }
       cur_iteration++;
     }
