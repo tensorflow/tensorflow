@@ -67,6 +67,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
+  // TODO(bhavanis): Move the below ConvertMklToTf() to mkl_util.h
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
