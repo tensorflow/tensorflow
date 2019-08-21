@@ -215,3 +215,55 @@ func @useAuxiliaryOpToReplaceMultiResultOp() -> (i32, f32, f32) {
   %0:3 = "test.three_result"() {kind = 6} : () -> (i32, f32, f32)
   return %0#0, %0#1, %0#2 : i32, f32, f32
 }
+
+//===----------------------------------------------------------------------===//
+// Test Multi-result Ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @replaceOneVariadicOutOneVariadicInOp
+func @replaceOneVariadicOutOneVariadicInOp(%arg0: i32, %arg1: i32, %arg2: i32) -> (i32, i32, i32, i32, i32, i32) {
+  // CHECK: %[[cnt1:.*]] = "test.one_variadic_out_one_variadic_in2"(%arg0)
+  // CHECK: %[[cnt2:.*]]:2 = "test.one_variadic_out_one_variadic_in2"(%arg0, %arg1)
+  // CHECK: %[[cnt3:.*]]:3 = "test.one_variadic_out_one_variadic_in2"(%arg0, %arg1, %arg2)
+  // CHECK: return %[[cnt1]], %[[cnt2]]#0, %[[cnt2]]#1, %[[cnt3]]#0, %[[cnt3]]#1, %[[cnt3]]#2
+
+  %0   = "test.one_variadic_out_one_variadic_in1"(%arg0) : (i32) -> (i32)
+  %1:2 = "test.one_variadic_out_one_variadic_in1"(%arg0, %arg1) : (i32, i32) -> (i32, i32)
+  %2:3 = "test.one_variadic_out_one_variadic_in1"(%arg0, %arg1, %arg2) : (i32, i32, i32) -> (i32, i32, i32)
+  return %0, %1#0, %1#1, %2#0, %2#1, %2#2 : i32, i32, i32, i32, i32, i32
+}
+
+// CHECK-LABEL: @replaceMixedVariadicInputOp
+func @replaceMixedVariadicInputOp(%arg0: i32, %arg1: f32, %arg2: i32) -> () {
+  // CHECK: "test.mixed_variadic_in2"(%arg1)
+  // CHECK: "test.mixed_variadic_in2"(%arg0, %arg1, %arg2)
+  // CHECK: "test.mixed_variadic_in2"(%arg0, %arg0, %arg1, %arg2, %arg2)
+
+  "test.mixed_variadic_in1"(%arg1) : (f32) -> ()
+  "test.mixed_variadic_in1"(%arg0, %arg1, %arg2) : (i32, f32, i32) -> ()
+  "test.mixed_variadic_in1"(%arg0, %arg0, %arg1, %arg2, %arg2) : (i32, i32, f32, i32, i32) -> ()
+  return
+}
+
+// CHECK-LABEL: @replaceMixedVariadicOutputOp
+func @replaceMixedVariadicOutputOp() -> (f32, i32, f32, i32, i32, i32, f32, i32, i32) {
+  // CHECK: %[[cnt1:.*]] = "test.mixed_variadic_out2"()
+  // CHECK: %[[cnt3:.*]]:3 = "test.mixed_variadic_out2"()
+  // CHECK: %[[cnt5:.*]]:5 = "test.mixed_variadic_out2"()
+  // CHECK: return %[[cnt1]], %[[cnt3]]#0, %[[cnt3]]#1, %[[cnt3]]#2, %[[cnt5]]#0, %[[cnt5]]#1, %[[cnt5]]#2, %[[cnt5]]#3, %[[cnt5]]#4
+
+  %0   = "test.mixed_variadic_out1"() : () -> (f32)
+  %1:3 = "test.mixed_variadic_out1"() : () -> (i32, f32, i32)
+  %2:5 = "test.mixed_variadic_out1"() : () -> (i32, i32, f32, i32, i32)
+  return %0, %1#0, %1#1, %1#2, %2#0, %2#1, %2#2, %2#3, %2#4 : f32, i32, f32, i32, i32, i32, f32, i32, i32
+}
+
+// CHECK-LABEL: @generateVaridicOutputOpInNestedPattern
+func @generateVaridicOutputOpInNestedPattern() -> (i32) {
+  // CHECK: %[[cnt5:.*]]:5 = "test.mixed_variadic_out3"()
+  // CHECK: %[[res:.*]] = "test.mixed_variadic_in3"(%[[cnt5]]#0, %[[cnt5]]#1, %[[cnt5]]#2, %[[cnt5]]#3, %[[cnt5]]#4)
+  // CHECK: return %[[res]]
+
+  %0 = "test.one_i32_out"() : () -> (i32)
+  return %0 : i32
+}
