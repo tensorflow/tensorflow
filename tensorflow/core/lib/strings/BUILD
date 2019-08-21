@@ -23,13 +23,8 @@ cc_library(
 
 cc_library(
     name = "scanner",
-    srcs = ["scanner.cc"],
     hdrs = ["scanner.h"],
-    deps = [
-        ":string_utils",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:stringpiece",
-    ],
+    deps = ["//tensorflow/core/platform:scanner"],
 )
 
 cc_library(
@@ -87,7 +82,6 @@ filegroup(
         "ordered_code.cc",
         "proto_serialization.cc",
         "proto_text_util.cc",
-        "scanner.cc",
         "strcat.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -100,7 +94,6 @@ filegroup(
         "numbers_test.cc",
         "ordered_code_test.cc",
         "proto_serialization_test.cc",
-        "scanner_test.cc",
         "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -153,7 +146,6 @@ filegroup(
     srcs = [
         "base64_test.cc",
         "numbers_test.cc",
-        "scanner_test.cc",
         "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

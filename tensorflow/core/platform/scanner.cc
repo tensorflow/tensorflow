@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/platform/scanner.h"
 
 namespace tensorflow {
 namespace strings {
