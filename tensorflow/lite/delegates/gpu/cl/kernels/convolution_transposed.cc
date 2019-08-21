@@ -30,7 +30,7 @@ namespace {
 std::string GenerateConvolutionTransposedCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const LinearStorage& biases,
+    const LinearStorage& biases, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
@@ -132,7 +132,9 @@ std::string GenerateConvolutionTransposedCode(
     c += "        int x_c = kernel_index * src_size.w * 4;\n";
   }
   c += "        for (int l = 0; l < src_size.w; ++l) {\n";
-  c += "          FLT4 src =" + src_tensor.Read3D("s_x", "s_y", "l") + ";\n";
+  c += "          FLT4 src =" +
+       src_tensor.Read3D("s_x", "s_y", "l", TextureAddressMode::DONT_CARE) +
+       ";\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     c += "          FLT16 f0 = filters[f_offset]; f_offset++;\n";
   } else {
@@ -216,7 +218,8 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
 Status ConvolutionTransposed::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, linked_operations_);
+      definition_.precision, biases_, *creation_context.device,
+      linked_operations_);
 
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
