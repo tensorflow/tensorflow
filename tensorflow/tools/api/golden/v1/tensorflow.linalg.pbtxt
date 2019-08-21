@@ -153,6 +153,18 @@ tf_module {
     argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
+    name: "lu_matrix_inverse"
+    argspec: "args=[\'lower_upper\', \'perm\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "lu_reconstruct"
+    argspec: "args=[\'lower_upper\', \'perm\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "lu_solve"
+    argspec: "args=[\'lower_upper\', \'perm\', \'rhs\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "matmul"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }

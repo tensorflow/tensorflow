@@ -29,7 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.ops.linalg import linalg_impl as linalg
 
 
 ################################################################################
@@ -489,13 +488,13 @@ def _reshape_for_efficiency(a,
   # Any transposes/adjoints will happen here explicitly, rather than in calling
   # code.  Why?  To avoid having to write separate complex code for each case.
   if adjoint_a:
-    a = linalg.adjoint(a)
+    a = array_ops.matrix_transpose(a, conjugate=True)
   elif transpose_a:
-    a = linalg.transpose(a)
+    a = array_ops.matrix_transpose(a, conjugate=False)
   if adjoint_b:
-    b = linalg.adjoint(b)
-  elif transpose_b:
-    b = linalg.transpose(b)
+    b = array_ops.matrix_transpose(b, conjugate=True)
+  elif transpose_a:
+    b = array_ops.matrix_transpose(b, conjugate=False)
   still_need_to_transpose = False
 
   # Recompute shapes, since the transpose/adjoint may have changed them.
