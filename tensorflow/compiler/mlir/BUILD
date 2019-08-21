@@ -24,6 +24,7 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     copts = ["-std=c++14"],
     deps = [
+        ":init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
@@ -73,6 +74,7 @@ tf_cc_binary(
     name = "tf-mlir-translate",
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
+        ":init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
