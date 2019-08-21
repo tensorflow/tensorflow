@@ -782,6 +782,7 @@ Status RebatchWithFallback(const NodeDef* fetch_node, int64 num_workers,
     fetch_node = graph_utils::GetInputNode(*fetch_node, *graph, 0);
   }
 
+
   // Create the flat map fn
   FunctionDef flat_map_fn;
   FunctionDefLibrary lib = flib->ToProto();
