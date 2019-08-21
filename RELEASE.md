@@ -1,3 +1,9 @@
+# Release 1.14.1
+
+## Bug Fixes and Other Changes 
+
+*  The 1.14.1 whl package is built with ROCm2.7 user-bit environment 
+
 # Release 1.14.0
 
 ## ROCm specific features
