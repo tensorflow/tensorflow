@@ -33,12 +33,14 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "svdf.cc",
         "unpack.cc",
     ],
     hdrs = [
     ],
     copts = tflite_copts(),
     deps = [
+        ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
@@ -47,7 +49,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
-        "//tensorflow/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/lite/kernels/internal:tensor",
     ],
 )
@@ -89,12 +90,14 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "svdf.cc",
         "unpack.cc",
     ],
     hdrs = [
     ],
     copts = tflite_copts(),
     deps = [
+        ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
@@ -190,6 +193,19 @@ tflite_micro_cc_test(
     name = "softmax_test",
     srcs = [
         "softmax_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "svdf_test",
+    srcs = [
+        "svdf_test.cc",
     ],
     deps = [
         ":all_ops_resolver",
@@ -381,6 +397,12 @@ tflite_micro_cc_test(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
+)
+
+cc_library(
+    name = "activation_utils",
+    hdrs = ["activation_utils.h"],
+    deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
 cc_library(

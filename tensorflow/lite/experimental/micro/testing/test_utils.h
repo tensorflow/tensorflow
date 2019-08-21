@@ -129,6 +129,15 @@ inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
   return CreateFloatTensor(data.begin(), dims, name);
 }
 
+inline void PopulateFloatTensor(TfLiteTensor* tensor, float* begin,
+                                float* end) {
+  float* p = begin;
+  float* v = tensor->data.f;
+  while (p != end) {
+    *v++ = *p++;
+  }
+}
+
 inline TfLiteTensor CreateInt32Tensor(const int32_t* data, TfLiteIntArray* dims,
                                       const char* name) {
   TfLiteTensor result;
