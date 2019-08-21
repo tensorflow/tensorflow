@@ -182,3 +182,10 @@ func @does_not_have_i32(%arg0: tensor<1x2xi32>, %arg1: none) {
   "test.if_first_operand_is_none_then_so_is_second"(%arg1, %arg0) : (none, tensor<1x2xi32>) -> ()
   return
 }
+
+// -----
+
+func @does_not_have_static_memref(%arg0: memref<?xi32>) {
+  // expected-error@+1 {{'test.takes_static_memref' op operand #0 must be statically shaped memref of any type values}}
+  "test.takes_static_memref"(%arg0) : (memref<?xi32>) -> ()
+}

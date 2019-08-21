@@ -417,6 +417,13 @@ def F16MemRef  : MemRefOf<[F16]>;
 def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
 
+// TODO(b/130064155) Have an easy way to add another constraint to a type.
+class StaticShapeMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
+           "statically shaped " # MemRefOf<allowedTypes>.description>;
+
+def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
+
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
 

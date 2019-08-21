@@ -46,6 +46,10 @@ def NestedTupleOp : TEST_Op<"nested_tuple_32_bit"> {
   let results = (outs NestedTupleOf<[I32, F32]>);
 }
 
+def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
+  let arguments = (ins AnyStaticShapeMemRef:$x);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Operands
 //===----------------------------------------------------------------------===//
