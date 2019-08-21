@@ -88,7 +88,8 @@ public:
   /// This is the current context if it is knowable, otherwise this is null.
   MLIRContext *const context;
 
-  explicit ModuleState(MLIRContext *context) : context(context) {}
+  explicit ModuleState(MLIRContext *context)
+      : context(context), interfaces(context) {}
 
   // Initializes module state, populating affine map state.
   void initialize(Operation *op);
@@ -185,6 +186,9 @@ private:
 
   /// A mapping between a type and a given alias.
   DenseMap<Type, StringRef> typeToAlias;
+
+  /// Collection of OpAsm interfaces implemented in the context.
+  DialectInterfaceCollection<OpAsmDialectInterface> interfaces;
 };
 } // end anonymous namespace
 
@@ -251,9 +255,6 @@ void ModuleState::initializeSymbolAliases() {
   // isn't used twice.
   llvm::StringSet<> usedAliases;
 
-  // Get the currently registered dialects.
-  auto dialects = context->getRegisteredDialects();
-
   // Collect the set of aliases from each dialect.
   SmallVector<std::pair<unsigned, StringRef>, 8> attributeKindAliases;
   SmallVector<std::pair<Attribute, StringRef>, 8> attributeAliases;
@@ -263,10 +264,10 @@ void ModuleState::initializeSymbolAliases() {
   attributeKindAliases.emplace_back(StandardAttributes::AffineMap, "map");
   attributeKindAliases.emplace_back(StandardAttributes::IntegerSet, "set");
 
-  for (auto *dialect : dialects) {
-    dialect->getAttributeKindAliases(attributeKindAliases);
-    dialect->getAttributeAliases(attributeAliases);
-    dialect->getTypeAliases(typeAliases);
+  for (auto &interface : interfaces) {
+    interface.getAttributeKindAliases(attributeKindAliases);
+    interface.getAttributeAliases(attributeAliases);
+    interface.getTypeAliases(typeAliases);
   }
 
   // Setup the attribute kind aliases.
@@ -1635,7 +1636,7 @@ void ModulePrinter::print(ModuleOp module) {
 //===----------------------------------------------------------------------===//
 
 void Attribute::print(raw_ostream &os) const {
-  ModuleState state(/*no context is known*/ nullptr);
+  ModuleState state(getContext());
   ModulePrinter(os, state).printAttribute(*this);
 }
 
@@ -1685,7 +1686,7 @@ void AffineMap::print(raw_ostream &os) const {
 }
 
 void IntegerSet::print(raw_ostream &os) const {
-  ModuleState state(/*no context is known*/ nullptr);
+  ModuleState state(getContext());
   ModulePrinter(os, state).printIntegerSet(*this);
 }
 
