@@ -23,8 +23,8 @@ TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 CMSIS_MD5 := "f451f1dccc844e894939055db278a40e"
 
-AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
-AM_SDK_MD5 := "70332bc6968602bd85bee600ca81d06f"
+AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
+AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
 
 AP3_URL := "https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
 AP3_MD5 := "fc9cbda4562ea97ce21b6df542b66597"
