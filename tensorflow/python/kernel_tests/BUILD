@@ -3134,6 +3134,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 10,
+    tags = ["no_windows"],  # b/139739217
     xla_enable_strict_auto_jit = True,
 )
 
