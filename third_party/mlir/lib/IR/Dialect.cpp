@@ -137,7 +137,7 @@ DialectInterfaceCollectionBase::DialectInterfaceCollectionBase(
     MLIRContext *ctx, ClassID *interfaceKind) {
   for (auto *dialect : ctx->getRegisteredDialects())
     if (auto *interface = dialect->getRegisteredInterface(interfaceKind))
-      interfaces.try_emplace(dialect, interface);
+      interfaces.insert(interface);
 }
 
 DialectInterfaceCollectionBase::~DialectInterfaceCollectionBase() {}
@@ -146,5 +146,5 @@ DialectInterfaceCollectionBase::~DialectInterfaceCollectionBase() {}
 /// is not registered.
 const DialectInterface *
 DialectInterfaceCollectionBase::getInterfaceFor(Operation *op) const {
-  return interfaces.lookup(op->getDialect());
+  return getInterfaceFor(op->getDialect());
 }
