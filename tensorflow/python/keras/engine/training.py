@@ -704,6 +704,13 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('fit')
 
+    # add callbacks that were defined using Layer.add_callback
+    children_callbacks = self._gather_children_attribute('callbacks')
+    if callbacks is None:
+      callbacks = children_callbacks
+    else:
+      callbacks = children_callbacks + callbacks
+
     func = self._select_training_loop(x)
     return func.fit(
         self,

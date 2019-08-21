@@ -330,6 +330,10 @@ class Layer(module.Module):
     # added using the `add_metric` API.
     self._metrics = []
 
+    # A list of keras Callback instances to be used during model.fit.
+    # added using the `add_metric` API.
+    self._callbacks = []
+
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
@@ -1222,6 +1226,19 @@ class Layer(module.Module):
 
       # Insert layers into the Keras Graph Network.
       self._graph_network_add_metric(value, aggregation, name)
+
+  @property
+  def callbacks(self):
+    return self._callbacks + self._gather_children_attribute('callbacks')
+
+  @doc_controls.for_subclass_implementers
+  def add_callback(self, callback):
+    """Adds a Callback to the layer to be used during model.fit.
+
+    Args:
+      callback: A Keras Callback.
+    """
+    self._callbacks.append(callback)
 
   @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
                                'inputs')
