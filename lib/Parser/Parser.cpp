@@ -605,7 +605,7 @@ Type Parser::parseExtendedType() {
 
 /// Parse a function type.
 ///
-///   function-type ::= type-list-parens `->` type-list
+///   function-type ::= type-list-parens `->` function-result-type
 ///
 Type Parser::parseFunctionType() {
   assert(getToken().is(Token::l_paren));
