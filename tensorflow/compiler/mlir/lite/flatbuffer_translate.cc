@@ -314,8 +314,8 @@ static std::unique_ptr<::tensorflow::NodeDef> getTensorFlowNodeDef(
   // We pass empty string for the original node_def name since Flex runtime
   // does not care about this being set correctly on node_def. There is no
   // "easy" (see b/120948529) way yet to get this from MLIR inst.
-  auto status_or_node_def =
-      tensorflow::ConvertTFDialectOpToNodeDef(inst, /*name=*/"");
+  auto status_or_node_def = tensorflow::ConvertTFDialectOpToNodeDef(
+      inst, /*name=*/"", /*ignore_unregistered_attrs=*/true);
   if (!status_or_node_def.ok()) {
     inst->emitOpError(
         Twine("failed to obtain TensorFlow nodedef with status: " +
