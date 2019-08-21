@@ -204,12 +204,14 @@ cc_library(
         "ir_emitter.cc",
         "ir_emitter_nested.cc",
         "ir_emitter_unnested.cc",
+        "thunk_emitter.cc",
     ],
     hdrs = [
         "ir_emitter.h",
         "ir_emitter_context.h",
         "ir_emitter_nested.h",
         "ir_emitter_unnested.h",
+        "thunk_emitter.h",
     ],
     deps = [
         ":backend_configs",
