@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/experimental/ruy/detect_dotprod.h"
+#include "tensorflow/lite/experimental/ruy/detect_arm.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"

@@ -80,9 +80,9 @@ limitations under the License.
 // restriction.
 #if defined(RUY_FORCE_ENABLE_X86_ENHANCEMENTS) || \
     (defined(__clang__) && defined(__linux__))
-#define RUY_USE_X86_ENHANCEMENTS 1
+#define RUY_DONOTUSEDIRECTLY_X86_ENHANCEMENTS 1
 #else
-#define RUY_USE_X86_ENHANCEMENTS 0
+#define RUY_DONOTUSEDIRECTLY_X86_ENHANCEMENTS 0
 #endif
 
 // These CPU capabilities will all be true when Skylake, etc, are enabled during
@@ -91,15 +91,15 @@ limitations under the License.
 // TODO(b/138433137) Select x86 enhancements at runtime rather than via compile
 // options.
 //
-#if RUY_USE_X86_ENHANCEMENTS && RUY_PLATFORM(X86) && defined(__AVX512F__) &&   \
-    defined(__AVX512DQ__) && defined(__AVX512CD__) && defined(__AVX512BW__) && \
-    defined(__AVX512VL__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) &&                    \
+    defined(__AVX512F__) && defined(__AVX512DQ__) && defined(__AVX512CD__) && \
+    defined(__AVX512BW__) && defined(__AVX512VL__)
 #define RUY_DONOTUSEDIRECTLY_AVX512 1
 #else
 #define RUY_DONOTUSEDIRECTLY_AVX512 0
 #endif
 
-#if defined(RUY_ENABLE_AVX2_ENHANCEMENTS) && RUY_USE_X86_ENHANCEMENTS && \
+#if defined(RUY_ENABLE_AVX2_ENHANCEMENTS) && RUY_PLATFORM(X86_ENHANCEMENTS) && \
     RUY_PLATFORM(X86) && defined(__AVX2__)
 #define RUY_DONOTUSEDIRECTLY_AVX2 1
 #else
@@ -107,7 +107,7 @@ limitations under the License.
 #endif
 
 // Note does not check for LZCNT or POPCNT.
-#if RUY_USE_X86_ENHANCEMENTS && RUY_PLATFORM(X86) && defined(__SSE4_2__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && defined(__SSE4_2__)
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 0
@@ -119,7 +119,5 @@ limitations under the License.
 #else
 #define RUY_DONOTUSEDIRECTLY_APPLE 0
 #endif
-
-#undef RUY_USE_X86_ENHANCEMENTS
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PLATFORM_H_

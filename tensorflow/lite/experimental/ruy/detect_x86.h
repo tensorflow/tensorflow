@@ -13,17 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Temporary dotprod-detection code until we can rely on getauxval.
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_DOTPROD_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_DOTPROD_H_
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 
-// On A64, returns true if the dotprod extension is present.
-// On other architectures, returns false unconditionally.
-bool DetectDotprod();
+#if RUY_PLATFORM(X86)
+#if RUY_PLATFORM(X86_ENHANCEMENTS)
+
+// This also checks ABM support, which implies LZCNT and POPCNT.
+bool DetectCpuSse42();
+bool DetectCpuAvx2();
+bool DetectCpuAvx512();
+
+#else  // RUY_PLATFORM(X86_ENHANCEMENTS)
+
+inline bool DetectCpuSse42() { return false; }
+inline bool DetectCpuAvx2() { return false; }
+inline bool DetectCpuAvx512() { return false; }
+
+#endif  // !RUY_PLATFORM(X86_ENHANCEMENTS)
+#endif  // RUY_PLATFORM(X86)
 
 }  // namespace ruy
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_DOTPROD_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_DETECT_X86_H_

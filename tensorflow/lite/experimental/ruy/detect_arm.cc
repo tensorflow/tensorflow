@@ -70,6 +70,8 @@ bool try_asm_snippet(bool (*asm_snippet)()) {
 ```
 */
 
+#include "tensorflow/lite/experimental/ruy/detect_arm.h"
+
 #if defined __aarch64__ && defined __linux__
 #define RUY_IMPLEMENT_DETECT_DOTPROD
 #endif
@@ -215,8 +217,8 @@ bool DetectDotprod() {
   return DetectDotprodBySigIllMethod();
 }
 
-#else
+#else   // RUY_IMPLEMENT_DETECT_DOTPROD
 bool DetectDotprod() { return false; }
-#endif
+#endif  // RUY_IMPLEMENT_DETECT_DOTPROD
 
 }  // namespace ruy

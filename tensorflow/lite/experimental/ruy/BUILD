@@ -204,15 +204,30 @@ cc_library(
 )
 
 cc_library(
-    name = "detect_dotprod",
+    name = "detect_arm",
     srcs = [
-        "detect_dotprod.cc",
+        "detect_arm.cc",
     ],
     hdrs = [
-        "detect_dotprod.h",
+        "detect_arm.h",
     ],
     copts = RUY_COPTS,
     visibility = ruy_visibility(),
+)
+
+cc_library(
+    name = "detect_x86",
+    srcs = [
+        "detect_x86.cc",
+    ],
+    hdrs = [
+        "detect_x86.h",
+    ],
+    copts = RUY_COPTS,
+    visibility = ruy_visibility(),
+    deps = [
+        ":platform",
+    ],
 )
 
 cc_library(
@@ -256,7 +271,8 @@ cc_library(
     deps = [
         ":allocator",
         ":check_macros",
-        ":detect_dotprod",
+        ":detect_arm",
+        ":detect_x86",
         ":path",
         ":thread_pool",
         ":trace",
