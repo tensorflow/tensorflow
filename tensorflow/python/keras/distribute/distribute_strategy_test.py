@@ -325,19 +325,15 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      # Input samples of different sizes
-      input_20_samples = np.zeros((20, 3), dtype=np.float32)
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Default global batch size 32 for input with 64 samples run in 2 steps
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=None)
+          distribution, 64, steps=None, batch_size=None)
       self.assertEqual(batch_size, 32 // replica_scale_factor)
       self.assertEqual(steps, 2)
 
       # Computed global batch size 20 is lower than 32 if we pass less samples.
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_20_samples, steps=None, batch_size=None)
+          distribution, 20, steps=None, batch_size=None)
       self.assertEqual(batch_size, 20 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
@@ -351,33 +347,29 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      # Input samples of different sizes
-      input_63_samples = np.zeros((63, 3), dtype=np.float32)
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Computed global batch size is correct for number of specified 1 step
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=1, batch_size=None)
+          distribution, 64, steps=1, batch_size=None)
       self.assertEqual(batch_size, 64 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
       # Computed global batch size is correct for number of specified 2 steps
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=2, batch_size=None)
+          distribution, 64, steps=2, batch_size=None)
       self.assertEqual(batch_size, 32 // replica_scale_factor)
       self.assertEqual(steps, 2)
 
       # All samples can not be consumed in specified number of steps
       with self.assertRaisesRegexp(ValueError, 'not divisible by steps'):
         distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=2, batch_size=None)
+            distribution, 63, steps=2, batch_size=None)
 
       # This cases is different for different strategies due to the
       # difference in supported batch size being global or per-replica.
       if replica_scale_factor == 1:
         # Computed global batch size is correct even if not sharadable
         steps, batch_size = distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=3, batch_size=None)
+            distribution, 63, steps=3, batch_size=None)
         self.assertEqual(batch_size, 21)
         self.assertEqual(steps, 3)
       else:
@@ -386,7 +378,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
             ValueError, 'could not be sharded evenly '
             'across the sync replicas'):
           distributed_training_utils.get_input_params(
-              distribution, input_63_samples, steps=1, batch_size=None)
+              distribution, 63, steps=1, batch_size=None)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_no_steps_with_batch_size(
@@ -398,17 +390,15 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       replica_scale_factor = distribution.num_replicas_in_sync
 
     with self.cached_session():
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # Computed steps is correct for specified batch size
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=16)
+          distribution, 64, steps=None, batch_size=16)
       self.assertEqual(batch_size, 16)
       self.assertEqual(steps, 4 // replica_scale_factor)
 
       # Computed steps is correct for specified batch size
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=None, batch_size=32)
+          distribution, 64, steps=None, batch_size=32)
       self.assertEqual(batch_size, 32)
       self.assertEqual(steps, 2 // replica_scale_factor)
 
@@ -416,18 +406,16 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
   def test_calculating_input_params_with_steps_with_batch_size(
       self, distribution):
     with self.cached_session():
-      input_64_samples = np.zeros((64, 3), dtype=np.float32)
-
       # No change to steps and batch size if both specified and feasible
       steps, batch_size = distributed_training_utils.get_input_params(
-          distribution, input_64_samples, steps=5, batch_size=3)
+          distribution, 64, steps=5, batch_size=3)
       self.assertEqual(batch_size, 3)
       self.assertEqual(steps, 5)
 
       # Number of samples is less than global batch size * steps
       with self.assertRaisesRegexp(ValueError, 'less than samples required'):
         distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=10, batch_size=13)
+            distribution, 64, steps=10, batch_size=13)
 
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_numpy_arrays(self, distribution,
