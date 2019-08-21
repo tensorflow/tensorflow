@@ -127,9 +127,6 @@ build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
 
-# By default, build TF in C++ 14 mode.
-build --cxxopt=-std=c++14
-
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
