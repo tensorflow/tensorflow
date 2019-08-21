@@ -252,8 +252,8 @@ class CrossDeviceOps(object):
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -262,7 +262,7 @@ class CrossDeviceOps(object):
 
     Raises:
       ValueError: if per_replica_value can't be converted to a PerReplica
-        object.
+        object or if destinations aren't strings, Variables or DistributedValues
     """
     if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
@@ -288,17 +288,17 @@ class CrossDeviceOps(object):
     element which indicates the destinations.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        the `per_replica_value` will be reduced.
+      value_destination_pairs: a list or a tuple of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
-        tuples of PerReplica objects and destinations
+      ValueError: if `value_destination_pairs` is not an iterable of
+        tuples of PerReplica objects and destinations.
     """
     # TODO(yuefengz): if destinations are different, split into several
     # `_batch_reduce` invocations.
@@ -340,12 +340,14 @@ class CrossDeviceOps(object):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     """The implementation of reduce of `per_replica_value` to `destinations`.
 
+    Overriding this method is useful for subclass implementers.
+
     It runs the reduction operation defined by `reduce_op` and put the
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance `tf.distribute.ReduceOp` that indicates of how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -363,20 +365,22 @@ class CrossDeviceOps(object):
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     """Implementation of reduce PerReplica objects in a batch.
 
+    Overriding this method is useful for subclass implementers.
+
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
+      value_destination_pairs: an iterable of tuples of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
+      ValueError: if `value_destination_pairs` is not an iterable of
         tuples of PerReplica objects and destinations
     """
     raise NotImplementedError(
@@ -404,7 +408,7 @@ class ReductionToOneDevice(CrossDeviceOps):
   """
 
   def __init__(self, reduce_to_device=None, accumulation_fn=None):
-    """Constructor.
+    """Initializes the instance of ReductionToOneDevice.
 
     Args:
       reduce_to_device: the intermediate device to reduce to. If None, reduce
