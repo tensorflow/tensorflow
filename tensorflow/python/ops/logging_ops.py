@@ -82,6 +82,11 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
     with jupyter notebook (printing to the notebook *server's* output, not into
     the notebook).
 
+  Additionally, to use tf.print in python 2.7, users must make sure to import
+  the following:
+
+  `from __future__ import print_function`
+
   Args:
     input_: A tensor passed through this op.
     data: A list of tensors to print out when op is evaluated.
@@ -95,7 +100,7 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   Returns:
     A `Tensor`. Has the same type and contents as `input_`.
 
-  	```python
+    ```python
     sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor = tf.range(10)
@@ -103,11 +108,7 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
         with tf.control_dependencies([print_op]):
           out = tf.add(tensor, tensor)
         sess.run(out)
-  	```
-	Additionally, to use tf.print in python 2.7, users must make sure to import
-	the following:
-
-  `from __future__ import print_function`
+    ```
   """
   return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
