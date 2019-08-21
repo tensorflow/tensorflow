@@ -67,28 +67,28 @@ def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=i
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that divides the batch size by `num_workers`.
+  """A `Dataset` that divides the batch size by `num_replicas`.
 
   For each batch in the input dataset, the resulting dataset will produce
   `num_replicas` minibatches whose sizes add up to the original batch size.
   """
 
-  def __init__(self, input_dataset, num_workers, use_fallback=True):
+  def __init__(self, input_dataset, num_replicas, use_fallback=True):
     self._input_dataset = input_dataset
 
     def recalculate_output_shapes(output_shapes):
-      """Recalculates the output_shapes after dividing it by num_workers."""
+      """Recalculates the output_shapes after dividing it by num_replicas."""
       if len(output_shapes) < 1:
         raise ValueError(
             "Input shape should have at least one dimension. "
             "Perhaps your input dataset is not batched?")
       output_dims = [d.value for d in output_shapes.dims]
 
-      if output_dims[0] is not None and output_dims[0] % num_workers == 0:
-        output_dims[0] = output_dims[0] // num_workers
+      if output_dims[0] is not None and output_dims[0] % num_replicas == 0:
+        output_dims[0] = output_dims[0] // num_replicas
       else:
         # Set the batch dimension to unknown. If the global batch size does not
-        # divide num_workers evenly, the minibatches may have different sizes.
+        # divide num_replicas evenly, the minibatches may have different sizes.
         output_dims[0] = None
       return tensor_shape.TensorShape(output_dims)
 
@@ -102,13 +102,13 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     if compat.forward_compatible(2019, 8, 13) or not use_fallback:
       variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
+          num_replicas=num_replicas,
           use_fallback=use_fallback,
           **self._flat_structure)
     else:
       variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
+          num_replicas=num_replicas,
           **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 

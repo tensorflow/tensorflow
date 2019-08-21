@@ -36,14 +36,15 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_workers;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_workers", &num_workers));
+    int64 num_replicas;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "num_replicas", &num_replicas));
     OP_REQUIRES(
-        ctx, num_workers > 0,
-        errors::InvalidArgument("num_workers must be greater than zero."));
+        ctx, num_replicas > 0,
+        errors::InvalidArgument("num_replicas must be greater than zero."));
 
-    auto config_factory = [num_workers, this]() {
-      return CreateConfig(num_workers, this->use_fallback_);
+    auto config_factory = [num_replicas, this]() {
+      return CreateConfig(num_replicas, this->use_fallback_);
     };
 
     // We only want to optimize functions for some particular datasets like
@@ -56,17 +57,17 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  static RewriterConfig CreateConfig(int64 num_workers, bool use_fallback) {
+  static RewriterConfig CreateConfig(int64 num_replicas, bool use_fallback) {
     RewriterConfig rewriter_config;
     rewriter_config.set_fail_on_optimizer_errors(true);
     rewriter_config.add_optimizers(kOptimizerName);
     rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
     auto custom_optimizer = rewriter_config.add_custom_optimizers();
     custom_optimizer->set_name(kOptimizerName);
-    AttrValue num_workers_attr;
-    num_workers_attr.set_i(num_workers);
-    (*custom_optimizer->mutable_parameter_map())["num_workers"] =
-        num_workers_attr;
+    AttrValue num_replicas_attr;
+    num_replicas_attr.set_i(num_replicas);
+    (*custom_optimizer->mutable_parameter_map())["num_replicas"] =
+        num_replicas_attr;
     AttrValue use_fallback_attr;
     use_fallback_attr.set_b(use_fallback);
     (*custom_optimizer->mutable_parameter_map())["use_fallback"] =
