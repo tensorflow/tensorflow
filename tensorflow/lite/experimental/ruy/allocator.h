@@ -87,7 +87,13 @@ class AlignedAllocator {
       return;
     }
 
-    std::ptrdiff_t new_size = round_up_pot(size_ + fallback_blocks_total_size_);
+    // No rounding-up of the size means linear instead of logarithmic
+    // bound on the number of allocation in some worst-case calling patterns.
+    // This is considered worth it because minimizing memory usage is important
+    // and actual calling patterns in applications that we care about still
+    // reach the no-further-allocations steady state in a small finite number
+    // of iterations.
+    std::ptrdiff_t new_size = size_ + fallback_blocks_total_size_;
     SystemAlignedFree(ptr_);
     ptr_ = SystemAlignedAlloc(new_size);
     size_ = new_size;
