@@ -64,7 +64,7 @@ identifiers to enable powerful analysis and transformation. A symbolic
 identifier can be bound to an SSA value that is either an argument to the
 function, a value defined at the top level of that function (outside of all
 loops and if operations), the result of a
-[`constant` operation](../LangRef.md#constant-operation), or the result of an
+[`constant` operation](Standard.md#constant-operation), or the result of an
 [`affine.apply` operation](#affineapply-operation) that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
@@ -143,9 +143,9 @@ dimension indices and symbols into a list of results, with affine expressions
 combining the indices and symbols. Affine maps distinguish between
 [indices and symbols](#dimensions-and-symbols) because indices are inputs to the
 affine map when the latter may be called through an operation, such as
-[affine.apply](#affineapply-operation) operation, whereas
-symbols are bound when an affine mapping is established (e.g. when a memref is
-formed, establishing a memory [layout map](../LangRef.md#layout-map)).
+[affine.apply](#affineapply-operation) operation, whereas symbols are bound when
+an affine mapping is established (e.g. when a memref is formed, establishing a
+memory [layout map](../LangRef.md#layout-map)).
 
 Affine maps are used for various core structures in MLIR. The restrictions we
 impose on their form allows powerful analysis and transformation, while keeping
