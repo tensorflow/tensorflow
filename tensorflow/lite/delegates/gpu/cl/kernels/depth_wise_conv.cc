@@ -81,12 +81,6 @@ std::string GenerateDepthWiseConvolutionCode(
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
-  const auto access_mode =
-      src_descriptor.storage_type == TensorStorageType::BUFFER ||
-              device.IsAdreno3xx()
-          ? TextureAddressMode::DONT_CARE
-          : TextureAddressMode::ZERO;
-
   std::string c = GetCommonDefines(precision);
 
   c += "__kernel void main_function(\n";
@@ -121,6 +115,7 @@ std::string GenerateDepthWiseConvolutionCode(
   } else {
     c += "  int fx_c = 0;\n";
   }
+
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * dilation.y;\n";
@@ -130,23 +125,11 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
     c += "      if (!outside_x && !outside_y) {\n";
     c += "        FLT4 f = filters[fx_c];\n";
-    c += GetSrcValue(src_tensor, channel_multiplier, access_mode);
+    c += GetSrcValue(src_tensor, channel_multiplier,
+                     TextureAddressMode::DONT_CARE);
     c += "        r += TO_ACCUM_TYPE(src_final * f);\n";
     c += "      };\n";
     c += "      fx_c++;\n";
-    c += "    }\n";
-    c += "  }\n";
-  } else if (device.IsAdreno3xx()) {  // Texture types without ZERO clamping
-    c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-    c += "    int y_c = y_offseted + ky * dilation.y;\n";
-    c += "    float in_y = (float)(y_c >= 0 && y_c < src_size.y);\n";
-    c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-    c += "      int x_c = x_offseted + kx * dilation.x;\n";
-    c += "      float in_x = (float)(x_c >= 0 && x_c < src_size.x) * in_y;\n";
-    c += GetSrcValue(src_tensor, channel_multiplier, access_mode);
-    c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
-    c += "      fx_c++;\n";
-    c += "      r += TO_ACCUM_TYPE(src_final * f) * in_x;\n";
     c += "    }\n";
     c += "  }\n";
   } else {  // Texture types with ZERO clamping
@@ -154,6 +137,7 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "    int y_c = y_offseted + ky * dilation.y;\n";
     c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
     c += "      int x_c = x_offseted + kx * dilation.x;\n";
+    const auto access_mode = GetFastestZeroMode(device);
     c += GetSrcValue(src_tensor, channel_multiplier, access_mode);
     c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
     c += "      fx_c++;\n";

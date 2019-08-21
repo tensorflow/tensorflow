@@ -28,10 +28,12 @@ namespace {
 std::string GetAveragePoolingKernelCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const std::vector<ElementwiseOperation*>& linked_operations,
-    bool manual_boundary_check) {
+    const CLDevice& device,
+    const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+
+  const auto address_mode = GetFastestZeroMode(device);
 
   std::string code = GetCommonDefines(precision);
 
@@ -57,13 +59,14 @@ std::string GetAveragePoolingKernelCode(
   code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
   code += "      int x_c = X * stride.x - padding.x + kx;\n";
   code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
-  if (manual_boundary_check) {
+  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     code += "     r += !outside ? " +
             src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
                                      TextureAddressMode::DONT_CARE) +
             " : (float4)(0.0f);\n";
   } else {
-    code += "      r += " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") + ";\n";
+    code += "      r += " +
+            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
   }
   code += "        window_size += !outside ? 1.0 : 0.0;\n";
   code += "    }\n";
@@ -194,14 +197,11 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
 
 Status Pooling::Compile(const CreationContext& creation_context) {
   std::string code;
-  const bool manual_boundary_check =
-      definition_.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
-      creation_context.device->IsAdreno3xx();
   switch (type_) {
     case PoolingType::AVERAGE:
       code = GetAveragePoolingKernelCode(
           definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, linked_operations_, manual_boundary_check);
+          definition_.precision, *creation_context.device, linked_operations_);
       break;
     case PoolingType::MAX:
       code = GetMaxPoolingKernelCode(

@@ -102,6 +102,7 @@ std::string GenerateConvolutionConstantCode(
   c += "  for (int i = 0; i < " + kOutZ + "; ++i) {\n";
   c += "    r[i] = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
   c += "  }\n";
+  const auto address_mode = GetFastestZeroMode(device);
   int filters_counter = 0;
   for (int s = 0; s < src_depth; ++s) {
     const int ch_count = std::min(4, src_channels - s * 4);
@@ -114,10 +115,6 @@ std::string GenerateConvolutionConstantCode(
       if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
-      } else if (device.IsAdreno3xx()) {
-        c += "  {\n";
-        c += "  FLT y_in = (FLT)(" + s_y + " >= 0 && " + s_y +
-             " < src_size.y);\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
@@ -128,16 +125,9 @@ std::string GenerateConvolutionConstantCode(
           c += "(" + s_type + ")(0.0) : ";
           c += src_tensor.Read3D(s_x, s_y, std::to_string(s)) + s_postfix +
                ";\n";
-        } else if (device.IsAdreno3xx()) {
-          c += "    FLT x_in = (FLT)(" + s_x + ">= 0 && " + s_x +
-               "< src_size.x) * y_in;\n";
-          c += "    " + s_type + " src = " +
-               src_tensor.Read3D(s_x, s_y, std::to_string(s),
-                                 TextureAddressMode::DONT_CARE) +
-               s_postfix + " * x_in;\n";
         } else {
-          c += "    " + s_type +
-               " src = " + src_tensor.Read3D(s_x, s_y, std::to_string(s)) +
+          c += "    " + s_type + " src = " +
+               src_tensor.Read3D(s_x, s_y, std::to_string(s), address_mode) +
                s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
@@ -147,8 +137,7 @@ std::string GenerateConvolutionConstantCode(
         }
         c += "  }\n";
       }
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER ||
-          device.IsAdreno3xx()) {
+      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
         c += "  }\n";
       }
     }

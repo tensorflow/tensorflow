@@ -398,6 +398,11 @@ std::string TensorCodeGenerator::Write3D(
                          global_address);
 }
 
+TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
+  return device.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
+                              : TextureAddressMode::ZERO;
+}
+
 float4 GetMaskForLastPlane(int channels) {
   float4 mask = float4(0.0f);
   const int reminder = channels % 4 == 0 ? 4 : channels % 4;
