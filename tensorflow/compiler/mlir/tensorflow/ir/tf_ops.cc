@@ -88,16 +88,6 @@ static bool AreCastCompatible(Type a, Type b) {
          getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
 }
 
-// Returns either the element type or type of the result of a single result
-// operation.
-// TODO(antiagainst): We need an overload function, which mandates function
-// name. This is temporary. Remove this post variadic operand support is
-// improved.
-static Type getElementTypeOrSelf(Operation *op) {
-  if (op->getNumResults() != 1) return {};
-  return getElementTypeOrSelf(op->getResult(0));
-}
-
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }

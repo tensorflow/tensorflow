@@ -18,9 +18,6 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
-def HasNoUse: Constraint<
-    CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
-
 // Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //
@@ -50,8 +47,8 @@ def : Pattern<
      /*batch_variance=*/(replaceWithValue $x),
      /*reserve_space_1=*/(replaceWithValue $x),
      /*reserve_space_2=*/(replaceWithValue $x)],
-    [(HasNoUse $root__1), (HasNoUse $root__2),
-     (HasNoUse $root__3), (HasNoUse $root__4)]>;
+    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
+     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 def : Pattern<
     (TF_FusedBatchNormV3Op:$root
@@ -73,9 +70,9 @@ def : Pattern<
      /*reserve_space_1=*/(replaceWithValue $x),
      /*reserve_space_2=*/(replaceWithValue $x),
      /*reserve_space_3=*/(replaceWithValue $x)],
-    [(HasNoUse $root__1), (HasNoUse $root__2),
-     (HasNoUse $root__3), (HasNoUse $root__4),
-     (HasNoUse $root__5)]>;
+    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
+     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4),
+     (HasNoUseOf:$root__5)]>;
 
 // TODO(jpienaar): Move to opbase something more general.
 def TFi32ElementsAttr : Attr<CPred<"$_self.isa<DenseIntElementsAttr>">,
@@ -135,21 +132,21 @@ def : Pat<(TF_ReshapeOp
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 def UpdateShape : NativeCodeCall<
-  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, GetFirstResultType($1))">;
+  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1->getType())">;
 
 // When the op is passing-through, the output types of the quantized ops need
 // to be updated as well. Since the quantize op manages its own type by the
 // "qtype" attribute, we should update the type shape in this attribute.
-def : Pat<(TF_TransposeOp:$op
+def : Pat<(TF_TransposeOp:$old_value
               (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $perm),
           (TFL_DequantizeOp (TFL_QuantizeOp (TF_TransposeOp $input, $perm),
-                                            (UpdateShape $qtype, $op)))>;
+                                            (UpdateShape $qtype, $old_value)))>;
 
-def : Pat<(TF_ReshapeOp:$op
+def : Pat<(TF_ReshapeOp:$old_value
               (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $shape),
           (TFL_DequantizeOp
               (TFL_QuantizeOp (TF_ReshapeOp $input, $shape),
-              (UpdateShape $qtype, $op)))>;
+              (UpdateShape $qtype, $old_value)))>;
 
 // The Rank op produces result which is independent with the quantization
 // parameters of the input, so we can remove the quantization ops.
