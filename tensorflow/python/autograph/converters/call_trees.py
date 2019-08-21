@@ -16,6 +16,8 @@
 
 Note: this transformer does not rename the top level object being converted;
 that is the caller's responsibility.
+
+Requires function_scopes.
 """
 
 from __future__ import absolute_import
@@ -39,6 +41,9 @@ class _Function(object):
 
   no_root = True
 
+  def __init__(self):
+    self.context_name = None
+
 
 set_trace_warned = False
 
@@ -46,8 +51,27 @@ set_trace_warned = False
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
+  def visit_Lambda(self, node):
+    if anno.hasanno(node, 'function_context_name'):
+      # Lambda functions created during the conversion process have no
+      # context manager.
+      self.state[_Function].enter()
+      self.state[_Function].context_name = anno.getanno(
+          node, 'function_context_name')
+      node = self.generic_visit(node)
+      self.state[_Function].exit()
+    else:
+      node = self.generic_visit(node)
+    return node
+
   def visit_FunctionDef(self, node):
     self.state[_Function].enter()
+    # Note: if the conversion process ever creates helper functions, this
+    # assumption will no longer hold.
+    assert anno.hasanno(node, 'function_context_name'), (
+        'The function_scopes converter always creates a scope for functions.')
+    self.state[_Function].context_name = anno.getanno(
+        node, 'function_context_name')
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
 
@@ -76,6 +100,7 @@ class CallTreeTransformer(converter.Base):
 
   def visit_Call(self, node):
     full_name = str(anno.getanno(node.func, anno.Basic.QN, default=''))
+    function_context_name = self.state[_Function].context_name
     node = self.generic_visit(node)
 
     # TODO(mdan): Refactor converted_call as a 'Call' operator.
@@ -83,6 +108,11 @@ class CallTreeTransformer(converter.Base):
     # Calls to the internal 'ag__' module are never converted (though their
     # arguments might be).
     if full_name.startswith('ag__.'):
+      return node
+
+    # Calls to the function context manager (inserted by function_scopes) are
+    # also safe.
+    if full_name.startswith(function_context_name + '.'):
       return node
 
     # Calls to pdb.set_trace or ipdb.set_trace are never converted. We don't use
@@ -144,15 +174,15 @@ class CallTreeTransformer(converter.Base):
           keywords=ast_util.keywords_to_dict(normal_keywords))
 
     template = """
-      ag__.converted_call(func, options, args, kwargs)
+      ag__.converted_call(func, options, args, kwargs, function_ctx)
     """
     new_call = templates.replace_as_expression(
         template,
         func=func,
-        options=self.ctx.program.options.to_ast(
-            internal_convert_user_code=self.ctx.program.options.recursive),
+        options=parser.parse_expression(function_context_name + '.callopts'),
         args=args,
-        kwargs=kwargs)
+        kwargs=kwargs,
+        function_ctx=function_context_name)
 
     return new_call
 

@@ -61,17 +61,17 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  bool GetKernel(const MultiKernelLoaderSpec& spec,
-                 KernelBase* kernel) override;
+  port::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                         KernelBase* kernel) override;
   // (supported on CUDA only)
   void UnloadKernel(const KernelBase* kernel) override;
-  bool LoadModule(const MultiModuleLoaderSpec& spec,
-                  ModuleHandle* module_handle) override;
+  port::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                          ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
 
-  bool Launch(Stream* stream, const ThreadDim& thread_dims,
-              const BlockDim& block_dims, const KernelBase& k,
-              const KernelArgsArrayBase& args) override;
+  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                      const BlockDim& block_dims, const KernelBase& k,
+                      const KernelArgsArrayBase& args) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
@@ -271,12 +271,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)
-  bool LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
+  port::Status LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
   // (supported on CUDA only)
-  bool LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
+  port::Status LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // (supported on ROCm only)

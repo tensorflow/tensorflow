@@ -14,10 +14,12 @@ cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
         "pywrap_tensor.cc",
+        "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
         "pywrap_tensor.h",
+        "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
     ],
     visibility = [
@@ -34,6 +36,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -42,6 +47,8 @@ cc_library(
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -251,7 +258,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  #TODO(b/139745667)
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -404,6 +414,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
     ],
@@ -451,10 +462,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":execute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -464,7 +475,11 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
+        ":core",
+        ":execute",
         ":graph_only_ops",
+        ":tape",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -472,10 +487,6 @@ py_library(
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:core",
-        "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -487,7 +498,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
+        ":execute",
         ":imperative_grad",
+        ":tape",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -498,9 +512,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
@@ -668,6 +679,22 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "def_function_xla_jit_test",
+    srcs = ["def_function_xla_jit_test.py"],
+    additional_deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
+)
+
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
@@ -697,6 +724,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/training/tracking:base",
     ],
 )
@@ -717,9 +745,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python/eager:context",
     ],
 )
 

@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class UniqueDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -74,7 +72,9 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
       return strings::StrCat("UniqueDatasetOp::Dataset");
     }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -173,7 +173,7 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
             return Hash64(t.tensor_data().data(), t.tensor_data().size());
           } else {
             DCHECK_EQ(DT_STRING, t.dtype());
-            auto flat_t = t.flat<string>();
+            auto flat_t = t.flat<tstring>();
             uint64 hash = 0;
             for (int64 i = 0; i < t.NumElements(); ++i) {
               hash = Hash64Combine(hash, Hash64(flat_t(i)));
@@ -229,5 +229,6 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalUniqueDataset").Device(DEVICE_CPU),
                         UniqueDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

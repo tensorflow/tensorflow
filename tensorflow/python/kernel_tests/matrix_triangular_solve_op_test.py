@@ -188,6 +188,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=False)
     self._verifySolve(
         np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=True, batch_dims=[3, 2])
+    self._verifySolve(np.empty([0, 0]), np.empty([0, 0]), lower=True)
 
 
 if __name__ == "__main__":

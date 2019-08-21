@@ -1401,13 +1401,17 @@ class HloGatherInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      absl::Span<const int64> slice_sizes);
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
   const GatherDimensionNumbers& gather_dimension_numbers() const {
     CHECK(gather_dimension_numbers_ != nullptr);
     return *gather_dimension_numbers_;
   }
   absl::Span<const int64> gather_slice_sizes() const {
     return gather_slice_sizes_;
+  }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
   }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1434,6 +1438,7 @@ class HloGatherInstruction : public HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_slice_sizes_;
+  bool indices_are_sorted_;
 };
 
 class HloScatterInstruction : public HloInstruction {
@@ -1442,10 +1447,15 @@ class HloScatterInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
-      const ScatterDimensionNumbers& scatter_dim_numbers);
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted);
   const ScatterDimensionNumbers& scatter_dimension_numbers() const {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
+  }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
   }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1473,6 +1483,7 @@ class HloScatterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
+  bool indices_are_sorted_;
 };
 
 class HloIotaInstruction : public HloInstruction {

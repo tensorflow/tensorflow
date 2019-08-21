@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
@@ -446,8 +447,10 @@ class BufferAssignment {
 
   HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
 
-  // Returns the BufferLiveness object used to construct this assignment.
   const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
+
+  // Returns the HloLiveRange object used to construct this assignment.
+  const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
   string ToString() const;
   BufferAssignmentProto ToProto() const;
@@ -481,12 +484,14 @@ class BufferAssignment {
                    std::unique_ptr<HloOrdering> hlo_ordering,
                    BufferValue::SizeFunction buffer_size,
                    LogicalBuffer::AlignmentFunction color_alignment,
-                   std::unique_ptr<HloAliasAnalysis> alias_analysis)
+                   std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                   std::unique_ptr<HloLiveRange> hlo_live_range)
       : module_(module),
         hlo_ordering_(std::move(hlo_ordering)),
         buffer_size_(std::move(buffer_size)),
         color_alignment_(std::move(color_alignment)),
-        alias_analysis_(std::move(alias_analysis)) {}
+        alias_analysis_(std::move(alias_analysis)),
+        hlo_live_range_(std::move(hlo_live_range)) {}
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
@@ -545,6 +550,8 @@ class BufferAssignment {
   LogicalBuffer::AlignmentFunction color_alignment_;
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
+
+  std::unique_ptr<HloLiveRange> hlo_live_range_;
 
   Stats stats_;
 
@@ -617,6 +624,10 @@ class BufferAssigner {
                           absl::flat_hash_set<const HloValue*>>*
           buffers_to_assign_sequentially,
       BufferAssignment* assignment);
+
+  // Returns true if buffer's live range interferences with buffer2's.
+  bool LiveRangeInterferes(const HloValue* buffer1, const HloValue* buffer2,
+                           BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added
   // to assigned_buffers and skip buffer allocation.

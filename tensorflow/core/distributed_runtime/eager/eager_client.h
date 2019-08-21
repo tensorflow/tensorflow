@@ -39,7 +39,6 @@ class EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
   CLIENT_METHOD(RegisterFunction);
-  CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 
@@ -54,9 +53,9 @@ class EagerClient {
   // is invoked and keeps it open until some error condition.
   // Similarly to the methods above, the request can be deleted as soon as
   // StreamingEnqueueAsync returns.
-  virtual void StreamingEnqueueAsync(const EnqueueRequest* request,
-                                     EnqueueResponse* response,
-                                     StatusCallback done) = 0;
+  virtual Status StreamingEnqueueAsync(const EnqueueRequest* request,
+                                       EnqueueResponse* response,
+                                       StatusCallback done) = 0;
 };
 
 // Simple wrapper class that can be used to retrieve EagerClients.

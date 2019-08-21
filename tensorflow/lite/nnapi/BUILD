@@ -12,6 +12,9 @@ cc_library(
         "NeuralNetworksTypes.h",
     ],
     linkopts = select({
+        "//tensorflow:emscripten": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
@@ -20,7 +23,13 @@ cc_library(
 cc_library(
     name = "nnapi_implementation",
     srcs = select({
+        "//tensorflow:emscripten": [
+            "nnapi_implementation_disabled.cc",
+        ],
         "//tensorflow:ios": [
+            "nnapi_implementation_disabled.cc",
+        ],
+        "//tensorflow:macos": [
             "nnapi_implementation_disabled.cc",
         ],
         "//tensorflow:windows": [
@@ -34,12 +43,16 @@ cc_library(
         "nnapi_implementation.h",
     ],
     linkopts = select({
+        "//tensorflow:emscripten": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }) + select({
         "//tensorflow:android": [],
-        "//tensorflow:macos": [],
+        "//tensorflow:emscripten": [],
         "//tensorflow:ios": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-lrt"],
     }),

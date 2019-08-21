@@ -1045,7 +1045,8 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
           std::vector<string>(desc->colocation_constraints.begin(),
                               desc->colocation_constraints.end()));
     }
-    status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
+    status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret,
+                                                 /*consume=*/true);
 
     if (TF_GetCode(status) == TF_OK) {
       // Run shape inference function for newly added node.

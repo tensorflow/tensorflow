@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
+
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
+#include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -265,10 +267,50 @@ int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(const float weight,
 }
 
 void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
-    const int32 tree_id, const int32 node_id, const int32 feature_id,
-    const int32 threshold, const float gain, const float left_contrib,
-    const float right_contrib, int32* left_node_id, int32* right_node_id) {
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    int32* left_node_id, int32* right_node_id) {
+  const auto candidate = split_entry.second;
+  auto* node = AddLeafNodes(tree_id, split_entry, left_node_id, right_node_id);
+  auto* new_split = node->mutable_bucketized_split();
+  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_threshold(candidate.threshold);
+  new_split->set_dimension_id(candidate.dimension_id);
+  new_split->set_left_id(*left_node_id);
+  new_split->set_right_id(*right_node_id);
+
+  boosted_trees::SplitTypeWithDefault split_type_with_default;
+  bool parsed = boosted_trees::SplitTypeWithDefault_Parse(
+      candidate.split_type, &split_type_with_default);
+  DCHECK(parsed);
+  if (split_type_with_default == boosted_trees::INEQUALITY_DEFAULT_RIGHT) {
+    new_split->set_default_direction(boosted_trees::DEFAULT_RIGHT);
+  } else {
+    new_split->set_default_direction(boosted_trees::DEFAULT_LEFT);
+  }
+}
+
+void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    int32* left_node_id, int32* right_node_id) {
+  const auto candidate = split_entry.second;
+  auto* node = AddLeafNodes(tree_id, split_entry, left_node_id, right_node_id);
+  auto* new_split = node->mutable_categorical_split();
+  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_value(candidate.threshold);
+  new_split->set_dimension_id(candidate.dimension_id);
+  new_split->set_left_id(*left_node_id);
+  new_split->set_right_id(*right_node_id);
+}
+
+boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
+    const int32 tree_id,
+    const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+    int32* left_node_id, int32* right_node_id) {
   auto* tree = tree_ensemble_->mutable_trees(tree_id);
+  const auto node_id = split_entry.first;
+  const auto candidate = split_entry.second;
   auto* node = tree->mutable_nodes(node_id);
   DCHECK_EQ(node->node_case(), boosted_trees::Node::kLeaf);
   float prev_node_value = node->leaf().scalar();
@@ -281,15 +323,13 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
     node->mutable_metadata()->mutable_original_leaf()->Swap(
         node->mutable_leaf());
   }
-  node->mutable_metadata()->set_gain(gain);
-  auto* new_split = node->mutable_bucketized_split();
-  new_split->set_feature_id(feature_id);
-  new_split->set_threshold(threshold);
-  new_split->set_left_id(*left_node_id);
-  new_split->set_right_id(*right_node_id);
+  node->mutable_metadata()->set_gain(candidate.gain);
   // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
-  left_node->mutable_leaf()->set_scalar(prev_node_value + left_contrib);
-  right_node->mutable_leaf()->set_scalar(prev_node_value + right_contrib);
+  left_node->mutable_leaf()->set_scalar(prev_node_value +
+                                        candidate.left_node_contrib);
+  right_node->mutable_leaf()->set_scalar(prev_node_value +
+                                         candidate.right_node_contrib);
+  return node;
 }
 
 void BoostedTreesEnsembleResource::Reset() {

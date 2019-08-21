@@ -312,7 +312,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       AttrSlice n_attrs = AttrSlice(*nd.from_node_def);
       std::vector<int32> scope_ids;
       Status ss = GetNodeAttr(n_attrs, kScopedAllocatorAttrName, &scope_ids);
-      if (ss.ok()) {
+      // Check that both output name and output slot match.  It is okay to have
+      // different outputs of the input committed to different scope ids.
+      if (ss.ok() && scope_ids[0] == nd.output_slot) {
         LOG(INFO) << "Abandoning ScopedAllocatorOptimizer because input "
                   << nd.from_node_def->name() << " output " << scope_ids[0]
                   << " is already assigned to scope_id " << scope_ids[1];

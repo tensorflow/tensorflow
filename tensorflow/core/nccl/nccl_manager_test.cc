@@ -272,10 +272,15 @@ class NcclManagerTest : public ::testing::Test {
     };
   }
 
+  struct NodeState {
+    NcclManager nccl_manager;
+    std::atomic<int> launched{0};
+  };
+
   void RunMultiNodeAllReduceTest(const int num_nodes,
                                  const int num_ranks_per_node) {
     const int num_global_ranks = num_nodes * num_ranks_per_node;
-    std::vector<NcclManager> nccl_managers(num_nodes);
+    std::vector<NodeState> node_states(num_nodes);
     const string collective_key = "allreduce";
     // The NcclManagers in this test synchronize in real-time, so we need to run
     // each node's code in a separate thread.
@@ -283,7 +288,8 @@ class NcclManagerTest : public ::testing::Test {
     // waits for all communicators before returning.
 
     // First, initialize the communicator_key used for this collective.
-    const string communicator_key = nccl_managers[0].GenerateCommunicatorKey();
+    const string communicator_key =
+        node_states[0].nccl_manager.GenerateCommunicatorKey();
 
     for (int op = 0; op < 4; ++op) {
       ncclRedOp_t reduction_op = static_cast<ncclRedOp_t>(op);
@@ -292,7 +298,7 @@ class NcclManagerTest : public ::testing::Test {
                                       reduction_op, TensorShape({2, 3}), 0.0f));
       for (int node = 0; node < num_nodes; ++node) {
         auto node_fn = [this, node, num_ranks_per_node, num_global_ranks,
-                        &nccl_managers, &communicator_key, &collective_key,
+                        &node_states, &communicator_key, &collective_key,
                         reduction_op, &test_case] {
           for (int local_rank = 0; local_rank < num_ranks_per_node;
                ++local_rank) {
@@ -304,17 +310,17 @@ class NcclManagerTest : public ::testing::Test {
                 device->executor(), stream, event_mgr, device->gpu_id(),
                 &test_case->ins[global_rank], &test_case->outs[global_rank],
                 global_rank, this->CreateDoneCallback(test_case.get()));
-            nccl_managers[node].AddToAllReduce(
+            node_states[node].nccl_manager.AddToAllReduce(
                 std::move(participant),
                 {collective_key, num_ranks_per_node, num_global_ranks,
-                 communicator_key},
+                 communicator_key, /*source_rank=*/-1},
                 reduction_op);
             VLOG(1) << "AddToAllReduce node " << node << " global_rank "
                     << global_rank;
           }
 
           // Signal collective ready to launch at this node.
-          nccl_managers[node].SignalMultiNodeReady(collective_key);
+          node_states[node].nccl_manager.SignalMultiNodeReady(collective_key);
         };
         this->work_queue_->Schedule(node_fn);
       }
@@ -324,43 +330,65 @@ class NcclManagerTest : public ::testing::Test {
     }
   }
 
-  void RunBroadcastTest(const int num_ranks, const int src_rank,
-                        const bool in_place) {
+  void RunMultiNodeBroadcastTest(const int num_nodes,
+                                 const int num_ranks_per_node,
+                                 const int src_node, const int src_local_rank,
+                                 const bool in_place) {
+    const int num_global_ranks = num_nodes * num_ranks_per_node;
+    const int src_global_rank = src_node * num_ranks_per_node + src_local_rank;
+    const string collective_key = "broadcast";
+    std::vector<NodeState> node_states(num_nodes);
+    const string communicator_key =
+        node_states[0].nccl_manager.GenerateCommunicatorKey();
     std::unique_ptr<TestCase> test_case(this->MakeBroadcastTestCase(
-        /*num_nodes=*/1, num_ranks, TensorShape({5, 6}), /*src_node=*/0,
-        src_rank, in_place));
-    auto done = this->CreateDoneCallback(test_case.get());
-    for (int rank = 0; rank < num_ranks; ++rank) {
-      // Launch each rank in a separate thread to test concurrent,
-      // randomly-ordered calls into NcclManager.
-      this->work_queue_->Schedule(
-          [this, num_ranks, src_rank, rank, &test_case, &done]() {
-            auto* device = this->GetDevice(rank);
-            auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
-            auto* stream = device->tensorflow_gpu_device_info()->stream;
-            auto* input = rank == src_rank ? &test_case->ins[rank] : nullptr;
-            auto* output = test_case->outs[rank].NumElements() == 0
-                               ? nullptr
-                               : &test_case->outs[rank];
-            auto participant = absl::make_unique<NcclManager::Participant>(
-                device->executor(), stream, event_mgr, device->gpu_id(), input,
-                output, rank, done);
-            if (rank == src_rank) {
-              NcclManager::instance()->AddBroadcastSend(
-                  std::move(participant),
-                  {"broadcast", /*num_local_devices=*/num_ranks,
-                   /*num_global_devices=*/num_ranks,
-                   /*communicator_key=*/""});
-            } else {
-              NcclManager::instance()->AddBroadcastRecv(
-                  std::move(participant),
-                  {"broadcast", /*num_local_devices=*/num_ranks,
-                   /*num_global_devices=*/num_ranks,
-                   /*communicator_key=*/""});
-            }
-          });
+        num_nodes, num_ranks_per_node, TensorShape({5, 6}), src_node,
+        src_local_rank, in_place));
+    for (int node = 0; node < num_nodes; ++node) {
+      for (int local_rank = 0; local_rank < num_ranks_per_node; ++local_rank) {
+        // Launch each rank in a separate thread to test concurrent,
+        // randomly-ordered calls into NcclManager.
+        auto rank_fn = [this, node, num_ranks_per_node, num_global_ranks,
+                        src_global_rank, local_rank, &node_states,
+                        &collective_key, &communicator_key, &test_case]() {
+          auto* device = this->GetDevice(local_rank);
+          auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+          auto* stream = device->tensorflow_gpu_device_info()->stream;
+          const int global_rank = node * num_ranks_per_node + local_rank;
+          auto* input = global_rank == src_global_rank
+                            ? &test_case->ins[global_rank]
+                            : nullptr;
+          auto* output = test_case->outs[global_rank].NumElements() == 0
+                             ? nullptr
+                             : &test_case->outs[global_rank];
+          auto participant = absl::make_unique<NcclManager::Participant>(
+              device->executor(), stream, event_mgr, device->gpu_id(), input,
+              output, global_rank, this->CreateDoneCallback(test_case.get()));
+          if (global_rank == src_global_rank) {
+            VLOG(1) << "AddBroadcastSend node " << node << " global_rank "
+                    << global_rank;
+            node_states[node].nccl_manager.AddBroadcastSend(
+                std::move(participant),
+                {collective_key, num_ranks_per_node, num_global_ranks,
+                 communicator_key, src_global_rank});
+          } else {
+            VLOG(1) << "AddBroadcastRecv node " << node << " global_rank "
+                    << global_rank;
+            node_states[node].nccl_manager.AddBroadcastRecv(
+                std::move(participant),
+                {collective_key, num_ranks_per_node, num_global_ranks,
+                 communicator_key, src_global_rank});
+          }
+
+          if (++node_states[node].launched == num_ranks_per_node) {
+            // Signal collective ready to launch at this node.
+            node_states[node].nccl_manager.SignalMultiNodeReady(collective_key);
+          }
+        };
+        this->work_queue_->Schedule(std::move(rank_fn));
+      }
     }
 
+    VLOG(2) << "Verifying results";
     this->VerifyResults(test_case.get());
   }
 
@@ -423,7 +451,8 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
       NcclManager::instance()->AddToAllReduce(
           std::move(participant),
           {"allreduce", /*num_local_devices=*/num_ranks,
-           /*num_global_devices=*/num_ranks, /*communicator_key=*/""},
+           /*num_global_devices=*/num_ranks, /*communicator_key=*/"",
+           /*source_rank=*/-1},
           reduction_op);
     }
 
@@ -491,7 +520,7 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
             {strings::StrCat("allreduce", test_num),
              /*num_local_devices=*/num_ranks,
              /*num_global_devices=*/num_ranks,
-             /*communicator_key=*/""},
+             /*communicator_key=*/"", /*source_rank=*/-1},
             ncclSum);
       };
       this->work_queue_->Schedule(fn);
@@ -531,7 +560,8 @@ TYPED_TEST(NcclManagerTest, BasicAllGather) {
       NcclManager::instance()->AddToAllGather(
           std::move(participant),
           {"allgather", /*num_local_devices=*/num_ranks,
-           /*num_global_devices=*/num_ranks, /*communicator_key=*/""});
+           /*num_global_devices=*/num_ranks, /*communicator_key=*/"",
+           /*source_rank=*/-1});
     }
 
     LOG(INFO) << "Verifying results";
@@ -541,14 +571,16 @@ TYPED_TEST(NcclManagerTest, BasicAllGather) {
 
 // Test basic broadcast.
 TYPED_TEST(NcclManagerTest, BasicBroadcast) {
-  this->RunBroadcastTest(/*num_ranks=*/4, /*src_rank=*/2,
-                         /*in_place=*/false);
+  this->RunMultiNodeBroadcastTest(/*num_nodes=*/1, /*num_ranks_per_node=*/4,
+                                  /*src_node=*/0, /*src_local_rank=*/2,
+                                  /*in_place=*/false);
 }
 
 // Test in-place broadcast.
 TYPED_TEST(NcclManagerTest, InPlaceBroadcast) {
-  this->RunBroadcastTest(/*num_ranks=*/4, /*src_rank=*/1,
-                         /*in_place=*/true);
+  this->RunMultiNodeBroadcastTest(/*num_nodes=*/1, /*num_ranks_per_node=*/4,
+                                  /*src_node=*/0, /*src_local_rank=*/1,
+                                  /*in_place=*/true);
 }
 
 // Test broadcast with increasing ranks.
@@ -557,7 +589,8 @@ TYPED_TEST(NcclManagerTest, BroadcastWithDifferentRanks) {
     const int src_rank = static_cast<int>(random::New64() % num_ranks);
     for (int in_place_idx = 0; in_place_idx <= 1; ++in_place_idx) {
       const bool in_place = in_place_idx == 0;
-      this->RunBroadcastTest(num_ranks, src_rank, in_place);
+      this->RunMultiNodeBroadcastTest(/*num_nodes=*/1, num_ranks,
+                                      /*src_node=*/0, src_rank, in_place);
     }
   }
 }
@@ -583,6 +616,13 @@ TYPED_TEST(NcclManagerTest, MultiNodeSingle) {
   this->RunMultiNodeAllReduceTest(/*num_nodes=*/1, /*num_ranks_per_node=*/4);
 }
 
+// Multi-node broadcast.
+TYPED_TEST(NcclManagerTest, MultiNodeBroadcast) {
+  this->RunMultiNodeBroadcastTest(/*num_nodes=*/4, /*num_ranks_per_node=*/8,
+                                  /*src_node=*/2, /*src_local_rank=*/3,
+                                  /*in_place=*/true);
+}
+
 // Checks that we return error status if a collective_key is used for different
 // types of collectives, e.g. a reduction and a broadcast.
 TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
@@ -604,14 +644,16 @@ TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
                                               {"bad_coll_type",
                                                /*num_local_devices=*/num_ranks,
                                                /*num_global_devices=*/num_ranks,
-                                               /*communicator_key=*/""},
+                                               /*communicator_key=*/"",
+                                               /*source_rank=*/-1},
                                               ncclSum);
     } else {
       NcclManager::instance()->AddBroadcastSend(
-          std::move(participant), {"bad_coll_type",
-                                   /*num_local_devices=*/num_ranks,
-                                   /*num_global_devices=*/num_ranks,
-                                   /*communicator_key=*/""});
+          std::move(participant),
+          {"bad_coll_type",
+           /*num_local_devices=*/num_ranks,
+           /*num_global_devices=*/num_ranks,
+           /*communicator_key=*/"", /*source_rank=*/-1});
     }
   }
 
@@ -639,7 +681,8 @@ TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
         {"bad_coll_type",
          /*num_local_devices=*/num_ranks,
          /*num_global_devices=*/num_ranks,
-         rank == 0 ? "" : NcclManager::instance()->GenerateCommunicatorKey()},
+         rank == 0 ? "" : NcclManager::instance()->GenerateCommunicatorKey(),
+         /*source_rank=*/-1},
         ncclSum);
   }
 
@@ -667,12 +710,95 @@ TYPED_TEST(NcclManagerTest, ConsistentNumberOfDevices) {
                                             {"bad_coll_type",
                                              /*num_local_devices=*/num_devices,
                                              /*num_global_devices=*/num_devices,
-                                             /*communicator_key=*/""},
+                                             /*communicator_key=*/"",
+                                             /*source_rank=*/-1},
                                             ncclSum);
   }
 
   this->VerifyError(test_case.get());
-}  // namespace tensorflow
+}
+
+// Checks that we return error status if a broadcast does not have source.
+TYPED_TEST(NcclManagerTest, BroadcastNoSource) {
+  const int num_ranks = 2;
+
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeBroadcastTestCase(/*num_nodes=*/1, num_ranks,
+                                  TensorShape({2, 3}), /*src_node=*/-1,
+                                  /*src_rank=*/-1, false));
+  for (int rank = 0; rank < num_ranks; ++rank) {
+    auto* device = this->GetDevice(rank);
+    auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        device->executor(), stream, event_mgr, device->gpu_id(), nullptr,
+        &test_case->outs[rank], rank,
+        this->CreateDoneCallback(test_case.get()));
+    NcclManager::instance()->AddBroadcastRecv(std::move(participant),
+                                              {"bcast_no_send",
+                                               /*num_local_devices=*/num_ranks,
+                                               /*num_global_devices=*/num_ranks,
+                                               /*communicator_key=*/"",
+                                               /*source_rank=*/-1});
+  }
+
+  this->VerifyError(test_case.get());
+}
+
+// Checks that we return error status if a broadcast has multiple sends.
+TYPED_TEST(NcclManagerTest, BroadcastMultipleSends) {
+  const int num_ranks = 2;
+
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeBroadcastTestCase(/*num_nodes=*/1, num_ranks,
+                                  TensorShape({2, 3}), /*src_node=*/-1,
+                                  /*src_rank=*/-1, false));
+  for (int rank = 0; rank < num_ranks; ++rank) {
+    auto* device = this->GetDevice(rank);
+    auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        device->executor(), stream, event_mgr, device->gpu_id(),
+        &test_case->outs[rank], &test_case->outs[rank], rank,
+        this->CreateDoneCallback(test_case.get()));
+    NcclManager::instance()->AddBroadcastSend(std::move(participant),
+                                              {"bcast_multiple_send",
+                                               /*num_local_devices=*/num_ranks,
+                                               /*num_global_devices=*/num_ranks,
+                                               /*communicator_key=*/"",
+                                               /*source_rank=*/-1});
+  }
+
+  this->VerifyError(test_case.get());
+}
+
+// Checks that we return error status if a broadcast has inconsistent source
+// ranks.
+TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
+  const int num_ranks = 2;
+
+  std::unique_ptr<typename TestFixture::TestCase> test_case(
+      this->MakeBroadcastTestCase(/*num_nodes=*/1, num_ranks,
+                                  TensorShape({2, 3}), /*src_node=*/-1,
+                                  /*src_rank=*/-1, false));
+  for (int rank = 0; rank < num_ranks; ++rank) {
+    auto* device = this->GetDevice(rank);
+    auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        device->executor(), stream, event_mgr, device->gpu_id(),
+        &test_case->outs[rank], &test_case->outs[rank], rank,
+        this->CreateDoneCallback(test_case.get()));
+    NcclManager::instance()->AddBroadcastRecv(std::move(participant),
+                                              {"bcast_inconsistent_source",
+                                               /*num_local_devices=*/num_ranks,
+                                               /*num_global_devices=*/num_ranks,
+                                               /*communicator_key=*/"",
+                                               /*source_rank=*/rank});
+  }
+
+  this->VerifyError(test_case.get());
+}
 
 }  // namespace tensorflow
 

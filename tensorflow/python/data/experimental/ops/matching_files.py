@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,11 +31,7 @@ class MatchingFilesDataset(dataset_ops.DatasetSource):
   def __init__(self, patterns):
     self._patterns = ops.convert_to_tensor(
         patterns, dtype=dtypes.string, name="patterns")
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.matching_files_dataset(self._patterns)
-    else:
-      variant_tensor = ged_ops.experimental_matching_files_dataset(
-          self._patterns)
+    variant_tensor = ged_ops.matching_files_dataset(self._patterns)
     super(MatchingFilesDataset, self).__init__(variant_tensor)
 
   @property

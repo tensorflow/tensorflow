@@ -74,7 +74,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -111,7 +111,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     if not testing_utils.should_run_eagerly():
       self.assertEqual(len(model.get_losses_for(None)), 2)
       self.assertEqual(len(model.get_updates_for(x)), 2)
@@ -152,7 +152,7 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x_train, y_train, epochs=1, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)
@@ -175,7 +175,7 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -212,7 +212,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -242,7 +242,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -281,7 +281,7 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -326,7 +326,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x_train, y_train, epochs=2, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)

@@ -18,14 +18,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACK_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACK_H_
 
+#include <cstddef>
 #include <functional>
 
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/dispatch.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
+#include "tensorflow/lite/experimental/ruy/trmul.h"
+#include "tensorflow/lite/experimental/ruy/trmul_params.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {

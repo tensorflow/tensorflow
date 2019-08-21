@@ -1,0 +1,38 @@
+op {
+  name: "AddSparseToTensorsMap"
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_handle"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

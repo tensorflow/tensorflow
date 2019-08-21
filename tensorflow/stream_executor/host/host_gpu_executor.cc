@@ -254,6 +254,9 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
       tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
+  builder.set_name("Host");
+  builder.set_platform_version("Default Version");
+
   return builder.Build();
 }
 

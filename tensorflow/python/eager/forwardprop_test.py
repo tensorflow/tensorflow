@@ -282,9 +282,12 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       f = _forwardgrad(f)
     self.assertAllClose(expected, f(primal))
 
-  def testFunctionGradPureForward(self):
+  @parameterized.named_parameters(
+      [("Function", def_function.function),
+       ("NoFunction", lambda f: f)])
+  def testGradPureForward(self, decorator):
 
-    @def_function.function
+    @decorator
     def f(x):
       return x ** 3.5
 

@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AssertNextDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AssertNextDatasetOp::kDatasetType;
@@ -62,7 +63,9 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -160,5 +163,6 @@ REGISTER_KERNEL_BUILDER(
     AssertNextDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

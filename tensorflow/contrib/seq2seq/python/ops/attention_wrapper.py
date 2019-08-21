@@ -2147,7 +2147,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
                initial_cell_state=None,
                name=None,
                attention_layer=None,
-               attention_fn=None):
+               attention_fn=None,
+               dtype=None):
     """Construct the `AttentionWrapper`.
 
     **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
@@ -2224,6 +2225,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         (attention_mechanism, cell_output, attention_state, attention_layer) and
         outputs (attention, alignments, next_attention_state). If provided, the
         attention_layer_size should be the size of the outputs of attention_fn.
+      dtype: The cell dtype
 
     Raises:
       TypeError: `attention_layer_size` is not None and (`attention_mechanism`
@@ -2232,7 +2234,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         is a list, and its length does not match that of `attention_layer_size`;
         if `attention_layer_size` and `attention_layer` are set simultaneously.
     """
-    super(AttentionWrapper, self).__init__(name=name)
+    super(AttentionWrapper, self).__init__(name=name, dtype=dtype)
     rnn_cell_impl.assert_like_rnncell("cell", cell)
     if isinstance(attention_mechanism, (list, tuple)):
       self._is_multi = True

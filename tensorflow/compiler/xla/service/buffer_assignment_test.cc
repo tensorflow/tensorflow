@@ -613,6 +613,13 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+
+  // Check if the HLO instructions have the correct colors in the layout.
+  EXPECT_EQ(param0->shape().layout().memory_space(), 2);
+  EXPECT_EQ(param1->shape().layout().memory_space(), 3);
+  EXPECT_EQ(mul->shape().layout().memory_space(), 4);
+  EXPECT_EQ(add->shape().layout().memory_space(), 5);
+  EXPECT_EQ(sub->shape().layout().memory_space(), 6);
 }
 
 TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
@@ -680,6 +687,13 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+
+  // Check if the HLO instructions have the correct colors in the layout.
+  EXPECT_EQ(mul->shape().layout().memory_space(), 1);
+  EXPECT_EQ(add->shape().layout().memory_space(), 1);
+  EXPECT_EQ(sub->shape().layout().memory_space(), 0);
+  EXPECT_EQ(param0->shape().layout().memory_space(), 0);
+  EXPECT_EQ(param1->shape().layout().memory_space(), 0);
 }
 
 TEST_F(BufferAssignmentTest, PresetAssignments) {

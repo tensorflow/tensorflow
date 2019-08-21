@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
@@ -212,11 +214,37 @@ class StringNgramsTest(test_util.TensorFlowTestCase):
     expected_ngrams = [[[[b"aa|bb|cc", b"bb|cc|dd", b"aa|bb|cc|dd"]], [[]]]]
     self.assertAllEqual(expected_ngrams, result)
 
-  def test_dense_input(self):
-    data = [[b"a", b"z"], [b"b", b""], [b"e", b"f"]]
-    data_tensor = ragged_factory_ops.constant(data)
+  def test_dense_input_rank_3(self):
+    data = [[[b"a", b"z"], [b"b", b""]], [[b"b", b""], [b"e", b"f"]]]
+    data_tensor = constant_op.constant(data)
     ngram_op = ragged_string_ops.ngrams(
         data_tensor, ngram_width=3, separator=b"|", pad_values=(b"LP", b"RP"))
+    result = self.evaluate(ngram_op)
+    expected_ngrams = [[[b"LP|LP|a", b"LP|a|z", b"a|z|RP", b"z|RP|RP"],
+                        [b"LP|LP|b", b"LP|b|", b"b||RP", b"|RP|RP"]],
+                       [[b"LP|LP|b", b"LP|b|", b"b||RP", b"|RP|RP"],
+                        [b"LP|LP|e", b"LP|e|f", b"e|f|RP", b"f|RP|RP"]]]
+    self.assertIsInstance(ngram_op, ops.Tensor)
+    self.assertAllEqual(expected_ngrams, result)
+
+  def test_dense_input(self):
+    data = [[b"a", b"z"], [b"b", b""], [b"e", b"f"]]
+    data_tensor = constant_op.constant(data)
+    ngram_op = ragged_string_ops.ngrams(
+        data_tensor, ngram_width=3, separator=b"|", pad_values=(b"LP", b"RP"))
+    result = self.evaluate(ngram_op)
+    expected_ngrams = [
+        [b"LP|LP|a", b"LP|a|z", b"a|z|RP", b"z|RP|RP"],
+        [b"LP|LP|b", b"LP|b|", b"b||RP", b"|RP|RP"],
+        [b"LP|LP|e", b"LP|e|f", b"e|f|RP", b"f|RP|RP"],
+    ]
+    self.assertIsInstance(ngram_op, ops.Tensor)
+    self.assertAllEqual(expected_ngrams, result)
+
+  def test_input_list_input(self):
+    data = [[b"a", b"z"], [b"b", b""], [b"e", b"f"]]
+    ngram_op = ragged_string_ops.ngrams(
+        data, ngram_width=3, separator=b"|", pad_values=(b"LP", b"RP"))
     result = self.evaluate(ngram_op)
     expected_ngrams = [
         [b"LP|LP|a", b"LP|a|z", b"a|z|RP", b"z|RP|RP"],

@@ -18,11 +18,25 @@ limitations under the License.
 // Include an empty header so that Arduino knows to build the TF Lite library.
 #include <TensorFlowLite.h>
 
+// TensorFlow Lite defines its own main function
 extern int tflite_micro_main(int argc, char* argv[]);
 
+// So the example works with or without a serial connection,
+// wait to see one for 5 seconds before giving up.
+void waitForSerial() {
+  int start = millis();
+  while(!Serial) {
+    int diff = millis() - start;
+    if (diff > 5000) break;
+  }
+}
+
+// Runs once when the program starts
 void setup() {
+  waitForSerial();
   tflite_micro_main(0, NULL);
 }
 
+// Leave the loop unused
 void loop() {
 }

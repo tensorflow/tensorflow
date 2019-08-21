@@ -17,14 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -52,9 +50,8 @@ class _ScanDataset(dataset_ops.UnaryDataset):
           input_structure=(self._state_structure,
                            input_dataset.element_spec),
           add_to_graph=False)
-      if not (
-          isinstance(wrapped_func.output_types, collections.Sequence) and
-          len(wrapped_func.output_types) == 2):
+      if not (isinstance(wrapped_func.output_types, collections_abc.Sequence)
+              and len(wrapped_func.output_types) == 2):
         raise TypeError("The scan function must return a pair comprising the "
                         "new state and the output value.")
 
@@ -123,22 +120,13 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
     # pylint: disable=protected-access
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = gen_experimental_dataset_ops.scan_dataset(
-          self._input_dataset._variant_tensor,
-          structure.to_tensor_list(self._state_structure, self._initial_state),
-          self._scan_func.function.captured_inputs,
-          f=self._scan_func.function,
-          preserve_cardinality=True,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
-          self._input_dataset._variant_tensor,
-          structure.to_tensor_list(self._state_structure, self._initial_state),
-          self._scan_func.function.captured_inputs,
-          f=self._scan_func.function,
-          preserve_cardinality=True,
-          **self._flat_structure)
+    variant_tensor = gen_experimental_dataset_ops.scan_dataset(
+        self._input_dataset._variant_tensor,
+        structure.to_tensor_list(self._state_structure, self._initial_state),
+        self._scan_func.function.captured_inputs,
+        f=self._scan_func.function,
+        preserve_cardinality=True,
+        **self._flat_structure)
     super(_ScanDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):

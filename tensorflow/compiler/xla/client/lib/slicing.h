@@ -55,7 +55,7 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
 // [X0,X1,X2,..XN] and dim = i `index` must be an n-dimensional tensor with size
 // [X0,X1,...Y,Xi+1,...,X[N] where y >= 1 and `out` will have the same sizes as
 // `index`.
-XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim);
+XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse = true);
 
 // Returns a new tensor which indexes the input tensor along dimension dim using
 // the entries in index.

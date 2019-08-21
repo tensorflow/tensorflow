@@ -78,7 +78,7 @@ template <>
 int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return Fingerprint64(values_.vec<string>().data()[start + n]);
+    return Fingerprint64(values_.vec<tstring>().data()[start + n]);
   return values_.vec<int64>().data()[start + n];
 }
 
@@ -87,7 +87,7 @@ template <>
 string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return values_.vec<string>().data()[start + n];
+    return values_.vec<tstring>().data()[start + n];
   return std::to_string(values_.vec<int64>().data()[start + n]);
 }
 
@@ -95,7 +95,7 @@ template <>
 StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
                                                      int64 n) const {
   const int64 start = feature_start_indices_[batch];
-  return values_.vec<string>().data()[start + n];
+  return values_.vec<tstring>().data()[start + n];
 }
 
 // A column that is backed by a dense tensor.
@@ -118,21 +118,21 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 template <>
 int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   if (DT_STRING == tensor_.dtype())
-    return Fingerprint64(tensor_.matrix<string>()(batch, n));
+    return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
   return tensor_.matrix<int64>()(batch, n);
 }
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
 string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
-  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
+  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
   return std::to_string(tensor_.matrix<int64>()(batch, n));
 }
 
 template <>
 StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
                                                     int64 n) const {
-  return tensor_.matrix<string>()(batch, n);
+  return tensor_.matrix<tstring>()(batch, n);
 }
 
 // Updates Output tensors with sparse crosses.

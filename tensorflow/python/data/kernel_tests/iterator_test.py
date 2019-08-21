@@ -208,24 +208,22 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @test_util.deprecated_graph_mode_only
   def testOneShotIteratorInitializerFails(self):
     # Define a dataset whose initialization will always fail.
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.check_numerics(
-            constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
+    dataset = dataset_ops.Dataset.from_tensors(array_ops.gather([0], [4]))
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
         sess.run(next_element)
 
       # Test that subsequent attempts to use the iterator also fail.
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
         sess.run(next_element)
 
     with self.cached_session() as sess:
 
       def consumer_thread():
-        with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+        with self.assertRaisesRegexp(errors.InvalidArgumentError, ""):
           sess.run(next_element)
 
       num_threads = 8

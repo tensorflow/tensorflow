@@ -89,6 +89,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
@@ -108,9 +109,11 @@ tf_cc_test(
     ],
     deps = [
         ":export",
+        ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 

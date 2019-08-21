@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import math
 
 import numpy as np
@@ -32,6 +31,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.util.compat import collections_abc
 
 
 def GetTestConfigs():
@@ -81,7 +81,7 @@ class Conv3DTest(test.TestCase):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
-      if isinstance(stride, collections.Iterable):
+      if isinstance(stride, collections_abc.Iterable):
         strides = [1] + list(stride) + [1]
       else:
         strides = [1, stride, stride, stride, 1]
@@ -139,7 +139,7 @@ class Conv3DTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
-      if isinstance(stride, collections.Iterable):
+      if isinstance(stride, collections_abc.Iterable):
         strides = list(stride)
       else:
         strides = [stride, stride, stride]
@@ -406,7 +406,7 @@ class Conv3DTest(test.TestCase):
         filter_planes, filter_rows, filter_cols, in_depth, out_depth
     ]
 
-    if isinstance(stride, collections.Iterable):
+    if isinstance(stride, collections_abc.Iterable):
       strides = [1] + list(stride) + [1]
     else:
       strides = [1, stride, stride, stride, 1]

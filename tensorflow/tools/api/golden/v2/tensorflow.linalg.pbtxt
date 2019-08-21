@@ -157,6 +157,10 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "matrix_rank"
+    argspec: "args=[\'a\', \'tol\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "matrix_transpose"
     argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
   }
@@ -171,6 +175,10 @@ tf_module {
   member_method {
     name: "normalize"
     argspec: "args=[\'tensor\', \'ord\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "pinv"
+    argspec: "args=[\'a\', \'rcond\', \'validate_args\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "qr"

@@ -10,13 +10,15 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 // Option for watching a node in TensorFlow Debugger (tfdbg).
 message DebugTensorWatch {
   // Name of the node to watch.
+  // Use "*" for wildcard. But note: currently, regex is not supported in
+  // general.
   string node_name = 1;
 
   // Output slot to watch.
-  // The semantics of output_slot == -1 is that the node is only watched for
-  // completion, but not for any output tensors. See NodeCompletionCallback
-  // in debug_gateway.h.
-  // TODO(cais): Implement this semantics.
+  // The semantics of output_slot == -1 is that all outputs of the node
+  // will be watched (i.e., a wildcard).
+  // Other negative values of output_slot are invalid and will lead to
+  // errors currently.
   int32 output_slot = 2;
 
   // Name(s) of the debugging op(s).

@@ -22,6 +22,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
     ],
 )
 

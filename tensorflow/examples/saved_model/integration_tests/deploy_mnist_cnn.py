@@ -79,5 +79,13 @@ def main(argv):
     np.testing.assert_allclose(y_lite, y_tf, rtol=0, atol=1e-5,
                                err_msg='Mismatch at test example %d' % i)
 
+  # Test that it loads correctly with v1 load APIs as well.
+  with tf.compat.v1.Graph().as_default(), tf.compat.v1.Session() as session:
+    tf.compat.v1.saved_model.load(
+        session,
+        [tf.compat.v1.saved_model.SERVING],
+        FLAGS.saved_model_dir)
+
+
 if __name__ == '__main__':
   app.run(main)

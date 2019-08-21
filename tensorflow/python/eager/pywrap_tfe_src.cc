@@ -1905,6 +1905,12 @@ void TapeSetRecordOperation(
       if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
         return;
       }
+      if (accumulator->accumulator->BusyAccumulating()) {
+        // Ensure inner accumulators don't see outer accumulators' jvps. This
+        // mostly happens on its own, with some potentially surprising
+        // exceptions, so the blanket policy is for consistency.
+        break;
+      }
     }
   }
 }

@@ -207,7 +207,7 @@ void UpdateStats(OpKernelContext* context,
 
     absl::optional<AllocatorStats> allocator_stats =
         allocator_pair.first->GetStats();
-    if (stats) {
+    if (allocator_stats) {
       memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
     }
     allocator_pair.second->GetRecordsAndUnRef();
@@ -259,6 +259,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   }
 
   OpKernelContext::Params params;
+  params.is_eager = true;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;

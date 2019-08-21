@@ -23,10 +23,19 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace eager {
 namespace {
+bool EnableStreaming() {
+  bool result;
+  // TODO(b/139210648): Turn on this flag by default.
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                 false, &result));
+  return result;
+}
+
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
@@ -40,7 +49,8 @@ class GrpcEagerClient : public EagerClient {
       override {                                                          \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr, nullptr);                     \
+        response, std::move(done), nullptr, nullptr, /*max_retries=*/10,  \
+        /*fail_fast=*/true);                                              \
   }
 
   CLIENT_METHOD(CreateContext);
@@ -48,7 +58,6 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(RegisterFunction);
-  CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 
@@ -62,6 +71,7 @@ class GrpcEagerClient : public EagerClient {
     VLOG(1) << "Sending RPC to close remote eager context "
             << request->DebugString();
 
+    mutex_lock l(mu_);
     const auto& it = enqueue_dispatchers_.find(request->context_id());
     if (it != enqueue_dispatchers_.end()) {
       it->second.CancelCall();
@@ -72,28 +82,45 @@ class GrpcEagerClient : public EagerClient {
     }
   }
 
-  void StreamingEnqueueAsync(const EnqueueRequest* request,
-                             EnqueueResponse* response,
-                             StatusCallback done) override {
-    auto it = enqueue_dispatchers_.find(request->context_id());
-    if (enqueue_dispatchers_.find(request->context_id()) ==
-        enqueue_dispatchers_.end()) {
-      auto it_and_bool = enqueue_dispatchers_.emplace(
-          std::piecewise_construct,
-          std::forward_as_tuple(request->context_id()),
-          std::forward_as_tuple(
-              &stub_, cq_, "/tensorflow.eager.EagerService/StreamingEnqueue"));
-      it = it_and_bool.first;
+  Status StreamingEnqueueAsync(const EnqueueRequest* request,
+                               EnqueueResponse* response,
+                               StatusCallback done) override {
+    if (EnableStreaming()) {
+      tf_shared_lock l(mu_);
+      auto it = enqueue_dispatchers_.find(request->context_id());
+      if (enqueue_dispatchers_.find(request->context_id()) ==
+          enqueue_dispatchers_.end()) {
+        auto it_and_bool = enqueue_dispatchers_.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(request->context_id()),
+            std::forward_as_tuple(
+                &stub_, cq_,
+                "/tensorflow.eager.EagerService/StreamingEnqueue"));
+        it = it_and_bool.first;
+      }
+      it->second.SendNextRequest(*request, response, std::move(done));
+      return Status::OK();
+    } else {
+      Notification n;
+      Status status;
+      EnqueueAsync(request, response, [&n, &status](const Status& s) {
+        status.Update(s);
+        n.Notify();
+      });
+      n.WaitForNotification();
+      done(status);
+      return status;
     }
-
-    it->second.SendNextRequest(*request, response, std::move(done));
   }
 
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+
+  mutable mutex mu_;
+
   std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
-      enqueue_dispatchers_;
+      enqueue_dispatchers_ GUARDED_BY(mu_);
 };
 
 class GrpcEagerClientCache : public EagerClientCache {

@@ -303,7 +303,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
 // code it ourselves.
 Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
                   int message_index, int size, CodedOutputStream* output) {
-  auto input_t = input.flat_inner_dims<string>();
+  auto input_t = input.flat_inner_dims<tstring>();
   for (int64 i = 0; i < size; i++) {
     const string& value = input_t(static_cast<int64>(message_index), i);
     WireFormatLite::WriteTag(field_desc.number(),
@@ -587,7 +587,7 @@ class EncodeProtoOp : public OpKernel {
     Tensor* output_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, common_prefix, &output_tensor));
 
-    auto bufs = output_tensor->flat<string>();
+    auto bufs = output_tensor->flat<tstring>();
     for (int message_index = 0; message_index < message_count;
          message_index++) {
       // TODO(nix): possibly optimize allocation here by calling

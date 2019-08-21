@@ -91,9 +91,10 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
-        validation from data tensors). Ignored with the default value of `None`.
+        validation from data tensors). Ignored with the default value of
+        `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -101,8 +102,8 @@ def model_iteration(model,
         validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In the case where `val_inputs` is a
-        dataset, this flag indicates that its iterator and feed values are
+        training iteration (for validation). In the case where `val_inputs` is
+        a dataset, this flag indicates that its iterator and feed values are
         already created so should properly reuse resources.
       prepared_feed_values_from_dataset: if True, `inputs` is a list of feed
         tensors returned from `_prepare_feed_values` call on the validation
@@ -139,7 +140,7 @@ def model_iteration(model,
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+          model, inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
   # Enter tf.distribute.Strategy scope.
@@ -197,6 +198,7 @@ def model_iteration(model,
       # that determines the number of steps required. To avoid this issue,
       # set validation_steps here if validation_steps is None.
       validation_steps = training_utils.infer_steps_for_dataset(
+          model,
           val_inputs,
           validation_steps,
           epochs=epochs,

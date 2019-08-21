@@ -125,6 +125,8 @@ void AddOperationToEnqueueRequest(
     auto* input = operation->add_inputs();
     input->set_op_id(tensor_handle_pair.first);
     input->set_output_num(tensor_handle_pair.second);
+    input->set_op_device(device);
+    input->set_device(device);
   }
 
   for (const auto& attr_entry : attrs) {
@@ -324,19 +326,13 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-
-  SendTensorRequest send_tensor_request;
-  send_tensor_request.set_context_id(context_id);
-  send_tensor_request.set_op_id(1);
-  SetTensorProto(send_tensor_request.add_tensors());
-  SendTensorResponse send_tensor_response;
-
-  TF_ASSERT_OK(eager_service_impl.SendTensor(&send_tensor_request,
-                                             &send_tensor_response));
-
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
   EnqueueResponse remote_enqueue_response;
+
+  auto* send_tensor = remote_enqueue_request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(1);
+  SetTensorProto(send_tensor->add_tensors());
 
   std::unordered_map<string, AttrValue> attrs;
   AttrValue val;
@@ -377,6 +373,51 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   CloseContextResponse close_context_response;
   TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
                                                &close_context_response));
+}
+
+// Test requests sent to the eager service on master.
+TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
+  tensorflow::Rendezvous* rendezvous =
+      new tensorflow::IntraProcessRendezvous(device_mgr_.get());
+  // Create a master eager context.
+  tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false,
+      device_mgr_.get(), false, rendezvous, GetDefaultCustomKernelCreator(),
+      nullptr);
+  const uint64 context_id = random::New64();
+
+  // Set RemoteMgr to ctx.
+  auto remote_mgr =
+      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true, ctx);
+  TF_ASSERT_OK(ctx->InitializeRemoteWorker(nullptr, nullptr, {}, context_id,
+                                           nullptr, std::move(remote_mgr)));
+
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
+
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+
+  auto* send_tensor = remote_enqueue_request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(1);
+  SetTensorProto(send_tensor->add_tensors());
+
+  // Unable to handle the request since there is no eager context.
+  Status status = eager_service_impl.Enqueue(&remote_enqueue_request,
+                                             &remote_enqueue_response);
+  EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "Unable to find a context_id matching the specified one"));
+
+  // The request can be handled after adding the master eager context to
+  // service.
+  TF_ASSERT_OK(eager_service_impl.CreateMasterContext(context_id, ctx));
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+                                          &remote_enqueue_response));
+  ctx->Unref();
 }
 
 TEST_F(EagerServiceImplTest, KeepAliveTest) {

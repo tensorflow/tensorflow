@@ -139,8 +139,8 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
                    context->allocate_output(
                        "values", TensorShape({num_actually_read}), &values));
 
-    auto keys_t = keys->vec<string>();
-    auto values_t = values->vec<string>();
+    auto keys_t = keys->vec<tstring>();
+    auto values_t = values->vec<tstring>();
     for (int i = 0; i < num_actually_read; ++i) {
       keys_t(i) = std::move(keys_vec[i]);
       values_t(i) = std::move(values_vec[i]);
@@ -221,7 +221,7 @@ class ReaderRestoreStateOp : public ReaderVerbSyncOpKernel {
         context, TensorShapeUtils::IsScalar(tensor->shape()),
         errors::InvalidArgument("Reader state must be scalar, but had shape: ",
                                 tensor->shape().DebugString()));
-    OP_REQUIRES_OK(context, reader->RestoreState(tensor->scalar<string>()()));
+    OP_REQUIRES_OK(context, reader->RestoreState(tensor->scalar<tstring>()()));
   }
 };
 

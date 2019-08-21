@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
@@ -136,7 +137,10 @@ class Metric(Layer):
     super(Metric, self).__init__(name=name, dtype=dtype, **kwargs)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
-    self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
+    if not base_layer_utils.v2_dtype_behavior_enabled():
+      # We only do this when the V2 behavior is not enabled, as when it is
+      # enabled, the dtype already defaults to floatx.
+      self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
 
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)

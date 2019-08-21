@@ -757,6 +757,19 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
 
+  @test_util.run_v2_only
+  def testCanPassToDefFun(self):
+    @def_function.function
+    def add1(x):
+      return x + 1
+
+    v = variable_scope.get_variable(
+        name="v", initializer=[1.], use_resource=True)
+    device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
+    replica_local = values.SyncOnReadVariable(
+        None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
+    self.assertEqual(2., self.evaluate(add1(replica_local)))
+
 
 @combinations.generate(
     combinations.combine(

@@ -30,6 +30,10 @@ build:monolithic --define framework_shared_object=false
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
 
+# Flags for open source build, always set to be true.
+build --define open_source_build=true
+test --define open_source_build=true
+
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
 # environment variable "TF_MKL_ROOT" every time before build.
@@ -122,6 +126,9 @@ build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
+
+# By default, build TF in C++ 14 mode.
+build --cxxopt=-std=c++14
 
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr

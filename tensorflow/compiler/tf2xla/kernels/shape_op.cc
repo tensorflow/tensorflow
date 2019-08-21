@@ -40,9 +40,23 @@ class ShapeOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
-    Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
-    OP_REQUIRES_OK(ctx, TensorShapeToConstant(input_shape, &shape_constant));
-    ctx->SetConstantOutput(0, shape_constant);
+    std::vector<xla::XlaOp> operands;
+    const int rank = input_shape.dims();
+    if (rank != 0) {
+      for (int64 i = 0; i < rank; ++i) {
+        operands.push_back(xla::Broadcast(
+            xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
+                                    ctx->output_xla_type(0)),
+            {1}));
+      }
+
+      ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), operands, 0));
+    } else {
+      // Rank 0 won't have dynamic size dimension, use constant output.
+      Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
+      OP_REQUIRES_OK(ctx, TensorShapeToConstant(input_shape, &shape_constant));
+      ctx->SetConstantOutput(0, shape_constant);
+    }
   }
 
  private:

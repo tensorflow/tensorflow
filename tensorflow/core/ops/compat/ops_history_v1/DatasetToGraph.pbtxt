@@ -1,0 +1,31 @@
+op {
+  name: "DatasetToGraph"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+}
+op {
+  name: "DatasetToGraph"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+  attr {
+    name: "stateful_whitelist"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+}

@@ -166,6 +166,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 def _internal_input_layer(features,
@@ -2194,7 +2195,7 @@ class _LazyBuilder(object):
     if rank is not None:
       if rank == 0:
         raise ValueError(
-            'Feature (key: {}) cannot have rank 0. Give: {}'.format(
+            'Feature (key: {}) cannot have rank 0. Given: {}'.format(
                 key, feature_tensor))
       return feature_tensor if rank != 1 else expand_dims(feature_tensor)
 
@@ -2287,7 +2288,7 @@ def _normalize_feature_columns(feature_columns):
   if isinstance(feature_columns, _FeatureColumn):
     feature_columns = [feature_columns]
 
-  if isinstance(feature_columns, collections.Iterator):
+  if isinstance(feature_columns, collections_abc.Iterator):
     feature_columns = list(feature_columns)
 
   if isinstance(feature_columns, dict):
@@ -2879,10 +2880,18 @@ class _IdentityCategoricalColumn(
     if self.default_value is None:
       # Fail if values are out-of-range.
       assert_less = check_ops.assert_less(
-          values, num_buckets, data=(values, num_buckets),
+          values,
+          num_buckets,
+          data=(values, num_buckets),
+          message='Bucket index for categorical column '
+          '"{}" exceeds number of buckets'.format(self.name),
           name='assert_less_than_num_buckets')
       assert_greater = check_ops.assert_greater_equal(
-          values, zero, data=(values,),
+          values,
+          zero,
+          data=(values,),
+          message='Negative bucket index for categorical column "{}"'.format(
+              self.name),
           name='assert_greater_or_equal_0')
       with ops.control_dependencies((assert_less, assert_greater)):
         values = array_ops.identity(values)

@@ -280,6 +280,16 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     return (self._shape, self._dtype)
 
   @property
+  def dtype(self):
+    """The `tf.dtypes.DType` specified by this type for the SparseTensor."""
+    return self._dtype
+
+  @property
+  def shape(self):
+    """The `tf.TensorShape` specified by this type for the SparseTensor."""
+    return self._shape
+
+  @property
   def _component_specs(self):
     rank = self._shape.ndims
     num_values = None

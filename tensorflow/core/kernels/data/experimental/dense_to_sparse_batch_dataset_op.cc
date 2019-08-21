@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -122,7 +120,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return n / batch_size_ + (n % batch_size_ == 0 ? 0 : 1);
     }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -321,5 +321,6 @@ REGISTER_KERNEL_BUILDER(
     DenseToSparseBatchDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

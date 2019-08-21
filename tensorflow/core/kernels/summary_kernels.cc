@@ -38,13 +38,13 @@ class CreateSummaryFileWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("logdir", &tmp));
-    const string logdir = tmp->scalar<string>()();
+    const string logdir = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("max_queue", &tmp));
     const int32 max_queue = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("flush_millis", &tmp));
     const int32 flush_millis = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
-    const string filename_suffix = tmp->scalar<string>()();
+    const string filename_suffix = tmp->scalar<tstring>()();
 
     core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupOrCreateResource<SummaryWriterInterface>(
@@ -67,13 +67,13 @@ class CreateSummaryDbWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("db_uri", &tmp));
-    const string db_uri = tmp->scalar<string>()();
+    const string db_uri = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("experiment_name", &tmp));
-    const string experiment_name = tmp->scalar<string>()();
+    const string experiment_name = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("run_name", &tmp));
-    const string run_name = tmp->scalar<string>()();
+    const string run_name = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
-    const string user_name = tmp->scalar<string>()();
+    const string user_name = tmp->scalar<tstring>()();
 
     core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(
@@ -132,9 +132,9 @@ class WriteSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("summary_metadata", &tmp));
-    const string& serialized_metadata = tmp->scalar<string>()();
+    const string& serialized_metadata = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
@@ -166,7 +166,7 @@ class WriteRawProtoSummaryOp : public OpKernel {
     // Each Summary proto contains just one repeated field "value" of Value
     // messages with the actual data, so repeated Merge() is equivalent to
     // concatenating all the Value entries together into a single Event.
-    const auto summary_pbs = t->flat<string>();
+    const auto summary_pbs = t->flat<tstring>();
     for (int i = 0; i < summary_pbs.size(); ++i) {
       if (!event->mutable_summary()->MergeFromString(summary_pbs(i))) {
         ctx->CtxFailureWithWarning(errors::DataLoss(
@@ -191,7 +191,7 @@ class ImportEventOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("event", &t));
     std::unique_ptr<Event> event{new Event};
-    if (!ParseProtoUnlimited(event.get(), t->scalar<string>()())) {
+    if (!ParseProtoUnlimited(event.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
           errors::DataLoss("Bad tf.Event binary proto tensor string"));
       return;
@@ -212,7 +212,7 @@ class WriteScalarSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("value", &t));
@@ -234,7 +234,7 @@ class WriteHistogramSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("values", &t));
@@ -262,7 +262,7 @@ class WriteImageSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     const Tensor* bad_color;
     OP_REQUIRES_OK(ctx, ctx->input("bad_color", &bad_color));
     OP_REQUIRES(
@@ -297,7 +297,7 @@ class WriteAudioSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("sample_rate", &tmp));
     const float sample_rate = tmp->scalar<float>()();
 
@@ -326,7 +326,7 @@ class WriteGraphSummaryOp : public OpKernel {
     const int64 step = t->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
     std::unique_ptr<GraphDef> graph{new GraphDef};
-    if (!ParseProtoUnlimited(graph.get(), t->scalar<string>()())) {
+    if (!ParseProtoUnlimited(graph.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
           errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
       return;

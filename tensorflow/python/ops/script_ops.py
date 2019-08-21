@@ -31,11 +31,9 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -46,6 +44,19 @@ from tensorflow.python.util.tf_export import tf_export
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
 tape_cache = {}
+
+
+def _maybe_copy_to_context_device(tensor, device_name):
+  """Copy an EagerTensor to the current device if it's not on `device_name`."""
+  in_device = tensor.backing_device
+  if device_name == in_device:
+    return tensor
+  else:
+    # Note that EagerTensor._copy bypasses the placer and copies to the context
+    # device, which means e.g. int32 Tensors which would normally be forced onto
+    # the CPU can instead be placed on the GPU. This is necessary so that the
+    # PyFunc kernel always returns Tensors on the device it's executing on.
+    return tensor._copy()  # pylint: disable=protected-access
 
 
 class EagerFunc(object):
@@ -102,30 +113,33 @@ class EagerFunc(object):
   def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
-    func_executor = executor.Executor(context.is_async())
-    with context.executor_scope(func_executor):
-      with context.eager_mode(), backprop.GradientTape() as tape:
-        # Only watch tensors with a floating dtype.
-        for tensor in args:
-          for t in nest.flatten(tensor):
-            if t.dtype.is_floating:
-              tape.watch(t)
-        ret = self._func(*args)
-        # Use tf.identity to copy the returned tensors to device if necessary.
-        with ops.device(device):
-          if isinstance(ret, (tuple, list)):
-            outputs = [
-                array_ops.identity(self._convert(x, dtype=dtype))
-                for (x, dtype) in zip(ret, self._out_dtypes)
-            ]
-          elif ret is None:
-            outputs = None
-          else:
-            outputs = array_ops.identity(
-                self._convert(ret, dtype=self._out_dtypes[0]))
-      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
-      return outputs
-    func_executor.wait()
+    with context.eager_mode(), backprop.GradientTape() as tape:
+      # Only watch tensors with a floating dtype.
+      for tensor in args:
+        for t in nest.flatten(tensor):
+          if t.dtype.is_floating:
+            tape.watch(t)
+      ret = self._func(*args)
+      # copy the returned tensors to the PyFunc op's device if necessary.
+      device_name = device
+      if device_name is None:
+        # "None" here means "CPU", from the nullptr convention with C++ device
+        # pointers.
+        device_name = "/job:localhost/replica:0/task:0/device:CPU:0"
+      with ops.device(device):
+        if isinstance(ret, (tuple, list)):
+          outputs = [
+              _maybe_copy_to_context_device(self._convert(x, dtype=dtype),
+                                            device_name)
+              for (x, dtype) in zip(ret, self._out_dtypes)
+          ]
+        elif ret is None:
+          outputs = None
+        else:
+          outputs = _maybe_copy_to_context_device(
+              self._convert(ret, dtype=self._out_dtypes[0]), device_name)
+    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    return outputs
 
 
 class FuncRegistry(object):
@@ -256,6 +270,9 @@ def _internal_py_func(func,
                       is_grad_func=False,
                       name=None):
   """See documentation for py_func and eager_py_func."""
+  if not callable(func):
+    raise ValueError("Expected func to be callable, got func of type {}".format(
+        type(func)))
 
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
@@ -290,7 +307,11 @@ def _internal_py_func(func,
 
   if eager:
     result = gen_script_ops.eager_py_func(
-        input=inp, token=token, Tout=Tout, name=name)
+        input=inp,
+        token=token,
+        is_async=context.is_async(),
+        Tout=Tout,
+        name=name)
   else:
     if stateful:
       result = gen_script_ops.py_func(

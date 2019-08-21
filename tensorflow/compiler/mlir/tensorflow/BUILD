@@ -10,8 +10,6 @@ package_group(
     name = "friends",
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/python/...",
     ],
@@ -70,7 +68,31 @@ gentbl(
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_device_ops_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "ir/tf_device.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "ir/tf_device.cc.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/tf_device.md",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "ir/tf_device_ops.td",
+    td_srcs = [
+        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -93,16 +115,20 @@ cc_library(
     name = "tensorflow",
     srcs = [
         "ir/control_flow_ops.cc",
+        "ir/tf_device.cc",
         "ir/tf_executor.cc",
         "ir/tf_executor.cc.inc",
         "ir/tf_executor.h.inc",
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "transforms/cluster_formation.cc",
+        "transforms/cluster_outlining.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
+        "transforms/graph_pruning.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
         "translate/control_to_executor_dialect.cc",
@@ -110,15 +136,19 @@ cc_library(
     ],
     hdrs = [
         "ir/control_flow_ops.h",
+        "ir/tf_device.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
+        "ir/tf_traits.h",
         "ir/tf_types.def",
         "ir/tf_types.h",
         "transforms/passes.h",
     ],
+    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":tensorflow_canonicalize_inc_gen",
+        ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
         ":tensorflow_ops_inc_gen",
         ":tensorflow_optimize_inc_gen",
@@ -142,6 +172,7 @@ cc_library(
 cc_library(
     name = "tensorflow_dialect_registration",
     srcs = ["ir/dialect_registration.cc"],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow",
         "@local_config_mlir//:IR",
@@ -153,12 +184,13 @@ cc_library(
     name = "convert_graphdef",
     srcs = [
         "translate/export_graphdef.cc",
-        "translate/import_graphdef.cc",
+        "translate/import_model.cc",
     ],
     hdrs = [
         "translate/export_graphdef.h",
-        "translate/import_graphdef.h",
+        "translate/import_model.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -174,6 +206,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -183,6 +216,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardDialectRegistration",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
@@ -197,6 +231,7 @@ cc_library(
     hdrs = [
         "utils/import_utils.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":error_util",
         "//tensorflow/core:lib",
@@ -214,6 +249,7 @@ cc_library(
     hdrs = [
         "utils/export_utils.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -245,6 +281,7 @@ cc_library(
     hdrs = [
         "translate/export_tf_dialect_op.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_type",
         ":export_utils",
@@ -261,6 +298,7 @@ cc_library(
 cc_library(
     name = "translate_tf_dialect_op",
     srcs = ["translate/translate_tf_dialect_op.cc"],
+    copts = ["-std=c++14"],
     deps = [
         ":export_tf_dialect_op",
         "@llvm//:support",
@@ -275,6 +313,7 @@ cc_library(
     name = "mlir_roundtrip_pass",
     srcs = ["translate/mlir_roundtrip_pass.cc"],
     hdrs = ["translate/mlir_roundtrip_pass.h"],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
@@ -286,12 +325,14 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["translate/mlir_roundtrip_flags.cc"],
     hdrs = ["translate/mlir_roundtrip_flags.h"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
@@ -309,6 +350,7 @@ cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow",
         ":tensorflow_dialect_registration",
@@ -327,6 +369,7 @@ cc_library(
     name = "convert_tensor",
     srcs = ["utils/convert_tensor.cc"],
     hdrs = ["utils/convert_tensor.h"],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_type",
         ":mangling_util",
@@ -346,6 +389,7 @@ cc_library(
     name = "mangling_util",
     srcs = ["utils/mangling_util.cc"],
     hdrs = ["utils/mangling_util.h"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -358,6 +402,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
@@ -377,11 +422,11 @@ cc_library(
         "transforms/constant_fold.h",
         "transforms/decode_constant.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
-        ":tf_graph_optimization_pass",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
@@ -398,6 +443,7 @@ cc_library(
 
 cc_library(
     name = "tf_dialect_lib",
+    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
@@ -408,9 +454,11 @@ cc_library(
 cc_library(
     name = "tf_graph_optimization_pass",
     srcs = ["transforms/tf_graph_optimization_pass.cc"],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
+        ":mlir_roundtrip_pass",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -430,6 +478,7 @@ cc_library(
     name = "eval_util",
     srcs = ["utils/eval_util.cc"],
     hdrs = ["utils/eval_util.h"],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -462,6 +511,7 @@ cc_library(
     hdrs = [
         "translate/tf_mlir_translate.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":error_util",
@@ -488,6 +538,7 @@ cc_library(
     hdrs = [
         "translate/tf_mlir_translate_cl.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "@llvm//:support",
     ],
@@ -499,6 +550,7 @@ cc_library(
     srcs = [
         "translate/tf_mlir_translate_registration.cc",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",

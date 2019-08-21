@@ -35,6 +35,7 @@ cc_library(
     srcs = ["cpu_transfer_manager.cc"],
     hdrs = ["cpu_transfer_manager.h"],
     deps = [
+        ":cpu_runtime",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -45,7 +46,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
@@ -1011,5 +1011,21 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "vectorized_reduce_with_no_vector_registers_test",
+    size = "small",
+    srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
+    deps = [
+        ":cpu_compiler",
+        ":cpu_transfer_manager",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@llvm//:core",
+        "@llvm//:support",
+        "@llvm//:target",
     ],
 )

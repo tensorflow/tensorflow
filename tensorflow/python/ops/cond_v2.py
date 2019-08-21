@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
@@ -70,6 +71,9 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
     pred = ops.convert_to_tensor(pred)
+    if (tensor_util.is_tensor(pred) and
+        (pred.shape.dims is None or pred.shape.dims)):
+      pred = array_ops.squeeze_v2(pred)
 
     true_graph = func_graph_module.func_graph_from_py_func(
         true_name,
@@ -87,10 +91,14 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
         op_return_value=pred)
 
     verify_captures(_COND, [true_graph, false_graph])
-    return _build_cond(pred, true_graph, false_graph,
-                       true_graph.external_captures,
-                       false_graph.external_captures,
-                       name=scope)
+    return _build_cond(
+        pred,
+        true_graph,
+        false_graph,
+        true_graph.external_captures,
+        false_graph.external_captures,
+        building_gradient=False,
+        name=scope)
 
 
 @ops.RegisterGradient("StatelessIf")
@@ -162,14 +170,25 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   _make_output_composite_tensors_match(_COND,
                                        [true_grad_graph, false_grad_graph])
 
-  outputs = _build_cond(if_op.inputs[0], true_grad_graph, false_grad_graph,
-                        true_grad_inputs, false_grad_inputs)
+  outputs = _build_cond(
+      if_op.inputs[0],
+      true_grad_graph,
+      false_grad_graph,
+      true_grad_inputs,
+      false_grad_inputs,
+      building_gradient=True,
+  )
 
   # The predicate has no gradient.
   return [None] + outputs
 
 
-def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
+def _build_cond(pred,
+                true_graph,
+                false_graph,
+                true_inputs,
+                false_inputs,
+                building_gradient,
                 name=None):
   """Creates an If op from the specified predicate, branch functions and inputs.
 
@@ -186,6 +205,7 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
     false_graph: FuncGraph
     true_inputs: a list of Tensors to be passed to true_graph as input.
     false_inputs: a list of Tensors to be passed to false_graph as input.
+    building_gradient: Whether this is a gradient If op.
     name: the name for the If op.
 
   Returns:
@@ -199,6 +219,33 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
   # this modifies true_graph and false_graph.
   cond_inputs = _make_inputs_match([true_graph, false_graph],
                                    [true_inputs, false_inputs])
+  # Save the original number of outputs to return to the caller.
+  num_cond_outputs = len(true_graph.outputs)
+  # We do not output intermediates of the gradient If op since this is just
+  # for backwards compatibility with existing code.
+  if not building_gradient and util.output_all_intermediates():
+    # Add all intermediate tensors as function outputs so they're available for
+    # the gradient computation. Since the outputs of the two functions must
+    # match, we wrap all the intermediates in optionals. Each intermediate
+    # output will have a value iff its corresponding branch is taken.
+
+    true_intermediates = _get_intermediates(true_graph)
+    false_intermediates = _get_intermediates(false_graph)
+
+    # Wrap intermediates in optionals.
+    wrapped_true_intermediates = _wrap_intermediates(true_graph,
+                                                     true_intermediates)
+    wrapped_false_intermediates = _wrap_intermediates(false_graph,
+                                                      false_intermediates)
+
+    # Make outputs match by adding none optionals.
+    extra_true_outputs, extra_false_outputs = _make_intermediates_match(  # pylint: disable=unbalanced-tuple-unpacking
+        [true_graph, false_graph],
+        [wrapped_true_intermediates, wrapped_false_intermediates])
+
+    true_graph.outputs.extend(extra_true_outputs)
+    false_graph.outputs.extend(extra_false_outputs)
+    _check_same_outputs(_COND, [true_graph, false_graph])
 
   # Create the If op.
   with ops.control_dependencies(
@@ -245,7 +292,7 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
   # Prevent fetching since the variant outputs can't be fetched directly.
   if_op.graph.prevent_fetching(if_op)
   return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
-                                            tensors)
+                                            tensors[:num_cond_outputs])
 
 
 def get_func_graphs(op):
@@ -275,8 +322,7 @@ def get_func_graphs(op):
           fdef, input_shapes)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
-    func_graph.captures = collections.OrderedDict(zip(inputs,
-                                                      func_graph.inputs))
+    func_graph.reset_captures(zip(inputs, func_graph.inputs))
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -379,11 +425,18 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
       # `internal_captures` are not treated as intermediates and hence not added
       # to If op outputs. So we get the outer tensor corresponding to those
       # from the list of `external_captures`.
-      try:
-        t = t.graph._forward_cond.outputs[t.graph.outputs.index(t)]
-      except ValueError:
-        index = t.graph.internal_captures.index(t)
-        t = t.graph.external_captures[index]
+      for i, output in enumerate(t.graph.outputs):
+        if output is t:
+          t = t.graph._forward_cond.outputs[i]
+          break
+      else:
+        for i, output in enumerate(t.graph.internal_captures):
+          if output is t:
+            t = t.graph.external_captures[i]
+            break
+        else:
+          raise ValueError("Could not find external tensor capture {tensor} in "
+                           "captures or outputs".format(tensor=t))
 
       # Note: We rely on the capturing logic of the gradient If op graph to
       # correctly capture the tensors in `cond_graph.outer_graph`. Both cond_v2
@@ -395,12 +448,17 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
 
 
 def _get_intermediates(func_graph):
-  """Returns all tensors in `func_graph` that aren't inputs or outputs."""
+  """Returns intermediate tensors of `func_graph` for gradient computation."""
   intermediates = []
   for op in func_graph.get_operations():
     for t in op.outputs:
       if t in func_graph.inputs: continue
       if t in func_graph.outputs: continue
+      if t.dtype is dtypes.resource:
+        continue
+      # Accumulating mutexes can cause deadlock.
+      if op.type == "MutexLock":
+        continue
       intermediates.append(t)
   return intermediates
 
@@ -465,16 +523,21 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph. This is a deduped version of `sum(branch_inputs)`.
   """
   assert len(branch_graphs) == len(branch_inputs)
-  new_inputs = set()
+  added_inputs = set()
+  new_inputs = []
   for branch_in in branch_inputs:
-    new_inputs |= set(branch_in)
-  new_inputs = list(new_inputs)
+    for tensor in branch_in:
+      tensor_id = ops.tensor_id(tensor)
+      if tensor_id not in added_inputs:
+        added_inputs.add(tensor_id)
+        new_inputs.append(tensor)
 
   for branch_graph, branch_in in zip(branch_graphs, branch_inputs):
-    branch_input_to_param = dict(zip(branch_in, branch_graph.inputs))
+    input_ids = [ops.tensor_id(t) for t in branch_in]
+    branch_input_to_param = dict(zip(input_ids, branch_graph.inputs))
     input_list = []
     for in_t in new_inputs:
-      param = branch_input_to_param.get(in_t, None)
+      param = branch_input_to_param.get(ops.tensor_id(in_t))
       if param is None:
         param = _create_dummy_input(branch_graph, in_t)
       input_list.append(param)
@@ -482,8 +545,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.captures = collections.OrderedDict(
-        zip(new_inputs, branch_graph.inputs))
+    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
 
   return new_inputs
 
@@ -744,19 +806,20 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
 
   def _capture_helper(self, tensor, name):
     if (tensor.graph is not self._forward_graph or
-        tensor in self._forward_graph.inputs or
-        tensor in self._forward_graph.outputs):
+        any(tensor is t for t in self._forward_graph.inputs) or
+        any(tensor is t for t in self._forward_graph.outputs)):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
-      if tensor not in self.captures:
+      if all(tensor is not capture for capture in self.external_captures):
         self.xla_intermediates.append(tensor)
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    captured_tensor = self._indirect_captures.get(tensor)
+    tensor_id = ops.tensor_id(tensor)
+    captured_tensor = self._indirect_captures.get(tensor_id)
     if captured_tensor is not None:
       return captured_tensor
 
@@ -778,12 +841,13 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
       captured_tensor = super(_CondGradFuncGraph, self)._capture_helper(
           self._forward_graph.inputs[index], name)
     else:
-      if tensor not in self._wrapped_intermediates:
+      if tensor_id not in self._wrapped_intermediates:
         # If the gradient has already been computed for this If op, 'tensor' may
         # already be wrapped.
         for consumer in tensor.consumers():
           if (consumer.type == "OptionalFromValue" and
-              consumer.outputs[0] in self._forward_graph.outputs):
+              any(consumer.outputs[0] is output
+                  for output in self._forward_graph.outputs)):
             optional = consumer.outputs[0]
             break
         else:
@@ -791,15 +855,15 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
           with self._forward_graph.as_default():
             optional = gen_dataset_ops.optional_from_value([tensor])
           self.op_needs_rewrite = True
-        self._wrapped_intermediates[tensor] = optional
+        self._wrapped_intermediates[tensor_id] = optional
 
-      optional = self._wrapped_intermediates[tensor]
+      optional = self._wrapped_intermediates[tensor_id]
       captured_optional = super(_CondGradFuncGraph,
                                 self)._capture_helper(optional, name)
       captured_tensor = gen_dataset_ops.optional_get_value(
           captured_optional, [tensor.dtype], [tensor.shape])[0]
 
-    self._indirect_captures[tensor] = captured_tensor
+    self._indirect_captures[tensor_id] = captured_tensor
     return captured_tensor
 
 
@@ -869,7 +933,7 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(bjp): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.InXlaContext(ops.get_default_graph()):
+    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(bjp,jpienaar): can XLA support optionals?

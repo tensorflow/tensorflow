@@ -167,17 +167,17 @@ TEST_F(GraphOptimizerStageTest, GetInputNodeAndProperties) {
   EXPECT_EQ(add_node->input(0), "a");
   EXPECT_EQ(add_node->input(1), "b");
 
-  OpInfo::TensorProperties add_properties;
+  const OpInfo::TensorProperties* add_properties;
   TF_CHECK_OK(stage.GetTensorProperties("Add", &add_properties));
-  EXPECT_EQ(add_properties.dtype(), DT_FLOAT);
+  EXPECT_EQ(add_properties->dtype(), DT_FLOAT);
 
-  OpInfo::TensorProperties a_properties;
+  const OpInfo::TensorProperties* a_properties;
   TF_CHECK_OK(stage.GetTensorProperties("a:0", &a_properties));
-  EXPECT_EQ(a_properties.dtype(), DT_FLOAT_REF);
+  EXPECT_EQ(a_properties->dtype(), DT_FLOAT_REF);
 
-  OpInfo::TensorProperties b_properties;
+  const OpInfo::TensorProperties* b_properties;
   TF_CHECK_OK(stage.GetTensorProperties("b:0", &b_properties));
-  EXPECT_EQ(b_properties.dtype(), DT_FLOAT_REF);
+  EXPECT_EQ(b_properties->dtype(), DT_FLOAT_REF);
 }
 
 TEST_F(GraphOptimizerStageTest, AddNodes) {

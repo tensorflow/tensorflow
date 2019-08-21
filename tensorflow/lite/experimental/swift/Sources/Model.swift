@@ -16,11 +16,10 @@ import TensorFlowLiteC
 
 /// A TensorFlow Lite model used by the 'Interpreter` to perform inference.
 final class Model {
-
-  /// The `TFL_Model` C pointer type represented as an `UnsafePointer<TFL_Model>`.
+  /// `TfLiteModel` C pointer type represented as an `UnsafePointer<TfLiteModel>`.
   typealias CModel = OpaquePointer
 
-  /// The underlying `TFL_Model` C pointer.
+  /// Underlying `TfLiteModel` C pointer.
   let cModel: CModel?
 
   /// Creates a new model instance.
@@ -29,11 +28,11 @@ final class Model {
   /// - Parameters:
   ///   - filePath: Local file path to a TensorFlow Lite model.
   init?(filePath: String) {
-    guard !filePath.isEmpty, let cModel = TFL_NewModelFromFile(filePath) else { return nil }
+    guard !filePath.isEmpty, let cModel = TfLiteModelCreateFromFile(filePath) else { return nil }
     self.cModel = cModel
   }
 
   deinit {
-    TFL_DeleteModel(cModel)
+    TfLiteModelDelete(cModel)
   }
 }

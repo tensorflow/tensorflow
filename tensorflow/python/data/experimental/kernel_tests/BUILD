@@ -159,6 +159,7 @@ tf_py_test(
     srcs = ["replicate_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -172,6 +173,7 @@ tf_py_test(
     srcs = ["replicate_cluster_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -574,6 +576,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",

@@ -339,8 +339,8 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       h = operator.convolution_kernel()
       c = operator.to_dense()
 
-      self.assertAllEqual((2, 3), h.get_shape())
-      self.assertAllEqual((2, 3, 3), c.get_shape())
+      self.assertAllEqual((2, 3), h.shape)
+      self.assertAllEqual((2, 3, 3), c.shape)
       self.assertAllClose(h.eval(), self.evaluate(c)[:, :, 0])
 
   @test_util.run_deprecated_v1
@@ -682,7 +682,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       self.assertEqual(operator.dtype, dtypes.complex64)
       matrix = operator.to_dense().eval()
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), matrix.shape)
-      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-6)
+      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
 
   @test_util.run_deprecated_v1
   def test_defining_spd_operator_by_taking_real_part(self):

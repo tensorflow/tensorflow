@@ -50,7 +50,7 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
     }
-  } else if (node->type_string() == "While") {
+  } else if (node->IsWhileNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
     for (const string& attr_name : std::vector<string>{"cond", "body"}) {

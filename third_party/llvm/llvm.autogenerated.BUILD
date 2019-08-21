@@ -2778,6 +2778,7 @@ cc_library(
     deps = [
         ":config",
         ":debug_info_code_view",
+        ":mc",
         ":object",
         ":support",
     ],

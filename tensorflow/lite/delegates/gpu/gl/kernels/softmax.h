@@ -25,7 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-std::unique_ptr<NodeShader> NewSoftMaxNodeShader();
+std::unique_ptr<NodeShader> NewSoftmaxNodeShader();
 
 }  // namespace gl
 }  // namespace gpu

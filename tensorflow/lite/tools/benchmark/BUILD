@@ -128,11 +128,19 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_params",
         ":benchmark_utils",
         ":logging",
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:gl_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -158,6 +166,7 @@ cc_library(
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
-using namespace mlir;
 
 // Static initialization for XLA dialect registration.
-static DialectRegistration<XLA::XLADialect> XlaOps;
+static mlir::DialectRegistration<mlir::XLA::XlaHloDialect> xla_hlo_ops;

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -165,7 +166,8 @@ class HeapSimulator {
 
   Status RunComputation(const HloComputation& computation,
                         const HloInstructionSequence& instruction_sequence,
-                        const HloAliasAnalysis& alias_analysis);
+                        const HloAliasAnalysis& alias_analysis,
+                        HloLiveRange* live_range);
 
   bool IgnoreBuffer(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
@@ -203,15 +205,6 @@ class HeapSimulator {
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
   absl::flat_hash_set<const HloValue*> allocated_buffers_;
   absl::flat_hash_set<const HloValue*> freed_buffers_;
-
-  // The flattened sequence of all instructions in the module. It contains the
-  // same information as instruction_schedule_, but allows fast indexing using
-  // the schedule index.
-  HloInstructionSequence flattened_instruction_sequence_;
-  // instruction_schedule and computation_schedule are the maps that track each
-  // instruction/computation and their ordinal in the schedule.
-  absl::flat_hash_map<const HloInstruction*, int64> instruction_schedule_;
-  absl::flat_hash_map<const HloComputation*, int64> computation_schedule_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;
@@ -271,20 +264,15 @@ class HeapAlgorithm {
   virtual void SetSchedules(
       const HloInstructionSequence* flattened_instruction_sequence,
       const absl::flat_hash_map<const HloInstruction*, int64>*
-          instruction_schedule,
-      const absl::flat_hash_map<const HloComputation*, int64>*
-          computation_schedule) {
+          instruction_schedule) {
     flattened_instruction_sequence_ = flattened_instruction_sequence;
     instruction_schedule_ = instruction_schedule;
-    computation_schedule_ = computation_schedule;
   }
 
  protected:
   const HloInstructionSequence* flattened_instruction_sequence_;
   const absl::flat_hash_map<const HloInstruction*, int64>*
       instruction_schedule_;
-  const absl::flat_hash_map<const HloComputation*, int64>*
-      computation_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;

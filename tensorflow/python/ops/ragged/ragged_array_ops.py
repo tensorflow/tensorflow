@@ -525,6 +525,29 @@ def rank(input, name=None):  # pylint: disable=redefined-builtin
 
 
 #===============================================================================
+# ragged.one_hot
+#===============================================================================
+def ragged_one_hot(indices,
+                   depth,
+                   on_value=None,
+                   off_value=None,
+                   axis=None,
+                   dtype=None,
+                   name=None):
+  """Applies tf.one_hot along the values of a RaggedTensor."""
+  with ops.name_scope(name, 'RaggedOneHot', [indices]):
+    indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        indices, name='indices')
+    if axis is not None:
+      axis = ragged_util.get_positive_axis(axis, indices.shape.ndims)
+      if axis < indices.ragged_rank:
+        raise ValueError('axis may not be less than indices.ragged_rank.')
+    return indices.with_flat_values(
+        array_ops.one_hot(indices.flat_values, depth, on_value, off_value, axis,
+                          dtype, name))
+
+
+#===============================================================================
 # ragged.stack_dynamic_partitions
 #===============================================================================
 @tf_export('ragged.stack_dynamic_partitions')

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string.h>
 
 #include "absl/strings/match.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
@@ -78,7 +79,10 @@ void BM_Execute(int iters, int async) {
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   if (async) {
-    TFE_ContextAsyncWait(ctx, status);
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteOp(matmul);
@@ -110,7 +114,10 @@ void BM_Execute_Identity(int iters, int async) {
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   if (async) {
-    TFE_ContextAsyncWait(ctx, status);
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteOp(identity);
@@ -228,8 +235,10 @@ void TestRemoteExecute(bool async) {
 
   TFE_DeleteOp(matmul);
 
-  TFE_ContextAsyncWait(ctx, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 
   TF_DeleteStatus(status);
@@ -314,9 +323,11 @@ void TestRemoteExecuteSilentCopies(bool async) {
 
   TFE_DeleteOp(matmul);
 
-  TFE_ContextAsyncWait(ctx, status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TF_DeleteStatus(status);
 
@@ -445,8 +456,10 @@ void CheckRemoteMatMulExecutesOK(TFE_Context* ctx,
 
   TFE_DeleteOp(matmul);
 
-  TFE_ContextAsyncWait(ctx, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteExecutor(executor);
   TF_DeleteStatus(status);
 }
 
@@ -481,8 +494,9 @@ void TestRemoteExecuteChangeServerDef(bool async) {
       "/job:localhost/replica:0/task:0/device:CPU:0";
   CheckRemoteMatMulExecutesOK(ctx, remote_device_name, local_device_name);
 
-  TFE_ContextAsyncWait(ctx, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
@@ -524,8 +538,9 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   CheckRemoteMatMulExecutesOK(ctx, new_remote_device_name,
                               new_local_device_name);
 
-  TFE_ContextAsyncWait(ctx, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteExecutor(executor);
 
   TF_DeleteStatus(status);
 
@@ -658,8 +673,11 @@ void TensorHandleCopyBetweenDevicesError(bool async) {
   TFE_TensorHandle* hcopy =
       TFE_TensorHandleCopyToDevice(hcpu, ctx, kCPUDevice, status.get());
   EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TFE_ContextAsyncWait(ctx, status.get());
-  EXPECT_EQ(TF_OK, TF_GetCode(status.get()));
+
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
   TFE_DeleteTensorHandle(hcopy);
   TFE_DeleteTensorHandle(hcpu);
   if (hdevice != nullptr) TFE_DeleteTensorHandle(hdevice);
@@ -788,8 +806,10 @@ void TensorHandleSilentCopy(bool async) {
 
   TF_DeleteTensor(t);
   TFE_DeleteTensorHandle(hcpu);
-  TFE_ContextAsyncWait(ctx, status.get());
-  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 }
 
@@ -834,8 +854,10 @@ void TensorHandleSilentCopyLocal(bool async) {
 
   TF_DeleteTensor(t);
   TFE_DeleteTensorHandle(hcpu);
-  TFE_ContextAsyncWait(ctx, status.get());
-  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 }
 TEST(CAPI, TensorHandleSilentCopyLocal) { TensorHandleSilentCopyLocal(false); }
@@ -969,8 +991,10 @@ TEST(CAPI, TensorHandleDevices) {
   }
 
   TFE_DeleteTensorHandle(hcpu);
-  TFE_ContextAsyncWait(ctx, status.get());
-  EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 }
 
@@ -1048,9 +1072,11 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
     retvals[0] = nullptr;
     TFE_Execute(matmul2, &retvals[0], &num_retvals, status);
     EXPECT_NE(TF_OK, TF_GetCode(status));
-    TFE_ContextAsyncClearError(ctx);
-    TFE_ContextAsyncWait(ctx, status);
-    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorClearError(executor);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
   }
   // Following works in async mode since TFE_ContextAsyncClearError was called.
   TF_SetStatus(status, TF_OK, "");
@@ -1268,79 +1294,6 @@ void ExecuteWithTracing(bool async) {
 TEST(CAPI, ExecuteWithTracing) { ExecuteWithTracing(false); }
 TEST(CAPI, ExecuteWithTracingAsync) { ExecuteWithTracing(true); }
 
-#ifdef TENSORFLOW_EAGER_USE_XLA
-TEST(CAPI, Function_ident_XLA_CPU) {
-  // First create a simple identity function.
-  TF_Graph* function_graph = TF_NewGraph();
-  TF_OperationDescription* arg_descr =
-      TF_NewOperation(function_graph, "Placeholder", "arg");
-  TF_SetAttrType(arg_descr, "dtype", TF_INT32);
-  TF_Status* status = TF_NewStatus();
-  TF_Operation* arg = TF_FinishOperation(arg_descr, status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TF_OperationDescription* id_descr =
-      TF_NewOperation(function_graph, "Identity", "id");
-  TF_SetAttrType(id_descr, "T", TF_INT32);
-  TF_AddInput(id_descr, {arg, 0});
-  TF_Operation* id = TF_FinishOperation(id_descr, status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TF_Output input{arg, 0};
-  TF_Output output{id, 0};
-  TF_Function* fn =
-      TF_GraphToFunction(function_graph, "ident", 0, 1, &id, 1, &input, 1,
-                         &output, nullptr, nullptr, "test", status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TF_DeleteGraph(function_graph);
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_Context* ctx = TFE_NewContext(opts, status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TFE_DeleteContextOptions(opts);
-  TFE_ContextAddFunction(ctx, fn, status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TF_DeleteFunction(fn);
-
-  for (bool async : {false, true, false}) {
-    TFE_ContextSetAsyncForThread(ctx, static_cast<unsigned char>(async),
-                                 status);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK);
-    TF_Tensor* t =
-        TF_AllocateTensor(TF_INT32, nullptr, 0, 1 * sizeof(tensorflow::int32));
-    *reinterpret_cast<tensorflow::int32*>(TF_TensorData(t)) = 42;
-    TFE_TensorHandle* h = TFE_NewTensorHandle(t, status);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-    TF_DeleteTensor(t);
-
-    TFE_Op* op = TFE_NewOp(ctx, "ident", status);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-    TFE_OpAddInput(op, h, status);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-
-    // Now run it via XLA.
-    TFE_OpSetXLACompilation(op, true);
-
-    std::vector<TFE_TensorHandle*> result;
-    result.push_back(nullptr);
-    int num_retvals = 1;
-    TFE_Execute(op, result.data(), &num_retvals, status);
-    TFE_DeleteOp(op);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-    ASSERT_EQ(num_retvals, 1);
-
-    TF_Tensor* r = TFE_TensorHandleResolve(result[0], status);
-    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-    EXPECT_EQ(*reinterpret_cast<tensorflow::int32*>(TF_TensorData(r)), 42);
-    TFE_DeleteTensorHandle(h);
-    TF_DeleteTensor(r);
-    TFE_DeleteTensorHandle(result[0]);
-  }
-  TFE_ContextRemoveFunction(ctx, "ident", status);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TFE_DeleteContext(ctx);
-  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
-  TF_DeleteStatus(status);
-}
-#endif  // TENSORFLOW_EAGER_USE_XLA
-
 string MatMulFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
@@ -1454,7 +1407,10 @@ void BM_ExecuteFunction(int iters, int async) {
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
   if (async) {
-    TFE_ContextAsyncWait(ctx, status);
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
   }
   tensorflow::testing::StopTiming();
   TFE_DeleteTensorHandle(m);

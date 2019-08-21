@@ -313,7 +313,7 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
 
     nodes.append({
         "id": TensorName(tensor_index),
-        "name": "%r (%d)" % (tensor["shape"], tensor_index),
+        "name": "%r (%d)" % (getattr(tensor, "shape", []), tensor_index),
         "group": 1,
         "x": initial_y[1],
         "y": initial_y[0]

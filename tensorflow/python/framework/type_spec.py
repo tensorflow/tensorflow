@@ -260,7 +260,8 @@ class TypeSpec(object):
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return self.__get_cmp_key() == other.__get_cmp_key()
+    return (type(other) is type(self) and
+            self.__get_cmp_key() == other.__get_cmp_key())
 
   def __ne__(self, other):
     return not self == other

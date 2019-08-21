@@ -29,6 +29,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import array_ops
@@ -125,6 +126,28 @@ def _reuse_op():
   return keras.Model(inputs, outputs)
 
 
+def _float64_op():
+  inputs = keras.Input(shape=(10,))
+  x = keras.layers.Dense(10, dtype='float64')(inputs)
+  x = gen_nn_ops.relu(x)
+  assert x.dtype == 'float64', 'x has dtype: %s' % x.dtype
+  outputs = keras.layers.Dense(10)(x)
+  return keras.Model(inputs, outputs)
+
+
+class MyAdd(keras.layers.Layer):
+
+  def call(self, x, y):
+    return x + y
+
+
+def _layer_with_tensor_arg():
+  inputs = keras.Input(shape=(10,))
+  x = inputs * 2
+  outputs = MyAdd()(inputs, x)
+  return keras.Model(inputs, outputs)
+
+
 class LayerWithLayer(keras.layers.Layer):
 
   def build(self, input_shape):
@@ -178,8 +201,10 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('op_with_tensor_list', _op_with_tensor_list),
       ('add_n', _add_n),
       ('_reuse_op', _reuse_op),
+      ('_float64_op', _float64_op),
       ('_inner_layer', _inner_layer),
       ('_reuse_ancillary_layer', _reuse_ancillary_layer),
+      ('_layer_with_tensor_arg', _layer_with_tensor_arg),
   )
   def test_autolambda(self, model_fn):
     model = model_fn()
@@ -187,7 +212,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         adam.Adam(0.001),
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     np_inputs = nest.map_structure(
         lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.inputs)
@@ -197,12 +222,16 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model(np_inputs)  # Test calling the model directly on inputs.
 
     new_model = keras.Model.from_config(
-        model.get_config(), custom_objects={'LayerWithLayer': LayerWithLayer})
+        model.get_config(),
+        custom_objects={
+            'LayerWithLayer': LayerWithLayer,
+            'MyAdd': MyAdd
+        })
     new_model.compile(
         adam.Adam(0.001),
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     new_model.fit(np_inputs, np_outputs, batch_size=2)
     new_model(np_inputs)  # Test calling the new model directly on inputs.
     # Assert that metrics are preserved and in the right order.
@@ -298,6 +327,15 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     for layer in model.layers:
       self.assertTrue(layer.built)
     # Test something that requires Layers to be built.
+    model.summary()
+
+  def test_json_serialization(self):
+    inputs = keras.Input(shape=(4,), dtype='uint8')
+    outputs = math_ops.cast(inputs, 'float32') / 4.
+    model = saving.model_from_json(keras.Model(inputs, outputs).to_json())
+    self.assertAllEqual(
+        self.evaluate(model(np.array([0, 64, 128, 192], np.uint8))),
+        [0., 16., 32., 48.])
     model.summary()
 
 

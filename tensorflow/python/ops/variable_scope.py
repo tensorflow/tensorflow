@@ -899,10 +899,14 @@ class _VariableStore(object):
         if tf_inspect.isclass(initializer):
           initializer = initializer()
         if shape is not None and shape.is_fully_defined():
-          init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-              shape.as_list(),
-              dtype=dtype,
-              partition_info=partition_info)
+          if "partition_info" in tf_inspect.getargspec(initializer).args:
+            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+                shape.as_list(),
+                dtype=dtype,
+                partition_info=partition_info)
+          else:
+            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+                shape.as_list(), dtype=dtype)
           variable_dtype = dtype.base_dtype
         elif len(tf_inspect.getargspec(initializer).args) == len(
             tf_inspect.getargspec(initializer).defaults or []):

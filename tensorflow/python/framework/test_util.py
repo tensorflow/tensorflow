@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 from collections import OrderedDict
 import contextlib
 import functools
@@ -69,6 +68,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
@@ -83,6 +83,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 # If the below import is made available through the BUILD rule, then this
@@ -532,6 +533,29 @@ def disable_control_flow_v2(unused_msg):
   def wrapper(func):
     func._disable_control_flow_v2 = True
     return func
+
+  return wrapper
+
+
+def enable_output_all_intermediates(fn):
+  """Force-enable outputing all intermediates from functional control flow ops.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    output_all_intermediates_old = \
+        control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
+          output_all_intermediates_old
 
   return wrapper
 
@@ -2304,8 +2328,8 @@ class TensorFlowTestCase(googletest.TestCase):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    a_is_dict = isinstance(a, collections.Mapping)
-    if a_is_dict != isinstance(b, collections.Mapping):
+    a_is_dict = isinstance(a, collections_abc.Mapping)
+    if a_is_dict != isinstance(b, collections_abc.Mapping):
       raise ValueError("Can't compare dict to non-dict, a%s vs b%s. %s" %
                        (path_str, path_str, msg))
     if a_is_dict:
@@ -2497,6 +2521,21 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
+
+  @py_func_if_in_function
+  def assertNotAllEqual(self, a, b, msg=None):
+    """Asserts that two numpy arrays or Tensors do not have the same values.
+
+    Args:
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
+      msg: Optional message to report on failure.
+    """
+    try:
+      self.assertAllEqual(a, b, msg)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are equal at all elements")
 
   @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):

@@ -728,9 +728,9 @@ Status GraphConstructor::ValidateShape(Node* node) {
   if (!opts_.importing || !opts_.validate_shape) return Status::OK();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
   // For nodes with the _output_shapes attribute, override the shape.
-  std::vector<TensorShapeProto> shape_attrs;
+  std::vector<const TensorShapeProto*> shape_attrs;
   const char* kAttrName = "_output_shapes";
-  if (!GetNodeAttr(node->attrs(), kAttrName, &shape_attrs).ok()) {
+  if (!TryGetNodeAttr(node->attrs(), kAttrName, &shape_attrs)) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
     return Status::OK();
   }
@@ -753,7 +753,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
                  << " outputs. Output shapes may be inaccurate.";
   }
   for (int i = 0; i < node->num_outputs(); ++i) {
-    const TensorShapeProto& p = shape_attrs[i];
+    const TensorShapeProto& p = *shape_attrs[i];
     shape_inference::ShapeHandle h;
     Status s = ic->MakeShapeFromShapeProto(p, &h);
     if (!s.ok()) {
@@ -772,7 +772,6 @@ Status GraphConstructor::ValidateShape(Node* node) {
       // This is an escape hatch that allows us to correct shape
       // functions that are not critical to correct execution but
       // would cause graphs to fail if imported after correcting.
-      //
       const string& op = node->type_string();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
@@ -991,11 +990,10 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     Node* node = pair.second.node;
     if (node == nullptr) continue;
     std::vector<string> coloc_values;
-    Status status =
-        GetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values);
-    if (!status.ok()) continue;
+    if (!TryGetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values))
+      continue;
     bool updated = false;
-    for (int i = 0; i < coloc_values.size(); ++i) {
+    for (size_t i = 0; i < coloc_values.size(); ++i) {
       StringPiece val(coloc_values[i]);
       if (absl::ConsumePrefix(&val, kColocationGroupPrefix)) {
         auto name_pair = uniquified_names_.find(string(val));
@@ -1006,7 +1004,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
       }
     }
     if (updated) {
-      node->AddAttr(kColocationAttrName, coloc_values);
+      node->AddAttr(kColocationAttrName, std::move(coloc_values));
     }
   }
 }
@@ -1182,10 +1180,19 @@ Status GraphConstructor::Convert() {
       }
 
       if (src_node != nullptr && src_index >= src_node->num_outputs()) {
-        return errors::InvalidArgument(
-            "Node '", node_def.name(), "': Connecting to invalid output ",
-            tensor_id.index(), " of source node ", tensor_id.node(),
-            " which has ", src_node->num_outputs(), " outputs");
+        std::ostringstream out;
+        out << "Node '" << node_def.name() << "': Connecting to invalid output "
+            << tensor_id.index() << " of source node " << tensor_id.node()
+            << " which has " << src_node->num_outputs() << " outputs.";
+
+        if (src_node->type_string() == "If" ||
+            src_node->type_string() == "StatelessIf" ||
+            src_node->type_string() == "While" ||
+            src_node->type_string() == "StatelessWhile") {
+          out << " Try using "
+              << "tf.compat.v1.experimental.output_all_intermediates(True).";
+        }
+        return errors::InvalidArgument(out.str());
       }
 
       inputs.emplace_back(string(tensor_id.node()), src_node, src_index);

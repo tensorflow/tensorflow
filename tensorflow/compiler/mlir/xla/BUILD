@@ -67,6 +67,7 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":xla",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -101,6 +102,7 @@ cc_library(
     srcs = [
         "transforms/legalize_control_flow.cc",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":xla",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -118,6 +120,7 @@ cc_library(
     srcs = [
         "transforms/legalize_to_standard.cc",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":xla",
         ":xla_legalize_to_standard_inc_gen",
@@ -142,6 +145,7 @@ cc_library(
         "ir/xla_ops.h",
         "transforms/passes.h",
     ],
+    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":xla_ops_inc_gen",
@@ -160,6 +164,7 @@ cc_library(
 cc_library(
     name = "xla_dialect_registration",
     srcs = ["ir/dialect_registration.cc"],
+    copts = ["-std=c++14"],
     deps = [
         ":xla",
         "@local_config_mlir//:IR",
@@ -171,6 +176,7 @@ cc_library(
     name = "type_to_shape",
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
+    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -201,6 +207,7 @@ cc_library(
         "operator_writers.inc",
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
+    copts = ["-std=c++14"],
     deps = [
         ":type_to_shape",
         ":xla",
@@ -228,6 +235,7 @@ cc_library(
     hdrs = [
         "hlo_to_mlir_hlo.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":hlo_module_importer",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -247,6 +255,7 @@ cc_library(
         "hlo_function_importer.h",
         "hlo_module_importer.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":xla",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -272,6 +281,7 @@ cc_library(
     hdrs = [
         "xla_mlir_translate.h",
     ],
+    copts = ["-std=c++14"],
     deps = [
         ":hlo_to_mlir_hlo",
         ":mlir_hlo_to_hlo",
@@ -294,7 +304,6 @@ tf_native_cc_binary(
         "operator_writer_gen.cc",
     ],
     deps = [
-        "@llvm//:config",
         "@llvm//:support",
         "@llvm//:tablegen",
         "@local_config_mlir//:TableGen",

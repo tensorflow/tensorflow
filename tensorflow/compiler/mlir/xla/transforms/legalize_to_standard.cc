@@ -16,10 +16,10 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -36,7 +36,7 @@ namespace {
 
 struct CompareIConvert : public RewritePattern {
   explicit CompareIConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -75,7 +75,7 @@ struct CompareIConvert : public RewritePattern {
 
 struct CompareFConvert : public RewritePattern {
   explicit CompareFConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -123,8 +123,8 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-FunctionPassBase *mlir::XLA::createLegalizeToStdPass() {
-  return new LegalizeToStandard();
+std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeToStdPass() {
+  return std::make_unique<LegalizeToStandard>();
 }
 
 /// Perform the lowering to standard dialect.
@@ -133,11 +133,9 @@ void LegalizeToStandard::runOnFunction() {
   auto func = getFunction();
 
   mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareFConvert>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareIConvert>(&getContext()));
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<mlir::XLA::CompareFConvert, mlir::XLA::CompareIConvert>(
+      &getContext());
+  applyPatternsGreedily(func, patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

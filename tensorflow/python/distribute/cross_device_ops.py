@@ -30,6 +30,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -84,7 +85,8 @@ def reduce_non_distributed_value(reduce_op, device_map, value, destinations):
   # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
-  if value == 0:
+  # TODO:(b/138823479): handle the tensor value properly.
+  if not tensor_util.is_tensor(value) and value == 0:
     return 0
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
@@ -262,7 +264,7 @@ class CrossDeviceOps(object):
       ValueError: if per_replica_value can't be converted to a PerReplica
         object.
     """
-    if not isinstance(per_replica_value, value_lib.PerReplica):
+    if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
@@ -802,14 +804,14 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "NCCL all-reduce requires num_packs > 0, but {} is specified".format(
+          "NCCL all-reduce requires num_packs >= 0, but {} is specified".format(
               num_packs))
     super(NcclAllReduce, self).__init__(
         all_reduce_alg="nccl", num_packs=num_packs)
@@ -833,15 +835,15 @@ class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "HierarchicalCopy requires num_packs > 0, but {} is specified".format(
-              num_packs))
+          "HierarchicalCopy requires num_packs >= 0, but {} is specified"
+          .format(num_packs))
     super(HierarchicalCopyAllReduce, self).__init__(
         all_reduce_alg="hierarchical_copy",
         num_packs=num_packs)

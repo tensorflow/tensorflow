@@ -28,6 +28,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -368,7 +369,7 @@ class ExponentialMovingAverage(object):
     self._num_updates = num_updates
     self._zero_debias = zero_debias
     self._name = name
-    self._averages = {}
+    self._averages = object_identity.ObjectIdentityDictionary()
 
   @property
   def name(self):
@@ -456,7 +457,7 @@ class ExponentialMovingAverage(object):
                                  (1.0 + num_updates) / (10.0 + num_updates))
       updates = []
       for var in var_list:
-        zero_debias = self._averages[var] in zero_debias_true
+        zero_debias = any(self._averages[var] is v for v in zero_debias_true)
         updates.append(
             assign_moving_average(
                 self._averages[var], var, decay, zero_debias=zero_debias))

@@ -241,9 +241,9 @@ class PlacerTest : public ::testing::Test {
   // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
-               bool log_device_placement) {
-    Placer placer(graph, "", &graph->flib_def(), devices, nullptr,
+  Status Place(Graph* graph, DeviceSet* devices, Device* default_local_device,
+               bool allow_soft_placement, bool log_device_placement) {
+    Placer placer(graph, "", &graph->flib_def(), devices, default_local_device,
                   allow_soft_placement, log_device_placement);
     return placer.Run();
   }
@@ -286,15 +286,18 @@ class PlacerTest : public ::testing::Test {
   }
 
   Status Place(Graph* graph, DeviceSet* devices) {
-    return Place(graph, devices, true, false);
+    return Place(graph, devices, nullptr, true, false);
   }
 
   Status Place(Graph* graph, bool allow_soft_placement,
                bool log_device_placement) {
-    return Place(graph, &devices_, allow_soft_placement, log_device_placement);
+    return Place(graph, &devices_, nullptr, allow_soft_placement,
+                 log_device_placement);
   }
 
-  Status Place(Graph* graph) { return Place(graph, &devices_, true, false); }
+  Status Place(Graph* graph) {
+    return Place(graph, &devices_, nullptr, true, false);
+  }
 
   Status CallOptPassesAndPlace(Graph* graph, bool allow_soft_placement,
                                bool log_device_placement) {
@@ -1430,8 +1433,8 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 }
 
 // Test that placement fails when an op with no registered kernels is
-// requested.
-TEST_F(PlacerTest, TestNoKernelsRegistered) {
+// requested and no device is requested for the node
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequstedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1445,6 +1448,58 @@ TEST_F(PlacerTest, TestNoKernelsRegistered) {
                                 "No OpKernel was registered to support Op "
                                 "'VariableNoKernels' used by {{node var}}"));
   EXPECT_TRUE(absl::StrContains(s.error_message(), "<no registered kernels>"));
+}
+
+// Test that placement fails when an op does not have registered kernel
+// and the requested device has the same (job, replica, task) as the placer's
+// local device
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceLocal) {
+  const string cpu_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const string gpu_device = "/job:b/replica:0/task:0/device:FakeGPU:0";
+
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableNoKernels", b.opts().WithName("var"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  GetNodeByName(g, "var")->set_requested_device(gpu_device);
+
+  DeviceSet devices;
+  std::unique_ptr<Device> gpu(FakeDevice::MakeGPU(gpu_device));
+  devices.AddDevice(gpu.get());
+  std::unique_ptr<Device> cpu(FakeDevice::MakeCPU(cpu_device));
+  devices.AddDevice(cpu.get());
+  Status s = Place(&g, &devices, cpu.get(), false, false);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "No OpKernel was registered to support Op "
+                                "'VariableNoKernels' used by {{node var}}"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "<no registered kernels>"));
+}
+
+// Test that placement succeeds when an op does not have registered kernel
+// and the requested device has different (job, replica, task) than the placer's
+// local device
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceRemote) {
+  const string local_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const string remote_device = "/job:b/replica:0/task:1/device:FakeGPU:0";
+
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableNoKernels", b.opts().WithName("var"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  GetNodeByName(g, "var")->set_requested_device(remote_device);
+
+  DeviceSet heterogeneous;
+  std::unique_ptr<Device> gpu(FakeDevice::MakeGPU(remote_device));
+  heterogeneous.AddDevice(gpu.get());
+  std::unique_ptr<Device> cpu(FakeDevice::MakeCPU(local_device));
+  heterogeneous.AddDevice(cpu.get());
+  TF_EXPECT_OK(Place(&g, &heterogeneous, cpu.get(), false, false));
+  EXPECT_DEVICE_CONTAINS(g, "var", remote_device);
 }
 
 // Test that placement fails when a kernel is registered but no known

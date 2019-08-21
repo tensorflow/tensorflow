@@ -107,14 +107,8 @@ There are GPU options that can be set and passed on to
 Basic Usage, it translates to:
 
 ```c++
-const TfLiteGpuDelegateOptions kDefaultOptions = {
-  .metadata = nullptr,
-  .compile_options = {
-    .precision_loss_allowed = 0,  // false
-    .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
-    .dynamic_batch_enabled = 0,  // false
-  },
-};
+const TfLiteGpuDelegateOptions kDefaultOptions =
+    TfLiteGpuDelegateOptionsDefault();
 ```
 
 Similar for `NewTfLiteMetalDelgate()`:

@@ -220,7 +220,8 @@ class MultiWorkerTrainingState(object):
     return temp_dir, os.path.join(temp_dir, 'training_state')
 
   def _assert_in_multi_worker_mode(self):
-    if not multi_worker_util.in_multi_worker_mode():
+    # pylint: disable=protected-access
+    if not self._model._in_multi_worker_mode():
       raise ValueError('MultiWorkerTrainingState is only supposed to be used '
                        'in multi-worker training. This indicates some error '
                        'that needs to be fixed. Please submit a bug issue to '

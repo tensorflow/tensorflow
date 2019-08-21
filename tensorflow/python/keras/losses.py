@@ -164,7 +164,7 @@ class Loss(object):
           '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
           'size like:\n```\nwith strategy.scope():\n'
           '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
-          'reduction=tf.keras.losses.reduction.NONE)\n....\n'
+          'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
           'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
@@ -420,8 +420,8 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   cce = tf.keras.losses.CategoricalCrossentropy()
   loss = cce(
     [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
-  print('Loss: ', loss.numpy())  # Loss: 0.3239
+    [[.9, .05, .05], [.05, .89, .06], [.05, .01, .94]])
+  print('Loss: ', loss.numpy())  # Loss: 0.0945
   ```
 
   Usage with the `compile` API:
@@ -484,8 +484,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   cce = tf.keras.losses.SparseCategoricalCrossentropy()
   loss = cce(
-    [0, 1, 2],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
+    tf.convert_to_tensor([0, 1, 2]),
+    tf.convert_to_tensor([[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]))
   print('Loss: ', loss.numpy())  # Loss: 0.3239
   ```
 

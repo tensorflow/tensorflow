@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -131,7 +133,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
+  TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
   // Shuffled formats need a workspace to store the shuffled input activations.
   const int expected_outputs_count =
       params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault ? 1
@@ -140,7 +142,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check proper datatype match among all Input Tensors
@@ -247,7 +252,7 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
                                           output->data.f);
   } else {
-    tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
+    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
   }
 
   // Compute output += weight * input
@@ -281,7 +286,7 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
                                           output->data.f);
   } else {
-    tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
+    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
   }
 
   // Save matrix multiplication computation for all zero input.
@@ -524,7 +529,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (filter->type) {

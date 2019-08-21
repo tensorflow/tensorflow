@@ -264,6 +264,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
           kCostPerUnit, do_quantile_summary_gen);
+    stream_resource->ResetStreams();
   }
 
  private:
@@ -299,6 +300,12 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     auto do_quantile_add_summary = [&](const int64 begin, const int64 end) {
       // Iterating all features.
       for (int64 feature_idx = begin; feature_idx < end; ++feature_idx) {
+        QuantileStream* stream = stream_resource->stream(feature_idx);
+        if (stream->IsFinalized()) {
+          VLOG(1) << "QuantileStream has already been finalized for feature"
+                  << feature_idx << ".";
+          continue;
+        }
         const Tensor& summaries = summaries_list[feature_idx];
         const auto summary_values = summaries.matrix<float>();
         const auto& tensor_shape = summaries.shape();
@@ -424,6 +431,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
           kCostPerUnit, do_quantile_flush);
 
+    stream_resource->ResetStreams();
     stream_resource->set_buckets_ready(true);
   }
 

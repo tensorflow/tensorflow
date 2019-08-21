@@ -37,6 +37,8 @@ namespace model {
 
 // A constant that can be used to enable auto-tuning.
 constexpr int64 kAutotune = -1;
+constexpr char kParallelism[] = "parallelism";
+constexpr char kBufferSize[] = "buffer_size";
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
@@ -126,12 +128,6 @@ class Node {
 
   virtual ~Node() {}
 
-  // Increments the bytes buffered by the given delta.
-  void add_buffered_bytes(int64 delta) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    buffered_bytes_ += delta;
-  }
-
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
@@ -154,6 +150,12 @@ class Node {
   int64 buffered_bytes() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return buffered_bytes_;
+  }
+
+  // Returns the number of elements stored in this node's buffer.
+  int64 buffered_elements() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return buffered_elements_;
   }
 
   // Indicates whether the node has tunable parameters.
@@ -193,6 +195,14 @@ class Node {
   int64 processing_time() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return processing_time_;
+  }
+
+  // Records the change in this node's buffer.
+  void record_buffer_event(int64 bytes_delta, int64 elements_delta)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    buffered_bytes_ += bytes_delta;
+    buffered_elements_ += elements_delta;
   }
 
   // Records that the node produced an element.
@@ -294,6 +304,7 @@ class Node {
       mutex_lock l2(result->mu_);
       result->autotune_ = autotune_;
       result->buffered_bytes_ = buffered_bytes_;
+      result->buffered_elements_ = buffered_elements_;
       result->processing_time_ = processing_time_;
       result->num_elements_ = num_elements_;
       result->parameters_ = parameters_;
@@ -310,10 +321,56 @@ class Node {
     return SelfProcessingTimeLocked();
   }
 
-  // Returns the per-element CPU time spent in the subtree rooted in this node.
-  double TotalProcessingTime() LOCKS_EXCLUDED(mu_) {
+  // Returns the total number of bytes buffered in all nodes in the subtree for
+  // which autotuning is enabled.
+  double TotalBufferedBytes() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
-    return TotalProcessingTimeLocked();
+    if (!autotune_) {
+      return 0;
+    }
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (!parameter) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+    }
+    if (parameter) {
+      result = buffered_bytes_;
+    }
+    for (auto& input : inputs_) {
+      result += input->TotalBufferedBytes();
+    }
+    return result;
+  }
+
+  // Collects the total buffer limit of all nodes in the subtree for which
+  // autotuning is enabled. This number represents the amount of memory that
+  // would be used by the subtree nodes if all of their buffers were full.
+  double TotalMaximumBufferedBytes() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    if (!autotune_) {
+      return 0;
+    }
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (!parameter) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+    }
+    if (parameter) {
+      result = (*parameter)->value * AverageBufferedElementSize();
+    }
+    for (auto& input : inputs_) {
+      result += input->TotalMaximumBufferedBytes();
+    }
+    return result;
+  }
+
+  // Returns the per-element CPU time spent in the subtree rooted in this node.
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each node of the subtree.
+  double TotalProcessingTime(std::map<string, double>* processing_times)
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return TotalProcessingTimeLocked(processing_times);
   }
 
  protected:
@@ -332,6 +389,15 @@ class Node {
   // Creates a clone of this node.
   virtual std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const
       SHARED_LOCKS_REQUIRED(mu_) = 0;
+
+  // Returns the average size of an element buffered in this node.
+  double AverageBufferedElementSize() const SHARED_LOCKS_REQUIRED(mu_) {
+    if (buffered_elements_ == 0) {
+      return 0;
+    }
+    return static_cast<double>(buffered_bytes_) /
+           static_cast<double>(buffered_elements_);
+  }
 
   // Returns the sum of per-element output time for the inputs of this node and
   // if `gradient` is not `nullptr`, collects gradients of output times w.r.t.
@@ -360,10 +426,13 @@ class Node {
   // Processing time for a given input is a weighted combination of a statistic
   // based on history of input processing time and the actual time. This is done
   // to improve accuracy of processing time estimation for newly created inputs.
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each input node.
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
-  double TotalProcessingTimeForInputs() SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeForInputs(
+      std::map<string, double>* processing_times) SHARED_LOCKS_REQUIRED(mu_) {
     // If the number of elements produced by an input is smaller than this
     // constant, then its processing time is estimated using a weighted average
     // of the empirical processing time and processing time history.
@@ -377,7 +446,8 @@ class Node {
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        double input_processing_time = input->TotalProcessingTime();
+        double input_processing_time =
+            input->TotalProcessingTime(processing_times);
         int64 num_elements = input->num_elements();
         if (num_elements < kNumElementsThreshold) {
           if (input_processing_time_count_ < kCountThreshold) {
@@ -411,7 +481,11 @@ class Node {
   }
 
   // Returns the per-element CPU time spent in the subtree rooted in this node.
-  virtual double TotalProcessingTimeLocked() SHARED_LOCKS_REQUIRED(mu_) = 0;
+  // If `processing_times` is not `nullptr`, collects the per-element CPU time
+  // spent in each node of the subtree.
+  virtual double TotalProcessingTimeLocked(
+      std::map<string, double>* processing_times)
+      SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   mutable mutex mu_;
   const int64 id_;
@@ -422,6 +496,7 @@ class Node {
   // from computation of output time and processing time.
   bool autotune_ GUARDED_BY(mu_) = true;
   int64 buffered_bytes_ GUARDED_BY(mu_) = 0;
+  int64 buffered_elements_ GUARDED_BY(mu_) = 0;
   int64 processing_time_ GUARDED_BY(mu_) = 0;
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
@@ -510,7 +585,7 @@ class Model {
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget)
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
       LOCKS_EXCLUDED(mu_);
 
   // Records that a node has produced an element.
@@ -536,13 +611,21 @@ class Model {
   std::map<string, std::shared_ptr<Parameter>> CollectTunableParameters(
       std::shared_ptr<Node> node);
 
+  // Collects "essential" parallelism parameters of transformations in the tree
+  // rooted in the given node. Which parameters are essential is determined by
+  // comparison the processing time spent in the corresponding transformation
+  // relative to other transformations. The collected parameters are returned
+  // as a mapping from a (unique) node name to a parallelism parameter.
+  std::map<string, std::shared_ptr<Parameter>> CollectEssentialParallelism(
+      std::shared_ptr<Node> node);
+
   // This optimization algorithm starts by setting all tunable parallelism
-  // parameters to 1. It then repeatedly identifies the parameter whose increase
-  // in parallelism decreases the output time the most. This process is repeated
-  // until all parameters reach their maximum values or the projected output
-  // time is less than or equal to the processing time needed to produce an
-  // element divided by CPU budget.
-  void OptimizeHillClimb(int64 cpu_budget);
+  // parameters to the minimum value. It then repeatedly identifies the
+  // parameter whose increase in parallelism decreases the output time the most.
+  // This process is repeated until all parameters reach their maximum values or
+  // the projected output time is less than or equal to the processing time
+  // needed to produce an element divided by CPU budget.
+  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
@@ -551,7 +634,7 @@ class Model {
   // repeated until either the output time improvement is smaller than threshold
   // value or the output time is less than the processing time needed to produce
   // an element divided by CPU budget.
-  void OptimizeGradientDescent(int64 cpu_budget);
+  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget);
 
   // Collects the output time and if `gradient` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
@@ -561,6 +644,16 @@ class Model {
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);
+
+  // Collects the total number of bytes buffered in all nodes in the subtree
+  // rooted in the given node for which autotuning is enabled.
+  double TotalBufferedBytes(std::shared_ptr<Node> node);
+
+  // Collects the total buffer limit of all nodes in the subtree rooted in the
+  // given node for which autotuning is enabled. This number represents the
+  // amount of memory that would be used by the subtree nodes if all of their
+  // buffers were full.
+  double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to

@@ -1,5 +1,4 @@
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_platform_hdrs")
 
 package(
     default_visibility = [":friends"],

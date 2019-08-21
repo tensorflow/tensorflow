@@ -191,6 +191,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
@@ -481,6 +482,12 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/ops/ragged",
         "@six_archive//:six",
     ],
 )

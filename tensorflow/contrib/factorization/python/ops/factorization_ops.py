@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numbers
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -42,6 +41,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.compat import collections_abc
 
 _factorization_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile("_factorization_ops.so"))
@@ -388,7 +388,7 @@ class WALSModel(object):
       return None
 
     init_mode = "list"
-    if isinstance(wt_init, collections.Iterable):
+    if isinstance(wt_init, collections_abc.Iterable):
       if num_shards == 1 and len(wt_init) == num_wts:
         wt_init = [wt_init]
       assert len(wt_init) == num_shards

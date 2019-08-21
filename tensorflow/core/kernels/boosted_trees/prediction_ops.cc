@@ -324,7 +324,7 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
         context, context->allocate_output("examples_debug_outputs_serialized",
                                           {batch_size}, &output_debug_info_t));
     // Will contain serialized protos, per example.
-    auto output_debug_info = output_debug_info_t->flat<string>();
+    auto output_debug_info = output_debug_info_t->flat<tstring>();
     const int32 last_tree = resource->num_trees() - 1;
 
     // For each given example, traverse through all trees keeping track of the

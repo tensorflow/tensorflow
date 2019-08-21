@@ -628,6 +628,7 @@ tf_kernel_library(
     srcs = ["prefetch_dataset_op.cc"],
     hdrs = ["prefetch_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         ":prefetch_autotuner",
         ":stats_utils",
@@ -795,6 +796,7 @@ tf_kernel_library(
     hdrs = ["shuffle_dataset_op.h"],
     deps = [
         ":name_utils",
+        ":random_seed_ops",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1155,6 +1157,7 @@ tf_kernel_library(
     srcs = ["cache_dataset_ops.cc"],
     hdrs = ["cache_dataset_ops.h"],
     deps = [
+        ":cache_ops",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1240,6 +1243,9 @@ tf_kernel_library(
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler/utils:traversal",
+        "//tensorflow/core/kernels/data:captured_function",
     ],
 )
 
@@ -1317,5 +1323,33 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_seed_ops",
+    srcs = ["random_seed_ops.cc"],
+    hdrs = ["random_seed_ops.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "cache_ops",
+    srcs = ["cache_ops.cc"],
+    hdrs = ["cache_ops.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )

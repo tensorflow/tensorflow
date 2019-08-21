@@ -97,7 +97,7 @@ def stop():
       raise ProfilerNotRunningError(
           'Cannot stop profiling. No profiler is running.')
     if context.default_execution_mode == context.EAGER_MODE:
-      context.async_wait()
+      context.context().executor.wait()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tensorflow.TFE_ProfilerSerializeToString(
           _profiler,

@@ -289,7 +289,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_oss"],  # b/133229436
     xla_enable_strict_auto_jit = True,
 )
 

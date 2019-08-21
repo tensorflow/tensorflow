@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
@@ -48,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
@@ -206,10 +206,12 @@ static bool IsInput(Operation* op) {
          op->getName().getStringRef() == "tf.Placeholder.input";
 }
 
-static bool IsConstOrInput(Operation* op) {
-  return (isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-          isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) || IsInput(op));
+static bool IsConst(Operation* op) {
+  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
+         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
 }
+
+static bool IsConstOrInput(Operation* op) { return IsConst(op) || IsInput(op); }
 
 template <typename T>
 static bool HasValidTFLiteType(Value* value, T& error_handler) {
@@ -228,7 +230,7 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
     return false;
   }
   if (auto* inst = value->getDefiningOp()) {
-    if (IsConstOrInput(inst) && !type.hasStaticShape()) {
+    if (IsInput(inst) && !type.hasStaticShape()) {
       return error_handler.emitError("should have static shape, got ")
                  << type.getShape(),
              false;
@@ -535,8 +537,18 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   // However, we output all known shapes for better round-tripping
   std::vector<int32_t> shape;
   if (auto* inst = value->getDefiningOp()) {
-    if (type.hasStaticShape()) {
-      auto shape_ref = type.getShape();
+    if (type.hasStaticShape() || IsConst(inst)) {
+      // Const op can have a result of dynamic shaped type (e.g. due to constant
+      // folding), but we can still derive the shape of a constant tensor
+      // for its attribute type.
+      llvm::ArrayRef<int64_t> shape_ref;
+      if (type.hasStaticShape()) {
+        shape_ref = type.getShape();
+      } else {
+        mlir::Attribute tensor_attr = inst->getAttr("value");
+        shape_ref = tensor_attr.getType().cast<TensorType>().getShape();
+      }
+
       auto is_out_of_range = [](int64_t dim) {
         return dim > std::numeric_limits<int32_t>::max();
       };
@@ -574,8 +586,9 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     }
   }
   return tflite::CreateTensor(
-      builder_, builder_.CreateVector(shape), tflite_element_type, buffer_idx,
-      builder_.CreateString(name), q_params, /*is_variable=*/is_variable);
+      builder_, builder_.CreateVector(shape), tflite_element_type,
+      (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
+      /*is_variable=*/is_variable);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(
@@ -884,6 +897,11 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   } else if (auto tfl =
                  llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
     operand_indices = tfl.GetStatefulOperands();
+  } else if (auto tfl =
+                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
+  } else if (auto tfl = llvm::dyn_cast<mlir::TFL::SVDFOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
   }
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
@@ -907,6 +925,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
 
+    // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
+    // make the Buffer empty apart from setting the buffer_idx=0 in the Tensor.
+    // This does not seem to affect runtime behavior for RNN/LSTM, but would be
+    // good for reducing memory footprint.
     if (auto* inst = value->getDefiningOp()) {
       auto buffer_or = BuildBuffer(inst);
       if (!buffer_or) return false;
