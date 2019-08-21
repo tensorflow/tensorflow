@@ -35,6 +35,42 @@
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
+// StandardOpsDialect Interfaces
+//===----------------------------------------------------------------------===//
+namespace {
+struct StdOpAsmInterface : public OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  /// Get a special name to use when printing the given operation. The desired
+  /// name should be streamed into 'os'.
+  void getOpResultName(Operation *op, raw_ostream &os) const final {
+    if (ConstantOp constant = dyn_cast<ConstantOp>(op))
+      return getConstantOpResultName(constant, os);
+  }
+
+  /// Get a special name to use when printing the given constant.
+  static void getConstantOpResultName(ConstantOp op, raw_ostream &os) {
+    Type type = op.getType();
+    Attribute value = op.getValue();
+    if (auto intCst = value.dyn_cast<IntegerAttr>()) {
+      if (type.isIndex()) {
+        os << 'c' << intCst.getInt();
+      } else if (type.cast<IntegerType>().isInteger(1)) {
+        // i1 constants get special names.
+        os << (intCst.getInt() ? "true" : "false");
+      } else {
+        os << 'c' << intCst.getInt() << '_' << type;
+      }
+    } else if (type.isa<FunctionType>()) {
+      os << 'f';
+    } else {
+      os << "cst";
+    }
+  }
+};
+} // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
 // StandardOpsDialect
 //===----------------------------------------------------------------------===//
 
@@ -86,6 +122,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
+  addInterfaces<StdOpAsmInterface>();
 }
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,

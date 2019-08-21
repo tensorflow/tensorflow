@@ -27,7 +27,6 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
@@ -133,6 +132,12 @@ public:
       if (alias != typeToAlias.end())
         os << '!' << alias->second << " = type " << type << '\n';
     }
+  }
+
+  /// Get an instance of the OpAsmDialectInterface for the given dialect, or
+  /// null if one wasn't registered.
+  const OpAsmDialectInterface *getOpAsmInterface(Dialect *dialect) {
+    return interfaces.getInterfaceFor(dialect);
   }
 
 private:
@@ -1364,26 +1369,11 @@ void OperationPrinter::numberValueID(Value *value) {
   SmallString<32> specialNameBuffer;
   llvm::raw_svector_ostream specialName(specialNameBuffer);
 
-  // Give constant integers special names.
-  if (auto *op = value->getDefiningOp()) {
-    Attribute cst;
-    if (m_Constant(&cst).match(op)) {
-      Type type = op->getResult(0)->getType();
-      if (auto intCst = cst.dyn_cast<IntegerAttr>()) {
-        if (type.isIndex()) {
-          specialName << 'c' << intCst.getInt();
-        } else if (type.cast<IntegerType>().isInteger(1)) {
-          // i1 constants get special names.
-          specialName << (intCst.getInt() ? "true" : "false");
-        } else {
-          specialName << 'c' << intCst.getInt() << '_' << type;
-        }
-      } else if (type.isa<FunctionType>()) {
-        specialName << 'f';
-      } else {
-        specialName << "cst";
-      }
-    }
+  // Check to see if this value requested a special name.
+  auto *op = value->getDefiningOp();
+  if (state && op) {
+    if (auto *interface = state->getOpAsmInterface(op->getDialect()))
+      interface->getOpResultName(op, specialName);
   }
 
   if (specialNameBuffer.empty()) {
@@ -1717,7 +1707,8 @@ void Operation::print(raw_ostream &os) {
   while (auto *nextRegion = region->getParentRegion())
     region = nextRegion;
 
-  ModulePrinter modulePrinter(os);
+  ModuleState state(getContext());
+  ModulePrinter modulePrinter(os, &state);
   OperationPrinter(region, modulePrinter).print(this);
 }
 
@@ -1737,7 +1728,8 @@ void Block::print(raw_ostream &os) {
   while (auto *nextRegion = region->getParentRegion())
     region = nextRegion;
 
-  ModulePrinter modulePrinter(os);
+  ModuleState state(region->getContext());
+  ModulePrinter modulePrinter(os, &state);
   OperationPrinter(region, modulePrinter).print(this);
 }
 

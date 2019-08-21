@@ -536,7 +536,7 @@ private:
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {
 public:
-  using Base::Base;
+  OpAsmDialectInterface(Dialect *dialect) : Base(dialect) {}
 
   /// Hooks for getting identifier aliases for symbols. The identifier is used
   /// in place of the symbol when printing textual IR.
@@ -553,6 +553,10 @@ public:
   /// Hook for defining Type aliases.
   virtual void
   getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
+
+  /// Get a special name to use when printing the given operation. The desired
+  /// name should be streamed into 'os'.
+  virtual void getOpResultName(Operation *op, raw_ostream &os) const {}
 };
 
 } // end namespace mlir
