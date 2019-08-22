@@ -995,6 +995,9 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
     // Map graph results to inner ops results of single island.
     llvm::SmallVector<Value *, 8> new_rets;
     for (Value *operand : fetch_op.fetches()) {
+      // Control results should not be propagated out.
+      if (operand->getType().isa<ControlType>()) break;
+
       if (operand->getDefiningOp() != island_op) {
         // Operand is not from island, simply propagate it out.
         new_rets.push_back(operand);
