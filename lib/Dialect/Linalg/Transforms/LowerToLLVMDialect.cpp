@@ -19,6 +19,10 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/IR/Attributes.h"
@@ -29,10 +33,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -601,29 +601,6 @@ public:
     return matchSuccess();
   }
 };
-
-// Create a function definition which takes as argument pointers to the input
-// types and returns pointers to the output types.
-static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
-  auto implFnName = (libFn.getName().str() + "_impl");
-  auto module = libFn.getParentOfType<ModuleOp>();
-  if (auto f = module.lookupSymbol<FuncOp>(implFnName)) {
-    return f;
-  }
-  SmallVector<Type, 4> fnArgTypes;
-  for (auto t : libFn.getType().getInputs()) {
-    assert(t && t.isa<LLVMType>() &&
-           "Expected LLVM Type for argument while generating library Call "
-           "Implementation Definition");
-    fnArgTypes.push_back(t.cast<LLVMType>().getPointerTo());
-  }
-  auto implFnType = FunctionType::get(fnArgTypes, {}, libFn.getContext());
-
-  // Insert the implementation function definition.
-  auto implFnDefn = FuncOp::create(libFn.getLoc(), implFnName, implFnType);
-  module.push_back(implFnDefn);
-  return implFnDefn;
-}
 
 // Get function definition for the LinalgOp. If it doesn't exist, insert a
 // definition.
