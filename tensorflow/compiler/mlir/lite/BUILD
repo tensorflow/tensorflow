@@ -205,6 +205,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
+        ":common",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -452,6 +453,17 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "common",
+    hdrs = [
+        "common/tfl_pass_config.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        "@llvm//:support",
+    ],
+)
+
 filegroup(
     name = "tf_tfl_translate_main",
     srcs = [
@@ -463,6 +475,7 @@ tf_cc_binary(
     name = "tf_tfl_translate",
     srcs = [":tf_tfl_translate_main"],
     deps = [
+        ":common",
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",
         ":tf_tfl_passes",
@@ -508,6 +521,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
+        ":common",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",

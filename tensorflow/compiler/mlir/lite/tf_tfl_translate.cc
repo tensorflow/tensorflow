@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
@@ -38,8 +39,8 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
-using tensorflow::Status;
 
+// Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> print_function_result_mapping(
     "print-function-result-mapping",
@@ -133,9 +134,13 @@ int main(int argc, char **argv) {
   mlir::PassManager pm;
   bool run_quantize =
       tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
-  tensorflow::AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                                         emit_quant_adaptor_ops,
-                                         lower_tensor_list_ops, &pm);
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
+  pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.run_quantize = run_quantize;
+
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
