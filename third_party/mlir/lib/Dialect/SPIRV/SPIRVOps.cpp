@@ -390,9 +390,8 @@ static ParseResult parseAccessChainOp(OpAsmParser *parser,
     return failure();
   }
 
-  Location baseLoc = state->operands.front()->getLoc();
   auto resultType = getElementPtrType(
-      type, llvm::makeArrayRef(state->operands).drop_front(), baseLoc);
+      type, llvm::makeArrayRef(state->operands).drop_front(), state->location);
   if (!resultType) {
     return failure();
   }
