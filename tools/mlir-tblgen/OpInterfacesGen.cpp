@@ -123,9 +123,7 @@ static void emitInterfaceDef(const Record &interfaceDef, raw_ostream &os) {
   StringRef interfaceName = interface.getName();
 
   // Insert the method definitions.
-  auto *listInit = dyn_cast<ListInit>(interfaceDef.getValueInit("methods"));
-  for (Init *init : listInit->getValues()) {
-    OpInterfaceMethod method(cast<DefInit>(init)->getDef());
+  for (auto &method : interface.getMethods()) {
     os << method.getReturnType() << " " << interfaceName << "::";
     emitMethodNameAndArgs(method, os, /*addOperationArg=*/false);
 
@@ -149,17 +147,13 @@ static bool emitInterfaceDefs(const RecordKeeper &recordKeeper,
   return false;
 }
 
-static void emitConceptDecl(const Record &interfaceDef, raw_ostream &os) {
+static void emitConceptDecl(OpInterface &interface, raw_ostream &os) {
   os << "  class Concept {\n"
      << "  public:\n"
      << "    virtual ~Concept() = default;\n";
 
-  // Insert each of the virtual methods.
-  auto *listInit = dyn_cast<ListInit>(interfaceDef.getValueInit("methods"));
-  for (Init *init : listInit->getValues()) {
-    OpInterfaceMethod method(cast<DefInit>(init)->getDef());
-
-    // In the concept, all methods are pure virtual.
+  // Insert each of the pure virtual concept methods.
+  for (auto &method : interface.getMethods()) {
     os << "    virtual " << method.getReturnType() << " ";
     emitMethodNameAndArgs(method, os, /*addOperationArg=*/!method.isStatic());
     os << " = 0;\n";
@@ -167,14 +161,12 @@ static void emitConceptDecl(const Record &interfaceDef, raw_ostream &os) {
   os << "  };\n";
 }
 
-static void emitModelDecl(const Record &interfaceDef, raw_ostream &os) {
+static void emitModelDecl(OpInterface &interface, raw_ostream &os) {
   os << "  template<typename ConcreteOp>\n";
   os << "  class Model : public Concept {\npublic:\n";
 
   // Insert each of the virtual method overrides.
-  auto *listInit = dyn_cast<ListInit>(interfaceDef.getValueInit("methods"));
-  for (Init *init : listInit->getValues()) {
-    OpInterfaceMethod method(cast<DefInit>(init)->getDef());
+  for (auto &method : interface.getMethods()) {
     os << "    " << method.getReturnType() << " ";
     emitMethodNameAndArgs(method, os, /*addOperationArg=*/!method.isStatic());
     os << " final {\n";
@@ -211,8 +203,8 @@ static void emitInterfaceDecl(const Record &interfaceDef, raw_ostream &os) {
   // Emit the traits struct containing the concept and model declarations.
   os << "namespace detail {\n"
      << "struct " << interfaceTraitsName << " {\n";
-  emitConceptDecl(interfaceDef, os);
-  emitModelDecl(interfaceDef, os);
+  emitConceptDecl(interface, os);
+  emitModelDecl(interface, os);
   os << "};\n} // end namespace detail\n";
 
   // Emit the main interface class declaration.
