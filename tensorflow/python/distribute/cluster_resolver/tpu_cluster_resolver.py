@@ -289,6 +289,11 @@ class TPUClusterResolver(ClusterResolver):
           else:
             # Strip numerical ports.
             self._tpu = bns_and_port[0]
+
+        # Remove '.brain' suffix.
+        # TODO(b/139700237): Support bns address with named port.
+        if self._tpu.endswith(compat.as_bytes('.brain')):
+          self._tpu = self._tpu[:-6]
     else:
       self._environment = ''
       self.rpc_layer = 'grpc'
