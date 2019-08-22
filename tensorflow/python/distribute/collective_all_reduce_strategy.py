@@ -496,6 +496,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       logging.warning("Enabled NCCL communication but no GPUs detected/"
                       "specified.")
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    return self._num_workers > 1
+
   @property
   def experimental_between_graph(self):
     return True

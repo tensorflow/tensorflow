@@ -685,6 +685,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._tpu_function_cache[fn] = tpu_function
     return tpu_function
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # TPUStrategy has different distributed training structure that the whole
+    # cluster should be treated as single worker from higher-level (e.g. Keras)
+    # library's point of view.
+    # TODO(rchao): Revisit this as we design a fault-tolerance solution for
+    # TPUStrategy.
+    return False
+
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""

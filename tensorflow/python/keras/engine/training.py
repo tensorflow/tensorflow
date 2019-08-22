@@ -2901,7 +2901,7 @@ class Model(network.Network):
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-    return strategy and strategy._in_multi_worker_mode()  # pylint: disable=protected-access
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
 
 class DistributedCallbackModel(Model):
