@@ -41,11 +41,13 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault,
                     const se::Platform* platform, ::mlir::ModuleOp mlir_module);
   ~HloDialectEmitter() override = default;
 
+  Status EmitComputation(const HloComputation& computation);
+
   // The following methods implement the DfsHloVisitor interface.
   //
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
-  Status DefaultAction(HloInstruction* hlo) override;
+  Status DefaultAction(HloInstruction* instr) override;
 
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
@@ -53,17 +55,17 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault,
   Status FinishVisit(HloInstruction* root) override;
 
  private:
-  // Interface required by ThunkEmitter
+  StatusOr<mlir::FuncOp> CreateFunction(const HloInstruction& instr);
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override;
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index) const override;
   int64 ByteSizeOf(const Shape& shape) const override;
   const se::Platform* platform() const override;
 
-  ::mlir::ModuleOp mlir_module_;
-  ::mlir::Builder builder_;
-  absl::flat_hash_map<const xla::HloComputation*, ::mlir::FuncOp>
-      computation_to_mlir_function_;
+  mlir::ModuleOp mlir_module_;
+  mlir::Builder builder_;
+  absl::flat_hash_map<const xla::HloInstruction*, mlir::FuncOp>
+      instruction_to_mlir_func_;
   const BufferAssignment& buffer_assignment_;
   const se::Platform* platform_;
   // Cached pointer size extracted from the mlir module.

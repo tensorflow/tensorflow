@@ -13,6 +13,7 @@ package_group(
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/xla/...",
         "//third_party/mlir_edge/...",
     ],
 )
