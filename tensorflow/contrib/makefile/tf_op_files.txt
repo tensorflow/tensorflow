@@ -246,6 +246,7 @@ tensorflow/core/kernels/slice_op_cpu_impl_4.cc
 tensorflow/core/kernels/slice_op_cpu_impl_5.cc
 tensorflow/core/kernels/slice_op_cpu_impl_6.cc
 tensorflow/core/kernels/slice_op_cpu_impl_7.cc
+tensorflow/core/kernels/slice_op_cpu_impl_8.cc
 tensorflow/core/kernels/softmax_op.cc
 tensorflow/core/kernels/softplus_op.cc
 tensorflow/core/kernels/softsign_op.cc
@@ -274,6 +275,7 @@ tensorflow/core/kernels/strided_slice_op_inst_4.cc
 tensorflow/core/kernels/strided_slice_op_inst_5.cc
 tensorflow/core/kernels/strided_slice_op_inst_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_7.cc
+tensorflow/core/kernels/strided_slice_op_inst_8.cc
 tensorflow/core/kernels/string_join_op.cc
 tensorflow/core/kernels/string_util.cc
 tensorflow/core/kernels/tensor_array.cc
