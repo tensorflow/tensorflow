@@ -1779,6 +1779,17 @@ class TensorArrayTest(test.TestCase):
           2, array_ops.ones([1, 10, 20])
       )  # Inconsistent shapes: saw (1, 10, 20) but expected (50, 10, 20)
 
+  def testStackShapeOnEmpty(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=0, element_shape=(5, 10), dynamic_size=True)
+    self.assertAllEqual([0, 5, 10], self.evaluate(ta.stack()).shape)
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerStackOnPartiallyDefinedShape(self):
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=0, element_shape=(5, None), dynamic_size=True)
+    self.assertEqual([None, 5, None], ta.stack().shape.as_list())
+
 
 class TensorArrayBenchmark(test.Benchmark):
 
