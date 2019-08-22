@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(X86)
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params);
 
 template <typename DstScalar>
@@ -69,7 +69,9 @@ struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
     KernelFloatAvx512(params);
   }
 };
+#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
+#if RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params);
 
 template <typename DstScalar>
@@ -108,7 +110,7 @@ struct Kernel<Path::kAvx2, float, float, float, BasicSpec<float, float>> {
     KernelFloatAvx2(params);
   }
 };
-#endif  // RUY_PLATFORM(X86)
+#endif  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy
 

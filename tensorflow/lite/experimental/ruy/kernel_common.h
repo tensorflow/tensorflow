@@ -224,9 +224,9 @@ RUY_INHERIT_KERNEL(Path::kAvx2, Path::kAvx512)
 
 // KernelParams are shared across 32-bit and 64-bit NEON code, and x86 AVX-512
 // code.
-#if ((RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
-     RUY_OPT_ENABLED(RUY_OPT_ASM)) ||                    \
-    RUY_PLATFORM(X86)
+#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) || RUY_PLATFORM(AVX2) || \
+     RUY_PLATFORM(AVX512)) &&                                                \
+    RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
@@ -439,8 +439,9 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
   RUY_DCHECK_LT(params->last_col, params->dst_cols);
 }
 
-#endif  // ((RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
-        //  RUY_OPT_ENABLED(RUY_OPT_ASM)) || RUY_PLATFORM(X86)
+#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) || RUY_PLATFORM(AVX2)
+        //  || RUY_PLATFORM(AVX512)) &&
+        // RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 }  // namespace ruy
 

@@ -18,8 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
 #include "tensorflow/lite/experimental/ruy/detect_x86.h"
-#include "tensorflow/lite/experimental/ruy/have_built_path_for.h"
-#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 
@@ -49,11 +47,11 @@ Path Context::GetRuntimeEnabledPaths() {
       RUY_DCHECK((runtime_enabled_paths_ & Path::kNeonDotprod) == Path::kNone);
     }
   }
-#endif  // RUY_PLATFORM(ARM)
+#endif
 
 #if RUY_PLATFORM(X86)
   if ((runtime_enabled_paths_ & Path::kAvx2) != Path::kNone) {
-    if (!(HaveBuiltPathForAvx2() && DetectCpuAvx2())) {
+    if (!DetectCpuAvx2()) {
       runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvx2;
       // Sanity check.
       RUY_DCHECK((runtime_enabled_paths_ & Path::kAvx2) == Path::kNone);
@@ -61,13 +59,13 @@ Path Context::GetRuntimeEnabledPaths() {
   }
 
   if ((runtime_enabled_paths_ & Path::kAvx512) != Path::kNone) {
-    if (!(HaveBuiltPathForAvx512() && DetectCpuAvx512())) {
+    if (!DetectCpuAvx512()) {
       runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvx512;
       // Sanity check.
       RUY_DCHECK((runtime_enabled_paths_ & Path::kAvx512) == Path::kNone);
     }
   }
-#endif  // RUY_PLATFORM(X86)
+#endif
 
   // Sanity check. We can't possibly have disabled all paths, as some paths
   // are universally available (kReference, kStandardCpp).
