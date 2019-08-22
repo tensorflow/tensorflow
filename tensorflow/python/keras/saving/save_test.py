@@ -113,12 +113,13 @@ class TestSaveModel(test.TestCase):
       self.evaluate(lookup_ops.tables_initializer())
 
     self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
-  
+
   def test_load_weights(self):
     """
     test loading model weights
     """
-    model = testing_utils.get_small_functional_mlp(2, 2, 3, ["input", "fc", "output"])
+    model = testing_utils.get_small_functional_mlp(3, 2, 3,
+                                                   ["fc", "output", "input"])
     model.compile(
         loss=keras.losses.MSE,
         optimizer=keras.optimizers.RMSprop(lr=0.0001),
@@ -126,8 +127,12 @@ class TestSaveModel(test.TestCase):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(model, path, save_format='h5')
     del model
-    model = testing_utils.get_small_functional_mlp(2, 3, 3, ["input", "fc", "output"])
+    model = testing_utils.get_small_functional_mlp(2, 2, 3,
+                                                   ["fc", "output", "input"])
     model.load_weights(path, by_name=True, skip_mismatch=True)
+    with self.assertRaises(ValueError):
+      model.load_weights(path, by_name=True, skip_mismatch=False)
+    del model
 
 if __name__ == '__main__':
   test.main()
