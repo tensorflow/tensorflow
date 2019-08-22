@@ -172,6 +172,7 @@ limitations under the License.
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/util/util.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
