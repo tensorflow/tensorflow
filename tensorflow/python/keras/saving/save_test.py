@@ -127,7 +127,7 @@ class TestSaveModel(test.TestCase):
     save.save_model(model, path, save_format='h5')
     del model
     model = testing_utils.get_small_functional_mlp(2, 3, 3, ["input", "fc", "output"])
-    model.load_weights(path+".h5", by_name=True, skip_mismatch=True)
+    model.load_weights(path, by_name=True, skip_mismatch=True)
 
 if __name__ == '__main__':
   test.main()
