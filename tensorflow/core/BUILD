@@ -234,7 +234,7 @@ COMMON_PROTO_SRCS = [
 ]
 
 ERROR_CODES_PROTO_SRCS = [
-    "lib/core/error_codes.proto",
+    "//tensorflow/core/lib/core:error_codes.proto",
 ]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
 
@@ -269,7 +269,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":protos_all_proto",
-        ":error_codes_proto",
+        "//tensorflow/core/lib/core:error_codes_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -439,7 +439,7 @@ filegroup(
 cc_library(
     name = "platform_protobuf",
     srcs = [
-        "lib/core/status.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_status_header",
         "//tensorflow/core/platform:protobuf.cc",
         "//tensorflow/core/platform:protobuf.h",
         "//tensorflow/core/platform:protobuf_util.cc",
@@ -532,12 +532,12 @@ cc_library(
         "//tensorflow/c:__subpackages__",
     ],
     deps = [
-        ":error_codes_proto_cc",
         ":lib",
         ":lib_internal",
         ":platform_base",
         ":platform_port",
         ":platform_protobuf",
+        "//tensorflow/core/lib/core:error_codes_proto_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform/default/build_config:env",
         "//tensorflow/core/platform/default/build_config:port",
@@ -663,10 +663,8 @@ cc_library(
         "//tensorflow/core/platform:protobuf.cc",
     ],
     hdrs = [
-        "lib/core/errors.h",
-        "lib/core/status.h",
-        "lib/core/stringpiece.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:legacy_proto_hdrs",
@@ -711,17 +709,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        "lib/core/arena.h",
-        "lib/core/bitmap.h",
-        "lib/core/bits.h",
-        "lib/core/coding.h",
-        "lib/core/errors.h",
-        "lib/core/notification.h",
-        "lib/core/raw_coding.h",
-        "lib/core/status.h",
-        "lib/core/stringpiece.h",
-        "lib/core/threadpool.h",
-        "lib/core/threadpool_interface.h",
         "lib/hash/crc32c.h",
         "lib/hash/hash.h",
         "lib/histogram/histogram.h",
@@ -749,6 +736,7 @@ cc_library(
         ":platform_port_hdrs",
         ":platform_protobuf_hdrs",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
         "//tensorflow/core/lib/math:math_util.h",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
@@ -772,7 +760,7 @@ cc_library(
 cc_library(
     name = "lib_experimental",
     hdrs = [
-        "lib/core/threadpool_options.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_threadpool_options_header",
     ],
     visibility = [
         ":experimental_access",
@@ -798,7 +786,7 @@ cc_library(
 # DEPRECATED: use platform:stringpiece instead.
 cc_library(
     name = "core_stringpiece",
-    hdrs = ["lib/core/stringpiece.h"],
+    hdrs = ["//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header"],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core/platform:stringpiece",
@@ -817,8 +805,8 @@ cc_library(
         "//tensorflow/core/platform:test.cc",
     ],
     hdrs = [
-        "lib/core/status_test_util.h",
         "util/reporter.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_status_test_util_header",
         "//tensorflow/core/platform:test.h",
         "//tensorflow/core/platform:test_benchmark.h",
     ],
@@ -1790,6 +1778,8 @@ filegroup(
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.cc",
+        "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
+        "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
@@ -2381,6 +2371,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/platform:scanner.h",
     "//tensorflow/core/platform:str_util.h",
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
+    "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
     "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
     "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -2398,8 +2389,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
 )
 
 LIB_INTERNAL_PUBLIC_HEADERS = [
-    "lib/core/blocking_counter.h",
-    "lib/core/refcount.h",
+    "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
     "lib/hash/hash.h",
     "lib/io/inputbuffer.h",
@@ -2485,6 +2475,7 @@ cc_library(
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
+        "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
     ],
@@ -2572,9 +2563,9 @@ cc_library(
     name = "png_internal",
     srcs = ["lib/png/png_io.cc"],
     hdrs = [
-        "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:byte_order.h",
         "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/integral_types.h",
@@ -2630,10 +2621,10 @@ cc_library(
         "//tensorflow/core/platform:jpeg.h",
     ]),
     hdrs = [
-        "lib/core/stringpiece.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
@@ -2666,9 +2657,9 @@ cc_library(
         "//tensorflow/core/lib/strings:legacy_lib_android_gif_internal_string_headers",
     ]),
     hdrs = [
-        "lib/core/stringpiece.h",
         "lib/gif/gif_io.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
@@ -2698,9 +2689,9 @@ cc_library(
         "//tensorflow/core/platform:png.h",
     ]),
     hdrs = [
-        "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:byte_order.h",
         "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/integral_types.h",
@@ -2721,21 +2712,18 @@ cc_library(
 )
 
 tf_proto_library(
-    name = "error_codes_proto",
-    srcs = ERROR_CODES_PROTO_SRCS,
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    provide_cc_alias = True,
-)
-
-tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        ":error_codes_proto",
+        "//tensorflow/core/lib/core:error_codes_proto",
     ],
+)
+
+alias(
+    name = "error_codes_proto_cc",
+    actual = "//tensorflow/core/lib/core:error_codes_proto_cc",
 )
 
 tf_version_info_genrule()
@@ -3718,14 +3706,6 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "lib/core/arena_test.cc",
-        "lib/core/bitmap_test.cc",
-        "lib/core/blocking_counter_test.cc",
-        "lib/core/coding_test.cc",
-        "lib/core/notification_test.cc",
-        "lib/core/refcount_test.cc",
-        "lib/core/status_test.cc",
-        "lib/core/threadpool_test.cc",
         "lib/hash/crc32c_test.cc",
         "lib/hash/hash_test.cc",
         "lib/histogram/histogram_test.cc",
@@ -3745,6 +3725,7 @@ tf_cc_tests(
         "lib/monitoring/metric_def_test.cc",
         "lib/monitoring/sampler_test.cc",
         "lib/wav/wav_io_test.cc",
+        "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/math:math_util_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
