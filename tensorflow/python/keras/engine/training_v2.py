@@ -396,6 +396,7 @@ class Loop(training_utils.TrainingLoop):
     with strategy.scope():
       adapter = _process_inputs(
           model,
+          mode,
           x,
           y,
           batch_size=batch_size,
@@ -533,21 +534,31 @@ def _process_training_inputs(model,
      val_x, val_y,
      val_sample_weights) = training_utils.split_training_and_validation_data(
          x, y, sample_weights, validation_split)
+
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
     train_adapter = adapter_cls(
         x,
         y,
         batch_size=batch_size,
         epochs=epochs,
         sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
         shuffle=shuffle,
         distribution_strategy=distribution_strategy)
-    val_adapter = adapter_cls(val_x, val_y,
-                              sample_weights=val_sample_weights,
-                              batch_size=batch_size,
-                              distribution_strategy=distribution_strategy)
+
+    val_adapter = adapter_cls(
+        val_x,
+        val_y,
+        sample_weights=val_sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        distribution_strategy=distribution_strategy)
   else:
     train_adapter = _process_inputs(
         model,
+        ModeKeys.TRAIN,
         x,
         y,
         sample_weights=sample_weights,
@@ -570,12 +581,16 @@ def _process_training_inputs(model,
       # validation data input.
       if not batch_size:
         batch_size = train_adapter.batch_size()
-      val_adapter = _process_inputs(model, val_x, val_y,
-                                    sample_weights=val_sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    steps=validation_steps,
-                                    distribution_strategy=distribution_strategy)
+      val_adapter = _process_inputs(
+          model,
+          ModeKeys.TEST,
+          val_x,
+          val_y,
+          sample_weights=val_sample_weights,
+          batch_size=batch_size,
+          class_weights=class_weights,
+          steps=validation_steps,
+          distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '
                        '`validation_data` is None.')
@@ -583,6 +598,7 @@ def _process_training_inputs(model,
 
 
 def _process_inputs(model,
+                    mode,
                     x,
                     y,
                     batch_size=None,
@@ -606,6 +622,14 @@ def _process_inputs(model,
         batch_size=batch_size,
         check_steps=False,
         steps=steps)
+
+  if mode == ModeKeys.PREDICT:
+    sample_weight_modes = None
+  else:
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
+
   adapter = adapter_cls(
       x,
       y,
@@ -613,6 +637,7 @@ def _process_inputs(model,
       epochs=epochs,
       steps=steps,
       sample_weights=sample_weights,
+      sample_weight_modes=sample_weight_modes,
       shuffle=shuffle,
       distribution_strategy=distribution_strategy,
       max_queue_size=max_queue_size,

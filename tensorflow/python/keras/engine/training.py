@@ -253,8 +253,7 @@ class Model(network.Network):
     is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                               for opt in nest.flatten(self.optimizer))
 
-    if ((sample_weight_mode is not None)
-        or (target_tensors is not None)
+    if ((target_tensors is not None)
         or is_any_optimizer_v1
         or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops

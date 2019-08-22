@@ -196,6 +196,7 @@ class TensorLikeDataAdapter(DataAdapter):
                x,
                y=None,
                sample_weights=None,
+               sample_weight_modes=None,
                batch_size=None,
                epochs=1,
                steps=None,
@@ -206,15 +207,17 @@ class TensorLikeDataAdapter(DataAdapter):
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
 
-    # If sample_weights are not specified for an output use 1.0 as weights.
-    if sample_weights is not None and any(w is None for w in sample_weights):
-      weight = next(s for s in sample_weights if s is not None)
-      sample_weights = training_utils.list_to_tuple([
-          array_ops.ones((weight.shape[0],)) if sw is None else sw
-          for sw in sample_weights
-      ])
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
 
-    if y is not None and sample_weights is not None:
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
+
+    if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
     elif y is not None:
       # Sample weight is only needed for training, so if y is None, then
@@ -366,23 +369,32 @@ class CompositeTensorDataAdapter(DataAdapter):
     return (any(_is_composite(v) for v in flat_inputs) and
             all(_is_tensor_or_composite(v) for v in flat_inputs))
 
-  def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               steps=None, shuffle=False, **kwargs):
+  def __init__(self,
+               x,
+               y=None,
+               sample_weights=None,
+               sample_weight_modes=None,
+               batch_size=None,
+               steps=None,
+               shuffle=False,
+               **kwargs):
     super(CompositeTensorDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
 
-    # If sample_weights are not specified for an output use 1.0 as weights.
-    if (sample_weights is not None and
-        any([sw is None for sw in sample_weights])):
-      weight = next(s for s in sample_weights if s is not None)
-      sample_weights = training_utils.list_to_tuple([
-          array_ops.ones((weight.shape[0],)) if sw is None else sw
-          for sw in sample_weights
-      ])
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
 
-    if y is not None and sample_weights is not None:
+    # Handle partial sample weights.
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
+
+    if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
     elif y is not None:
       # Sample weight is only needed for training, so if y is None, then
@@ -452,9 +464,14 @@ class ListsOfScalarsDataAdapter(DataAdapter):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
     return False
 
-  def __init__(
-      self, x, y=None, sample_weights=None, batch_size=None,
-      shuffle=False, **kwargs):
+  def __init__(self,
+               x,
+               y=None,
+               sample_weights=None,
+               sample_weight_modes=None,
+               batch_size=None,
+               shuffle=False,
+               **kwargs):
     super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
     x = np.asarray(x)
     if y is not None:
@@ -463,8 +480,13 @@ class ListsOfScalarsDataAdapter(DataAdapter):
       sample_weights = np.asarray(sample_weights)
 
     self._internal_adapter = TensorLikeDataAdapter(
-        x, y=y, sample_weights=sample_weights,
-        batch_size=batch_size, shuffle=shuffle, **kwargs)
+        x,
+        y=y,
+        sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        **kwargs)
 
   def get_dataset(self):
     return self._internal_adapter.get_dataset()
@@ -711,3 +733,29 @@ def is_none_or_empty(inputs):
   # "The truth value of an array with more than one element is ambiguous.
   # Use a.any() or a.all()"
   return inputs is None or not nest.flatten(inputs)
+
+
+def handle_partial_sample_weights(outputs, sample_weights, sample_weight_modes):
+  """Adds 1.0 as sample weights for the outputs for which there is no weight.
+
+  Args:
+    outputs: List of model outputs.
+    sample_weights: List of sample weight inputs.
+    sample_weight_modes: List of sample weight modes or None.
+
+  Returns:
+    Tuple of sample weights, one sample weight for every output.
+  """
+  new_sample_weights = []
+  for i, sw in enumerate(sample_weights):
+    if sw is None:
+      output_shape = outputs[i].shape
+      is_temporal = (
+          sample_weight_modes is not None and
+          sample_weight_modes[i] == "temporal")
+      sw_shape = (output_shape[0],
+                  output_shape[1]) if is_temporal else (output_shape[0],)
+      new_sample_weights.append(array_ops.ones(sw_shape))
+    else:
+      new_sample_weights.append(sw)
+  return training_utils.list_to_tuple(new_sample_weights)
