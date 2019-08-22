@@ -859,8 +859,9 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map)
 
   @property
   def device(self):
