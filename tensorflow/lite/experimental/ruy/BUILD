@@ -260,28 +260,6 @@ cc_library(
 )
 
 cc_library(
-    name = "context",
-    srcs = [
-        "context.cc",
-    ],
-    hdrs = [
-        "context.h",
-    ],
-    copts = RUY_COPTS,
-    visibility = ruy_visibility(),
-    deps = [
-        ":allocator",
-        ":check_macros",
-        ":detect_arm",
-        ":detect_x86",
-        ":path",
-        ":thread_pool",
-        ":trace",
-        ":tune",
-    ],
-)
-
-cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
     copts = RUY_COPTS,
@@ -351,6 +329,28 @@ cc_library(
 )
 
 cc_library(
+    name = "pack_common",
+    hdrs = [
+        "pack.h",
+        "pack_arm.h",
+        "pack_common.h",
+        "pack_x86.h",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":check_macros",
+        ":common",
+        ":internal_matrix",
+        ":matrix",
+        ":opt_set",
+        ":path",
+        ":platform",
+        ":tune",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "kernel_arm",
     srcs = [
         "kernel_arm32.cc",
@@ -361,6 +361,21 @@ cc_library(
         ":common",
         ":kernel_common",
         ":opt_set",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack_arm",
+    srcs = [
+        "pack_arm.cc",
+    ],
+    copts = RUY_COPTS,
+    deps = [
+        ":common",
+        ":opt_set",
+        ":pack_common",
         ":platform",
         "@gemmlowp//:profiler",
     ],
@@ -382,6 +397,23 @@ cc_library(
 )
 
 cc_library(
+    name = "pack_avx512",
+    srcs = [
+        "pack_avx512.cc",
+    ],
+    copts = RUY_COPTS + ruy_copts_skylake(),
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "kernel_avx2",
     srcs = [
         "kernel_avx2.cc",
@@ -391,6 +423,23 @@ cc_library(
         ":check_macros",
         ":kernel_common",
         ":opt_set",
+        ":platform",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "pack_avx2",
+    srcs = [
+        "pack_avx2.cc",
+    ],
+    copts = RUY_COPTS + ruy_copts_avx2(),
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":pack_common",
+        ":path",
         ":platform",
         "@gemmlowp//:profiler",
     ],
@@ -425,77 +474,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pack_common",
-    hdrs = [
-        "pack.h",
-        "pack_arm.h",
-        "pack_common.h",
-        "pack_x86.h",
-    ],
-    copts = RUY_COPTS,
-    deps = [
-        ":check_macros",
-        ":common",
-        ":internal_matrix",
-        ":matrix",
-        ":opt_set",
-        ":path",
-        ":platform",
-        ":tune",
-        "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
-    name = "pack_arm",
-    srcs = [
-        "pack_arm.cc",
-    ],
-    copts = RUY_COPTS,
-    deps = [
-        ":common",
-        ":opt_set",
-        ":pack_common",
-        ":platform",
-        "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
-    name = "pack_avx512",
-    srcs = [
-        "pack_avx512.cc",
-    ],
-    copts = RUY_COPTS + ruy_copts_skylake(),
-    deps = [
-        ":check_macros",
-        ":matrix",
-        ":opt_set",
-        ":pack_common",
-        ":path",
-        ":platform",
-        "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
-    name = "pack_avx2",
-    srcs = [
-        "pack_avx2.cc",
-    ],
-    copts = RUY_COPTS + ruy_copts_avx2(),
-    deps = [
-        ":check_macros",
-        ":matrix",
-        ":opt_set",
-        ":pack_common",
-        ":path",
-        ":platform",
-        "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
     name = "pack",
     hdrs = [
         "pack.h",
@@ -516,6 +494,29 @@ cc_library(
         ":platform",
         ":tune",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "context",
+    srcs = [
+        "context.cc",
+    ],
+    hdrs = [
+        "context.h",
+    ],
+    copts = RUY_COPTS,
+    visibility = ruy_visibility(),
+    deps = [
+        ":allocator",
+        ":check_macros",
+        ":detect_arm",
+        ":detect_x86",
+        ":path",
+        ":platform",
+        ":thread_pool",
+        ":trace",
+        ":tune",
     ],
 )
 
