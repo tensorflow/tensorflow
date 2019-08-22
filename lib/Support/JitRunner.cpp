@@ -333,16 +333,20 @@ int mlir::JitRunnerMain(
   auto transformer = mlir::makeLLVMPassesTransformer(
       passes, optLevel, /*targetMachine=*/tmOrError->get(), optPosition);
 
-  Error error = make_string_error("unsupported function type");
-  if (mainFuncType.getValue() == "f32")
-    error = compileAndExecuteSingleFloatReturnFunction(
-        m.get(), mainFuncName.getValue(), transformer);
-  else if (mainFuncType.getValue() == "memrefs")
-    error = compileAndExecuteFunctionWithMemRefs(
-        m.get(), mainFuncName.getValue(), transformer);
-  else if (mainFuncType.getValue() == "void")
-    error = compileAndExecuteVoidFunction(m.get(), mainFuncName.getValue(),
-                                          transformer);
+  // Get the function used to compile and execute the module.
+  using CompileAndExecuteFnT = Error (*)(
+      ModuleOp, StringRef, std::function<llvm::Error(llvm::Module *)>);
+  auto compileAndExecuteFn =
+      llvm::StringSwitch<CompileAndExecuteFnT>(mainFuncType.getValue())
+          .Case("f32", compileAndExecuteSingleFloatReturnFunction)
+          .Case("memrefs", compileAndExecuteFunctionWithMemRefs)
+          .Case("void", compileAndExecuteVoidFunction)
+          .Default(nullptr);
+
+  Error error =
+      compileAndExecuteFn
+          ? compileAndExecuteFn(m.get(), mainFuncName.getValue(), transformer)
+          : make_string_error("unsupported function type");
 
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),
