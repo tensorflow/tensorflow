@@ -385,6 +385,15 @@ class StaticShapeTensorOf<list<Type> allowedTypes>
 
 def AnyStaticShapeTensor : StaticShapeTensorOf<[AnyType]>;
 
+// Whether a type is a ranked tensor type.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a type is a ranked tensor type with one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
 def I1Tensor   : TensorOf<[I1]>;
 def I8Tensor   : TensorOf<[I8]>;
 def I16Tensor  : TensorOf<[I16]>;
@@ -630,6 +639,21 @@ def NonNegativeI32Attr : NonNegativeIntAttrBase<
     I32, "non-negative 32-bit integer attribute">;
 def NonNegativeI64Attr : NonNegativeIntAttrBase<
     I64, "non-negative 64-bit integer attribute">;
+
+class PositiveIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"$_self.cast<IntegerAttr>().getValue()"
+                 ".isStrictlyPositive()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def PositiveI32Attr : PositiveIntAttrBase<
+    I32, "positive 32-bit integer attribute">;
+def PositiveI64Attr : PositiveIntAttrBase<
+    I64, "positive 64-bit integer attribute">;
 
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
