@@ -919,7 +919,6 @@ ARRAY_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
@@ -2429,7 +2428,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -4726,7 +4724,6 @@ cc_library(
 PARSING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
 ]
 

@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -252,7 +252,7 @@ Status SingleExampleProtoToTensors(
                                        ", Feature: ", key,
                                        ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
-                                       "  Feature is: ", ProtoDebugString(f));
+                                       "  Feature is: ", f.DebugString());
       }
       TF_RETURN_IF_ERROR(FeatureDenseCopy(batch_index, example_name, key, dtype,
                                           shape, f,
@@ -284,7 +284,7 @@ Status SingleExampleProtoToTensors(
                                        ", Feature: ", key,
                                        ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
-                                       "  Feature is: ", ProtoDebugString(f));
+                                       "  Feature is: ", f.DebugString());
       }
       (*output_sparse_values_tmp)[d][batch_index] =
           FeatureSparseCopy(batch_index, key, dtype, f);

@@ -23,10 +23,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -798,7 +797,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
     return errors::DataLoss("Invalid tensor shape: ", key, " ",
-                            ProtoShortDebugString(entry_copy.shape()));
+                            entry_copy.shape().ShortDebugString());
   }
 
   *entry = entry_copy;
@@ -920,7 +919,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
     return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
-                            ProtoShortDebugString(entry.shape()));
+                            entry.shape().ShortDebugString());
   }
 
   if (entry.slices().empty()) {
@@ -1095,9 +1094,8 @@ string BundleReader::DebugString() {
     CHECK(entry.ParseFromArray(value().data(), value().size()));
     if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
 
-    strings::StrAppend(&shape_str, key(), " (",
-                       EnumName_DataType(entry.dtype()), ") ",
-                       TensorShape(entry.shape()).DebugString());
+    strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
+                       ") ", TensorShape(entry.shape()).DebugString());
     strings::StrAppend(&shape_str, "\n");
   }
   return shape_str;
