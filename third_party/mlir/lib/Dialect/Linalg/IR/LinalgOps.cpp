@@ -829,7 +829,7 @@ llvm::raw_ostream &mlir::linalg::operator<<(llvm::raw_ostream &os,
 namespace mlir {
 namespace linalg {
 
-#include "mlir/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgOps.cpp.inc"

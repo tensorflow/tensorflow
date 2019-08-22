@@ -73,7 +73,7 @@ std::string generateLibraryCallName(Operation *op);
 /// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 
-#include "mlir/Linalg/IR/LinalgLibraryOpInterfaces.h.inc"
+#include "mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.h.inc"
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h.inc"

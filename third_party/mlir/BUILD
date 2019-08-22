@@ -1782,11 +1782,11 @@ gentbl(
         ),
         (
             "-gen-op-interface-decls",
-            "include/mlir/Linalg/IR/LinalgLibraryOpInterfaces.h.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.h.inc",
         ),
         (
             "-gen-op-interface-defs",
-            "include/mlir/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc",
+            "include/mlir/Dialect/Linalg/IR/LinalgLibraryOpInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
