@@ -1054,8 +1054,14 @@ Optional<std::string> Translator::TranslateInternal() {
     subgraphs.push_back(*subgraph_or);
   }
 
+  std::string model_description;
+  if (auto attr = module_.getAttrOfType<StringAttr>("tfl.description")) {
+    model_description = attr.getValue().str();
+  } else {
+    model_description = "MLIR Converted.";
+  }
   // Build the model and finish the model building process.
-  auto description = builder_.CreateString("MLIR Converted.");
+  auto description = builder_.CreateString(model_description.data());
   auto model = tflite::CreateModel(
       builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(opcodes_),
       builder_.CreateVector(subgraphs), description,

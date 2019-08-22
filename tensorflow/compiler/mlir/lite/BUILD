@@ -391,10 +391,12 @@ cc_library(
     srcs = [
         "flatbuffer_import.cc",
         "flatbuffer_translate.cc",
+        "utils/convert_type.cc",
     ],
     hdrs = [
         "flatbuffer_import.h",
         "flatbuffer_translate.h",
+        "utils/convert_type.h",
     ],
     copts = ["-std=c++14"],
     deps = [
@@ -404,6 +406,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
@@ -413,6 +416,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
