@@ -555,6 +555,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "context_test",
+    srcs = ["context_test.cc"],
+    deps = [
+        ":context",
+        ":path",
+        ":platform",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "trmul_params",
     hdrs = ["trmul_params.h"],
