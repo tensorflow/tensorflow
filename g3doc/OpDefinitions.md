@@ -597,7 +597,7 @@ and then define the op as:
 
 ```tablegen
 def HasSomeProperty : AttrConstraint<CPred<"HasSomeProperty($_self)">,
-                                     "has some property>;
+                                     "has some property">;
 
 def MyOp : Op<...> {
   let arguments = (ins
@@ -831,10 +831,10 @@ Initially the shape inference will be declaratively specified using:
     constraining the input type to be tensor/vector elements or that the
     elemental type be of a specific type (e.g., output of sign is of elemental
     type `i1`) or class (e.g., float like).
-*   Constraints on an operands of an operation. For example, enabling specifying
-    equality constraints on type/constituents of a type (shape and elemental
-    type) between operands and results (e.g., the output type of an add is the
-    same as those of the input operands).
+*   Constraints across operands and results of an operation. For example,
+    enabling specifying equality constraints on type/constituents of a type
+    (shape and elemental type) between operands and results (e.g., the output
+    type of an add is the same as those of the input operands).
 
 In general there is an input/output transfer function which maps the inputs to
 the outputs (e.g., given input X and Y [or slices thereof] with these sizes, the

@@ -59,7 +59,7 @@ needed. Let's see an example:
 func @simple_constant() -> (i32, i32) {
   // CHECK-NEXT: %result = constant 1 : i32
   // CHECK-NEXT: return %result, %result : i32, i32
-  // CHECK-NEXT }
+  // CHECK-NEXT: }
 
   %0 = constant 1 : i32
   %1 = constant 1 : i32
