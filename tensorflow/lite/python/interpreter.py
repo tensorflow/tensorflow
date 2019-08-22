@@ -108,7 +108,11 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        self.message += x
+        if (type(x) is not bytes):
+          self.message += x
+        else:
+          # To support both: PY2 and PY3, we don't use the function decode, but do this way
+          self.message.join(chr(l) for l in x)
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)
@@ -119,7 +123,7 @@ class Delegate(object):
       raise ValueError(capture.message)
 
   def __del__(self):
-    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # __del__ can not be called multiple times, so if the delegate is destroyed.
     # don't try to destroy it twice.
     if self._library is not None:
       self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
