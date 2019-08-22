@@ -1026,6 +1026,17 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
             "functions in 'spv.module' can only contain spv.* ops");
       }
   }
+
+  // Verify capabilities. ODS already guarantees that we have an array of
+  // string attributes.
+  if (auto caps = moduleOp.getAttrOfType<ArrayAttr>("capabilities")) {
+    for (auto cap : caps.getValue()) {
+      auto capStr = cap.cast<StringAttr>().getValue();
+      if (!spirv::symbolizeCapability(capStr))
+        return moduleOp.emitOpError("uses unknown capability: ") << capStr;
+    }
+  }
+
   return success();
 }
 
