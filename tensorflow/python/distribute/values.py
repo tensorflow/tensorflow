@@ -1391,7 +1391,14 @@ def regroup(device_map, values, wrap_class=PerReplica):
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.values[replica_id] if isinstance(x, DistributedValues) else x
+    # `DistributedValues` would be sliced according to replica unless it is a
+    # `DistributedVariable` because `DistributedVariable` can be handled
+    # directly in the replica context.
+    if (isinstance(x, DistributedVariable) or
+        not isinstance(x, DistributedValues)):
+      return x
+    else:
+      return x.values[replica_id]
 
   return nest.map_structure(_get, structured)
 
