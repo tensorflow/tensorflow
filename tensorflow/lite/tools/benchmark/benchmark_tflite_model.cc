@@ -207,6 +207,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("input_layer_shape",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("nnapi_execution_preference",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_accelerator_name",
@@ -256,6 +258,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("input_layer", &params_, "input layer names"),
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
+    CreateFlag<std::string>(
+        "nnapi_execution_preference", &params_,
+        "execution preference for nnapi delegate. Should be one of the "
+        "following: fast_single_answer, sustained_speed, low_power, undefined"),
     CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
     CreateFlag<std::string>(
         "nnapi_accelerator_name", &params_,
@@ -289,6 +295,11 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
+  if (params_.HasParam("nnapi_execution_preference")) {
+    TFLITE_LOG(INFO) << "nnapi execution preference: ["
+                     << params_.Get<string>("nnapi_execution_preference")
+                     << "]";
+  }
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
   if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
@@ -620,6 +631,32 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
     }
+    if (params_.HasParam("nnapi_execution_preference")) {
+      tflite::StatefulNnApiDelegate::Options::ExecutionPreference
+          execution_preference =
+              tflite::StatefulNnApiDelegate::Options::kUndefined;
+      std::string string_execution_preference =
+          params_.Get<std::string>("nnapi_execution_preference");
+      if (string_execution_preference == "low_power") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kLowPower;
+      } else if (string_execution_preference == "sustained_speed") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+      } else if (string_execution_preference == "fast_single_answer") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kFastSingleAnswer;
+      } else if (string_execution_preference == "undefined" ||
+                 string_execution_preference.empty()) {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kUndefined;
+      } else {
+        TFLITE_LOG(WARN) << "The provided value ("
+                         << string_execution_preference
+                         << ") is not a valid nnapi execution preference.";
+      }
+      options.execution_preference = execution_preference;
+    }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
@@ -632,6 +669,11 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
         << params_.Get<std::string>("nnapi_accelerator_name")
         << ") to be used.";
+  } else if (params_.HasParam("nnapi_execution_preference")) {
+    TFLITE_LOG(WARN) << "`--use_nnapi=true` must be set for the provided NNAPI "
+                        "execution preference ("
+                     << params_.Get<std::string>("nnapi_execution_preference")
+                     << ") to be used.";
   }
   return delegates;
 }
