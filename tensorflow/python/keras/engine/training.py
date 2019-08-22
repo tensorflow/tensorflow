@@ -161,14 +161,14 @@ class Model(network.Network):
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
 
-  def load_weights(self, filepath, by_name=False):
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
-    return super(Model, self).load_weights(filepath, by_name)
+    return super(Model, self).load_weights(filepath, by_name, skip_mismatch=skip_mismatch)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
