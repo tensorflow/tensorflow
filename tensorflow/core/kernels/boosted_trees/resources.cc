@@ -54,7 +54,7 @@ int32 BoostedTreesEnsembleResource::num_trees() const {
 
 int32 BoostedTreesEnsembleResource::next_node(
     const int32 tree_id, const int32 node_id, const int32 index_in_batch,
-    const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const {
+    const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
@@ -62,15 +62,17 @@ int32 BoostedTreesEnsembleResource::next_node(
   switch (node.node_case()) {
     case boosted_trees::Node::kBucketizedSplit: {
       const auto& split = node.bucketized_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) <=
-              split.threshold())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) <=
+                     split.threshold()
                  ? split.left_id()
                  : split.right_id();
     }
     case boosted_trees::Node::kCategoricalSplit: {
       const auto& split = node.categorical_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) ==
-              split.value())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) ==
+                     split.value()
                  ? split.left_id()
                  : split.right_id();
     }

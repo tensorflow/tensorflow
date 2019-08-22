@@ -68,7 +68,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
   //   bucketized_features: vector of feature Vectors.
   int32 next_node(
       const int32 tree_id, const int32 node_id, const int32 index_in_batch,
-      const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const;
+      const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const;
 
   std::vector<float> node_value(const int32 tree_id, const int32 node_id) const;
 
