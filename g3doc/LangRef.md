@@ -25,31 +25,20 @@ document describes the human-readable textual form.
 
 ## High-Level Structure
 
-The unit of code in MLIR is an [Operation](#operation). Operations allow for
-representing many different concepts, including the high-level [Module](#module)
-and [Function](#functions) operations. Operations may contain
-[Regions](#regions) that contain a Control Flow Graph (CFG) of
-[Blocks](#blocks), which contain operations and end with
-[terminator operations](#terminator-operations) (like branches).
-
 MLIR is an
 [SSA-based](https://en.wikipedia.org/wiki/Static_single_assignment_form) IR,
 which means that values are defined before use and have scope defined by their
 dominance relations. Operations may produce zero or more results, and each is a
 distinct SSA value with its own type defined by the [type system](#type-system).
 
-MLIR incorporates polyhedral compiler concepts, including `affine.for` and
-`affine.if` operations defined by the [affine dialect](Dialects/Affine.md),
-which model affine loops and affine conditionals. It also includes affine maps
-integrated into the type system - they are key to the representation of data and
-[MemRefs](#memref-type), which are the representation for tensors in addressable
-memory. MLIR also supports a first-class Tensor type allowing it to concisely
-represent operations on N-dimensional arrays.
-
-Finally, MLIR supports operations for allocating buffers, producing views to
-transform them, represent target-independent arithmetic, target-specific
-operations, and even supports arbitrary user-defined high-level tensor
-operations.
+The unit of code in MLIR is an [Operation](#operation). Operations allow for
+representing many different concepts: allocating buffers, producing views to
+transform them, target-independent arithmetic, target-specific operations, and
+even arbitrary user-defined high-level operations including the
+[Module](#module) and [Function](#functions) operations. Operations may contain
+[Regions](#regions) that contain a Control Flow Graph (CFG) of
+[Blocks](#blocks), which contain operations and end with a
+[terminator operation](#terminator-operations) (like branches).
 
 Here's an example of an MLIR module:
 
@@ -201,6 +190,103 @@ The scope of SSA values is defined based on the standard definition of
 [dominance](https://en.wikipedia.org/wiki/Dominator_\(graph_theory\)). Argument
 identifiers in mapping functions are in scope for the mapping body. Function
 identifiers and mapping identifiers are visible across the entire module.
+
+## Dialects
+
+Dialects are the mechanism in which to engage with and extend the MLIR
+ecosystem. They allow for defining new [operations](#operations), as well as
+[attributes](#attributes) and [types](#type-system). Each dialect is given a
+unique `namespace` that is prefixed to each defined attribute/operation/type.
+For example, the [Affine dialect](Dialects/Affine.md) defines the namespace:
+`affine`.
+
+MLIR allows for multiple dialects, even those outside of the main tree, to
+co-exist together within one module. Dialects are produced and consumed by
+certain passes. MLIR provides a [framework](DialectConversion.md) to convert
+between, and within different dialects.
+
+A few of the dialects supported by MLIR:
+
+*   [Affine dialect](Dialects/Affine.md)
+*   [GPU dialect](Dialects/GPU.md)
+*   [LLVM dialect](Dialects/LLVM.md)
+*   [SPIR-V dialect](Dialects/SPIR-V.md)
+*   [Standard dialect](Dialects/Standard.md)
+*   [Vector dialect](Dialects/Vector.md)
+
+### Target specific operations
+
+Dialects provide a modular way in which targets can expose target-specific
+operations directly through to MLIR. As an example, some targets go through
+LLVM. LLVM has a rich set of intrinsics for certain target-independent
+operations (e.g. addition with overflow check) as well as providing access to
+target-specific operations for the targets it supports (e.g. vector permutation
+operations). LLVM intrinsics in MLIR are represented via operations that start
+with an "llvm." name.
+
+Example:
+
+```mlir {.mlir}
+// LLVM: %x = call {i16, i1} @llvm.sadd.with.overflow.i16(i16 %a, i16 %b)
+%x:2 = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
+```
+
+These operations only work when targeting LLVM as a backend (e.g. for CPUs and
+GPUs), and are required to align with the LLVM definition of these intrinsics.
+
+### Dialect specific types
+
+Similarly to operations, dialects may define custom extensions to the type
+system. These extensions fit within the same type system as described in the
+[type system overview](#type-system).
+
+``` {.ebnf}
+dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
+dialect-type ::= '!' alias-name pretty-dialect-type-body?
+
+pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
+pretty-dialect-type-contents ::= pretty-dialect-type-body
+                              | '(' pretty-dialect-type-contents+ ')'
+                              | '[' pretty-dialect-type-contents+ ']'
+                              | '{' pretty-dialect-type-contents+ '}'
+                              | '[^[<({>\])}\0]+'
+
+```
+
+Dialect types can be specified in a verbose form, e.g. like this:
+
+```mlir {.mlir}
+// LLVM type that wraps around llvm IR types.
+!llvm<"i32*">
+
+// Tensor flow string type.
+!tf.string
+
+// Complex type
+!foo<"something<abcd>">
+
+// Even more complex type
+!foo<"something<a%%123^^^>>>">
+```
+
+Dialect types that are simple enough can use the pretty format, which is a
+lighter weight syntax that is equivalent to the above forms:
+
+```mlir {.mlir}
+// Tensor flow string type.
+!tf.string
+
+// Complex type
+!foo.something<abcd>
+```
+
+Sufficiently complex dialect types are required to use the verbose form for
+generality. For example, the more complex type shown above wouldn't be valid in
+the lighter syntax: `!foo.something<a%%123^^^>>>` because it contains characters
+that are not allowed in the lighter syntax, as well as unbalanced `<>`
+characters.
+
+See [here](DefiningAttributesAndTypes.md) to learn how to define dialect types.
 
 ## Type System
 
@@ -1214,94 +1300,3 @@ Example:
 // Pass value %v to ^bb2, but not to ^bb1.
 "cond_br"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
 ```
-
-## Dialects
-
-MLIR supports multiple dialects containing a set of operations and types defined
-together, potentially outside of the main tree. Dialects are produced and
-consumed by certain passes. MLIR can be converted between different dialects by
-a conversion pass.
-
-Currently, MLIR supports the following dialects:
-
-*   [Affine dialect](Dialects/Affine.md)
-*   [GPU dialect](Dialects/GPU.md)
-*   [LLVM dialect](Dialects/LLVM.md)
-*   [SPIR-V dialect](Dialects/SPIR-V.md)
-*   [Standard dialect](Dialects/Standard.md)
-*   [Vector dialect](Dialects/Vector.md)
-
-### Target specific operations
-
-We expect to expose many target-specific (such as TPU-specific) operations
-directly through to MLIR.
-
-In addition to the TPU backend, some targets go through LLVM. LLVM has a rich
-set of intrinsics for certain target-independent operations (e.g. addition with
-overflow check) as well as providing access to target-specific operations for
-the targets it supports (e.g. vector permutation operations). LLVM intrinsics
-start with an "llvm." name.
-
-Example:
-
-```mlir {.mlir}
-// LLVM: %x = call {i16, i1} @llvm.sadd.with.overflow.i16(i16 %a, i16 %b)
-%x:2 = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
-```
-
-These operations only work when targeting LLVM as a backend (e.g. for CPUs and
-GPUs), and are required to align with the LLVM definition of these intrinsics.
-
-### Dialect specific types
-
-Similarly to operations, dialects may define custom extensions to the type
-system. These extensions fit within the same type system as described in the
-[type system overview](#type-system).
-
-``` {.ebnf}
-dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
-dialect-type ::= '!' alias-name pretty-dialect-type-body?
-
-pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
-pretty-dialect-type-contents ::= pretty-dialect-type-body
-                              | '(' pretty-dialect-type-contents+ ')'
-                              | '[' pretty-dialect-type-contents+ ']'
-                              | '{' pretty-dialect-type-contents+ '}'
-                              | '[^[<({>\])}\0]+'
-
-```
-
-Dialect types can be specified in a verbose form, e.g. like this:
-
-```mlir {.mlir}
-// LLVM type that wraps around llvm IR types.
-!llvm<"i32*">
-
-// Tensor flow string type.
-!tf.string
-
-// Complex type
-!foo<"something<abcd>">
-
-// Even more complex type
-!foo<"something<a%%123^^^>>>">
-```
-
-Dialect types that are simple enough can use the pretty format, which is a
-lighter weight syntax that is equivalent to the above forms:
-
-```mlir {.mlir}
-// Tensor flow string type.
-!tf.string
-
-// Complex type
-!foo.something<abcd>
-```
-
-Sufficiently complex dialect types are required to use the verbose form for
-generality. For example, the more complex type shown above wouldn't be valid in
-the lighter syntax: `!foo.something<a%%123^^^>>>` because it contains characters
-that are not allowed in the lighter syntax, as well as unbalanced `<>`
-characters.
-
-See [here](DefiningAttributesAndTypes.md) to learn how to define dialect types.
