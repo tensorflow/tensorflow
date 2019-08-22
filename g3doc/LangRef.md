@@ -234,11 +234,59 @@ Example:
 These operations only work when targeting LLVM as a backend (e.g. for CPUs and
 GPUs), and are required to align with the LLVM definition of these intrinsics.
 
-### Dialect specific types
+## Type System
+
+Each SSA value in MLIR has a type defined by the type system below. There are a
+number of primitive types (like integers) and also aggregate types for tensors
+and memory buffers. MLIR standard types do not include structures, arrays, or
+dictionaries.
+
+MLIR has an open type system (there is no fixed list of types), and types may
+have application-specific semantics. For example, MLIR supports a set of
+[standard types](#standard-types) as well as [dialect types](#dialect-types).
+
+``` {.ebnf}
+type ::= type-alias | dialect-type | standard-type
+
+type-list-no-parens ::=  type (`,` type)*
+type-list-parens ::= `(` `)`
+                   | `(` type-list-no-parens `)`
+
+// This is a common way to refer to an SSA value with a specified type.
+ssa-use-and-type ::= ssa-use `:` type
+
+// Non-empty list of names and types.
+ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
+```
+
+### Type Aliases
+
+``` {.ebnf}
+type-alias-def ::= '!' alias-name '=' 'type' type
+type-alias ::= '!' alias-name
+```
+
+MLIR supports defining named aliases for types. A type alias is an identifier
+that can be used in the place of the type that it defines. These aliases *must*
+be defined before their uses. Alias names may not contain a '.', since those
+names are reserved for [dialect types](#dialect-types).
+
+Example:
+
+```mlir {.mlir}
+!avx_m128 = type vector<4 x f32>
+
+// Using the original type.
+"foo"(%x) : vector<4 x f32> -> ()
+
+// Using the type alias.
+"foo"(%x) : !avx_m128 -> ()
+```
+
+### Dialect types
 
 Similarly to operations, dialects may define custom extensions to the type
-system. These extensions fit within the same type system as described in the
-[type system overview](#type-system).
+system.
 
 ``` {.ebnf}
 dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
@@ -288,72 +336,54 @@ characters.
 
 See [here](DefiningAttributesAndTypes.md) to learn how to define dialect types.
 
-## Type System
+### Standard Types
 
-Each SSA value in MLIR has a type defined by the type system below. There are a
-number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR standard types do not include structures, arrays, or
-dictionaries.
-
-MLIR has an open type system (there is no fixed list of types), and types may
-have application-specific semantics. For example, MLIR supports a set of
-[standard types](#standard-types) as well as
-[dialect-specific types](#dialect-specific-types).
+Standard types are a core set of [dialect types](#dialect-types) that are
+defined in a builtin dialect and thus available to all users of MLIR.
 
 ``` {.ebnf}
-type ::= non-function-type
-       | function-type
-
-non-function-type ::= integer-type
-                    | index-type
+standard-type ::=     complex-type
                     | float-type
-                    | vector-type
-                    | tensor-type
+                    | function-type
+                    | index-type
+                    | integer-type
                     | memref-type
-                    | dialect-type
-                    | type-alias
-                    | complex-type
-                    | tuple-type
                     | none-type
-
-type-list-no-parens ::=  type (`,` type)*
-type-list-parens ::= `(` `)`
-                   | `(` type-list-no-parens `)`
-
-// This is a common way to refer to an SSA value with a specified type.
-ssa-use-and-type ::= ssa-use `:` type
-
-// Non-empty list of names and types.
-ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
+                    | tensor-type
+                    | tuple-type
+                    | vector-type
 ```
 
-### Type Aliases
+#### Complex Type
+
+Syntax:
 
 ``` {.ebnf}
-type-alias-def ::= '!' alias-name '=' 'type' type
-type-alias ::= '!' alias-name
+complex-type ::= `complex` `<` type `>`
 ```
 
-MLIR supports defining named aliases for types. A type alias is an identifier
-that can be used in the place of the type that it defines. These aliases *must*
-be defined before their uses. Alias names may not contain a '.', since those
-names are reserved for [dialect-specific types](#dialect-specific-types).
+The value of `complex` type represents a complex number with a parameterized
+element type, which is composed of a real and imaginary value of that element
+type. The element must be a floating point or integer scalar type.
 
-Example:
+Examples:
 
 ```mlir {.mlir}
-!avx_m128 = type vector<4 x f32>
-
-// Using the original type.
-"foo"(%x) : vector<4 x f32> -> ()
-
-// Using the type alias.
-"foo"(%x) : !avx_m128 -> ()
+complex<f32>
+complex<i32>
 ```
 
-### Builtin Types
+#### Floating Point Types
 
-Builtin types consist of only the types needed for the validity of the IR.
+Syntax:
+
+``` {.ebnf}
+// Floating point.
+float-type ::= `f16` | `bf16` | `f32` | `f64`
+```
+
+MLIR supports float types of certain widths that are widely used as indicated
+above.
 
 #### Function Type
 
@@ -376,8 +406,6 @@ returned from functions, merged across control flow boundaries with
 
 Function types are also used to indicate the arguments and results of
 [operations](#operations).
-
-### Standard Types
 
 #### Index Type
 
@@ -416,98 +444,6 @@ bit one).
 
 TODO: Need to decide on a representation for quantized integers
 ([initial thoughts](Rationale.md#quantized-integer-operations)).
-
-#### Floating Point Types
-
-Syntax:
-
-``` {.ebnf}
-// Floating point.
-float-type ::= `f16` | `bf16` | `f32` | `f64`
-```
-
-MLIR supports float types of certain widths that are widely used as indicated
-above.
-
-#### Vector Type
-
-Syntax:
-
-``` {.ebnf}
-vector-type ::= `vector` `<` static-dimension-list vector-element-type `>`
-vector-element-type ::= float-type | integer-type
-
-static-dimension-list ::= (decimal-literal `x`)+
-```
-
-The vector type represents a SIMD style vector, used by target-specific
-operation sets like AVX. While the most common use is for 1D vectors (e.g.
-vector<16 x f32>) we also support multidimensional registers on targets that
-support them (like TPUs).
-
-Vector shapes must be positive decimal integers.
-
-Note: hexadecimal integer literals are not allowed in vector type declarations,
-`vector<0x42xi32>` is invalid because it is interpreted as a 2D vector with
-shape `(0, 42)` and zero shapes are not allowed.
-
-#### Tensor Type
-
-Syntax:
-
-``` {.ebnf}
-tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
-tensor-memref-element-type ::= vector-element-type | vector-type
-
-// memref requires a known rank, but tensor does not.
-dimension-list ::= dimension-list-ranked | (`*` `x`)
-dimension-list-ranked ::= (dimension `x`)*
-dimension ::= `?` | decimal-literal
-```
-
-SSA values of tensor type represents aggregate N-dimensional data values, and
-have a known element type. It may have an unknown rank (indicated by `*`) or may
-have a fixed rank with a list of dimensions. Each dimension may be a static
-non-negative decimal constant or be dynamically determined (indicated by `?`).
-
-The runtime representation of the MLIR tensor type is intentionally abstracted -
-you cannot control layout or get a pointer to the data. For low level buffer
-access, MLIR has a [`memref` type](#memref-type). This abstracted runtime
-representation holds both the tensor data values as well as information about
-the (potentially dynamic) shape of the tensor. The
-[`dim` operation](Dialects/Standard.md#dim-operation) returns the size of a
-dimension from a value of tensor type.
-
-Note: hexadecimal integer literals are not allowed in tensor type declarations
-to avoid confusion between `0xf32` and `0 x f32`. Zero sizes are allowed in
-tensors and treated as other sizes, e.g., `tensor<0 x 1 x i32>` and `tensor<1 x
-0 x i32>` are different types. Since zero sizes are not allowed in some other
-types, such tensors should be optimized away before lowering tensors to vectors.
-
-Examples:
-
-```mlir {.mlir}
-// Tensor with unknown rank.
-tensor<* x f32>
-
-// Known rank but unknown dimensions.
-tensor<? x ? x ? x ? x f32>
-
-// Partially known dimensions.
-tensor<? x ? x 13 x ? x f32>
-
-// Full static shape.
-tensor<17 x 4 x 13 x 4 x f32>
-
-// Tensor with rank zero. Represents a scalar.
-tensor<f32>
-
-// Zero-element dimensions are allowed.
-tensor<0 x 42 x f32>
-
-// Zero-element tensor of f32 type (hexadecimal literals not allowed here).
-tensor<0xf32>
-```
 
 #### Memref Type
 
@@ -601,11 +537,11 @@ Examples
 
 ##### Index Map
 
-An index map is a one-to-one [semi-affine map](Dialects/Affine.md#semi-affine-maps) that
-transforms a multidimensional index from one index space to another. For
-example, the following figure shows an index map which maps a 2-dimensional
-index from a 2x2 index space to a 3x3 index space, using symbols `S0` and `S1`
-as offsets.
+An index map is a one-to-one
+[semi-affine map](Dialects/Affine.md#semi-affine-maps) that transforms a
+multidimensional index from one index space to another. For example, the
+following figure shows an index map which maps a 2-dimensional index from a 2x2
+index space to a 3x3 index space, using symbols `S0` and `S1` as offsets.
 
 ![Index Map Example](includes/img/index-map.svg)
 
@@ -633,10 +569,10 @@ Index map examples:
 
 ##### Layout Map
 
-A layout map is a [semi-affine map](Dialects/Affine.md#semi-affine-maps) which encodes logical to
-physical index space mapping, by mapping input dimensions to their ordering from
-most-major (slowest varying) to most-minor (fastest varying). Therefore, an
-identity layout map corresponds to a row-major layout.
+A layout map is a [semi-affine map](Dialects/Affine.md#semi-affine-maps) which
+encodes logical to physical index space mapping, by mapping input dimensions to
+their ordering from most-major (slowest varying) to most-minor (fastest
+varying). Therefore, an identity layout map corresponds to a row-major layout.
 
 Layout map examples:
 
@@ -659,31 +595,81 @@ number of dimensions of the domain of the next map in the composition.
 The semi-affine map composition specified in the memref type, maps from accesses
 used to index the memref in load/store operations to other index spaces (i.e.
 logical to physical index mapping). Each of the
-[semi-affine maps](Dialects/Affine.md) and thus its composition is required to be
-one-to-one.
+[semi-affine maps](Dialects/Affine.md) and thus its composition is required to
+be one-to-one.
 
 The semi-affine map composition can be used in dependence analysis, memory
 access pattern analysis, and for performance optimizations like vectorization,
 copy elision and in-place updates. If an affine map composition is not specified
 for the memref, the identity affine map is assumed.
 
-#### Complex Type
+#### None Type
 
 Syntax:
 
 ``` {.ebnf}
-complex-type ::= `complex` `<` type `>`
+none-type ::= `none`
 ```
 
-The value of `complex` type represents a complex number with a parameterized
-element type, which is composed of a real and imaginary value of that element
-type. The element must be a floating point or integer scalar type.
+The `none` type is a unit type, i.e. a type with exactly one possible value,
+where its value does not have a defined dynamic representation.
+
+#### Tensor Type
+
+Syntax:
+
+``` {.ebnf}
+tensor-type ::= `tensor` `<` dimension-list tensor-memref-element-type `>`
+tensor-memref-element-type ::= vector-element-type | vector-type
+
+// memref requires a known rank, but tensor does not.
+dimension-list ::= dimension-list-ranked | (`*` `x`)
+dimension-list-ranked ::= (dimension `x`)*
+dimension ::= `?` | decimal-literal
+```
+
+SSA values of tensor type represents aggregate N-dimensional data values, and
+have a known element type. It may have an unknown rank (indicated by `*`) or may
+have a fixed rank with a list of dimensions. Each dimension may be a static
+non-negative decimal constant or be dynamically determined (indicated by `?`).
+
+The runtime representation of the MLIR tensor type is intentionally abstracted -
+you cannot control layout or get a pointer to the data. For low level buffer
+access, MLIR has a [`memref` type](#memref-type). This abstracted runtime
+representation holds both the tensor data values as well as information about
+the (potentially dynamic) shape of the tensor. The
+[`dim` operation](Dialects/Standard.md#dim-operation) returns the size of a
+dimension from a value of tensor type.
+
+Note: hexadecimal integer literals are not allowed in tensor type declarations
+to avoid confusion between `0xf32` and `0 x f32`. Zero sizes are allowed in
+tensors and treated as other sizes, e.g., `tensor<0 x 1 x i32>` and `tensor<1 x
+0 x i32>` are different types. Since zero sizes are not allowed in some other
+types, such tensors should be optimized away before lowering tensors to vectors.
 
 Examples:
 
 ```mlir {.mlir}
-complex<f32>
-complex<i32>
+// Tensor with unknown rank.
+tensor<* x f32>
+
+// Known rank but unknown dimensions.
+tensor<? x ? x ? x ? x f32>
+
+// Partially known dimensions.
+tensor<? x ? x 13 x ? x f32>
+
+// Full static shape.
+tensor<17 x 4 x 13 x 4 x f32>
+
+// Tensor with rank zero. Represents a scalar.
+tensor<f32>
+
+// Zero-element dimensions are allowed.
+tensor<0 x 42 x f32>
+
+// Zero-element tensor of f32 type (hexadecimal literals not allowed here).
+tensor<0xf32>
 ```
 
 #### Tuple Type
@@ -714,16 +700,27 @@ tuple<f32>
 tuple<i32, f32, tensor<i1>, i5>
 ```
 
-#### None Type
+#### Vector Type
 
 Syntax:
 
 ``` {.ebnf}
-none-type ::= `none`
+vector-type ::= `vector` `<` static-dimension-list vector-element-type `>`
+vector-element-type ::= float-type | integer-type
+
+static-dimension-list ::= (decimal-literal `x`)+
 ```
 
-The `none` type is a unit type, i.e. a type with exactly one possible value,
-where its value does not have a defined dynamic representation.
+The vector type represents a SIMD style vector, used by target-specific
+operation sets like AVX. While the most common use is for 1D vectors (e.g.
+vector<16 x f32>) we also support multidimensional registers on targets that
+support them (like TPUs).
+
+Vector shapes must be positive decimal integers.
+
+Note: hexadecimal integer literals are not allowed in vector type declarations,
+`vector<0x42xi32>` is invalid because it is interpreted as a 2D vector with
+shape `(0, 42)` and zero shapes are not allowed.
 
 ## Attributes
 
