@@ -193,9 +193,9 @@ static Type getMemRefElementPtrType(MemRefType t, LLVMTypeConverter &lowering) {
 }
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
-                               LLVMTypeConverter &lowering_)
-    : ConversionPattern(rootOpName, /*benefit=*/1, context),
-      lowering(lowering_) {}
+                               LLVMTypeConverter &lowering_,
+                               PatternBenefit benefit)
+    : ConversionPattern(rootOpName, benefit, context), lowering(lowering_) {}
 
 namespace {
 // Base class for Standard to LLVM IR op conversions.  Matches the Op type
