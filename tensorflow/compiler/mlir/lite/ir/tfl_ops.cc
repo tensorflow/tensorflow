@@ -402,6 +402,23 @@ static LogicalResult Verify(PackOp op) {
   if (op.getOperation()->getNumOperands() != op.values_count())
     return op.emitOpError("input count should match 'values_count' attribute");
 
+  Value *operand0 = op.getOperand(0);
+  auto input_type = operand0->getType().cast<ShapedType>();
+
+  // Check axis bounds.
+  int64_t axis_value = op.axis().getSExtValue();
+  if (abs(axis_value) > input_type.getRank())
+    return op.emitOpError("op attribute 'axis' is out of bounds, got ")
+           << axis_value;
+
+  // Make sure all inputs have the same shape and element type.
+  // TODO(rahulsp): Simplify once b/135032064 is fixed.
+  for (Value *operand : op.getOperands()) {
+    auto other_type = operand->getType().cast<ShapedType>();
+    if (input_type != other_type)
+      return op.emitOpError("operands should be of the same type");
+  }
+
   return success();
 }
 
