@@ -404,15 +404,20 @@ class CrossDeviceOps(object):
 class ReductionToOneDevice(CrossDeviceOps):
   """Always do reduction to one device first and then do broadcasting.
 
-    Batch reduction is done by reduction on each element one by one.
+  Batch reduction is done by reduction on each element one by one.
+
+  ```
+    mirrored_strategy = tf.distribute.MirroredStrategy(
+      cross_device_ops=tf.distribute.ReductionToOneDevice())
+  ```
   """
 
   def __init__(self, reduce_to_device=None, accumulation_fn=None):
-    """Initializes the instance of ReductionToOneDevice.
+    """Initializes with a device to reduce to and a way to accumulate.
 
     Args:
       reduce_to_device: the intermediate device to reduce to. If None, reduce
-        to the first device in `destinations` of the reduce() method.
+        to the first device in `destinations` of the `reduce()` method.
       accumulation_fn: a function that does accumulation.  If None, then
         `tf.math.add_n` is used.
     """
