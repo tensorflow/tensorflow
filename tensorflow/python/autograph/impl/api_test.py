@@ -921,6 +921,17 @@ class ApiTest(test.TestCase):
     # Just check that the output is parseable Python code.
     self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
 
+  def test_to_code_with_wrapped_function(self):
+
+    @def_function.function
+    def test_fn(x, s):
+      while tf.reduce_sum(x) > s:
+        x /= 2
+      return x
+
+    with self.assertRaisesRegex(Exception, 'try passing.*python_function'):
+      api.to_code(test_fn)
+
   def test_tf_convert_direct(self):
 
     def f():
