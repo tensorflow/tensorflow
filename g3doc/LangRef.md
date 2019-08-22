@@ -1224,39 +1224,12 @@ a conversion pass.
 
 Currently, MLIR supports the following dialects:
 
-*   [Standard dialect](Dialects/Standard.md)
 *   [Affine dialect](Dialects/Affine.md)
+*   [GPU dialect](Dialects/GPU.md)
+*   [LLVM dialect](Dialects/LLVM.md)
+*   [SPIR-V dialect](Dialects/SPIR-V.md)
+*   [Standard dialect](Dialects/Standard.md)
 *   [Vector dialect](Dialects/Vector.md)
-*   [TensorFlow dialect](#tensorflow-operations)
-
-### TensorFlow operations
-
-MLIR operations can represent arbitrary TensorFlow operations with a reversible
-mapping. Switch and merge nodes are represented with the MLIR control flow
-graph. TensorFlow dataflow operations are mapped over to MLIR operations whose
-name gets a "tf." prefix.
-
-The normal dtypes supported by TensorFlow are mapped onto a Tensor type with an
-unknown rank. The resource and variant dtypes are mapped onto our resource and
-variant type specifically (TODO: Specify this). Attributes get mapped over
-directly, with type attributes represented as strings.
-
-Examples:
-
-```mlir {.mlir}
-// TensorFlow Add operation.
-%a = "tf.Add"(%b, %c)
-  : (tensor<*xf32>,tensor<*xf32>) -> tensor<*xf32>
-
-// TensorFlow Add operation with partially inferred shapes.
-%d = "tf.Add"(%e, %f)
-  : (tensor<?x42x?xf32>,tensor<?x42x?xf32>) -> tensor<?x42x?xf32>
-
-// TensorFlow Conv2d operation.
-%y = "tf.Conv2d"(%input, %filter)
-          {strides: [1,1,2,1], padding: "SAME", dilations: [2,1,1,1]}
-   : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-```
 
 ### Target specific operations
 
@@ -1332,16 +1305,3 @@ that are not allowed in the lighter syntax, as well as unbalanced `<>`
 characters.
 
 See [here](DefiningAttributesAndTypes.md) to learn how to define dialect types.
-
-### TensorFlow types
-
-The TensorFlow dialect in MLIR defines several extended types:
-
-``` {.ebnf}
-// TensorFlow specific types (TODO: the rest ref data types)
-type-specific-data ::= `control` | `resource` | `variant` | `string`
-               `complex64` | `complex128` | `f32ref`
-```
-
-`control` is used in TensorFlow graphs to represent
-[control dependence edges](https://docs.google.com/document/d/1Iey7MfrAlBWd0nrHNdnVKvIKRoo8XHsWG5g5pi1iDV4/edit?ts=5b5a0a9f#heading=h.1dv5wuya469j).
