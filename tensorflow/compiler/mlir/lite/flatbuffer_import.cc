@@ -281,7 +281,7 @@ StatusOr<tfl::ConstOp> BuildConstOp(const tflite::TensorT& tensor,
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value*> vals_map,
-    const std::vector<std::string>& op_names,
+    Value* optional_arg_marker, const std::vector<std::string>& op_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder) {
   llvm::SmallVector<Value*, 4> operands;
@@ -296,7 +296,12 @@ StatusOr<Operation*> ConvertOp(
   OperationState op_state(loc, op_name);
 
   for (auto input_num : op.inputs) {
-    op_state.addOperands({vals_map[input_num]});
+    if (input_num == -1) {
+      assert(optional_arg_marker != nullptr);
+      op_state.addOperands({optional_arg_marker});
+    } else {
+      op_state.addOperands({vals_map[input_num]});
+    }
   }
 
   for (auto output_num : op.outputs) {
@@ -356,6 +361,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   OpBuilder op_builder{body};
 
   std::vector<Value*> vals_map(subgraph.tensors.size(), nullptr);
+  Value* maybe_optional_arg_marker = nullptr;
 
   // Get or construct MLIR values for each input
   for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
@@ -381,7 +387,15 @@ StatusOr<FuncOp> ConvertSubgraph(
       // The operators in a graph are topologically sorted
       // and so if no previous operation has produced a tensor
       // it must be a constant.
-      if (nullptr == vals_map[input_num]) {
+      if (input_num == -1) {
+        if (maybe_optional_arg_marker == nullptr) {
+          maybe_optional_arg_marker =
+              op_builder
+                  .create<mlir::ConstantOp>(base_loc, builder.getNoneType(),
+                                            builder.getUnitAttr())
+                  .getResult();
+        }
+      } else if (nullptr == vals_map[input_num]) {
         auto& const_tensor = *subgraph.tensors[input_num];
         auto const_loc = TensorLoc(const_tensor, builder, base_loc);
         auto op_or_err =
@@ -400,9 +414,12 @@ StatusOr<FuncOp> ConvertSubgraph(
         op->outputs.empty()
             ? base_loc
             : TensorLoc(*subgraph.tensors[op->outputs[0]], builder, base_loc);
-    TF_ASSIGN_OR_RETURN(auto* mlir_op,
-                        ConvertOp(*op, vals_map, op_names, subgraph.tensors,
-                                  op_loc, op_builder));
+    // If there's an optional argument, maybe_optional_arg_marker has been set
+    // to a valid Value*
+    TF_ASSIGN_OR_RETURN(
+        auto* mlir_op,
+        ConvertOp(*op, vals_map, maybe_optional_arg_marker, op_names,
+                  subgraph.tensors, op_loc, op_builder));
     for (auto pair : llvm::enumerate(mlir_op->getResults())) {
       vals_map[op->outputs[pair.index()]] = pair.value();
     }
