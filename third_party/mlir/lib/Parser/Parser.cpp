@@ -621,7 +621,7 @@ Type Parser::parseFunctionType() {
 
 /// Parse a memref type.
 ///
-///   memref-type ::= `memref` `<` dimension-list-ranked element-type
+///   memref-type ::= `memref` `<` dimension-list-ranked type
 ///                   (`,` semi-affine-map-composition)? (`,` memory-space)? `>`
 ///
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
@@ -765,7 +765,7 @@ Type Parser::parseNonFunctionType() {
 
 /// Parse a tensor type.
 ///
-///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
+///   tensor-type ::= `tensor` `<` dimension-list type `>`
 ///   dimension-list ::= dimension-list-ranked | `*x`
 ///
 Type Parser::parseTensorType() {
@@ -827,7 +827,7 @@ Type Parser::parseTupleType() {
 
 /// Parse a vector type.
 ///
-///   vector-type ::= `vector` `<` static-dimension-list primitive-type `>`
+///   vector-type ::= `vector` `<` static-dimension-list type `>`
 ///   static-dimension-list ::= (decimal-literal `x`)+
 ///
 VectorType Parser::parseVectorType() {
