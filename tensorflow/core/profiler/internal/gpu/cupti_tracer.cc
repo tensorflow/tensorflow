@@ -557,8 +557,9 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   auto &per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   if (per_device_map.annotations.size() < max_size_) {
-    per_device_map.correlation_map.emplace(
-        correlation_id, *per_device_map.annotations.insert(annotation).first);
+    absl::string_view annotation_str =
+        *per_device_map.annotations.insert(annotation).first;
+    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
   }
 }
 
