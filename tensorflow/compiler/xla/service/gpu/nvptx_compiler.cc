@@ -120,6 +120,20 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     // tuple/get-tuple-element pairs that TupleSimplifier fixes.
     pipeline.AddPass<TupleSimplifier>();
   }
+
+  // tf2xla bridge, DepthwiseConvolutionConverter and CudnnConvRewriter
+  // introduces reshapes and transposes that can be eliminated using
+  // AlgebraicSimplifier
+  {
+    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+        "algebraic_simplification_post_conv_rewriter");
+    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                          /*allow_mixed_precision=*/false);
+
+    AlgebraicSimplifierOptions options;
+    pass.AddPass<AlgebraicSimplifier>(options);
+  }
+
   // CudnnConvRewriter, CudnnConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
