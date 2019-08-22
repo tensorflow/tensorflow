@@ -111,11 +111,18 @@ mlir::TensorType GetTensorType(const TensorT& tensor, Builder builder) {
 }
 
 StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
-  // TODO(krzysd) Support "if" and "while" ops
+  // TODO(krzysd) Support custom ops
   if (opcode.builtin_code == tflite::BuiltinOperator_CUSTOM) {
     return errors::Unimplemented("unsupported custom operation: ",
                                  opcode.custom_code);
   }
+  if (opcode.builtin_code == tflite::BuiltinOperator_IF) {
+    return std::string("tf.If");
+  }
+  if (opcode.builtin_code == tflite::BuiltinOperator_WHILE) {
+    return std::string("tf.While");
+  }
+
   const char* op_name = tflite::EnumNameBuiltinOperator(opcode.builtin_code);
   std::string lowered_name = llvm::StringRef(op_name).lower();
   return llvm::Twine("tfl.", lowered_name).str();
@@ -278,10 +285,39 @@ StatusOr<tfl::ConstOp> BuildConstOp(const tflite::TensorT& tensor,
   return builder.create<tfl::ConstOp>(loc, value);
 }
 
+llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
+    tflite::BuiltinOptionsUnion options,
+    const std::vector<std::string>& func_names, Builder builder) {
+  if (auto* opts = options.AsIfOptions()) {
+    uint32_t then_idx = opts->then_subgraph_index;
+    auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
+    uint32_t else_idx = opts->else_subgraph_index;
+    auto else_attr = builder.getSymbolRefAttr(func_names.at(else_idx));
+
+    return {builder.getNamedAttr("then_branch", then_attr),
+            builder.getNamedAttr("else_branch", else_attr),
+            // TODO(b/139667752): Analyze statelessness correctly
+            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+  }
+  if (auto* opts = options.AsWhileOptions()) {
+    uint32_t cond_idx = opts->cond_subgraph_index;
+    auto cond_attr = builder.getSymbolRefAttr(func_names.at(cond_idx));
+    uint32_t body_idx = opts->body_subgraph_index;
+    auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
+
+    return {builder.getNamedAttr("cond", cond_attr),
+            builder.getNamedAttr("body", body_attr),
+            // TODO(b/139667752): Analyze statelessness correctly
+            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+  }
+  return {};
+}
+
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value*> vals_map,
     Value* optional_arg_marker, const std::vector<std::string>& op_names,
+    const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder) {
   llvm::SmallVector<Value*, 4> operands;
@@ -292,7 +328,7 @@ StatusOr<Operation*> ConvertOp(
     return emitError(loc, err.ToString()), err;
   }
 
-  const std::string& op_name = op_names[op.opcode_index];
+  const std::string& op_name = op_names.at(op.opcode_index);
   OperationState op_state(loc, op_name);
 
   for (auto input_num : op.inputs) {
@@ -300,12 +336,12 @@ StatusOr<Operation*> ConvertOp(
       assert(optional_arg_marker != nullptr);
       op_state.addOperands({optional_arg_marker});
     } else {
-      op_state.addOperands({vals_map[input_num]});
+      op_state.addOperands({vals_map.at(input_num)});
     }
   }
 
   for (auto output_num : op.outputs) {
-    auto& tensor = *tensors[output_num];
+    auto& tensor = *tensors.at(output_num);
     mlir::TensorType type = GetTensorType(tensor, builder);
     // Special case for reshape, which stores its return shape in an option
     // that we need to extract from
@@ -323,6 +359,11 @@ StatusOr<Operation*> ConvertOp(
   mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
   op_state.addAttributes(attrs);
 
+  // Handle the conversion from subgraph index to functions for If and While
+  auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
+      op.builtin_options, func_names, builder);
+  op_state.addAttributes(function_ref_attrs);
+
   return builder.createOperation(op_state);
 }
 
@@ -337,6 +378,7 @@ StatusOr<Operation*> ConvertOp(
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
     const std::vector<std::string>& op_names,
+    const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
     Location base_loc, Builder builder, bool add_pseudo_input_ops = false) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
@@ -344,10 +386,19 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   // Construct function type
   for (auto input : subgraph.inputs) {
-    input_types.push_back(GetTensorType(*subgraph.tensors[input], builder));
+    auto& tensor = *subgraph.tensors.at(input);
+    auto type = GetTensorType(tensor, builder);
+    if (add_pseudo_input_ops && tensor.shape.empty()) {
+      // TODO(b/138222071) Graph inputs must have static shape per the exporter,
+      // but we cannot differentiate scalars from unranked tensors.
+      // Here we reverse the default assumption that shape = [] means unranked.
+      auto elem_type = ConvertElementType(tensor.type, builder);
+      type = builder.getTensorType({}, elem_type);
+    }
+    input_types.push_back(type);
   }
   for (auto output : subgraph.outputs) {
-    ret_types.push_back(GetTensorType(*subgraph.tensors[output], builder));
+    ret_types.push_back(GetTensorType(*subgraph.tensors.at(output), builder));
   }
   auto func_type = builder.getFunctionType(input_types, ret_types);
 
@@ -366,7 +417,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Get or construct MLIR values for each input
   for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
     auto input_tensor = subgraph.inputs[i];
-    const auto& tensor = *subgraph.tensors[input_tensor];
+    const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (nullptr != vals_map[input_tensor]) {
       auto err = errors::FailedPrecondition("duplicate input arguments");
@@ -395,7 +446,7 @@ StatusOr<FuncOp> ConvertSubgraph(
                                             builder.getUnitAttr())
                   .getResult();
         }
-      } else if (nullptr == vals_map[input_num]) {
+      } else if (nullptr == vals_map.at(input_num)) {
         auto& const_tensor = *subgraph.tensors[input_num];
         auto const_loc = TensorLoc(const_tensor, builder, base_loc);
         auto op_or_err =
@@ -419,7 +470,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
         ConvertOp(*op, vals_map, maybe_optional_arg_marker, op_names,
-                  subgraph.tensors, op_loc, op_builder));
+                  func_names, subgraph.tensors, op_loc, op_builder));
     for (auto pair : llvm::enumerate(mlir_op->getResults())) {
       vals_map[op->outputs[pair.index()]] = pair.value();
     }
@@ -428,7 +479,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Construct return values
   llvm::SmallVector<Value*, 4> return_operands;
   for (auto index : subgraph.outputs) {
-    if (nullptr == vals_map[index]) {
+    if (nullptr == vals_map.at(index)) {
       auto& const_tensor = *subgraph.tensors[index];
       auto const_loc = TensorLoc(const_tensor, builder, base_loc);
       auto op_or_err =
@@ -491,6 +542,11 @@ OwningModuleRef tflite::FlatBufferToMlir(absl::string_view buffer,
     operator_names.push_back(operator_name_or_error.ConsumeValueOrDie());
   }
 
+  std::vector<std::string> func_names;
+  for (auto& subgraph : model->subgraphs) {
+    func_names.push_back(subgraph->name);
+  }
+
   auto module = mlir::ModuleOp::create(base_loc);
   // We currently don't use this to make decisions, but we could
   // use it in exports or if there are breaking changes
@@ -505,10 +561,10 @@ OwningModuleRef tflite::FlatBufferToMlir(absl::string_view buffer,
     auto& subgraph = e.value();
     std::string name = SubgraphName(e.index(), *subgraph);
     auto func_or_error = ConvertSubgraph(
-        *subgraph, name, operator_names, model->buffers, base_loc, builder,
+        *subgraph, name, operator_names, func_names, model->buffers, base_loc,
         // Only the entry point needs pseudo_input_ops
         // TODO(b/131175224,b/132239787) Support multiple entry points
-        /* add_pseudo_input_ops = */ e.index() == 0);
+        builder, /* add_pseudo_input_ops = */ e.index() == 0);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name,
@@ -516,6 +572,7 @@ OwningModuleRef tflite::FlatBufferToMlir(absl::string_view buffer,
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
+  // TFLite subgraphs do not necessarily have names,
 
   return OwningModuleRef(module);
 }
