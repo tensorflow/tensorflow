@@ -164,6 +164,13 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
   let llvmBuilder = [{
     $res = builder.CreateICmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, ICmpPredicate predicate, Value *lhs, "
+    "Value *rhs", [{
+      LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
+      build(b, result, LLVMType::getInt1Ty(dialect),
+            b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
+    }]>];
   let parser = [{ return parseCmpOp<ICmpPredicate>(parser, result); }];
   let printer = [{ printICmpOp(p, *this); }];
 }
@@ -386,6 +393,11 @@ def LLVM_SelectOp
                  LLVM_Type:$falseValue)>,
       LLVM_Builder<
           "$res = builder.CreateSelect($condition, $trueValue, $falseValue);"> {
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *condition, Value *lhs, "
+    "Value *rhs", [{
+      build(b, result, lhs->getType(), condition, lhs, rhs);
+    }]>];
   let parser = [{ return parseSelectOp(parser, result); }];
   let printer = [{ printSelectOp(p, *this); }];
 }
@@ -549,6 +561,5 @@ def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
     $res = builder.CreateCall(fn, {$a, $b, $c});
   }];
 }
-
 
 #endif // LLVMIR_OPS
