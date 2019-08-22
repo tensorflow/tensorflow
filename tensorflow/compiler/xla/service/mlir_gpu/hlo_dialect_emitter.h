@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status.h"
 
@@ -31,11 +33,12 @@ namespace gpu {
 // This class is the top-level API for the HLO --> HLO dialect compiler. It
 // implements the DfsHloVisitor interface and emits HLO computations as MLIR IR
 // functions.
-class HloDialectEmitter : public DfsHloVisitorWithDefault {
+class HloDialectEmitter : public DfsHloVisitorWithDefault,
+                          private ThunkEmitter::EmissionContext {
  public:
   HloDialectEmitter(const HloModule& hlo_module,
                     const BufferAssignment& assignment,
-                    ::mlir::ModuleOp mlir_module);
+                    const se::Platform* platform, ::mlir::ModuleOp mlir_module);
   ~HloDialectEmitter() override = default;
 
   // The following methods implement the DfsHloVisitor interface.
@@ -50,10 +53,23 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   Status FinishVisit(HloInstruction* root) override;
 
  private:
+  // Interface required by ThunkEmitter
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override;
+  StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index) const override;
+  int64 ByteSizeOf(const Shape& shape) const override;
+  const se::Platform* platform() const override;
+
   ::mlir::ModuleOp mlir_module_;
   ::mlir::Builder builder_;
   absl::flat_hash_map<const xla::HloComputation*, ::mlir::FuncOp>
       computation_to_mlir_function_;
+  const BufferAssignment& buffer_assignment_;
+  const se::Platform* platform_;
+  // Cached pointer size extracted from the mlir module.
+  unsigned pointer_size_;
+  // The thunk sequence this IrEmitter generates for the input computation.
+  std::unique_ptr<ThunkSequence> thunk_sequence_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloDialectEmitter);
 };

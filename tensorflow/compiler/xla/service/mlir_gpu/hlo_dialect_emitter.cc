@@ -15,27 +15,57 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
+
 namespace xla {
 namespace gpu {
 
+using ::mlir::LLVM::LLVMDialect;
+
 HloDialectEmitter::HloDialectEmitter(const HloModule& hlo_module,
                                      const BufferAssignment& assignment,
+                                     const se::Platform* platform,
                                      ::mlir::ModuleOp mlir_module)
-    : mlir_module_(mlir_module), builder_(mlir_module_.getContext()) {}
+    : mlir_module_(mlir_module),
+      builder_(mlir_module_.getContext()),
+      buffer_assignment_(assignment),
+      platform_(platform),
+      thunk_sequence_(new ThunkSequence()) {
+  LLVMDialect* llvmDialect =
+      mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
+  pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
+}
 
-Status DefaultAction(HloInstruction* hlo) {
+void HloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+  thunk_sequence_->push_back(std::move(thunk));
+}
+
+StatusOr<BufferAllocation::Slice> HloDialectEmitter::MaybeGetAllocationSlice(
+    const HloInstruction& hlo, const ShapeIndex& index) const {
+  return buffer_assignment_.GetUniqueSlice(&hlo, index);
+}
+
+int64 HloDialectEmitter::ByteSizeOf(const Shape& shape) const {
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+}
+
+const se::Platform* HloDialectEmitter::platform() const { return platform_; }
+
+Status HloDialectEmitter::DefaultAction(HloInstruction* hlo) {
   LOG(FATAL) << "Not implemented yet.";
 }
 
-Status HandleFusion(HloInstruction* fusion) {
+Status HloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   LOG(FATAL) << "Not implemented yet.";
 }
 
-Status HandleCustomCall(HloInstruction* custom_call) {
-  LOG(FATAL) << "Not implemented yet.";
+Status HloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
+  return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
-Status FinishVisit(HloInstruction* root) {
+Status HloDialectEmitter::FinishVisit(HloInstruction* root) {
   LOG(FATAL) << "Not implemented yet.";
 }
 }  // namespace gpu

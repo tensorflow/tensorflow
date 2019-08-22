@@ -199,19 +199,37 @@ cc_library(
 )
 
 cc_library(
+    name = "thunk_emitter",
+    srcs = ["thunk_emitter.cc"],
+    hdrs = ["thunk_emitter.h"],
+    deps = [
+        ":backend_configs",
+        ":buffer_allocations",
+        ":gpu_constants",
+        ":gpu_executable",
+        ":ir_emission_utils",
+        ":nccl_all_reduce_thunk",
+        ":thunk",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+    ],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
         "ir_emitter_nested.cc",
         "ir_emitter_unnested.cc",
-        "thunk_emitter.cc",
     ],
     hdrs = [
         "ir_emitter.h",
         "ir_emitter_context.h",
         "ir_emitter_nested.h",
         "ir_emitter_unnested.h",
-        "thunk_emitter.h",
     ],
     deps = [
         ":backend_configs",
@@ -227,6 +245,7 @@ cc_library(
         ":partition_assignment",
         ":target_util",
         ":thunk",
+        ":thunk_emitter",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -236,7 +255,6 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
