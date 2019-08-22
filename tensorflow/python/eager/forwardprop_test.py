@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -368,6 +369,27 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         f,
         [constant_op.constant([1., 2.])],
         order=3)
+
+  def testReusingForwardGradient(self):
+    m1 = random_ops.random_uniform((256, 2096))
+    m2 = array_ops.identity(m1)
+    tangent1 = random_ops.random_uniform((256, 2096))
+    tangent2 = random_ops.random_uniform((256, 2096))
+    matmul = def_function.function(math_ops.matmul)
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(m1, tangent1)
+      result1 = matmul(m1, m1, transpose_b=True)
+      acc.watch(m2, tangent2)
+      result2 = matmul(m2, m2, transpose_b=True)
+
+    def _expected(mat, tangent):
+      return (math_ops.matmul(tangent, mat, transpose_b=True)
+              + math_ops.matmul(mat, tangent, transpose_b=True))
+
+    self.assertAllClose(result1, result2)
+    self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1))
+    self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testHVPMemory(self):
