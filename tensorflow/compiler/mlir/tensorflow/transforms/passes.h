@@ -59,6 +59,12 @@ std::unique_ptr<FunctionPassBase> CreateClusterFormationPass();
 std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
 }  // namespace TFDevice
 
+namespace TFTPU {
+// Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
+// ops
+std::unique_ptr<ModulePassBase> CreateTpuRewritePass();
+}  // namespace TFTPU
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
