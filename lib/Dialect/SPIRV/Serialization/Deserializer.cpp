@@ -1,4 +1,3 @@
-//===- Deserializer.cpp - MLIR SPIR-V Deserialization ---------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -83,6 +82,13 @@ private:
 
   /// Attaches all collected capabilites to `module` as an attribute.
   void attachCapabilities();
+
+  /// Processes the SPIR-V OpExtension with `operands` and updates bookkeeping
+  /// in the deserializer.
+  LogicalResult processExtension(ArrayRef<uint32_t> operands);
+
+  /// Attaches all collected extensions to `module` as an attribute.
+  void attachExtensions();
 
   /// Processes the SPIR-V OpMemoryModel with `operands` and updates `module`.
   LogicalResult processMemoryModel(ArrayRef<uint32_t> operands);
@@ -236,6 +242,9 @@ private:
   /// The list of capabilities used by the module.
   llvm::SmallSetVector<spirv::Capability, 4> capabilities;
 
+  /// The list of extensions used by the module.
+  llvm::SmallSetVector<StringRef, 2> extensions;
+
   // Result <id> to type mapping.
   DenseMap<uint32_t, Type> typeMap;
 
@@ -316,8 +325,9 @@ LogicalResult Deserializer::deserialize() {
     }
   }
 
-  // Attaches the capabilities as an attribute to the module.
+  // Attaches the capabilities/extensions as an attribute to the module.
   attachCapabilities();
+  attachExtensions();
 
   return success();
 }
@@ -375,6 +385,32 @@ void Deserializer::attachCapabilities() {
   }
 
   module->setAttr("capabilities", opBuilder.getStrArrayAttr(caps));
+}
+
+LogicalResult Deserializer::processExtension(ArrayRef<uint32_t> operands) {
+  if (operands.empty()) {
+    return emitError(
+        unknownLoc,
+        "OpExtension must have a literal string for the extension name");
+  }
+
+  unsigned wordIndex = 0;
+  StringRef extName = decodeStringLiteral(operands, wordIndex);
+  if (wordIndex != operands.size()) {
+    return emitError(unknownLoc,
+                     "unexpected trailing words in OpExtension instruction");
+  }
+
+  extensions.insert(extName);
+  return success();
+}
+
+void Deserializer::attachExtensions() {
+  if (extensions.empty())
+    return;
+
+  module->setAttr("extensions",
+                  opBuilder.getStrArrayAttr(extensions.getArrayRef()));
 }
 
 LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
@@ -1144,6 +1180,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   switch (opcode) {
   case spirv::Opcode::OpCapability:
     return processCapability(operands);
+  case spirv::Opcode::OpExtension:
+    return processExtension(operands);
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
   case spirv::Opcode::OpEntryPoint:

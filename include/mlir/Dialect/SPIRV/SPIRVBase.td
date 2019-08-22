@@ -74,6 +74,7 @@ class SPV_OpCode<string name, int val> {
 
 def SPV_OC_OpNop                   : I32EnumAttrCase<"OpNop", 0>;
 def SPV_OC_OpName                  : I32EnumAttrCase<"OpName", 5>;
+def SPV_OC_OpExtension             : I32EnumAttrCase<"OpExtension", 10>;
 def SPV_OC_OpMemoryModel           : I32EnumAttrCase<"OpMemoryModel", 14>;
 def SPV_OC_OpEntryPoint            : I32EnumAttrCase<"OpEntryPoint", 15>;
 def SPV_OC_OpExecutionMode         : I32EnumAttrCase<"OpExecutionMode", 16>;
@@ -135,23 +136,24 @@ def SPV_OC_OpReturnValue           : I32EnumAttrCase<"OpReturnValue", 254>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint,
-      SPV_OC_OpExecutionMode, SPV_OC_OpCapability, SPV_OC_OpTypeVoid,
-      SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector,
-      SPV_OC_OpTypeArray, SPV_OC_OpTypeStruct, SPV_OC_OpTypePointer,
-      SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse,
-      SPV_OC_OpConstant, SPV_OC_OpConstantComposite, SPV_OC_OpConstantNull,
-      SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse, SPV_OC_OpSpecConstant,
-      SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
-      SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
-      SPV_OC_OpAccessChain, SPV_OC_OpDecorate, SPV_OC_OpMemberDecorate,
-      SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub,
-      SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv,
-      SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem,
-      SPV_OC_OpFMod, SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
-      SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
-      SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
-      SPV_OC_OpSLessThanEqual, SPV_OC_OpReturn, SPV_OC_OpReturnValue
+      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpExtension, SPV_OC_OpMemoryModel,
+      SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode, SPV_OC_OpCapability,
+      SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat,
+      SPV_OC_OpTypeVector, SPV_OC_OpTypeArray, SPV_OC_OpTypeStruct,
+      SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue,
+      SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
+      SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse,
+      SPV_OC_OpSpecConstant, SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction,
+      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
+      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
+      SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
+      SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
+      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpIEqual,
+      SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
+      SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
+      SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
+      SPV_OC_OpReturn, SPV_OC_OpReturnValue
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -204,6 +206,32 @@ class SPV_Optional<Type type> : Variadic<type>;
 def SPV_IsEntryPointType :
     CPred<"$_self.isa<::mlir::spirv::EntryPointType>()">;
 def SPV_EntryPoint : Type<SPV_IsEntryPointType, "SPIR-V entry point type">;
+
+//===----------------------------------------------------------------------===//
+// SPIR-V extension definitions
+//===----------------------------------------------------------------------===//
+
+// Extensions known to the SPIR-V dialect.
+// https://github.com/KhronosGroup/SPIRV-Registry has the full list.
+def SPV_KHR_16bit_storage                : StrEnumAttrCase<"SPV_KHR_16bit_storage">;
+def SPV_KHR_8bit_storage                 : StrEnumAttrCase<"SPV_KHR_8bit_storage">;
+def SPV_KHR_float_controls               : StrEnumAttrCase<"SPV_KHR_float_controls">;
+def SPV_KHR_shader_atomic_counter_ops    : StrEnumAttrCase<"SPV_KHR_shader_atomic_counter_ops">;
+def SPV_KHR_shader_ballot                : StrEnumAttrCase<"SPV_KHR_shader_ballot">;
+def SPV_KHR_storage_buffer_storage_class : StrEnumAttrCase<"SPV_KHR_storage_buffer_storage_class">;
+def SPV_KHR_subgroup_vote                : StrEnumAttrCase<"SPV_KHR_subgroup_vote">;
+def SPV_KHR_variable_pointers            : StrEnumAttrCase<"SPV_KHR_variable_pointers">;
+def SPV_KHR_vulkan_memory_model          : StrEnumAttrCase<"SPV_KHR_vulkan_memory_model">;
+
+def SPV_ExtensionAttr :
+    StrEnumAttr<"Extension", "supported SPIR-V extensions", [
+      SPV_KHR_16bit_storage, SPV_KHR_8bit_storage, SPV_KHR_float_controls,
+      SPV_KHR_shader_atomic_counter_ops, SPV_KHR_shader_ballot,
+      SPV_KHR_storage_buffer_storage_class, SPV_KHR_subgroup_vote,
+      SPV_KHR_variable_pointers, SPV_KHR_vulkan_memory_model
+    ]> {
+  let cppNamespace = "::mlir::spirv";
+}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V enum definitions

@@ -1037,6 +1037,16 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
     }
   }
 
+  // Verify extensions. ODS already guarantees that we have an array of
+  // string attributes.
+  if (auto exts = moduleOp.getAttrOfType<ArrayAttr>("extensions")) {
+    for (auto ext : exts.getValue()) {
+      auto extStr = ext.cast<StringAttr>().getValue();
+      if (!spirv::symbolizeExtension(extStr))
+        return moduleOp.emitOpError("uses unknown extension: ") << extStr;
+    }
+  }
+
   return success();
 }
 

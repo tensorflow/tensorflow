@@ -375,6 +375,14 @@ spv.module "Logical" "GLSL450" {
 
 // -----
 
+// expected-error @+1 {{uses unknown extension: MyAwesomeExtension}}
+spv.module "Logical" "GLSL450" {
+} attributes {
+  extensions = ["MyAwesomeExtension"]
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // spv._module_end
 //===----------------------------------------------------------------------===//
