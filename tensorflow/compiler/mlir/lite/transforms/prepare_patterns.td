@@ -109,6 +109,7 @@ def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
 def : Pat<(TF_IdentityOp $arg), (replaceWithValue $arg)>;
+def : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Op quantization pass-through patterns.
