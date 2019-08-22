@@ -1153,10 +1153,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
+    shard_count = 3,
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = False,  # TODO(b/139490543): Re-enable.
     deps = [
         "//tensorflow/python:keras_lib",
         "//tensorflow/python:platform_test",
