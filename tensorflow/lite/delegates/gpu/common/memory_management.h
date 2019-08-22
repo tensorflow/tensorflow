@@ -49,19 +49,6 @@ struct TensorUsageRecord {
   }
 };
 
-template <typename TensorSizeT>
-struct TensorUsageWithIndex {
-  const TensorUsageRecord<TensorSizeT>* usage_record;
-  size_t idx;
-
-  TensorUsageWithIndex(const TensorUsageRecord<TensorSizeT>* usage_record,
-                       size_t idx)
-      : usage_record(usage_record), idx(idx) {}
-};
-
-bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
-                   const TensorUsageWithIndex<size_t>& second);
-
 // Information about assignment of tensors to shared objects
 template <typename TensorSizeT>
 struct ObjectsAssignment {
@@ -107,6 +94,10 @@ enum class MemoryStrategy {
   // tensors in non-increasing of their size, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY_BY_SIZE,
+
+  // Choose greedy strategy from several fast algorithms, that provides best
+  // memory allocation for the given usage records.
+  GREEDY_BEST,
 
   // Mincostflow strategy consists of building auxiliary flow graph and solving
   // the minimum-cost flow problem in it. In the end edges with zero residual

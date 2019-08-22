@@ -537,8 +537,9 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
     const CombinedUsageRecords& usage_records = it.second;
     if (!usage_records.buffers.empty()) {
       ObjectsAssignment<size_t> buffer_assignment;
-      RETURN_IF_ERROR(AssignObjectsToTensors(
-          usage_records.buffers, MemoryStrategy::GREEDY, &buffer_assignment));
+      RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.buffers,
+                                             MemoryStrategy::GREEDY_BEST,
+                                             &buffer_assignment));
       RETURN_IF_ERROR(ApplyBuffersAssignment(
           buffer_assignment, usage_records.usage_refs, global_ref_to_object_ptr,
           &global_ref_to_shared_ref, shared_objects));
@@ -546,7 +547,7 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
     if (!usage_records.textures_1d.empty()) {
       ObjectsAssignment<size_t> texture_1d_assignment;
       RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_1d,
-                                             MemoryStrategy::GREEDY,
+                                             MemoryStrategy::GREEDY_BEST,
                                              &texture_1d_assignment));
       RETURN_IF_ERROR(ApplyTexturesAssignment(
           texture_1d_assignment, usage_records.usage_refs,

@@ -18,6 +18,11 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
+                   const TensorUsageWithIndex<size_t>& second) {
+  return first.usage_record->tensor_size > second.usage_record->tensor_size;
+}
+
 bool IsCoveringObject(const uint2& first_object, const uint2& second_object) {
   return first_object.x >= second_object.x && first_object.y >= second_object.y;
 }
