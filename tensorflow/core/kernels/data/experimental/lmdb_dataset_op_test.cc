@@ -159,30 +159,23 @@ LMDBDatasetParams InvalidPathInMiddle() {
           /*node_name=*/kNodeName};
 }
 
-std::vector<Tensor> StringsToTensors(const std::vector<string> strs) {
-  std::vector<Tensor> ret;
-  for (string str : strs) {
-    ret.push_back(CreateTensor<string>(TensorShape({}), {str}));
-  }
-  return ret;
-}
-
-// The tensors we expect to see each time we read through the input
-// data file.
-const std::vector<Tensor> kFileOutput = StringsToTensors({
-    // Each call to GetNext() produces two scalar string tensors, but the test
-    // harness expects to receive a flat vector
-    "0", "a",  //
-    "1", "b",  //
-    "2", "c",  //
-    "3", "d",  //
-    "4", "e",  //
-    "5", "f",  //
-    "6", "g",  //
-    "7", "h",  //
-    "8", "i",  //
-    "9", "j",  //
-});
+// The tensors we expect to see each time we read through the input data file.
+const std::vector<Tensor> kFileOutput = CreateTensors<string>(
+    TensorShape({}),
+    {
+        // Each call to GetNext() produces two scalar string tensors, but the
+        // test harness expects to receive a flat vector
+        {"0"}, {"a"},  //
+        {"1"}, {"b"},  //
+        {"2"}, {"c"},  //
+        {"3"}, {"d"},  //
+        {"4"}, {"e"},  //
+        {"5"}, {"f"},  //
+        {"6"}, {"g"},  //
+        {"7"}, {"h"},  //
+        {"8"}, {"i"},  //
+        {"9"}, {"j"},  //
+    });
 
 std::vector<GetNextTestCase<LMDBDatasetParams>> GetNextTestCases() {
   // STL vectors don't have a "concatenate two vectors into a new vector"
