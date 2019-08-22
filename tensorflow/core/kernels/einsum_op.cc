@@ -677,7 +677,7 @@ class EinsumOp : public OpKernel {
     // Find the permutation to map the result labels to the output labels. Note
     // that both the result and the final output may have the repeated labels,
     // in which case the permutation preserves the left-to-right ordering.
-    // E.g. if result labels are [0, 0, 1] and output is [0, 1, 0] then the
+    // E.g. if result labels are [0, 0, 1] and output is [0, l, 0] then the
     // permutation should be [0, 2, 1]. We also use the fact that repeated
     // labels in the result are adjacent to each other.
     std::vector<int> output_permutation(output_labels.size());
@@ -734,12 +734,10 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 5);    \
   DECLARE_GPU_SPEC(T, 6);
 
-TF_CALL_half(DECLARE_GPU_SPECS);
-TF_CALL_float(DECLARE_GPU_SPECS);
-TF_CALL_double(DECLARE_GPU_SPECS);
-TF_CALL_complex64(DECLARE_GPU_SPECS);
-TF_CALL_complex128(DECLARE_GPU_SPECS);
-
+DECLARE_GPU_SPECS(double);
+DECLARE_GPU_SPECS(float);
+DECLARE_GPU_SPECS(complex64);
+DECLARE_GPU_SPECS(complex128);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor
@@ -751,19 +749,14 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
       EinsumOp<D##Device, TYPE>);
 
 #define REGISTER_CPU(TYPE) REGISTER_EINSUM(CPU, TYPE)
-TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);
 TF_CALL_complex128(REGISTER_CPU);
-TF_CALL_bfloat16(REGISTER_CPU);
-TF_CALL_int32(REGISTER_CPU);
-TF_CALL_int64(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU(TYPE) REGISTER_EINSUM(GPU, TYPE)
-TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
