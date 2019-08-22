@@ -655,8 +655,7 @@ $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
 tensorflow/core/profiler/internal/profiler_interface.cc \
 tensorflow/core/profiler/internal/traceme_recorder.cc \
-tensorflow/core/profiler/lib/profiler_session.cc \
-tensorflow/core/profiler/lib/traceme.cc \
+$(wildcard tensorflow/core/profiler/lib/*.cc) \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))

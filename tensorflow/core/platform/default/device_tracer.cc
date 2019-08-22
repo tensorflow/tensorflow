@@ -653,7 +653,7 @@ Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer() {
+std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer() {
   auto status = cuInit(0);
   if (status != CUDA_SUCCESS) {
     LogIfError(ToStatus(status));
@@ -666,7 +666,7 @@ auto register_device_tracer_factory = [] {
   bool enable;
   TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_GPU_PROFILER", true, &enable));
   if (enable) {
-    RegisterProfilerFactory(&CreateDeviceTracer);
+    RegisterProfilerFactory(&CreateGpuTracer);
   }
   return 0;
 }();

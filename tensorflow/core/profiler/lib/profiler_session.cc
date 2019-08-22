@@ -26,17 +26,12 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
 namespace {
-
-// Track whether there's an active ProfilerSession.
-// Prevents another ProfilerSession from creating ProfilerInterface(s), as they
-// use singletons that do not allow concurrent profiling request (e.g.,
-// DeviceTracer).
-std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 
 // Given a node_name in the format "op_name:op_type", returns the "op_type".
 // If the "op_type" is missing, returns the node_name.
@@ -173,7 +168,7 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 
   if (active_) {
     // Allow another session to start.
-    session_active.store(false);
+    profiler::ReleaseProfilerLock();
     active_ = false;
   }
 
@@ -194,7 +189,7 @@ Status ProfilerSession::SerializeToString(string* content) {
 }
 
 ProfilerSession::ProfilerSession()
-    : active_(!session_active.exchange(true)),
+    : active_(profiler::AcquireProfilerLock()),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
     status_ = tensorflow::Status(error::UNAVAILABLE,
@@ -223,7 +218,7 @@ ProfilerSession::~ProfilerSession() {
 
   if (active_) {
     // Allow another session to start.
-    session_active.store(false);
+    profiler::ReleaseProfilerLock();
   }
 }
 }  // namespace tensorflow
