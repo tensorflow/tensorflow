@@ -33,25 +33,6 @@ limitations under the License.
   $result = PyLong_FromVoidPtr($1)
 }
 
-// Converts a Python list of str to a std::vector<std::string>, returns true
-// if the conversion was successful.
-%{
-static bool PyListToStdVectorString(PyObject *list, std::vector<std::string> *strings) {
-  // Make sure the list is actually a list.
-  if (!PyList_Check(list)) return false;
-
-  // Convert the Python list to a vector of strings.
-  const int list_size = PyList_Size(list);
-  strings->resize(list_size);
-  for (int k = 0; k < list_size; k++) {
-    PyObject *string_py = PyList_GetItem(list, k);
-    if (!PyString_Check(string_py)) return false;
-    (*strings)[k] = std::string(PyString_AsString(string_py));
-  }
-  return true;
-}
-%}
-bool PyListToStdVectorString(PyObject *list, std::vector<std::string> *strings);
 
 %include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
@@ -61,19 +42,12 @@ namespace interpreter_wrapper {
 
   // Version of the constructor that handles producing Python exceptions
   // that propagate strings.
-  static PyObject* CreateWrapperCPPFromFile(
-      const char* model_path,
-      PyObject* registerers_py) {
+  static PyObject* CreateWrapperCPPFromFile(const char* model_path) {
     std::string error;
-    std::vector<std::string> registerers;
-    if (!PyListToStdVectorString(registerers_py, &registerers)) {
-      PyErr_SetString(PyExc_ValueError, "Second argument is expected to be a list of strings.");
-      return nullptr;
-    }
     if(tflite::interpreter_wrapper::InterpreterWrapper* ptr =
         tflite::interpreter_wrapper::InterpreterWrapper
             ::CreateWrapperCPPFromFile(
-        model_path, registerers, &error)) {
+        model_path, &error)) {
       return SWIG_NewPointerObj(
           ptr, SWIGTYPE_p_tflite__interpreter_wrapper__InterpreterWrapper, 1);
     } else {
@@ -85,18 +59,12 @@ namespace interpreter_wrapper {
   // Version of the constructor that handles producing Python exceptions
   // that propagate strings.
   static PyObject* CreateWrapperCPPFromBuffer(
-      PyObject* data ,
-      PyObject* registerers_py) {
+      PyObject* data) {
     std::string error;
-    std::vector<std::string> registerers;
-    if (!PyListToStdVectorString(registerers_py, &registerers)) {
-      PyErr_SetString(PyExc_ValueError, "Second argument is expected to be a list of strings.");
-      return nullptr;
-    }
     if(tflite::interpreter_wrapper::InterpreterWrapper* ptr =
         tflite::interpreter_wrapper::InterpreterWrapper
             ::CreateWrapperCPPFromBuffer(
-        data, registerers, &error)) {
+        data, &error)) {
       return SWIG_NewPointerObj(
           ptr, SWIGTYPE_p_tflite__interpreter_wrapper__InterpreterWrapper, 1);
     } else {
