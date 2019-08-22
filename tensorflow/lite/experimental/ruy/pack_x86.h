@@ -84,6 +84,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_X86_H_
 
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include "profiling/instrumentation.h"
