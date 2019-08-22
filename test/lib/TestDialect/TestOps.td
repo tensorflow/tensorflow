@@ -50,6 +50,13 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
+def I32TensorRank0Or1Op : TEST_Op<"i32_tensor_rank_0_or_1"> {
+  let arguments = (ins
+    Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0, 1]>]>,
+         "tensor<i32> or tensor<?xi32>">:$arg0
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Test Operands
 //===----------------------------------------------------------------------===//
@@ -84,6 +91,13 @@ def NonNegIntAttrOp : TEST_Op<"non_negative_int_attr"> {
   let arguments = (ins
       NonNegativeI32Attr:$i32attr,
       NonNegativeI64Attr:$i64attr
+  );
+}
+
+def PositiveIntAttrOp : TEST_Op<"positive_int_attr"> {
+  let arguments = (ins
+      PositiveI32Attr:$i32attr,
+      PositiveI64Attr:$i64attr
   );
 }
 

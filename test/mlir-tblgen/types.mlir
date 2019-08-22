@@ -81,6 +81,22 @@ func @nested_tuple_multi_level_wrong_type() {
 
 // -----
 
+func @tensor_has_rank_0_or_1_success(%arg0: tensor<i32>, %arg1: tensor<5xi32>) {
+  "test.i32_tensor_rank_0_or_1"(%arg0) : (tensor<i32>) -> ()
+  "test.i32_tensor_rank_0_or_1"(%arg1) : (tensor<5xi32>) -> ()
+  return
+}
+
+// -----
+
+func @tensor_has_rank_0_or_1_wrong_type(%arg0: tensor<2x2xi32>) {
+  // expected-error @+1 {{test.i32_tensor_rank_0_or_1' op operand #0 must be tensor<i32> or tensor<?xi32>}}
+  "test.i32_tensor_rank_0_or_1"(%arg0) : (tensor<2x2xi32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: @fixed_element_types
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr = ""} : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i16>

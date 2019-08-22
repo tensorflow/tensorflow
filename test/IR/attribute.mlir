@@ -31,6 +31,50 @@ func @negative_int_attr_fail() {
 // -----
 
 //===----------------------------------------------------------------------===//
+// Test Positive Int Attr
+//===----------------------------------------------------------------------===//
+
+func @positive_int_attr_pass() {
+  // CHECK: test.positive_int_attr
+  "test.positive_int_attr"() {i32attr = 5 : i32, i64attr = 10 : i64} : () -> ()
+  return
+}
+
+// -----
+
+func @positive_int_attr_fail() {
+  // expected-error @+1 {{'i32attr' failed to satisfy constraint: positive 32-bit integer attribute}}
+  "test.positive_int_attr"() {i32attr = 0 : i32, i64attr = 5: i64} : () -> ()
+  return
+}
+
+// -----
+
+func @positive_int_attr_fail() {
+  // expected-error @+1 {{'i64attr' failed to satisfy constraint: positive 64-bit integer attribute}}
+  "test.positive_int_attr"() {i32attr = 5 : i32, i64attr = 0: i64} : () -> ()
+  return
+}
+
+// -----
+
+func @positive_int_attr_fail() {
+  // expected-error @+1 {{'i32attr' failed to satisfy constraint: positive 32-bit integer attribute}}
+  "test.positive_int_attr"() {i32attr = -10 : i32, i64attr = 5 : i64} : () -> ()
+  return
+}
+
+// -----
+
+func @positive_int_attr_fail() {
+  // expected-error @+1 {{'i64attr' failed to satisfy constraint: positive 64-bit integer attribute}}
+  "test.positive_int_attr"() {i32attr = 5 : i32, i64attr = -10 : i64} : () -> ()
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // Test TypeArrayAttr
 //===----------------------------------------------------------------------===//
 
