@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/redzone_allocator.h"
 
 #include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
@@ -21,15 +21,14 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace stream_executor {
-namespace cuda {
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
 // then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
@@ -44,10 +43,11 @@ constexpr int64 kRhsRedzoneAlign = 4;
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-RedzoneAllocator::RedzoneAllocator(
-    Stream* stream, DeviceMemoryAllocator* memory_allocator,
-    cuda::PtxCompilationOptions ptx_compilation_opts, int64 memory_limit,
-    int64 redzone_size, uint8 redzone_pattern)
+RedzoneAllocator::RedzoneAllocator(Stream* stream,
+                                   DeviceMemoryAllocator* memory_allocator,
+                                   GpuAsmOpts ptx_compilation_opts,
+                                   int64 memory_limit, int64 redzone_size,
+                                   uint8 redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
       stream_(stream),
       memory_limit_(memory_limit),
@@ -56,7 +56,7 @@ RedzoneAllocator::RedzoneAllocator(
           static_cast<int64>(tensorflow::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
-      ptx_compilation_opts_(ptx_compilation_opts) {}
+      gpu_compilation_opts_(ptx_compilation_opts) {}
 
 port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
     int64 byte_size) {
@@ -302,8 +302,8 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
 
   absl::Span<const uint8> compiled_ptx = {};
   port::StatusOr<absl::Span<const uint8>> compiled_ptx_or =
-      cuda::CompilePtxOrGetCached(executor->device_ordinal(),
-                                  redzone_checker_ptx, ptx_compilation_opts_);
+      CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
+                               gpu_compilation_opts_);
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {
@@ -346,5 +346,4 @@ std::string RedzoneCheckStatus::RedzoneFailureMsg() const {
       buffer_name, user_buffer_address, offset, expected_value, actual_value);
 }
 
-}  // namespace cuda
 }  // namespace stream_executor

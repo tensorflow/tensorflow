@@ -436,10 +436,10 @@ static void AllocateFlags() {
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
       tensorflow::Flag(
-          "xla_gpu_disable_ptxas_optimizations",
+          "xla_gpu_disable_gpuasm_optimizations",
           bool_setter_for(
-              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
-          flag_values->xla_gpu_disable_ptxas_optimizations(),
+              &DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),
+          flag_values->xla_gpu_disable_gpuasm_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
       tensorflow::Flag(
           "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",

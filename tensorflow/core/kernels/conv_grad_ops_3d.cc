@@ -45,8 +45,8 @@ using stream_executor::dnn::DimIndex;
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
+#include "tensorflow/stream_executor/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -1370,8 +1370,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #if GOOGLE_CUDA
       se::TfAllocatorAdapter tf_allocator_adapter(
           context->device()->GetAllocator({}), stream);
-      se::cuda::RedzoneAllocator rz_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+      se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                        se::GpuAsmOpts());
       se::DeviceMemory<T> in_backprop_ptr_rz(
           WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
       std::vector<AlgorithmDesc> algorithms;
@@ -1387,8 +1387,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
-        se::cuda::RedzoneAllocator rz_scratch_allocator(
-            stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+        se::RedzoneAllocator rz_scratch_allocator(
+            stream, &tf_allocator_adapter, se::GpuAsmOpts(),
             /*memory_limit=*/ConvolveBackwardDataScratchSize);
         se::ScratchAllocator* allocator_used =
             !RedzoneCheckDisabled()

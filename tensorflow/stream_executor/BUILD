@@ -5,6 +5,14 @@
 # do not link against restricted binary blobs.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
@@ -496,6 +504,27 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_asm_opts",
+    srcs = ["gpu_asm_opts.cc"],
+    hdrs = ["gpu_asm_opts.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:cuda_driver",
+        "//tensorflow/stream_executor/cuda:ptxas_wrapper",
+        "//tensorflow/core:cuda_libdevice_path",
+    ]),
+)
+
+cc_library(
     name = "stream_executor_internal",
     srcs = [
         "dnn.h",
@@ -705,6 +734,24 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "redzone_allocator",
+    srcs = ["redzone_allocator.cc"],
+    hdrs = ["redzone_allocator.h"],
+    deps = [
+        "//tensorflow/core:allocator",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:gpu_asm_opts",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
