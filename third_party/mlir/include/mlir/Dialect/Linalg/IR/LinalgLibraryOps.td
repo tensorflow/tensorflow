@@ -70,7 +70,49 @@ def ViewTraits : NativeOpTrait<"linalg::ViewTraits">;
 
 // The linalg 'LinalgLibraryInterface' provides access to the 'LinalgOp'
 // interface.
-def LinalgLibraryInterface : NativeOpInterface<"LinalgOp">;
+def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
+  let methods = [
+    /// Query the number of inputs and outputs from the operation.
+    InterfaceMethod<"unsigned", "getNumInputs">,
+    InterfaceMethod<"unsigned", "getNumOutputs">,
+    InterfaceMethod<"unsigned", "getNumInputsAndOutputs">,
+    InterfaceMethod<"Operation::operand_range", "getInputs">,
+    InterfaceMethod<"Operation::operand_range", "getOutputs">,
+    InterfaceMethod<"Operation::operand_range", "getInputsAndOutputs">,
+
+    /// Query the number of each type of loop.
+    InterfaceMethod<"unsigned", "getNumParallelLoops">,
+    InterfaceMethod<"unsigned", "getNumReductionLoops">,
+    InterfaceMethod<"unsigned", "getNumWindowLoops">,
+    InterfaceMethod<"unsigned", "getNumLoops", (ins), [{
+      return op.getNumParallelLoops() + op.getNumReductionLoops() +
+             op.getNumWindowLoops();
+    }]>,
+
+    /// Get a specific input/output at the given index.
+    InterfaceMethod<"Value *", "getInput", (ins "unsigned":$i)>,
+    InterfaceMethod<"Value *", "getOutput", (ins "unsigned":$i)>,
+
+    /// Get the index of the given value, or None if the value is not an input.
+    InterfaceMethod<"llvm::Optional<unsigned>", "getIndexOfInput",
+                    (ins "Value *":$view)>,
+    InterfaceMethod<"llvm::Optional<unsigned>", "getIndexOfOutput",
+                    (ins "Value *":$view)>,
+
+    /// Get the view type of the input/output at the given index.
+    InterfaceMethod<"ViewType", "getInputViewType", (ins "unsigned":$i)>,
+    InterfaceMethod<"ViewType", "getOutputViewType", (ins "unsigned":$i)>,
+
+    /// Create an operation with the given location and operands.
+    StaticInterfaceMethod<"Operation *", "create",
+      (ins "OpBuilder &":$builder, "Location":$loc,
+           "ArrayRef<Value *>":$operands,
+           "ArrayRef<NamedAttribute>":$attributes), [{
+        return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
+                                          attributes);
+      }]>
+  ];
+}
 
 // Base Tablegen class for Linalg ops.
 // Linalg ops that correspond to library calls operate on linalg::View as their
