@@ -597,6 +597,9 @@ TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
         continue;
       }
       for (const int bias_idx : property.biases) {
+        if (op->inputs[bias_idx] == -1 /*kOptionalTensor*/) {
+          continue;
+        }
         if (bias_idx >= op->inputs.size()) {
           error_reporter->Report(
               "Required input index %d is larger than the input length of "
