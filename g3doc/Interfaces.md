@@ -171,3 +171,21 @@ Operation *op = ...;
 if (ExampleOpInterface example = dyn_cast<ExampleOpInterface>(op))
  llvm::errs() << "num inputs = " << example.getNumInputs() << "\n";
 ```
+
+#### Utilizing the ODS Framework
+
+Operation interfaces require a bit of boiler plate to connect all of the pieces
+together. The ODS(Operation Definition Specification) framework provides
+simplified mechanisms for
+[defining interfaces](OpDefinitions.md#operation-interfaces).
+
+As an example, using the ODS framework would allow for defining the example
+interface above as:
+
+```tablegen
+def ExampleOpInterface : OpInterface<"ExampleOpInterface"> {
+  let methods = [
+    InterfaceMethod<"unsigned", "getNumInputs">,
+  ];
+}
+```

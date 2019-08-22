@@ -1089,21 +1089,51 @@ def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 // OpInterface definitions
 //===----------------------------------------------------------------------===//
 
-// NativeOpInterface corresponds to a specific 'OpInterface' class defined in
+// Marker used to identify the argument list for an op or interface method.
+def ins;
+
+// OpInterfaceTrait corresponds to a specific 'OpInterface' class defined in
 // C++. The purpose to wrap around C++ symbol string with this class is to make
 // interfaces specified for ops in TableGen less alien and more integrated.
-class NativeOpInterface<string prop> : NativeOpTrait<""> {
-  // TODO(riverriddle) Remove when operation interfaces have their own trait
-  // subclass.
-  let trait = prop # "::Trait";
+class OpInterfaceTrait<string name> : NativeOpTrait<""> {
+  let trait = name # "::Trait";
+}
+
+// This class represents a single, optionally static, interface method.
+// Note: non-static interface methods have an implicit 'op' parameter
+// corresponding to an instance of the derived operation.
+class InterfaceMethod<string retTy, string methodName,
+                      dag args = (ins), code methodBody = [{}]> {
+  /// The name of the interface method.
+  string name = methodName;
+
+  /// The c++ type-name of the return type.
+  string returnType = retTy;
+
+  /// A dag of string that correspond to the arguments of the method.
+  dag arguments = args;
+
+  /// An optional body to the method.
+  code body = methodBody;
+}
+
+// This class represents a single static interface method.
+class StaticInterfaceMethod<string retTy, string methodName,
+                            dag args = (ins), code methodBody = [{}]>
+    : InterfaceMethod<retTy, methodName, args, methodBody>;
+
+// OpInterface represents an interface regarding an op.
+class OpInterface<string name> : OpInterfaceTrait<name> {
+  // The name given to the c++ interface class.
+  string cppClassName = name;
+
+  /// The list of methods defined by this interface.
+  list<InterfaceMethod> methods = [];
 }
 
 //===----------------------------------------------------------------------===//
 // Op definitions
 //===----------------------------------------------------------------------===//
-
-// Marker used to identify the argument list for an op.
-def ins;
 
 // Marker used to identify the result list for an op.
 def outs;
