@@ -194,6 +194,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/compiler/jit:xla_kernel_creator",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",

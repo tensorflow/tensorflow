@@ -6,6 +6,7 @@ load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_p
 package(
     default_visibility = [
         ":internal",
+        "//tensorflow/core/common_runtime/eager:__pkg__",
         # BEGIN-GOOGLE-INTERNAL
         "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         # END-GOOGLE-INTERNAL
@@ -331,8 +332,8 @@ cc_library(
     name = "xla_kernel_creator",
     srcs = [
         "xla_kernel_creator.cc",
-        "xla_kernel_creator.h",
     ],
+    hdrs = ["xla_kernel_creator.h"],
     deps = [
         ":common",
         ":compilability_check_util",
