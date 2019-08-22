@@ -152,7 +152,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
   tf.math.argmax(B,1) # [2, 2, 1]
   ```
-   
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -488,7 +488,7 @@ def complex(real, imag, name=None):
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
 
-  Raises: 
+  Raises:
     TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
@@ -1110,11 +1110,6 @@ def div_no_nan(x, y, name=None):
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
@@ -3443,7 +3438,9 @@ def reduced_shape(input_shape, axes):
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
-  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+  """ Helper function for unsorted_segment_mean/_sqrtN.
+
+  Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
@@ -3554,7 +3551,10 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
 
 @tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
-def sparse_segment_sum(data, indices, segment_ids, name=None,
+def sparse_segment_sum(data,
+                       indices,
+                       segment_ids,
+                       name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
