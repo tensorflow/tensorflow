@@ -132,6 +132,8 @@ private:
 
   void processCapability();
 
+  void processExtension();
+
   void processMemoryModel();
 
   LogicalResult processConstantOp(spirv::ConstantOp op);
@@ -321,6 +323,7 @@ LogicalResult Serializer::serialize() {
 
   // TODO(antiagainst): handle the other sections
   processCapability();
+  processExtension();
   processMemoryModel();
 
   // Iterate over the module body to serialze it. Assumptions are that there is
@@ -369,6 +372,20 @@ void Serializer::processCapability() {
     auto capVal = spirv::symbolizeCapability(capStr);
     encodeInstructionInto(capabilities, spirv::Opcode::OpCapability,
                           {static_cast<uint32_t>(*capVal)});
+  }
+}
+
+void Serializer::processExtension() {
+  auto exts = module.getAttrOfType<ArrayAttr>("extensions");
+  if (!exts)
+    return;
+
+  SmallVector<uint32_t, 16> extName;
+  for (auto ext : exts.getValue()) {
+    auto extStr = ext.cast<StringAttr>().getValue();
+    extName.clear();
+    encodeStringLiteralInto(extName, extStr);
+    encodeInstructionInto(extensions, spirv::Opcode::OpExtension, extName);
   }
 }
 
