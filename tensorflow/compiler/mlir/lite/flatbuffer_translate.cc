@@ -194,6 +194,10 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       auto qtype = type.cast<mlir::quant::UniformQuantizedType>();
       return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
     }
+    case mlir::quant::QuantizationTypes::UniformQuantizedPerAxis: {
+      auto qtype = type.cast<mlir::quant::UniformQuantizedPerAxisType>();
+      return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
+    }
     default:
       // TFLite export fills FLOAT32 for unknown data types. Returning an error
       // for now for safety and this could be revisited when required.
@@ -572,6 +576,16 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_, /*min=*/0, /*max=*/0,
         builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
         builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+  } else if (auto qtype =
+                 element_type
+                     .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    std::vector<float> scales(qtype.getScales().begin(),
+                              qtype.getScales().end());
+    q_params = tflite::CreateQuantizationParameters(
+        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+        builder_.CreateVector<int64_t>(qtype.getZeroPoints()),
+        tflite::QuantizationDetails_NONE, /*details=*/0,
+        qtype.getQuantizedDimension());
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
   }

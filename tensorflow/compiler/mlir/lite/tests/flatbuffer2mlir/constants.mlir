@@ -68,6 +68,20 @@ func @uint8() -> tensor<4x!tf.uint8> {
   return %0 : tensor<4x!tf.uint8>
 }
 
+func @qi32_per_axis() -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>> {
+  // CHECK-LABEL: @qi32_per_axis
+  // CHECK: {qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.000000e+00,5.000000e-01:1,2.500000e-01:1}>>
+  %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>, value = dense<1> : tensor<3x3xi32>} : () -> tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>
+  return %0 : tensor<3x3x!quant.uniform<i32:f32:1, {1.0, 0.5:1, 0.25:1}>>
+}
+
+func @qu8() -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>> {
+  // CHECK-LABEL: @qu8
+  // CHECK: {qtype = tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>, value = dense<1> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.000000e+00>>
+  %0 = "tfl.pseudo_qconst"() { qtype = tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>, value = dense<1> : tensor<3xi8>} : () -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>
+  return %0 : tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>
+}
+
 // Identity function to make the exporter happy
 func @main(%arg0: tensor<4xi8>) -> tensor<4xi8> {
   %0 = "tfl.pseudo_input"(%arg0) : (tensor<4xi8>) -> tensor<4xi8>

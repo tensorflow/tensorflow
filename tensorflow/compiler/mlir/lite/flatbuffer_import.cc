@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -73,6 +74,7 @@ using mlir::Operation;
 using mlir::OperationState;
 using mlir::OwningModuleRef;
 using mlir::Value;
+using mlir::quant::QuantizedType;
 using tflite::TensorT;
 using xla::StatusOr;
 
@@ -86,6 +88,11 @@ bool IsScalar(const TensorT& tensor) {
   return tensor.shape.empty() && false;
 }
 
+bool IsQuantized(const TensorT& tensor) {
+  return (tensor.quantization != nullptr) &&
+         !tensor.quantization->zero_point.empty();
+}
+
 // Create the MLIR NamedLoc location corresponding to a given tensor
 Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
@@ -95,9 +102,71 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
                             builder.getContext());
 }
 
-mlir::TensorType GetTensorType(const TensorT& tensor, Builder builder) {
-  auto elem_type = ConvertElementType(tensor.type, builder);
-  if (IsScalar(tensor)) {
+// Returns the correct type for a quantized tensor
+// We have a special case for constants since they have a higher minimum value.
+StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
+                                         bool is_constant = false) {
+  tflite::QuantizationParametersT& quant_params = *tensor.quantization;
+  if (quant_params.details.AsCustomQuantization()) {
+    return errors::Unimplemented("Cannot handle experimental quantization");
+  }
+
+  bool is_signed = true;
+  mlir::IntegerType storage_type;
+  if (tensor.type == tflite::TensorType_UINT8) {
+    is_signed = false;
+    storage_type = builder.getIntegerType(8);
+  } else {
+    auto raw_elem_type = ConvertElementType(tensor.type, builder);
+    if (!raw_elem_type.isa<mlir::IntegerType>()) {
+      return errors::InvalidArgument(
+          "Quantized tensors must be stored as integers");
+    }
+    storage_type = raw_elem_type.cast<mlir::IntegerType>();
+  }
+
+  // TFlite uses narrow-range [u]int8 for constant buffers of quantized weights.
+  // Since we don't know which ones are weights, we represent this optimization
+  // as a change in the storage bounds for the type for all constants of this
+  // type.
+  bool is_weight_buffer = is_constant && (storage_type.getWidth() == 8);
+
+  int64_t storage_min = QuantizedType::getDefaultMininumForInteger(
+                            is_signed, storage_type.getWidth()) +
+                        is_weight_buffer;
+  int64_t storage_max = QuantizedType::getDefaultMaxinumForInteger(
+      is_signed, storage_type.getWidth());
+  uint32_t flags =
+      is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
+
+  if (0 != quant_params.quantized_dimension) {
+    llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
+                                        quant_params.scale.end());
+    return mlir::quant::UniformQuantizedPerAxisType::get(
+        flags, storage_type, builder.getF32Type(), scales,
+        quant_params.zero_point, quant_params.quantized_dimension, storage_min,
+        storage_max);
+  }
+  return mlir::quant::UniformQuantizedType::get(
+      flags, storage_type, builder.getF32Type(), quant_params.scale.at(0),
+      quant_params.zero_point.at(0), storage_min, storage_max);
+}
+
+// TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
+// make that distinction and don't have to rely on context
+// (input to main and constants must have static shape)
+StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
+                                         bool shapeless_are_scalars = false,
+                                         bool is_constant = false) {
+  mlir::Type elem_type = ConvertElementType(tensor.type, builder);
+  // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
+  // if it's set
+  if (IsQuantized(tensor)) {
+    TF_ASSIGN_OR_RETURN(elem_type,
+                        GetQuantizedType(tensor, builder, is_constant));
+  }
+
+  if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
     return builder.getTensorType({}, elem_type);
   }
 
@@ -214,9 +283,21 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 }
 
 StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
-    mlir::RankedTensorType shaped_type, mlir::IntegerType elem_type,
+    mlir::RankedTensorType shaped_type, mlir::Type elem_type,
     const std::vector<uint8_t>& buffer) {
-  switch (elem_type.getWidth()) {
+  unsigned bit_width;
+  mlir::RankedTensorType buffer_type;
+  if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
+    bit_width = itype.getWidth();
+  } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {
+    bit_width = qtype.getStorageTypeIntegralWidth();
+    shaped_type = mlir::RankedTensorType::get(shaped_type.getShape(),
+                                              qtype.getStorageType());
+  } else {
+    return errors::InvalidArgument("unsupported integer constant type");
+  }
+
+  switch (bit_width) {
     case 1: {
       // vector<bool> doesn't convert to an ArrayRef
       llvm::SmallVector<bool, 8> values;
@@ -242,24 +323,16 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       return DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values));
     }
     default:
-      return errors::Unimplemented("Cannot handle bit width",
-                                   elem_type.getIntOrFloatBitWidth());
+      return errors::Unimplemented("Cannot handle bit width ", bit_width);
   }
 }
 
-StatusOr<tfl::ConstOp> BuildConstOp(const tflite::TensorT& tensor,
-                                    const std::vector<uint8_t>& buffer,
-                                    OpBuilder builder, Location loc) {
-  mlir::TensorType type;
-  if (tensor.shape.empty()) {
-    // TODO(b/138222071) Scalar constants get typed as unranked tensors,
-    // so we have to manually set their shape here
-    auto elem_type = ConvertElementType(tensor.type, builder);
-    type = builder.getTensorType({}, elem_type);
-  } else {
-    type = GetTensorType(tensor, builder);
-  }
-
+StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
+                                  const std::vector<uint8_t>& buffer,
+                                  OpBuilder builder, Location loc) {
+  TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
+                                               /*shapeless_are_scalars=*/true,
+                                               /*is_constant=*/true));
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
@@ -271,8 +344,10 @@ StatusOr<tfl::ConstOp> BuildConstOp(const tflite::TensorT& tensor,
   if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (auto int_type = elem_type.dyn_cast<mlir::IntegerType>()) {
-    TF_ASSIGN_OR_RETURN(value, ConvertIntBuffer(shaped_type, int_type, buffer));
+  } else if (elem_type.isa<mlir::IntegerType>() ||
+             elem_type.isa<QuantizedType>()) {
+    TF_ASSIGN_OR_RETURN(value,
+                        ConvertIntBuffer(shaped_type, elem_type, buffer));
   } else if (elem_type.isa<mlir::TF::TensorFlowType>()) {
     auto& dialect = elem_type.getDialect();
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
@@ -282,7 +357,14 @@ StatusOr<tfl::ConstOp> BuildConstOp(const tflite::TensorT& tensor,
   } else {
     return errors::Unimplemented("Constant of unsupported type");
   }
-  return builder.create<tfl::ConstOp>(loc, value);
+
+  if (IsQuantized(tensor)) {
+    auto op = builder.create<tfl::QConstOp>(
+        loc, builder.getTypeAttr(shaped_type), value);
+    return op.getOperation();
+  }
+  auto op = builder.create<tfl::ConstOp>(loc, value);
+  return op.getOperation();
 }
 
 llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
@@ -342,7 +424,13 @@ StatusOr<Operation*> ConvertOp(
 
   for (auto output_num : op.outputs) {
     auto& tensor = *tensors.at(output_num);
-    mlir::TensorType type = GetTensorType(tensor, builder);
+    auto type_or_err = GetTensorType(tensor, builder);
+    if (!type_or_err.ok()) {
+      return emitError(loc, type_or_err.status().ToString()),
+             type_or_err.status();
+    }
+    auto type = type_or_err.ConsumeValueOrDie();
+
     // Special case for reshape, which stores its return shape in an option
     // that we need to extract from
     // Note: UniqueOp is handled by the typing information on its output tensor
@@ -352,6 +440,12 @@ StatusOr<Operation*> ConvertOp(
       type = builder.getTensorType(ArrayRef<int64_t>(shape),
                                    type.getElementType());
     }
+
+    // Special case for quantize: return type must also be in qtype attribute
+    if (op_name == "tfl.quantize") {
+      op_state.addAttribute("qtype", builder.getTypeAttr(type));
+    }
+
     op_state.addTypes({type});
   }
 
@@ -384,28 +478,52 @@ StatusOr<FuncOp> ConvertSubgraph(
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
+  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc,
+                                     builder.getContext());
+
   // Construct function type
   for (auto input : subgraph.inputs) {
     auto& tensor = *subgraph.tensors.at(input);
-    auto type = GetTensorType(tensor, builder);
-    if (add_pseudo_input_ops && tensor.shape.empty()) {
-      // TODO(b/138222071) Graph inputs must have static shape per the exporter,
-      // but we cannot differentiate scalars from unranked tensors.
-      // Here we reverse the default assumption that shape = [] means unranked.
-      auto elem_type = ConvertElementType(tensor.type, builder);
-      type = builder.getTensorType({}, elem_type);
+    // TODO(b/138222071) Graph inputs must have static shape per the exporter,
+    // but we cannot differentiate scalars from unranked tensors.
+    // Here we reverse the default assumption that shape = [] means unranked.
+    // when processing main()
+    auto type_or_err =
+        GetTensorType(tensor, builder,
+                      /*shapeless_are_scalars=*/add_pseudo_input_ops,
+                      /*is_constant=*/false);
+    if (!type_or_err.ok()) {
+      emitError(func_loc, "error reading argument types")
+          << type_or_err.status().ToString();
+      return type_or_err.status();
     }
+    auto type = type_or_err.ConsumeValueOrDie();
     input_types.push_back(type);
   }
+
+  llvm::SmallVector<bool, 16> is_op_output(subgraph.tensors.size(), false);
+  for (auto& op : subgraph.operators) {
+    for (auto output : op->outputs) {
+      is_op_output[output] = true;
+    }
+  }
+
   for (auto output : subgraph.outputs) {
-    ret_types.push_back(GetTensorType(*subgraph.tensors.at(output), builder));
+    bool is_constant = !is_op_output[output];
+    auto type_or_err = GetTensorType(*subgraph.tensors.at(output), builder,
+                                     /*shapeless_are_scalars=*/is_constant,
+                                     /*is_constant=*/is_constant);
+    if (!type_or_err.ok()) {
+      emitError(func_loc, "error reading return types")
+          << type_or_err.status().ToString();
+      return type_or_err.status();
+    }
+    auto type = type_or_err.ConsumeValueOrDie();
+    ret_types.push_back(type);
   }
   auto func_type = builder.getFunctionType(input_types, ret_types);
 
   // Construct function object
-  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc,
-                                     builder.getContext());
-
   auto func = FuncOp::create(func_loc, name, func_type, /* attrs= */ {});
   func.addEntryBlock();
   auto& body = func.getBody();
@@ -456,7 +574,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
         }
-        vals_map[input_num] = op_or_err.ValueOrDie().output();
+        vals_map[input_num] = op_or_err.ValueOrDie()->getResult(0);
       }
     }
 
@@ -489,7 +607,7 @@ StatusOr<FuncOp> ConvertSubgraph(
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
       }
-      vals_map[index] = op_or_err.ValueOrDie().output();
+      vals_map[index] = op_or_err.ValueOrDie()->getResult(0);
     }
     return_operands.push_back(vals_map[index]);
   }
