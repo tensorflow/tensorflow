@@ -72,6 +72,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
+static inline absl::string_view StringRefToView(llvm::StringRef ref) {
+  return {ref.data(), ref.size()};
+}
+
 namespace tensorflow {
 using stream_executor::port::StatusOr;
 
@@ -91,7 +95,8 @@ class ImporterBase {
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
       const NodeSpecs& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
-      : module_(module),
+      : builder_(absl::make_unique<mlir::OpBuilder>(module.getContext())),
+        module_(module),
         context_(module.getContext()),
         tf_name_to_mlir_name_(tf_name_to_mlir_name),
         graph_flib_(flib),
@@ -124,6 +129,12 @@ class ImporterBase {
                  const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                  const absl::InlinedVector<Node*, 4>& control_ret_nodes,
                  llvm::ArrayRef<mlir::NamedAttribute> attrs);
+
+  // Finds out the function definition for the given function name from the
+  // graph and converts it to a function of the module. This method is called
+  // on demand because the graph flib_def does not provide an iterator
+  // interface.
+  Status ConvertLibFunction(llvm::StringRef func_name);
 
   // Returns the list of nodes in the graph. Nodes are presented in the reverse
   // order of a post-order depth-first visit starting from the graph's source
@@ -218,13 +229,6 @@ class ImporterBase {
   // operation before the dst operation.
   Status AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
                      int dst_input);
-
-  // Finds out the function definition for the given function name from the
-  // graph and converts it to a function of the module. This method is called
-  // on demand because the graph flib_def does not provide an iterator
-  // interface. The consequence is that only the referred functions are added to
-  // the MLIR module.
-  Status ConvertLibFunction(const std::string& func_name);
 
   // Adds the input arguments and return operation to the function. The
   // arguments are added as basic block argument. Also the argument types and
@@ -339,14 +343,15 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
 //   the GraphDef.
 // - Replacing LegacyFedInput nodes with Placeholder nodes if
 //   convert_legacy_fed_inputs option is enabled.
-Status PreprocessGraphDef(const NodeSpecs& specs, GraphDef* graph_def) {
+Status PreprocessGraphDef(const NodeSpecs* specs, GraphDef* graph_def) {
   const tensorflow::OpRegistrationData* op_reg_data;
   for (auto& node_def : *graph_def->mutable_node()) {
     // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
     // solution could be have a tool to let users upgrade old serialized graphs.
-    if (specs.convert_legacy_fed_inputs && node_def.op() == "LegacyFedInput") {
+    if (specs && specs->convert_legacy_fed_inputs &&
+        node_def.op() == "LegacyFedInput") {
       TF_RETURN_IF_ERROR(
-          UpdateLegacyFedInputNode(*graph_def, specs.inputs, &node_def));
+          UpdateLegacyFedInputNode(*graph_def, specs->inputs, &node_def));
     }
 
     auto status =
@@ -785,20 +790,21 @@ void ImporterBase::GetArgsAndRetsFromFunctionBody(
   *control_ret_nodes = fbody.control_ret_nodes;
 }
 
-Status ImporterBase::ConvertLibFunction(const std::string& func_name) {
+Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   // If the library function has been converted already, nothing needs to be
   // done.
   if (tf_name_to_mlir_name_->find(func_name) != tf_name_to_mlir_name_->end())
     return Status::OK();
 
-  std::string mlir_func_name = graph_flib_.UniqueFunctionName(func_name);
+  std::string mlir_func_name =
+      graph_flib_.UniqueFunctionName(StringRefToView(func_name));
   (*tf_name_to_mlir_name_)[func_name] = mlir_func_name;
 
   const auto& func_lib = graph_flib_;
   const auto* func_def = func_lib.Find(func_name);
   if (func_def == nullptr) {
     return errors::FailedPrecondition(
-        absl::StrCat("Failed to find function '", func_name,
+        absl::StrCat("Failed to find function '", StringRefToView(func_name),
                      "'. The imported TensorFlow GraphDef is ill-formed."));
   }
 
@@ -1632,6 +1638,54 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   return builder.getFunctionType(arg_types, ret_types);
 }
 
+// Stateful helper class to import a TensorFlow model expressed in SavedModel
+// into an MLIR Module.
+class SavedModelImporter : public ImporterBase {
+ public:
+  // Main entry point: converts all functions in the given meta graph to an MLIR
+  // Module.
+  static StatusOr<mlir::OwningModuleRef> Convert(
+      const MetaGraphDef& meta_graph, const GraphDebugInfo& debug_info,
+      bool add_default_attributes, mlir::MLIRContext* context);
+
+ private:
+  explicit SavedModelImporter(
+      const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
+      const NodeSpecs& specs, mlir::ModuleOp module,
+      std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
+      : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name) {}
+};
+
+StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
+    const MetaGraphDef& meta_graph, const GraphDebugInfo& debug_info,
+    bool add_default_attributes, mlir::MLIRContext* context) {
+  NodeSpecs specs;
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
+
+  const auto& graphdef = meta_graph.graph_def();
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  Graph graph(OpRegistry::Global());
+
+  GraphDef preprocessed_graphdef(graphdef);
+  if (add_default_attributes) {
+    TF_RETURN_IF_ERROR(PreprocessGraphDef(nullptr, &preprocessed_graphdef));
+  }
+
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+
+  SavedModelImporter importer(graph.flib_def(), debug_info, specs, module.get(),
+                              &tf_name_to_mlir_name);
+
+  auto fn_names = graph.flib_def().ListFunctionNames();
+  for (const auto& fn_name : fn_names) {
+    TF_RETURN_IF_ERROR(importer.ConvertLibFunction(fn_name));
+  }
+  return module;
+}
 }  // namespace
 
 StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
@@ -1644,7 +1698,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
 
   GraphDef preprocessed_graphdef(graphdef);
   if (add_default_attributes) {
-    TF_RETURN_IF_ERROR(PreprocessGraphDef(specs, &preprocessed_graphdef));
+    TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
@@ -1658,6 +1712,13 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
     mlir::MLIRContext* context) {
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs);
+}
+
+StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
+    const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
+    mlir::MLIRContext* context, bool add_default_attributes) {
+  return SavedModelImporter::Convert(saved_model.meta_graph_def, debug_info,
+                                     add_default_attributes, context);
 }
 
 }  // namespace tensorflow
