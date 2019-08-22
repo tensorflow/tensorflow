@@ -247,6 +247,51 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
         "}\n";
 }
 
+// Emit a function that converts a BuiltinOptionsUnion to a vector of attributes
+// Signature:
+// void mlir::BuiltinOptionsToAttributes(
+//     tflite::BuiltinOptionsUnion op_union,
+//     mlir::Builder builder,
+//     llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
+                                           const std::vector<Record *> &defs,
+                                           raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+
+  // Signature
+  os << "void mlir::BuiltinOptionsToAttributes("
+        "tflite::BuiltinOptionsUnion op_union, "
+        "mlir::Builder builder, "
+        "llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes) {\n";
+
+  const auto attr_type = record_keeper.getClass("Attr");
+  for (const auto *def : defs) {
+    if (!def->getValueAsBit("hasOptions")) continue;
+    auto option_name = GetOperatorOptionName(*def);
+    os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
+
+    // We only care about options that are in arguments
+    auto *arg_values = def->getValueAsDag("arguments");
+    for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
+      auto arg = arg_values->getArg(i);
+      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      if (!arg_def) continue;
+      if (arg_def->getDef()->isSubClassOf(attr_type)) {
+        StringRef arg_name = arg_values->getArgNameStr(i);
+        StringRef attr_type = mlir::tblgen::Attribute(arg_def).getAttrDefName();
+        os << formatv(
+            "    attributes.emplace_back(builder.getNamedAttr(\"{0}\","
+            " Build{1}(op->{0}, builder)));\n",
+            arg_name, attr_type);
+      }
+    }
+
+    os << "    return;\n";
+    os << "  }\n";
+  }
+  // Fallthrough case is no attributes
+  os << "}";
+}
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
@@ -278,6 +323,8 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
   EmitGetBuiltinOpCode(defs, &os);
   os << "\n\n";
   EmitBuildOperator(defs, &os);
+  os << "\n\n";
+  EmitBuiltinOptionsToAttributes(records, defs, &os);
 
   return false;
 }

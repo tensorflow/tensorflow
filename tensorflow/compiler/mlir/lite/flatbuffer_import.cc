@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -48,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -302,6 +304,7 @@ StatusOr<Operation*> ConvertOp(
     mlir::TensorType type = GetTensorType(tensor, builder);
     // Special case for reshape, which stores its return shape in an option
     // that we need to extract from
+    // Note: UniqueOp is handled by the typing information on its output tensor
     if (auto* opts = op.builtin_options.AsReshapeOptions()) {
       llvm::SmallVector<int64_t, 4> shape(opts->new_shape.begin(),
                                           opts->new_shape.end());
@@ -311,9 +314,10 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
-  // TODO(krzysd) Handle attributes correctly
-  op_state.addAttribute("fused_activation_function",
-                        builder.getStringAttr("NONE"));
+  llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
+  mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+  op_state.addAttributes(attrs);
+
   return builder.createOperation(op_state);
 }
 

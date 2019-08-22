@@ -2,7 +2,7 @@
 // Confirm we can extract type info from reshape
 
 func @main() -> tensor<2x2xf32> {
-  // CHECK: %{{.*}} = "tfl.reshape"(%{{.*}}) {fused_activation_function = "NONE"} : (tensor<4xf32>) -> tensor<2x2xf32>
+  // CHECK: %{{.*}} = "tfl.reshape"(%{{.*}}) : (tensor<4xf32>) -> tensor<2x2xf32>
   %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
   %1 = "tfl.reshape" (%0) : (tensor<4xf32>) -> tensor<2x2xf32> loc("reshape")
   return %1 : tensor<2x2xf32>

@@ -314,9 +314,9 @@ cc_library(
 )
 
 tf_native_cc_binary(
-    name = "operator-writer-gen",
+    name = "operator-converter-gen",
     srcs = [
-        "operator_writer_gen.cc",
+        "operator_converter_gen.cc",
     ],
     deps = [
         "@llvm//:support",
@@ -326,25 +326,25 @@ tf_native_cc_binary(
 )
 
 genrule(
-    name = "operator_writer_inc",
+    name = "operator_converter_inc",
     srcs = [
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
-        "operator_writers.inc",
+        "operator_converters.inc",
     ],
-    cmd = ("$(location :operator-writer-gen) " +
+    cmd = ("$(location :operator-converter-gen) " +
            "-I external/local_config_mlir/include " +
            "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = [":operator-writer-gen"],
+    tools = [":operator-converter-gen"],
 )
 
 cc_library(
     name = "flatbuffer_tflite_operator_lib",
     srcs = [
         "flatbuffer_operator.cc",
-        "operator_writers.inc",
+        "operator_converters.inc",
     ],
     hdrs = [
         "flatbuffer_operator.h",

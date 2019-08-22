@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -149,5 +152,59 @@ static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
       .Case("BASIC", tflite::LSTMKernelType_BASIC);
 }
 
+static mlir::Attribute BuildBoolAttr(bool value, mlir::Builder builder) {
+  return builder.getBoolAttr(value);
+}
+
+static mlir::Attribute BuildF32Attr(float value, mlir::Builder builder) {
+  return builder.getF32FloatAttr(value);
+}
+
+static mlir::Attribute BuildI32Attr(int32_t value, mlir::Builder builder) {
+  return builder.getI32IntegerAttr(value);
+}
+
+static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
+                                         mlir::Builder builder) {
+  std::vector<int64_t> typecast(value.begin(), value.end());
+  return builder.getI64ArrayAttr(typecast);
+}
+
+static mlir::Attribute BuildPositiveI32Attr(int32_t value,
+                                            mlir::Builder builder) {
+  return builder.getI32IntegerAttr(value);
+}
+
+static mlir::Attribute BuildTFL_AFAttr(tflite::ActivationFunctionType value,
+                                       mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameActivationFunctionType(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_FullyConnectedOptionsWeightFormatAttr(
+    tflite::FullyConnectedOptionsWeightsFormat value, mlir::Builder builder) {
+  const char* option_name =
+      tflite::EnumNameFullyConnectedOptionsWeightsFormat(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_LSTMKernelTypeAttr(tflite::LSTMKernelType value,
+                                                   mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameLSTMKernelType(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_MirrorPaddingAttr(tflite::MirrorPadMode value,
+                                                  mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameMirrorPadMode(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
+                                            mlir::Builder builder) {
+  const char* option_name = tflite::EnumNamePadding(value);
+  return builder.getStringAttr(option_name);
+}
+
 // Pull in FlatBuffer writers for TFLite generated using TableGen
-#include "tensorflow/compiler/mlir/lite/operator_writers.inc"
+#include "tensorflow/compiler/mlir/lite/operator_converters.inc"
