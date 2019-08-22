@@ -381,12 +381,17 @@ cc_library(
     ],
 )
 
+# AVX-512 compilation units.
+#
+# These must use the same compiler options.
+RUY_COPTS_BUILT_FOR_AVX512 = RUY_COPTS + ruy_copts_skylake()
+
 cc_library(
     name = "kernel_avx512",
     srcs = [
         "kernel_avx512.cc",
     ],
-    copts = RUY_COPTS + ruy_copts_skylake(),
+    copts = RUY_COPTS_BUILT_FOR_AVX512,
     deps = [
         ":check_macros",
         ":kernel_common",
@@ -401,7 +406,7 @@ cc_library(
     srcs = [
         "pack_avx512.cc",
     ],
-    copts = RUY_COPTS + ruy_copts_skylake(),
+    copts = RUY_COPTS_BUILT_FOR_AVX512,
     deps = [
         ":check_macros",
         ":matrix",
@@ -414,11 +419,32 @@ cc_library(
 )
 
 cc_library(
+    name = "have_built_path_for_avx512",
+    srcs = [
+        "have_built_path_for_avx512.cc",
+    ],
+    hdrs = [
+        "have_built_path_for.h",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_AVX512,
+    deps = [
+        ":opt_set",
+        ":platform",
+    ],
+)
+# End: AVX-512 compilation units.
+
+# AVX2 compilation units.
+#
+# These must use the same compiler options.
+RUY_COPTS_BUILT_FOR_AVX2 = RUY_COPTS + ruy_copts_avx2()
+
+cc_library(
     name = "kernel_avx2",
     srcs = [
         "kernel_avx2.cc",
     ],
-    copts = RUY_COPTS + ruy_copts_avx2(),
+    copts = RUY_COPTS_BUILT_FOR_AVX2,
     deps = [
         ":check_macros",
         ":kernel_common",
@@ -433,7 +459,7 @@ cc_library(
     srcs = [
         "pack_avx2.cc",
     ],
-    copts = RUY_COPTS + ruy_copts_avx2(),
+    copts = RUY_COPTS_BUILT_FOR_AVX2,
     deps = [
         ":check_macros",
         ":matrix",
@@ -444,6 +470,22 @@ cc_library(
         "@gemmlowp//:profiler",
     ],
 )
+
+cc_library(
+    name = "have_built_path_for_avx2",
+    srcs = [
+        "have_built_path_for_avx2.cc",
+    ],
+    hdrs = [
+        "have_built_path_for.h",
+    ],
+    copts = RUY_COPTS_BUILT_FOR_AVX2,
+    deps = [
+        ":opt_set",
+        ":platform",
+    ],
+)
+# End: AVX2 compilation units.
 
 cc_library(
     name = "kernel",
@@ -498,6 +540,18 @@ cc_library(
 )
 
 cc_library(
+    name = "have_built_path_for",
+    hdrs = [
+        "have_built_path_for.h",
+    ],
+    deps = [
+        ":have_built_path_for_avx2",
+        ":have_built_path_for_avx512",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "context",
     srcs = [
         "context.cc",
@@ -512,6 +566,7 @@ cc_library(
         ":check_macros",
         ":detect_arm",
         ":detect_x86",
+        ":have_built_path_for",
         ":path",
         ":platform",
         ":thread_pool",
