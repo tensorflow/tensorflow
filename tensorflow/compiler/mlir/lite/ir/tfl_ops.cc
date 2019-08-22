@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -457,6 +458,74 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SliceOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto begin_type = op.begin()->getType().cast<ShapedType>();
+  auto size_type = op.size()->getType().cast<ShapedType>();
+  if (input_type.hasStaticShape() && begin_type.hasStaticShape() &&
+      size_type.hasStaticShape()) {
+    if (input_type.getRank() != begin_type.getNumElements()) {
+      return op.emitError(
+          "begin tensor elements size is not equal to input tensor rank");
+    }
+
+    if (input_type.getRank() != size_type.getNumElements()) {
+      return op.emitError(
+          "size tensor elements size is not equal to input tensor rank");
+    }
+  }
+
+  DenseIntElementsAttr begin;
+  if (matchPattern(op.begin(), m_Constant(&begin))) {
+    int axis = 0;
+    for (auto begin_i : llvm::enumerate(begin)) {
+      if (begin_i.value().getSExtValue() < 0) {
+        return op.emitError(
+            llvm::formatv("begin[{0}] cannot be negative", axis));
+      }
+      axis++;
+    }
+  }
+
+  DenseIntElementsAttr size;
+  if (matchPattern(op.size(), m_Constant(&size))) {
+    int axis = 0;
+    for (auto size_i : llvm::enumerate(size)) {
+      if (size_i.value().getSExtValue() < -1) {
+        return op.emitError(
+            llvm::formatv("size[{0}] cannot be negative other than -1", axis));
+      }
+      axis++;
+    }
+  }
+
+  if (begin && size && input_type.hasStaticShape()) {
+    const int input_rank = begin.getNumElements();
+    for (uint64_t i = 0; i < input_rank; i++) {
+      int begin_i =
+          begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int size_i =
+          size.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int dim_i = input_type.getShape()[i];
+      if (begin_i >= dim_i) {
+        return op.emitOpError(llvm::formatv(
+            "begin[{0}] cannot exceed dimension length: {1}", i, dim_i));
+      }
+      if (size_i >= 0 && begin_i + size_i > dim_i) {
+        return op.emitError(llvm::formatv(
+            "begin[{0}] + size[{0}] cannot exceed dimension length: {1}", i,
+            dim_i));
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

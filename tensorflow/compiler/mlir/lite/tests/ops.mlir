@@ -1198,7 +1198,6 @@ func @testSvdfUnsupportedType(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>, %a
   %0 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", rank = 2 : i32} : (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
-
 // -----
 
 // CHECK-LABEL: testDepthToSpace
@@ -1218,3 +1217,62 @@ func @testDepthToSpaceInvalidOutputType(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x
 }
 
 // -----
+
+func @testSlice(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceBadBeginDimension(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  // expected-error @+1 {{begin tensor elements size is not equal to input tensor rank}}
+  %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<2x3x5xf32>, tensor<2xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceBadSizeDimension(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<2xi32>) -> tensor<?x3x5xf32> {
+  // expected-error @+1 {{size tensor elements size is not equal to input tensor rank}}
+  %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<2xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceBadBegin(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  %cst = constant dense<[2, -1, 5]> : tensor<3xi32>
+  // expected-error @+1 {{begin[1] cannot be negative}}
+  %0 = "tfl.slice"(%arg0, %cst, %arg1) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceNegativeSize(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  %cst = constant dense<[-2, -1, 5]> : tensor<3xi32>
+  // expected-error @+1 {{size[0] cannot be negative other than -1}}
+  %0 = "tfl.slice"(%arg0, %arg1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceSizeOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  %cst = constant dense<[2, 1, 5]> : tensor<3xi32>
+  %cst_1 = constant dense<[0, 1, 1]> : tensor<3xi32>
+  // expected-error @+1 {{begin[2] + size[2] cannot exceed dimension length: 5}}
+  %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}
+
+// -----
+
+func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
+  %cst = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_1 = constant dense<[2, 1, 3]> : tensor<3xi32>
+  // expected-error @+1 {{begin[0] cannot exceed dimension length: 2}}
+  %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
+  return %0 : tensor<?x3x5xf32>
+}

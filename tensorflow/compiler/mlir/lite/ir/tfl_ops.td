@@ -1264,6 +1264,11 @@ The output tensor is a tensor with dimensions described by 'size'
 whose values are extracted from 'input' starting at the offsets in
 'begin'.
 
+`begin` is zero-based; `size` is one-based. If size[i] is -1, all remaining
+elements in dimension i are included in the slice. In other words, this is
+equivalent to setting:
+  size[i] = input.dim_size(i) - begin[i]
+
 *Requirements*:
   0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
   }];
@@ -1277,6 +1282,8 @@ whose values are extracted from 'input' starting at the offsets in
   let results = (outs
     AnyTensor:$output
   );
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
