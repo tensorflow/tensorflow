@@ -337,7 +337,7 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
   return absl::nullopt;
 }
 
-StatusOr<bool> TryRewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
+bool RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   auto conv = match.conv;
   auto gte = match.gte;
   auto convert_or_clamp = match.convert_or_clamp;
@@ -356,7 +356,7 @@ StatusOr<bool> TryRewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   return true;
 }
 
-StatusOr<bool> TryRewriteForFinalOutput(ConvWithConvertOrClamp match) {
+bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
   bool changed = false;
   // When the matched clamp has a single user, which is convert<int8>, we
   // will absorb it, if
@@ -374,7 +374,7 @@ StatusOr<bool> TryRewriteForFinalOutput(ConvWithConvertOrClamp match) {
   if (match.conv->operand_count() < 4) {
     // Conv input #3 (zero based) is side_input, after x, w, and bias.
     // Side input doesn't exist in this case.
-    TF_ASSIGN_OR_RETURN(changed, TryRewriteForConvertOrClampImpl(match));
+    changed = RewriteForConvertOrClampImpl(match);
   } else if (is_one_to_one_X_to_Y_cast(match.conv->operand(3), S8, F32)) {
     // If side_input has a convert_float_to_int8, absorb it as well.
     auto side_converter = match.conv->mutable_operand(3);
@@ -383,7 +383,7 @@ StatusOr<bool> TryRewriteForFinalOutput(ConvWithConvertOrClamp match) {
     side_converter->parent()->RemoveInstructionAndUnusedOperands(
         side_converter);
 
-    TF_ASSIGN_OR_RETURN(changed, TryRewriteForConvertOrClampImpl(match));
+    changed = RewriteForConvertOrClampImpl(match);
   }
   return changed;
 }
@@ -401,11 +401,8 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
         matches.push_back(*match);
       }
     }
-    std::vector<std::pair<HloInstruction*, std::unique_ptr<HloInstruction>>>
-        replacements;
     for (const ConvWithConvertOrClamp& match : matches) {
-      TF_ASSIGN_OR_RETURN(bool c, TryRewriteForFinalOutput(match));
-      changed |= c;
+      changed |= RewriteForFinalOutput(match);
     }
 
     // Report error for any convolution still having int32 output.
@@ -459,8 +456,8 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
   return absl::nullopt;
 }
 
-StatusOr<bool> TryRewriteForConvertToFloat(ConvWithConvertOrClamp match) {
-  return TryRewriteForConvertOrClampImpl(match);
+bool RewriteForConvertToFloat(ConvWithConvertOrClamp match) {
+  return RewriteForConvertOrClampImpl(match);
 }
 
 // Transform
@@ -491,8 +488,7 @@ StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
     }
 
     for (const ConvWithConvertOrClamp& match : matches) {
-      TF_ASSIGN_OR_RETURN(bool c, TryRewriteForConvertToFloat(match));
-      changed |= c;
+      changed |= RewriteForConvertToFloat(match);
     }
   }
   return changed;
