@@ -126,6 +126,10 @@ cc_library(
     ],
 )
 
+test_suite(
+    name = "all_tests",
+)
+
 tflite_micro_cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],

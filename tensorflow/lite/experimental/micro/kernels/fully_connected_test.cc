@@ -104,7 +104,7 @@ void TestFullyConnectedQuantized(
     std::initializer_list<int> weights_dims_data,
     std::initializer_list<uint8_t> weights_data, float weights_min,
     float weights_max, std::initializer_list<int> bias_dims_data,
-    std::initializer_list<int32_t> bias_data, float bias_min, float bias_max,
+    std::initializer_list<int32_t> bias_data, float bias_scale,
     std::initializer_list<uint8_t> expected_output_data,
     std::initializer_list<int> output_dims_data, float output_min,
     float output_max, TfLiteFusedActivation activation, uint8_t* output_data) {
@@ -122,8 +122,7 @@ void TestFullyConnectedQuantized(
                             input_max),
       CreateQuantizedTensor(weights_data, weights_dims, "weights_tensor",
                             weights_min, weights_max),
-      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_min,
-                              bias_max),
+      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_scale),
       CreateQuantizedTensor(output_data, output_dims, "output_tensor",
                             output_min, output_max),
   };
@@ -267,8 +266,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
   const float input_max = 64.0f;
   const float weights_min = -63.5f;
   const float weights_max = 64.0f;
-  const float bias_min = 0.0f;
-  const float bias_max = 64.0f * (1 << 24);
+  const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
   const int output_dims_count = 6;
@@ -311,11 +309,11 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
       weights_min, weights_max,  // Weights quantization range.
       {1, 3},                    // Bias shape.
       {
-          F2Q32(1, bias_min, bias_max),
-          F2Q32(2, bias_min, bias_max),
-          F2Q32(3, bias_min, bias_max),
+          F2Q32(1, bias_scale),
+          F2Q32(2, bias_scale),
+          F2Q32(3, bias_scale),
       },
-      bias_min, bias_max,  // Bias quantization range.
+      bias_scale,
       {
           // Expected results.
           F2Q(24, output_min, output_max),
@@ -338,8 +336,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedRelu) {
   const float input_max = 64.0f;
   const float weights_min = -63.5f;
   const float weights_max = 64.0f;
-  const float bias_min = 0.0f;
-  const float bias_max = 64.0f * (1 << 24);
+  const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
   const int output_dims_count = 6;
@@ -382,11 +379,11 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedRelu) {
       weights_min, weights_max,  // Weights quantization range.
       {1, 3},                    // Bias shape.
       {
-          F2Q32(1, bias_min, bias_max),
-          F2Q32(0, bias_min, bias_max),
-          F2Q32(3, bias_min, bias_max),
+          F2Q32(1, bias_scale),
+          F2Q32(0, bias_scale),
+          F2Q32(3, bias_scale),
       },
-      bias_min, bias_max,  // Bias quantization range.
+      bias_scale,
       {
           // Expected results.
           F2Q(24, output_min, output_max),
@@ -409,8 +406,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedOutputMultiplierGreaterThan1) {
   const float input_max = 128.0f;
   const float weights_min = -127.0f;
   const float weights_max = 128.0f;
-  const float bias_min = 0.0f;
-  const float bias_max = 256.0f * (1 << 24);
+  const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
   const int output_dims_count = 6;
@@ -453,11 +449,11 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedOutputMultiplierGreaterThan1) {
       weights_min, weights_max,  // Weights quantization range.
       {1, 3},                    // Bias shape.
       {
-          F2Q32(1, bias_min, bias_max),
-          F2Q32(2, bias_min, bias_max),
-          F2Q32(3, bias_min, bias_max),
+          F2Q32(1, bias_scale),
+          F2Q32(2, bias_scale),
+          F2Q32(3, bias_scale),
       },
-      bias_min, bias_max,  // Bias quantization range.
+      bias_scale,
       {
           // Expected results.
           F2Q(24, output_min, output_max),
@@ -506,8 +502,7 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantized) {
   const float input_max = 64.0f;
   const float weights_min = -63.5f;
   const float weights_max = 64.0f;
-  const float bias_min = 0.0f;
-  const float bias_max = 64.0f * (1 << 24);
+  const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
   const int output_dims_count = 6;
@@ -550,11 +545,11 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantized) {
       weights_min, weights_max,  // Weights quantization range.
       {1, 3},                    // Bias shape.
       {
-          F2Q32(1, bias_min, bias_max),
-          F2Q32(2, bias_min, bias_max),
-          F2Q32(3, bias_min, bias_max),
+          F2Q32(1, bias_scale),
+          F2Q32(2, bias_scale),
+          F2Q32(3, bias_scale),
       },
-      bias_min, bias_max,  // Bias quantization range.
+      bias_scale,
       {
           // Expected results.
           F2Q(24, output_min, output_max),
@@ -577,8 +572,7 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedOutputMultiplierGreaterThan1) {
   const float input_max = 128.0f;
   const float weights_min = -127.0f;
   const float weights_max = 128.0f;
-  const float bias_min = 0.0f;
-  const float bias_max = 256.0f * (1 << 24);
+  const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
   const int output_dims_count = 6;
@@ -621,11 +615,11 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedOutputMultiplierGreaterThan1) {
       weights_min, weights_max,  // Weights quantization range.
       {1, 3},                    // Bias shape.
       {
-          F2Q32(1, bias_min, bias_max),
-          F2Q32(2, bias_min, bias_max),
-          F2Q32(3, bias_min, bias_max),
+          F2Q32(1, bias_scale),
+          F2Q32(2, bias_scale),
+          F2Q32(3, bias_scale),
       },
-      bias_min, bias_max,  // Bias quantization range.
+      bias_scale,
       {
           // Expected results.
           F2Q(24, output_min, output_max),

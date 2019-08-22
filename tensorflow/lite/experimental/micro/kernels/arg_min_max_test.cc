@@ -72,6 +72,8 @@ void TestArgMinMax(TfLiteTensor* input_tensor, TfLiteTensor* axis_tensor,
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
+  // TODO(139763483): this is misleading.  We should be more explicit about
+  // expecting failure conditions.
   if (!expected_output_data.size()) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
                             registration->invoke(&context, &node));
@@ -150,15 +152,13 @@ TF_LITE_MICRO_TEST(GetMaxArgInt8) {
 TF_LITE_MICRO_TEST(GetMaxArgInt32) {
   using tflite::testing::F2Q32;
   int32_t output_data[1];
-  float input_min = 0;
-  float input_max = 31.9375;
+  float input_scale = 7.436e-9;
   TfLiteIntArray* input_dims =
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 1, 4});
-  auto input_data = {
-      F2Q32(1, input_min, input_max), F2Q32(9, input_min, input_max),
-      F2Q32(7, input_min, input_max), F2Q32(3, input_min, input_max)};
+  auto input_data = {F2Q32(1, input_scale), F2Q32(9, input_scale),
+                     F2Q32(7, input_scale), F2Q32(3, input_scale)};
   auto input_tensor = tflite::testing::CreateQuantized32Tensor(
-      input_data, input_dims, "input_tensor", input_min, input_max);
+      input_data, input_dims, "input_tensor", input_scale);
   auto axis_tensor = tflite::testing::CreateTensor<int32_t, kTfLiteInt32>(
       {3}, tflite::testing::IntArrayFromInitializer({3, 1, 1, 1}),
       "axis_tensor");
