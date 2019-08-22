@@ -327,7 +327,7 @@ void CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Step(
     // isn't full, or the lowest probability entry in the beam has a
     // lower probability than the leaf.
     auto is_candidate = [this](const BeamProbability& prob) {
-      return (prob.total > kLogZero<T>::val &&
+      return (prob.total > kLogZero<T>() &&
               (leaves_.size() < beam_width_ ||
                prob.total > leaves_.peek_bottom()->newp.total));
     };
@@ -349,7 +349,7 @@ void CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Step(
       BeamEntry& c = b->GetChild(label);
       if (!c.Active()) {
         //   Pblank(l=abcd @ t=6) = 0
-        c.newp.blank = kLogZero<T>::val;
+        c.newp.blank = kLogZero<T>();
         // If new child label is identical to beam label:
         //   Plabel(l=abcc @ t=6) = Pblank(l=abc @ t=5) * P(c @ 6)
         // Otherwise:
