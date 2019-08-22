@@ -55,6 +55,15 @@ cc_library(
     deps = [":check_macros"],
 )
 
+cc_test(
+    name = "size_util_test",
+    srcs = ["size_util_test.cc"],
+    deps = [
+        ":size_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "tune",
     srcs = [
