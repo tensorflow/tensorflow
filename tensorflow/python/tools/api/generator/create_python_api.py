@@ -195,8 +195,7 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          if submodule_index > 0:
-            import_from += '.' + '.'.join(module_split[:submodule_index])
+          import_from = '.'
           self.add_import(
               symbol=None,
               source_module_name=import_from,
