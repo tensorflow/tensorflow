@@ -255,6 +255,25 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // `accumulator`. Returns None if no JVP is available.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 
+// Collects state from all current forward accumulators related to `tensors`.
+//
+// This is useful for packing JVPs as function inputs before executing a
+// function which computes primals and JVPs at the same time.
+//
+// Does not include accumulators which are currently in the process of computing
+// a jvp (and so appear somewhere on the current execution stack) or any
+// accumulators more deeply nested.
+//
+// Includes JVPs for `tensors` and any higher-order JVPs for those
+// (recursively). Returns a two-element tuple (indices, jvps):
+//   indices: A sequence of sequences of two-element tuples. Each forward
+//       accumulator is represented as a sequence of tuples with (primal_index,
+//       jvp_index). Both integers index into the concatenated `tensors + jvps`
+//       array.
+//   jvps: A flat list of Tensors. Best interpreted as a sequence to be
+//       appended to `tensors`.
+PyObject* TFE_Py_PackForwardGradients(PyObject* tensors);
+
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in
