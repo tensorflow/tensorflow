@@ -367,6 +367,14 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
+// expected-error @+1 {{uses unknown capability: MyAwesomeCapability}}
+spv.module "Logical" "GLSL450" {
+} attributes {
+  capabilities = ["MyAwesomeCapability"]
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // spv._module_end
 //===----------------------------------------------------------------------===//
