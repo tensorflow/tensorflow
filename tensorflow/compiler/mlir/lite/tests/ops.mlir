@@ -1276,3 +1276,119 @@ func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -
   %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
 }
+
+// -----
+
+func @testSplitOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op attribute 'num_splits' failed to satisfy constraint: positive 32-bit integer attribute}}
+  "tfl.split"(%split_dim, %arg0) {num_splits = 0 : i32} : (tensor<i32>, tensor<16xf32>) -> ()
+  return
+}
+
+// -----
+
+func @testSplitOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op output count should match 'num_splits' attribute}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 4 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+
+// -----
+
+func @testSplitOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
+  %split_dim = constant dense<0> : tensor<2x2xi32>
+  // expected-error @+1 {{'tfl.split' op operand #0 must be tensor<i32>}}
+  %0 = "tfl.split"(%split_dim, %arg0) {num_splits = 1 : i32} : (tensor<2x2xi32>, tensor<16x4x4xf32>) -> tensor<16x4x4xf32>
+  return %0 : tensor<16x4x4xf32>
+}
+
+// -----
+
+func @testSplitOpWithBadSplitDimUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %split_dim : tensor<? x i32>) -> tensor<16x4x4xf32> {
+  // expected-error @+1 {{'tfl.split' op operand #0 must be tensor<i32>}}
+  %0 = "tfl.split"(%split_dim, %arg0) {num_splits = 1 : i32} : (tensor<?xi32>, tensor<16x4x4xf32>) -> tensor<16x4x4xf32>
+  return %0 : tensor<16x4x4xf32>
+}
+
+// -----
+
+func @testSplitOpWithOutOfRangeSplitDim(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %split_dim = constant dense<1> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op 'split_dim' should be in [-rank, rank)}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+
+// -----
+
+func @testSplitOpWithOutOfRangeSplitDimTFLConst(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %split_dim = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{'tfl.split' op 'split_dim' should be in [-rank, rank)}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+
+// -----
+
+func @testSplitOpWithOutOfRangeSplitDimNegative(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %split_dim = constant dense<-2> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op 'split_dim' should be in [-rank, rank)}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+
+// -----
+
+func @testSplitOpWithUnevenDivision(%arg0 : tensor<16xf32>) -> (tensor<6xf32>, tensor<5xf32>, tensor<5xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op 'num_splits' should evenly divide 'split_dim' axis}}
+  %0, %1, %2 = "tfl.split"(%split_dim, %arg0) {num_splits = 3 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<6xf32>, tensor<5xf32>, tensor<5xf32>)
+  return %0, %1, %2 : tensor<6xf32>, tensor<5xf32>, tensor<5xf32>
+}
+
+// -----
+
+func @testSplitOpWithMismatchTensorTypeSplitDimOut0(%arg0 : tensor<16xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op output #0 should be 'tensor<8xf32>'}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<4xf32>, tensor<4xf32>)
+  return %0, %1 : tensor<4xf32>, tensor<4xf32>
+}
+
+// -----
+
+func @testSplitOpWithMismatchTensorTypeSplitDimOut1(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op output #1 should be 'tensor<8xf32>'}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>)
+  return %0, %1 : tensor<8xf32>, tensor<4xf32>
+}
+
+// -----
+
+func @testSplitOpWithMismatchTensorTypeNonSplitDim(%arg0 : tensor<16x4xf32>) -> (tensor<8x2xf32>, tensor<8x2xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  // expected-error @+1 {{'tfl.split' op output #0 should be 'tensor<8x4xf32>'}}
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<8x2xf32>, tensor<8x2xf32>)
+  return %0, %1 : tensor<8x2xf32>, tensor<8x2xf32>
+}
+
+// -----
+
+func @testSplitOpWithValidTensorType(%arg0 : tensor<16x4xf32>) -> (tensor<8x4xf32>, tensor<8x4xf32>, tensor<16x2xf32>, tensor<16x2xf32>) {
+  %split_dim_0 = constant dense<0> : tensor<i32>
+  %0, %1 = "tfl.split"(%split_dim_0, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<8x4xf32>, tensor<8x4xf32>)
+  %split_dim_1 = constant dense<1> : tensor<i32>
+  %2, %3 = "tfl.split"(%split_dim_1, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
+  return %0, %1, %2, %3 : tensor<8x4xf32>, tensor<8x4xf32>, tensor<16x2xf32>, tensor<16x2xf32>
+}
+
+// -----
+
+func @testSplitOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tensor<8x?xf32>, tensor<8x?xf32>) {
+  %split_dim = constant dense<0> : tensor<i32>
+  %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x?xf32>) -> (tensor<8x?xf32>, tensor<8x?xf32>)
+  return %0, %1 : tensor<8x?xf32>, tensor<8x?xf32>
+}

@@ -98,6 +98,11 @@ static int ConvertI32AttrForOptionWriter(
   return i.getSExtValue();
 }
 
+static int ConvertPositiveI32AttrForOptionWriter(
+    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
+  return ConvertI32AttrForOptionWriter(i, builder);
+}
+
 static flatbuffers::Offset<flatbuffers::Vector<int32_t>>
 ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
                                    flatbuffers::FlatBufferBuilder* builder) {

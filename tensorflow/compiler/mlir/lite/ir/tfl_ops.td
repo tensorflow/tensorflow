@@ -2159,6 +2159,9 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
   let hasOptions = 1;
 }
 
+def Rank0I32Tensor : Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0]>]>,
+                          "tensor<i32>">;
+
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
@@ -2169,14 +2172,16 @@ def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, TFL_SameOperandsAndResultsScale
   }];
 
   let arguments = (ins
-    I32Tensor:$split_dim,
+    Rank0I32Tensor:$split_dim,
     TensorOf<[F32, I16, I32, I64, TFL_QI8, TFL_QUI8]>:$value,
-    I32Attr:$num_splits
+    PositiveI32Attr:$num_splits
   );
 
   let results = (outs
     Variadic<TensorOf<[F32, I16, I32, I64, TFL_QI8, TFL_QUI8]>>:$outputs
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }

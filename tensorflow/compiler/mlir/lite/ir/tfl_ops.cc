@@ -630,6 +630,65 @@ static LogicalResult Verify(UnpackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+// Extracts and returns the signed integer constant in a 0-rank integer tensor
+// if 'value' is a constant.
+static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
+  ElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr))) return {};
+
+  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  return int_attr.getValue().getSExtValue();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  int64_t num_splits = op.num_splits().getSExtValue();
+  if (op.getOperation()->getNumResults() != num_splits)
+    return op.emitOpError("output count should match 'num_splits' attribute");
+
+  // If 'split_dim' is not a constant, there are no other checks.
+  llvm::Optional<int64_t> split_dim_opt =
+      ExtractConstantIntFromTensor(op.split_dim());
+  if (!split_dim_opt) return success();
+
+  // If 'input' is not a ranked tensor, there are no other checks.
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t split_dim = split_dim_opt.getValue();
+  const int64_t rank = input_type.getRank();
+  if (split_dim < 0) split_dim += rank;
+  if (split_dim < 0 || split_dim >= rank)
+    return op.emitOpError("'split_dim' should be in [-rank, rank)");
+
+  // If the 'split_dim' dimension of the 'input' tensor has a dynamic size,
+  // there are no other checks.
+  const int64_t dim_size = input_type.getDimSize(split_dim);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  if (dim_size % num_splits != 0)
+    return op.emitOpError("'num_splits' should evenly divide 'split_dim' axis");
+
+  // Creates sliced tensor type.
+  auto slice_shape = input_type.getShape().vec();
+  slice_shape[split_dim] = dim_size / num_splits;
+  RankedTensorType slice_type =
+      RankedTensorType::get(slice_shape, input_type.getElementType());
+
+  // Verifies result tensor types.
+  for (int64_t i = 0; i < num_splits; ++i) {
+    Value *result = op.getResult(i);
+    auto result_type = result->getType().dyn_cast<RankedTensorType>();
+    if (!result_type || result_type != slice_type)
+      return op.emitOpError() << "output #" << i << " should be " << slice_type;
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MeanOp
 //===----------------------------------------------------------------------===//
 
