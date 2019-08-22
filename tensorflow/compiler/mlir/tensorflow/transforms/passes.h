@@ -62,7 +62,7 @@ std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
 namespace TFTPU {
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops
-std::unique_ptr<ModulePassBase> CreateTpuRewritePass();
+std::unique_ptr<ModulePassBase> CreateTPURewritePass();
 }  // namespace TFTPU
 
 }  // namespace mlir

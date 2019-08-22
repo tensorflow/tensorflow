@@ -45,7 +45,7 @@ namespace TFTPU {
 //    %4 = "tf.SomeOp"(%3)
 
 namespace {
-struct TpuRewritePass : public ModulePass<TpuRewritePass> {
+struct TPURewritePass : public ModulePass<TPURewritePass> {
   void runOnModule() override;
 };
 
@@ -222,7 +222,7 @@ void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
   launch_func.erase();
 }
 
-void TpuRewritePass::runOnModule() {
+void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
   getModule().walk<tf_device::LaunchFuncOp>([&](tf_device::LaunchFuncOp op) {
     // Skip non-tpu device launch_func.
@@ -235,11 +235,11 @@ void TpuRewritePass::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<ModulePassBase> CreateTpuRewritePass() {
-  return std::make_unique<TpuRewritePass>();
+std::unique_ptr<ModulePassBase> CreateTPURewritePass() {
+  return std::make_unique<TPURewritePass>();
 }
 
-static PassRegistration<TpuRewritePass> pass(
+static PassRegistration<TPURewritePass> pass(
     "tf-tpu-rewrite",
     "Rewriting `tf_device.launch_func` on TPUs into TPU runtime ops");
 
