@@ -1263,12 +1263,15 @@ cc_library(
         ":Support",
         ":TargetLLVMIR",
         ":Translation",
+        "//third_party/llvm/llvm:bit_reader",
+        "//third_party/llvm/llvm:bit_writer",
         "@llvm//:core",
         "@llvm//:execution_engine",
         "@llvm//:mc",
         "@llvm//:orc_jit",
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
+        "@llvm//:transform_utils",
         "@llvm//:x86_code_gen",  # fixdeps: keep
         "@llvm//:x86_disassembler",  # fixdeps: keep
     ],
