@@ -2023,6 +2023,19 @@ def _convert_gather(pfor_input):
     return wrap(output, True)
 
 
+@RegisterPFor("GatherNd")
+def _convert_gather_nd(pfor_input):
+  # TODO(jmenick): Add support for unstacked params.
+  pfor_input.stack_inputs(stack_indices=[1])
+  params = pfor_input.stacked_input(0)
+  indices = pfor_input.stacked_input(1)
+  stacked_result = array_ops.gather_nd(
+      params,
+      indices,
+      batch_dims=1)
+  return wrap(stacked_result, True)
+
+
 @RegisterPFor("ConcatV2")
 def _convert_concatv2(pfor_input):
   n = pfor_input.num_inputs
