@@ -326,23 +326,33 @@ def get_model_type():
   return _thread_local_data.model_type
 
 
-def get_small_sequential_mlp(num_hidden, num_classes, input_dim=None):
+def get_small_sequential_mlp(num_hidden, num_classes, input_dim=None,
+                             layer_name=None):
+  """A sequential model based small MLP."""
+  layer_name = [None]*2 if not layer_name else layer_name
   model = keras.models.Sequential()
   if input_dim:
     model.add(keras.layers.Dense(num_hidden, activation='relu',
-                                 input_dim=input_dim))
+                                 input_dim=input_dim, name=layer_name[0]))
   else:
-    model.add(keras.layers.Dense(num_hidden, activation='relu'))
+    model.add(keras.layers.Dense(num_hidden, activation='relu',
+                                 name=layer_name[0]))
   activation = 'sigmoid' if num_classes == 1 else 'softmax'
-  model.add(keras.layers.Dense(num_classes, activation=activation))
+  model.add(keras.layers.Dense(num_classes, activation=activation,
+                               name=layer_name[1]))
   return model
 
 
-def get_small_functional_mlp(num_hidden, num_classes, input_dim):
-  inputs = keras.Input(shape=(input_dim,))
-  outputs = keras.layers.Dense(num_hidden, activation='relu')(inputs)
+def get_small_functional_mlp(num_hidden, num_classes, input_dim,
+                             layer_name=None):
+  """A functional model based small MLP."""
+  layer_name = [None]*3 if not layer_name else layer_name
+  inputs = keras.Input(shape=(input_dim,), name=layer_name[0])
+  outputs = keras.layers.Dense(num_hidden, activation='relu',
+                               name=layer_name[1])(inputs)
   activation = 'sigmoid' if num_classes == 1 else 'softmax'
-  outputs = keras.layers.Dense(num_classes, activation=activation)(outputs)
+  outputs = keras.layers.Dense(num_classes, activation=activation,
+                               name=layer_name[2])(outputs)
   return keras.Model(inputs, outputs)
 
 
