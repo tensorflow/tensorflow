@@ -20,6 +20,17 @@ filegroup(
 )
 
 cc_library(
+    name = "op_name_mapper",
+    srcs = ["op_name_mapper.cc"],
+    hdrs = ["op_name_mapper.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
     name = "tf_mlir_opt_main",
     srcs = ["tf_mlir_opt_main.cc"],
     copts = ["-std=c++14"],
