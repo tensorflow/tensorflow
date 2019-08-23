@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/lstm_eval.h"
@@ -655,6 +657,122 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
+    TfLiteContext* context, int32_t zero_pint,
+    const TfLiteTensor* weight_tensor, const TfLiteTensor* bias_tensor,
+    std::unique_ptr<int32_t[]>* output) {
+  if (weight_tensor == nullptr) {
+    return kTfLiteOk;
+  }
+
+  const RuntimeShape& weight_shape = GetTensorShape(weight_tensor);
+  TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
+  int row = weight_shape.Dims(0);
+  int col = weight_shape.Dims(1);
+  const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
+  const int32_t* bias =
+      bias_tensor == nullptr ? nullptr : GetTensorData<int32_t>(bias_tensor);
+  output->reset(new int32_t[row]);
+  for (int i = 0; i < row; ++i) {
+    int32_t accu = bias == nullptr ? 0 : bias[i];
+    for (int j = 0; j < col; ++j) {
+      int weight_val = weight[i * col + j];
+      accu += weight_val * zero_pint;
+    }
+    output->get()[i] = accu;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
+                                                       OpData* op_data,
+                                                       TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* activation_state =
+      &context->tensors[op_data->activation_state_tensor_index];
+
+  const int32_t input_zero_point = -input->params.zero_point;
+  const int32_t activation_zero_point = -activation_state->params.zero_point;
+
+  const TfLiteTensor* input_to_input_weights =
+      GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
+  const TfLiteTensor* input_to_forget_weights =
+      GetInput(context, node, kInputToForgetWeightsTensor);
+  const TfLiteTensor* input_to_cell_weights =
+      GetInput(context, node, kInputToCellWeightsTensor);
+  const TfLiteTensor* input_to_output_weights =
+      GetInput(context, node, kInputToOutputWeightsTensor);
+
+  const TfLiteTensor* recurrent_to_input_weights =
+      GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
+  const TfLiteTensor* recurrent_to_forget_weights =
+      GetInput(context, node, kRecurrentToForgetWeightsTensor);
+  const TfLiteTensor* recurrent_to_cell_weights =
+      GetInput(context, node, kRecurrentToCellWeightsTensor);
+  const TfLiteTensor* recurrent_to_output_weights =
+      GetInput(context, node, kRecurrentToOutputWeightsTensor);
+
+  const TfLiteTensor* projection_weights =
+      GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
+  const TfLiteTensor* projection_bias =
+      GetOptionalInputTensor(context, node, kProjectionBiasTensor);
+
+  lstm_eval::QuantizedLstmParameter* quantized_lstm_params =
+      &op_data->quantized_lstm_param;
+
+  // Forget gate.
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_forget_weights, nullptr,
+          &(quantized_lstm_params->input_to_forget_weight_x_input_zp)));
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, activation_zero_point, recurrent_to_forget_weights, nullptr,
+          &(quantized_lstm_params
+                ->recurrent_to_forget_weight_x_activation_zp)));
+  // Modulation gate.
+  TF_LITE_ENSURE_OK(
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_cell_weights, nullptr,
+                   &(quantized_lstm_params->input_to_cell_weight_x_input_zp)));
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, activation_zero_point, recurrent_to_cell_weights, nullptr,
+          &(quantized_lstm_params->recurrent_to_cell_weight_x_activation_zp)));
+  // Output gate.
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, input_zero_point, input_to_output_weights, nullptr,
+          &(quantized_lstm_params->input_to_output_weight_x_input_zp)));
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, activation_zero_point, recurrent_to_output_weights, nullptr,
+          &(quantized_lstm_params
+                ->recurrent_to_output_weight_x_activation_zp)));
+  // Input gate.
+  TF_LITE_ENSURE_OK(
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_input_weights, nullptr,
+                   &(quantized_lstm_params->input_to_input_weight_x_input_zp)));
+  TF_LITE_ENSURE_OK(
+      context,
+      PrecomputeZeroPointTimesWeightWithBias(
+          context, activation_zero_point, recurrent_to_input_weights, nullptr,
+          &(quantized_lstm_params->recurrent_to_input_weight_x_activation_zp)));
+
+  // Projection bias.
+  TF_LITE_ENSURE_OK(context,
+                    PrecomputeZeroPointTimesWeightWithBias(
+                        context, 0, projection_weights, projection_bias,
+                        &(quantized_lstm_params->projection_bias_accu)));
+  return kTfLiteOk;
+}
+
 // Resize the output, state tensors based on the sizes of the input tensors.
 // Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
@@ -889,6 +1007,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                 scratch_buffer_size));
       }
     }
+
+    // Populate precomputed zp * weight.
+    TF_LITE_ENSURE_OK(context, PopulatePrecomputedZPTimesWeightsWithBias(
+                                   context, op_data, node));
   }
   return kTfLiteOk;
 }

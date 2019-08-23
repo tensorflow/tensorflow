@@ -177,20 +177,21 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
   }    // for batch
 }
 
-void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+template <typename T>
+void PortableMatrixBatchVectorMultiplyAccumulateImpl(
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int16_t* output) {
-  const int16_t output_max = std::numeric_limits<int16_t>::max();
-  const int16_t output_min = std::numeric_limits<int16_t>::min();
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    T* output) {
+  const int16_t output_max = std::numeric_limits<T>::max();
+  const int16_t output_min = std::numeric_limits<T>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int row = 0; row < n_output; ++row) {
-      int32_t acc = gate_bias == nullptr ? 0 : gate_bias[row];
+      int32_t acc = input_zeropoint_times_weights[row];
       for (int col = 0; col < n_input; ++col) {
         int8 input_val = input[batch * n_input + col];
         int8 weights_val = input_to_gate_weights[row * n_input + col];
-        acc += (input_val - input_zeropoint) * weights_val;
+        acc += input_val * weights_val;
       }
       acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
       acc += output_zp;
@@ -201,38 +202,29 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       if (acc < output_min) {
         acc = output_min;
       }
-      output[batch * n_output + row] = static_cast<int16_t>(acc);
+      output[batch * n_output + row] = static_cast<T>(acc);
     }
   }
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int8_t* output) {
-  const int8_t output_max = std::numeric_limits<int8_t>::max();
-  const int8_t output_min = std::numeric_limits<int8_t>::min();
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int row = 0; row < n_output; ++row) {
-      int32_t acc = gate_bias == nullptr ? 0 : gate_bias[row];
-      for (int col = 0; col < n_input; ++col) {
-        int8 input_val = input[batch * n_input + col];
-        int8 weights_val = input_to_gate_weights[row * n_input + col];
-        acc += (input_val - input_zeropoint) * weights_val;
-      }
-      acc = MultiplyByQuantizedMultiplier(acc, multiplier, shift);
-      acc += output_zp;
-      acc += output[batch * n_output + row];
-      if (acc > output_max) {
-        acc = output_max;
-      }
-      if (acc < output_min) {
-        acc = output_min;
-      }
-      output[batch * n_output + row] = static_cast<int8_t>(acc);
-    }
-  }
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int16_t* output) {
+  PortableMatrixBatchVectorMultiplyAccumulateImpl(
+      input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
+      shift, n_batch, n_input, n_output, output_zp, output);
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int8_t* output) {
+  PortableMatrixBatchVectorMultiplyAccumulateImpl(
+      input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
+      shift, n_batch, n_input, n_output, output_zp, output);
 }
 
 void PortableApplyLayerNorm(const int16_t* input,
