@@ -124,7 +124,7 @@ if tf.__version__.startswith('1'):
   }
 else:
   PRIVATE_MAP = {}
-  DO_NOT_DESCEND_MAP = {}
+  DO_NOT_DESCEND_MAP = {'tf': ['python']}
   tf.__doc__ = """
     ## TensorFlow 2.0 RC
 
