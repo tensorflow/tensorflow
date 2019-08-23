@@ -59,7 +59,7 @@ inline Dst bitwiseCast(Src source) noexcept {
 
 static LogicalResult extractValueFromConstOp(Operation *op,
                                              int32_t &indexValue) {
-  auto constOp = llvm::dyn_cast<spirv::ConstantOp>(op);
+  auto constOp = dyn_cast<spirv::ConstantOp>(op);
   if (!constOp) {
     return failure();
   }
@@ -971,7 +971,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
       // For EntryPoint op, check that the function and execution model is not
       // duplicated in EntryPointOps. Also verify that the interface specified
       // comes from globalVariables here to make this check cheaper.
-      if (auto entryPointOp = llvm::dyn_cast<spirv::EntryPointOp>(op)) {
+      if (auto entryPointOp = dyn_cast<spirv::EntryPointOp>(op)) {
         auto funcOp = table.lookup<FuncOp>(entryPointOp.fn());
         if (!funcOp) {
           return entryPointOp.emitError("function '")
@@ -1007,7 +1007,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
       continue;
     }
 
-    auto funcOp = llvm::dyn_cast<FuncOp>(op);
+    auto funcOp = dyn_cast<FuncOp>(op);
     if (!funcOp)
       return op.emitError("'spv.module' can only contain func and spv.* ops");
 
@@ -1019,7 +1019,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
         if (op.getDialect() == dialect)
           continue;
 
-        if (llvm::isa<FuncOp>(op))
+        if (isa<FuncOp>(op))
           return op.emitError("'spv.module' cannot contain nested functions");
 
         return op.emitError(
@@ -1090,8 +1090,8 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
 // spv.Return
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
-  auto funcOp = llvm::cast<FuncOp>(returnOp.getParentOp());
+static LogicalResult verify(spirv::ReturnOp returnOp) {
+  auto funcOp = cast<FuncOp>(returnOp.getParentOp());
   auto numOutputs = funcOp.getType().getNumResults();
   if (numOutputs != 0)
     return returnOp.emitOpError("cannot be used in functions returning value")
@@ -1120,7 +1120,7 @@ static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter *printer) {
 }
 
 static LogicalResult verify(spirv::ReturnValueOp retValOp) {
-  auto funcOp = llvm::cast<FuncOp>(retValOp.getParentOp());
+  auto funcOp = cast<FuncOp>(retValOp.getParentOp());
   auto numFnResults = funcOp.getType().getNumResults();
   if (numFnResults != 1)
     return retValOp.emitOpError(
