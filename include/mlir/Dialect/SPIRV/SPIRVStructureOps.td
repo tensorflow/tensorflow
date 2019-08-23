@@ -1,4 +1,4 @@
-//===-- SPIRVOps.td - MLIR SPIR-V Op Definitions Spec ------*- tablegen -*-===//
+//===-- SPIRVStructureOps.td - MLIR SPIR-V Structure Ops ---*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

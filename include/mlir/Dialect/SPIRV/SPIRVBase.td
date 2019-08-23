@@ -1098,24 +1098,4 @@ class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
   let verifier = [{ return success(); }];
 }
 
-class SPV_ArithmeticOp<string mnemonic, Type type,
-                       list<OpTrait> traits = []> :
-      // Operands type same as result type.
-      SPV_BinaryOp<mnemonic, type, type,
-                   !listconcat(traits,
-                               [NoSideEffect, SameOperandsAndResultType])> {
-}
-
-class SPV_LogicalOp<string mnemonic, Type operandsType,
-                    list<OpTrait> traits = []> :
-      // Result type is SPV_Bool.
-      SPV_BinaryOp<mnemonic, SPV_Bool, operandsType,
-                   !listconcat(traits,
-                               [NoSideEffect, SameTypeOperands,
-                                SameOperandsAndResultShape])> {
-  let parser = [{ return ::parseBinaryLogicalOp(parser, result); }];
-  let printer = [{ return ::printBinaryLogicalOp(getOperation(), p); }];
-}
-
-
 #endif // SPIRV_BASE
