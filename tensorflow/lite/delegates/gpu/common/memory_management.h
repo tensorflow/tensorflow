@@ -82,7 +82,7 @@ enum class MemoryStrategy {
   // Greedy strategy uses greedy algorithm, iterating through all the tensors in
   // order of their first_task, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
-  GREEDY,
+  GREEDY_IN_ORDER,
 
   // Greedy by size strategy uses greedy algorithm, iterating through all the
   // tasks in non-increasing of their breadth, and calculating allocations for

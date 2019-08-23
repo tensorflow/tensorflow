@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_ASSIGNMENT_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_ASSIGNMENT_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_
 
 #include <algorithm>
 #include <queue>
@@ -45,7 +45,7 @@ namespace gpu {
 //
 //   3. Shared object size may increase when tensor requests larger size.
 template <typename TensorSizeT>
-Status GreedyAssignment(
+Status GreedyInOrderAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -99,7 +99,7 @@ Status GreedyAssignment(
       if (best_it == pool.end()) {
         return InternalError(
             "No shared object is found in non-empty pool in "
-            "GreedyAssignment.");
+            "GreedyInOrderAssignment.");
       }
       size_t shared_id = best_it->object_id;
       pool.erase(best_it);
@@ -117,7 +117,7 @@ Status GreedyAssignment(
 // difference is that shared object dimensions can't be increased to be reused
 // for tensor, that is larger (at least by one dimension).
 template <typename TensorSizeT>
-Status GreedyAssignmentMultidimensional(
+Status GreedyInOrderAssignmentMultidimensional(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -179,4 +179,4 @@ Status GreedyAssignmentMultidimensional(
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_ASSIGNMENT_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_IN_ORDER_ASSIGNMENT_H_

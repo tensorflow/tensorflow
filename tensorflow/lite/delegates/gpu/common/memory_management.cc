@@ -24,9 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_in_order_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -67,8 +67,8 @@ Status AssignObjectsToTensors(
       return NaiveAssignment(usage_records, assignment);
     case MemoryStrategy::EQUALITY:
       return EqualityAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignment(usage_records, assignment);
     case MemoryStrategy::GREEDY_BY_BREADTH:
       return GreedyByBreadthAssignment(usage_records, assignment);
     case MemoryStrategy::GREEDY_BY_SIZE:
@@ -114,8 +114,8 @@ Status AssignObjectsToTensors(
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignmentMultidimensional(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
     default:
       return InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
@@ -129,8 +129,8 @@ Status AssignObjectsToTensors(
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignmentMultidimensional(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
     default:
       return InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
