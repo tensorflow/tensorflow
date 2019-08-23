@@ -191,3 +191,10 @@ func @view_with_range_and_index(%arg0: !linalg.view<?x?xf64>) {
 //       CHECK:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.insertvalue %{{.*}}[2, 0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.insertvalue %{{.*}}[3, 0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
+
+func @copy(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
+  linalg.copy(%arg0, %arg1) : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @copy
+//       CHECK:   llvm.call @linalg_copy_viewxxxf32_viewxxxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()

@@ -670,11 +670,23 @@ public:
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
     if (!f)
       return matchFailure();
 
+    if (std::is_same<LinalgOp, CopyOp>::value) {
+      auto copyOp = cast<CopyOp>(op);
+
+      // Ensure permutations are identity.
+      // TODO(ntv): insert a transpose op that captures the permutations and
+      // remove this.
+      auto inputPerm = copyOp.inputPermutation();
+      if (inputPerm.hasValue() && !inputPerm->isIdentity())
+        return matchFailure();
+      auto outputPerm = copyOp.outputPermutation();
+      if (outputPerm.hasValue() && !outputPerm->isIdentity())
+        return matchFailure();
+    }
     auto fAttr = rewriter.getSymbolRefAttr(f);
     auto named = rewriter.getNamedAttr("callee", fAttr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
@@ -688,13 +700,12 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  patterns
-      .insert<BufferAllocOpConversion, BufferDeallocOpConversion,
-              BufferSizeOpConversion, DimOpConversion,
-              LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
-              LinalgOpConversion<MatmulOp>, LoadOpConversion, RangeOpConversion,
-              SliceOpConversion, StoreOpConversion, ViewOpConversion>(
-          ctx, converter);
+  patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+                  BufferSizeOpConversion, DimOpConversion,
+                  LinalgOpConversion<CopyOp>, LinalgOpConversion<DotOp>,
+                  LinalgOpConversion<FillOp>, LinalgOpConversion<MatmulOp>,
+                  LoadOpConversion, RangeOpConversion, SliceOpConversion,
+                  StoreOpConversion, ViewOpConversion>(ctx, converter);
 }
 
 namespace {
