@@ -5215,6 +5215,18 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
       &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+  // Set plugin outputs
+  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // TRT6 fixes (removes) the extra last dimension in CombinedNMS outputs
+  nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
+  nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
+  nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
+#else
+  nvinfer1::ITensor* output_num_detections = nullptr;
+  nvinfer1::ITensor* output_nmsed_scores = nullptr;
+  nvinfer1::ITensor* output_nmsed_classes = nullptr;
+
   auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
                                   nvinfer1::ITensor** out_tensor) {
     nvinfer1::Dims dims = in_tensor->getDimensions();
@@ -5228,18 +5240,13 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         /*validation_only=*/false, out_tensor));
     return Status::OK();
   };
-
-  // Set plugin outputs
-  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-  nvinfer1::ITensor* output_nmsed_scores = nullptr;
-  nvinfer1::ITensor* output_nmsed_classes = nullptr;
-  nvinfer1::ITensor* output_num_detections = nullptr;
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
   TF_RETURN_IF_ERROR(
       shrink_last_dim(layer->getOutput(0), &output_num_detections));
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
