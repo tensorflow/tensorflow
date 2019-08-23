@@ -158,6 +158,41 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<TensorFlowRankOperator>("RANK", OperatorType::kRank);
 }
 
+TEST_F(OperatorTest, BuiltinAbs) {
+  AbsOperator abs_op;
+  abs_op.inputs = {"input"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(abs_op.type).get();
+
+  Model float_model;
+  Array& input_float_array = float_model.GetOrCreateArray(abs_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &abs_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 1);
+
+  Model int32_model;
+  Array& input_int32_array = int32_model.GetOrCreateArray(abs_op.inputs[0]);
+  input_int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &abs_op,
+                                       .model = &int32_model};
+  EXPECT_EQ(op->GetVersion(int32_signature), 2);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(abs_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &abs_op,
+                                      .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+
+  Model uint8_model;
+  Array& input_uint8_array = uint8_model.GetOrCreateArray(abs_op.inputs[0]);
+  input_uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &abs_op,
+                                       .model = &uint8_model};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 2);
+}
+
 TEST_F(OperatorTest, BuiltinAdd) {
   AddOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu6;

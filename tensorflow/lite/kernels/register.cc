@@ -40,7 +40,9 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
 }
 
 BuiltinOpResolver::BuiltinOpResolver() {
-  AddBuiltin(BuiltinOperator_ABS, Register_ABS());
+  AddBuiltin(BuiltinOperator_ABS, Register_ABS(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version */ 1,
              /* max_version */ 2);
