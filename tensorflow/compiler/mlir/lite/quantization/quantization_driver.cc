@@ -118,14 +118,18 @@ class QuantizationDriver {
   // result.
   void Finalize();
 
-  // Whether the constant is used as a bias input of another op. Here we assume
-  // bias is used immediately by the user. This assumption is always correct
-  // after constant folding.
-  bool UsedAsBias(ConstantOp cst) {
+  // Whether the constant is used as a bias input of another op, or that op
+  // requires same scale. Here we assume bias is used immediately by the user.
+  // This assumption is always correct after constant folding.
+  bool UsedAsBiasOrBySameScaleOp(ConstantOp cst) {
     Value *value = cst.getResult();
     for (auto &use : value->getUses()) {
-      auto biases = GetQuantSpec(use.getOwner())->biases_params;
+      auto spec = GetQuantSpec(use.getOwner());
+      auto biases = spec->biases_params;
       if (biases.find(use.getOperandNumber()) != biases.end()) return true;
+      // If the user requires same scale for all the operands and results, the
+      // scale of this constant operand will be created by the activations.
+      if (spec->requires_same_scale) return true;
     }
     return false;
   }
@@ -600,9 +604,10 @@ bool QuantizationDriver::PropagateParams() {
     if (!spec->is_quantizable) continue;
 
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
-      // This constant is used as a bias in another op, then the quantization
-      // parameters are determined by that op.
-      if (UsedAsBias(cst) || IsQuantized(op)) continue;
+      // This constant is used as a bias in another op, or the op requires same
+      // scale, then the quantization parameters are determined by other
+      // operands and(or) results.
+      if (UsedAsBiasOrBySameScaleOp(cst) || IsQuantized(op)) continue;
 
       // The quantization parameters are determined by the content of the
       // constant.
