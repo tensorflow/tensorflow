@@ -1,6 +1,60 @@
 op {
   graph_op_name: "ParallelInterleaveDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+Dataset that produces a stream of arguments for the function `f`.
+END
+  }
+  in_arg {
+    name: "other_arguments"
+    description: <<END
+Additional arguments to pass to `f` beyond those produced by `input_dataset`.
+Evaluated once when the dataset is instantiated. 
+END
+  }
+  in_arg {
+    name: "cycle_length"
+    description: <<END
+Number of datasets (each created by applying `f` to the elements of
+`input_dataset`) among which the `ParallelInterleaveDataset` will cycle in a 
+round-robin fashion.
+END
+  }
+  in_arg {
+    name: "block_length"
+    description: <<END
+Number of elements at a time to produce from each interleaved invocation of a
+dataset returned by `f`.
+END
+  }
+  in_arg {
+    name: "sloppy"
+    description: <<END
+If `True`, return elements as they become available, even if that means returning
+these elements in a different order.
+If `False`, the operation of this dataset will be deterministic, but the
+dataset may block.
+END
+  }
+  in_arg {
+    name: "buffer_output_elements"
+    description: <<END
+The number of elements each iterator being interleaved should buffer (similar
+to the `.prefetch()` transformation for each interleaved iterator).
+END
+  }
+  in_arg {
+    name: "prefetch_input_elements"
+    description: <<END
+Determines the number of iterators to prefetch, allowing buffers to warm up and
+data to be pre-fetched without blocking the main thread.
+END
+  }
+  out_arg {
+    name: "handle"
+  }
   attr {
     name: "f"
     description: <<END
@@ -8,6 +62,18 @@ A function mapping elements of `input_dataset`, concatenated with
 `other_arguments`, to a Dataset variant that contains elements matching
 `output_types` and `output_shapes`.
 END
+  }
+  attr {
+    name: "Targuments"
+    description: <<END
+Types of the elements of `other_arguments`.
+END
+  }
+  attr {
+    name: "output_types"
+  }
+  attr {
+    name: "output_shapes"
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: <<END
@@ -18,5 +84,11 @@ when loading data from a variable-latency datastores (e.g. HDFS, GCS), as it
 allows the training step to proceed so long as some data is available.
 
 !! WARNING !! This dataset is not deterministic!
+
+This dataset has been superseded by `ParallelInterleaveDatasetV2`.  New code
+should use `ParallelInterleaveDatasetV2`. 
+
+The Python API `tf.data.experimental.parallel_interleave` creates instances of
+this op. `tf.data.experimental.parallel_interleave` is a deprecated API.
 END
 }
