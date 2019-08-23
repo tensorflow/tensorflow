@@ -69,7 +69,7 @@ except ImportError:
   pass
 
 try:
-  from .python.keras.api._v1 import keras
+  from tensorflow.python.keras.api._v1 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
   setattr(_current_module, "keras", keras)
