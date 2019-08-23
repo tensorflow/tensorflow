@@ -234,6 +234,281 @@ Example:
 These operations only work when targeting LLVM as a backend (e.g. for CPUs and
 GPUs), and are required to align with the LLVM definition of these intrinsics.
 
+## Operations
+
+Syntax:
+
+``` {.ebnf}
+operation ::= op-result? string-literal `(` ssa-use-list? `)`
+              (`[` successor-list `]`)? (`(` region-list `)`)?
+              attribute-dict? `:` function-type
+op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+successor-list ::= successor (`,` successor)*
+region-list    ::= region (`,` region)*
+```
+
+MLIR introduces a uniform concept called _operations_ to enable describing many
+different levels of abstractions and computations. Operations in MLIR are fully
+extensible (there is no fixed list of operations), and have application-specific
+semantics. For example, MLIR supports
+[target-independent operations](Dialects/Standard.md#memory-operations),
+[affine operations](Dialects/Affine.md), and
+[target-specific machine operations](#target-specific-operations).
+
+The internal representation of an operation is simple: an operation is
+identified by a unique string (e.g. `dim`, `tf.Conv2d`, `x86.repmovsb`,
+`ppc.eieio`, etc), can return zero or more results, take zero or more SSA
+operands, may have zero or more attributes, may have zero or more successors,
+and zero or more enclosed [regions](#regions). The generic printing form
+includes all these elements literally, with a function type to indicate the
+types of the results and operands.
+
+Example:
+
+```mlir {.mlir}
+// An operation that produces two results.
+// The results of %result can be accessed via the <name> `#` <opNo> syntax.
+%result:2 = "foo_div"() : () -> (f32, i32)
+
+// Pretty form that defines a unique name for each result.
+%foo, %bar = "foo_div"() : () -> (f32, i32)
+
+// Invoke a TensorFlow function called tf.scramble with two inputs
+// and an attribute "fruit".
+%2 = "tf.scramble"(%result#0, %bar) {fruit: "banana"} : (f32, i32) -> f32
+
+```
+
+In addition to the basic syntax above, dialects may register known operations.
+This allows those dialects to support _custom assembly form_ for parsing and
+printing operations. In the operation sets listed below, we show both forms.
+
+### Terminator Operations
+
+These are a special class of operations that *must* terminate a block, for
+example [branches](Dialects/Standard.md#terminator-operations). These operations
+may also have a list of successors ([blocks](#blocks) and their arguments).
+
+Example:
+
+```mlir {.mlir}
+// Branch to ^bb1 or ^bb2 depending on the condition %cond.
+// Pass value %v to ^bb2, but not to ^bb1.
+"cond_br"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
+```
+
+### Module
+
+``` {.ebnf}
+module ::= `module` (`attributes` attribute-dict)? region
+```
+
+An MLIR module represents an opaque top-level container operation. It contains a
+single region containing a single block that is comprised of any operations.
+Operations within this region must not implicitly capture values defined above
+it.
+
+### Functions
+
+An MLIR Function is an operation with a name containing one [region](#regions).
+The region of a function is not allowed to implicitly capture values defined
+outside of the function, and all external references must use Function arguments
+or attributes that establish a symbolic connection(e.g. symbols referenced by
+name via a string attribute like [SymbolRefAttr](#symbol-reference-attribute)):
+
+``` {.ebnf}
+function ::= `func` function-signature function-attributes? function-body?
+
+function-signature ::= symbol-ref-id `(` argument-list `)`
+                       (`->` function-result-type)?
+argument-list ::= (named-argument (`,` named-argument)*) | /*empty*/
+argument-list ::= (type attribute-dict? (`,` type attribute-dict?)*) | /*empty*/
+named-argument ::= ssa-id `:` type attribute-dict?
+
+function-attributes ::= `attributes` attribute-dict
+function-body ::= region
+```
+
+An external function declaration (used when referring to a function declared in
+some other module) has no body. While the MLIR textual form provides a nice
+inline syntax for function arguments, they are internally represented as "block
+arguments" to the first block in the region.
+
+Examples:
+
+```mlir {.mlir}
+// External function definitions.
+func @abort()
+func @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
+
+// A function that returns its argument twice:
+func @count(%x: i64) -> (i64, i64)
+  attributes {fruit: "banana"} {
+  return %x, %x: i64, i64
+}
+```
+
+## Blocks
+
+Syntax:
+
+``` {.ebnf}
+block           ::= bb-label operation+
+bb-label        ::= bb-id bb-arg-list? `:`
+bb-id           ::= caret-id
+ssa-id-and-type ::= ssa-id `:` type
+
+// Non-empty list of names and types.
+ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
+
+bb-arg-list ::= `(` ssa-id-and-type-list? `)`
+```
+
+A [block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list of
+operations without control flow (calls are not considered control flow for this
+purpose) that are executed from top to bottom. The last operation in a block is
+a [terminator operation](#terminator-operations), which ends the block.
+
+Blocks in MLIR take a list of block arguments, which represent SSA PHI nodes in
+a functional notation. The arguments are defined by the block, and values are
+provided for these block arguments by branches that go to the block.
+
+Here is a simple example function showing branches, returns, and block
+arguments:
+
+```mlir {.mlir}
+func @simple(i64, i1) -> i64 {
+^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
+  cond_br %cond, ^bb1, ^bb2
+
+^bb1:
+  br ^bb3(%a: i64)    // Branch passes %a as the argument
+
+^bb2:
+  %b = addi %a, %a : i64
+  br ^bb3(%b: i64)    // Branch passes %b as the argument
+
+// ^bb3 receives an argument, named %c, from predecessors
+// and passes it on to bb4 twice.
+^bb3(%c: i64):
+  br ^bb4(%c, %c : i64, i64)
+
+^bb4(%d : i64, %e : i64):
+  %0 = addi %d, %e : i64
+  return %0 : i64
+}
+```
+
+**Context:** The "block argument" representation eliminates a number of special
+cases from the IR compared to traditional "PHI nodes are operations" SSA IRs
+(like LLVM). For example, the
+[parallel copy semantics](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.524.5461&rep=rep1&type=pdf)
+of SSA is immediately apparent, and function arguments are no longer a special
+case: they become arguments to the entry block
+[[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
+
+## Regions
+
+### Definition
+
+A region is a CFG of MLIR [Blocks](#blocks). Regions serve to group semantically
+connected blocks, where the semantics is not imposed by the IR. Instead, the
+containing operation defines the semantics of the regions it contains. Regions
+do not have a name or an address, only the blocks contained in a region do.
+Regions are meaningless outside of the containing entity and have no type or
+attributes.
+
+The first block in the region cannot be a successor of any other block. The
+syntax for the region is as follows:
+
+``` {.ebnf}
+region ::= `{` block+ `}`
+```
+
+The function body is an example of a region: it consists of a CFG of blocks and
+has additional semantic restrictions that other types of regions may not have
+(block terminators must either branch to a different block, or return from a
+function where the types of the `return` arguments must match the result types
+of the function signature).
+
+### Control and Value Scoping
+
+Regions provide nested control isolation: it is impossible to branch to a block
+within a region from outside it, or to branch from within a region to a block
+outside it. Similarly it provides a natural scoping for value visibility: SSA
+values defined in a region don't escape to the enclosing region if any. By
+default, a region can reference values defined outside of the region, whenever
+it would have been legal to use them as operands to the enclosing operation.
+
+Example:
+
+```mlir {.mlir}
+func @accelerator_compute(i64, i1) -> i64 {
+^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
+  cond_br %cond, ^bb1, ^bb2
+
+^bb1:
+  // This def for %value does not dominate ^bb2
+  %value = "op.convert"(%a) : (i64) -> i64
+  br ^bb3(%a: i64)    // Branch passes %a as the argument
+
+^bb2:
+  "accelerator.launch"() {
+    ^bb0:
+      // Region of code nested under "accelerator_launch", it can reference %a but
+      // not %value.
+      %new_value = "accelerator.do_something"(%a) : (i64) -> ()
+  }
+  // %new_value cannot be referenced outside of the region
+...
+}
+```
+
+This can be further restricted using the custom verifier associated with the
+enclosing operation, for example, disallowing references to values defined
+outside the region completely.
+
+### Control Flow
+
+Regions are Single-Entry-Multiple-Exit (SEME). This means that control can only
+flow into the first block of the region, but can flow out of the region at the
+end of any of the contained blocks (This behavior is similar to that of a
+function body in most programming languages). When exiting a Region, control is
+returned to the enclosing operation.
+
+The enclosing operation determines the way in which control is transmitted into
+the entry block of a Region. The successor to a region’s exit points may not
+necessarily exist: for example a call to a function that does not return.
+Concurrent or asynchronous execution of regions is unspecified. Operations may
+define specific rules of execution, e.g. sequential loops or switch cases.
+
+A Region may also enter another region within the enclosing operation. If an
+operation has multiple regions, the semantics of the operation defines into
+which regions the control flows and in which order, if any. An operation may
+transmit control into regions that were specified in other operations, in
+particular those that defined the values the given operation uses. Thus such
+operations can be treated opaquely in the enclosing control flow graph,
+providing a level of control flow isolation similar to that of the call
+operation.
+
+#### Closure
+
+Regions allow defining an operation that creates a closure, for example by
+“boxing” the body of the region into a value they produce. It remains up to the
+operation to define its semantics. Note that if an operation triggers
+asynchronous execution of the region, it is under the responsibility of the
+operation caller to wait for the region to be executed guaranteeing that any
+directly used values remain live.
+
+### Arguments and Results
+
+The arguments of the first block of a region are treated as arguments of the
+region. The source of these arguments is defined by the semantics of the parent
+operation. They may correspond to some of the values the operation itself uses.
+
+Regions produce a (possibly empty) list of values. The operation semantics
+defines the relation between the region results and the operation results.
+
 ## Type System
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
@@ -1065,301 +1340,4 @@ func @verbose_form(i1 {unitAttr : unit})
 
 // A unit attribute can also be defined without the value specifier.
 func @simple_form(i1 {unitAttr})
-```
-
-## Module
-
-``` {.ebnf}
-module ::= `module` (`attributes` attribute-dict)? region
-```
-
-An MLIR module represents an opaque top-level container operation. It contains a
-single region containing a single block that is comprised of any operations.
-Operations within this region must not implicitly capture values defined above
-it.
-
-## Functions
-
-An MLIR Function is an operation with a name containing one [region](#regions)
-that forms a CFG(Control Flow Graph). The region of a function is not allowed to
-implicitly capture global values, and all external references must use Function
-arguments or attributes that establish a symbolic connection(e.g. symbols
-referenced by name via a string attribute):
-
-``` {.ebnf}
-function ::= `func` function-signature function-attributes? function-body?
-
-function-signature ::= symbol-ref-id `(` argument-list `)`
-                       (`->` function-result-type)?
-argument-list ::= (named-argument (`,` named-argument)*) | /*empty*/
-argument-list ::= (type attribute-dict? (`,` type attribute-dict?)*) | /*empty*/
-named-argument ::= ssa-id `:` type attribute-dict?
-
-function-attributes ::= `attributes` attribute-dict
-function-body ::= region
-```
-
-An external function declaration (used when referring to a function declared in
-some other module) has no body. While the MLIR textual form provides a nice
-inline syntax for function arguments, they are internally represented as "block
-arguments" to the first block in the region.
-
-Examples:
-
-```mlir {.mlir}
-// External function definitions.
-func @abort()
-func @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
-
-// A function that returns its argument twice:
-func @count(%x: i64) -> (i64, i64)
-  attributes {fruit: "banana"} {
-  return %x, %x: i64, i64
-}
-```
-
-## Regions
-
-### Definition
-
-A region is a CFG of MLIR [Blocks](#blocks). Regions serve to group semantically
-connected blocks, where the semantics is not imposed by the IR. Instead, the
-containing operation defines the semantics of the regions it contains. Regions
-do not have a name or an address, only the blocks contained in a region do.
-Regions are meaningless outside of the containing entity and have no type or
-attributes.
-
-The first block in the region cannot be a successor of any other block. The
-syntax for the region is as follows:
-
-``` {.ebnf}
-region ::= `{` block+ `}`
-```
-
-The function body is an example of a region: it consists of a CFG of blocks and
-has additional semantic restrictions that other types of regions may not have
-(block terminators must either branch to a different block, or return from a
-function where the types of the `return` arguments must match the result types
-of the function signature).
-
-### Control and Value Scoping
-
-Regions provide nested control isolation: it is impossible to branch to a block
-within a region from outside it, or to branch from within a region to a block
-outside it. Similarly it provides a natural scoping for value visibility: SSA
-values defined in a region don't escape to the enclosing region if any. By
-default, a region can reference values defined outside of the region, whenever
-it would have been legal to use them as operands to the enclosing operation.
-
-Example:
-
-```mlir {.mlir}
-func @accelerator_compute(i64, i1) -> i64 {
-^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
-  cond_br %cond, ^bb1, ^bb2
-
-^bb1:
-  // This def for %value does not dominate ^bb2
-  %value = "op.convert"(%a) : (i64) -> i64
-  br ^bb3(%a: i64)    // Branch passes %a as the argument
-
-^bb2:
-  "accelerator.launch"() {
-    ^bb0:
-      // Region of code nested under "accelerator_launch", it can reference %a but
-      // not %value.
-      %new_value = "accelerator.do_something"(%a) : (i64) -> ()
-  }
-  // %new_value cannot be referenced outside of the region
-...
-}
-```
-
-This can be further restricted using custom verifier, for example, disallowing
-references to values defined outside the region completely.
-
-### Control Flow
-
-Regions are Single-Entry-Multiple-Exit (SEME). It means that control can only
-flow into the first block of the region, but can flow out of the region at the
-end of any of the blocks it contains. (This behavior is similar to that of
-functions in most programming languages). Nonetheless, when exiting the region
-from any of its multiple exit points, the control flows to the same successor.
-
-Regions present in an operation can be executed any number of times. The IR does
-not guarantee if a region of an operation will be executed; if so, how many
-times and when. In particular, a region can be executed zero, one or multiple
-times, in no particular order with respect to other regions or operations. It
-may be executed as a part of an operation, or by some later operation using any
-values produced by the operation that contains the region. The successor to a
-region’s exit points may not necessarily exist: regions enclosing
-non-terminating code such as infinite loops are possible, as well as an
-operation implementing an infinite loop over a region. Concurrent or
-asynchronous execution of regions is unspecified. Operations may define specific
-rules of execution, e.g. sequential loops or switch-like blocks.
-
-In case of zero executions, control does not flow into the region. In case of
-multiple executions, the control may exit the region from any of the region exit
-points and enter it again at its entry point. It may also enter another region.
-If an operation has multiple regions, the semantics of the operation defines
-into which regions the control flows and in which order, if any. An operation
-may trigger execution of regions that were specified in other operations, in
-particular those that defined the values the given operation uses. When all
-argument regions were executed the number of times required by the operation
-semantics, the control flows from any of the region exit points to the original
-control-successor of the operation that triggered the execution. Thus operations
-with region arguments can be treated opaquely in the enclosing control flow
-graph, providing a level of control flow isolation similar to that of the call
-operation.
-
-### Closure
-
-Regions allow to define an operation that creates a closure, for example by
-“boxing” the body of the region into a value they produce. It remains up to the
-operation to define its semantics. In this situation, the value “containing” the
-region may be passed to or returned from a region, at which point the values
-defined in dominating blocks are no longer accessible. If this region directly
-uses such values, passing a value “containing” it across function boundaries or
-using it in operations leads to undefined behavior. This is similar to returning
-a lambda capturing a reference to a local variable in C++. Note that if an
-operation triggers asynchronous execution of the region, it is under the
-responsibility of the operation caller to wait for the region to be executed
-guaranteeing that any directly used values remain live.
-
-### Arguments and Results
-
-The arguments of the first block of a region are treated as arguments of the
-region. The source of these arguments is defined by the semantics of the parent
-operation. They may correspond to some of the values the operation itself uses.
-
-Regions produce a (possibly empty) list of values. The operation semantics
-defines the relation between the region results and the operation results.
-
-## Blocks
-
-Syntax:
-
-``` {.ebnf}
-block           ::= bb-label operation+
-bb-label        ::= bb-id bb-arg-list? `:`
-bb-id           ::= caret-id
-ssa-id-and-type ::= ssa-id `:` type
-
-// Non-empty list of names and types.
-ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
-
-bb-arg-list ::= `(` ssa-id-and-type-list? `)`
-```
-
-A [basic block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list
-of operations without control flow (calls are not considered control flow for
-this purpose) that are executed from top to bottom. The last operation in a
-block is a [terminator operation](#terminator-operations), which ends the block.
-
-Blocks in MLIR take a list of block arguments, which represent SSA PHI nodes in
-a functional notation. The arguments are defined by the block, and values are
-provided for these block arguments by branches that go to the block.
-
-Here is a simple example function showing branches, returns, and block
-arguments:
-
-```mlir {.mlir}
-func @simple(i64, i1) -> i64 {
-^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
-  cond_br %cond, ^bb1, ^bb2
-
-^bb1:
-  br ^bb3(%a: i64)    // Branch passes %a as the argument
-
-^bb2:
-  %b = addi %a, %a : i64
-  br ^bb3(%b: i64)    // Branch passes %b as the argument
-
-// ^bb3 receives an argument, named %c, from predecessors
-// and passes it on to bb4 twice.
-^bb3(%c: i64):
-  br ^bb4(%c, %c : i64, i64)
-
-^bb4(%d : i64, %e : i64):
-  %0 = addi %d, %e : i64
-  return %0 : i64
-}
-```
-
-**Context:** The "block argument" representation eliminates a number of special
-cases from the IR compared to traditional "PHI nodes are operations" SSA IRs
-(like LLVM). For example, the
-[parallel copy semantics](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.524.5461&rep=rep1&type=pdf)
-of SSA is immediately apparent, and function arguments are no longer a special
-case: they become arguments to the entry block
-[[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
-
-## Operations
-
-Syntax:
-
-``` {.ebnf}
-operation ::= op-result? string-literal `(` ssa-use-list? `)`
-              (`[` successor-list `]`)? (`(` region-list `)`)?
-              attribute-dict? `:` function-type
-op-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
-successor-list ::= successor (`,` successor)*
-region-list    ::= region (`,` region)*
-```
-
-MLIR introduces a uniform concept called _operations_ to enable describing many
-different levels of abstractions and computations. Operations in MLIR are fully
-extensible (there is no fixed list of operations), and have application-specific
-semantics. For example, MLIR supports
-[target-independent operations](Dialects/Standard.md#memory-operations),
-[affine operations](Dialects/Affine.md), and
-[target-specific machine operations](#target-specific-operations).
-
-The internal representation of an operation is simple: an operation is
-identified by a unique string (e.g. `dim`, `tf.Conv2d`, `x86.repmovsb`,
-`ppc.eieio`, etc), can return zero or more results, take zero or more SSA
-operands, may have zero or more attributes, may have zero or more successors,
-and zero or more enclosed [regions](#regions). When parsed or printed in the
-_generic assembly form_, these are all printed literally, and a function type is
-used to indicate the types of the results and operands.
-
-Example:
-
-```mlir {.mlir}
-// An operation that produces two results.
-// The results of %result can be accessed via the <name> `#` <opNo> syntax.
-%result:2 = "foo_div"() : () -> (f32, i32)
-
-// Pretty form that defines a unique name for each result.
-%foo, %bar = "foo_div"() : () -> (f32, i32)
-
-// Invoke a TensorFlow function called tf.scramble with two inputs
-// and an attribute "fruit".
-%2 = "tf.scramble"(%result#0, %bar){fruit: "banana"} : (f32, i32) -> f32
-
-```
-
-In addition to the basic syntax above, dialects may register tables of known
-operations. This allows those dialects to support _custom assembly form_ for
-parsing and printing operations. In the operation sets listed below, we show
-both forms.
-
-**Context:** TensorFlow has an open "op" ecosystem, and we directly apply these
-ideas to the design of MLIR, but generalize it much further. To make it easy to
-reason about IR dumps and manipulate operations in C++, the MLIR compiler
-infrastructure uses C++ templates to make working with them convenient and safe.
-The details of this are not described in this document.
-
-### Terminator Operations
-
-These are a special class of operations that *must* terminate a block, for
-example [branches](Dialects/Standard.md#terminator-operations). These operations
-may also have a list of successors ([blocks](#blocks) and their arguments).
-
-Example:
-
-```mlir {.mlir}
-// Branch to ^bb1 or ^bb2 depending on the condition %cond.
-// Pass value %v to ^bb2, but not to ^bb1.
-"cond_br"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
 ```
