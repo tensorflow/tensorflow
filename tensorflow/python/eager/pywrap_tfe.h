@@ -188,9 +188,10 @@ PyObject* TFE_Py_TapeSetIsStopped();
 // operation. backward_function should be the function to be called during
 // backprop to, given the gradients of the output tensors, produce the gradients
 // of the input tensors.
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensor_ids,
-                                   PyObject* backward_function);
+PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
+                                        PyObject* output_tensors,
+                                        PyObject* input_tensors,
+                                        PyObject* backward_function);
 
 // Notifies all tapes that a variable has been accessed.
 void TFE_Py_TapeVariableAccessed(PyObject* variable);

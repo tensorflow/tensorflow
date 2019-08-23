@@ -259,6 +259,21 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
+  def testExceptionInCustomGradientNotSwallowed(self):
+
+    @custom_gradient.custom_gradient
+    def f(unused_x):
+      def grad(unused_dy):
+        raise ValueError("test_error_string")
+      return 1., grad
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      with self.assertRaisesRegexp(ValueError, "test_error_string"):
+        f(c)
+
   @parameterized.named_parameters(
       [("Order{}".format(order), order, expected)
        for order, expected in enumerate(_X11_35_DERIVATIVES)])
