@@ -1382,6 +1382,10 @@ For a more intuitive description, see the "Informal Description" section below.
 | `indices_are_sorted`   | `bool`              | Whether the indices are       |
 :                        :                     : guaranteed to be sorted by    :
 :                        :                     : the caller.                   :
+| `use_atomic`           | `bool`              | Whether to use atomic         |
+:                        :                     : operation for the update. To  :
+:                        :                     : use only when the the caller  :
+:                        :                     : guarante no duplicate indices :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1449,6 +1453,9 @@ and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
 then the semantics is implementation defined.
+
+If `use_atomic` is set to false then XLA will not use atomic operation. This
+is only safe when there is no duplicate indices.
 
 ### Informal Description and Examples
 
