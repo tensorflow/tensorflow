@@ -225,7 +225,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_Add_NoAtomic) {
+XLA_TEST_F(ScatterTest, TensorFlowScatter_Add_UniqueIndices) {
   const string hlo_text = R"(
 HloModule TensorFlowScatter_Add
 
@@ -245,7 +245,7 @@ ENTRY main {
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
       index_vector_dim=1,
-      use_atomic=false
+      unique_indices=true
 }
 )";
   Literal operand =

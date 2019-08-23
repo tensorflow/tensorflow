@@ -1530,7 +1530,7 @@ TEST_F(HloInstructionTest, StringifyScatter) {
               /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
               /*index_vector_dim=*/2),
               /*indices_are_sorted=*/false,
-              /*use_atomic=*/true));
+              /*unique_indices=*/false));
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(
