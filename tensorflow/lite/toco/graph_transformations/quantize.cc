@@ -45,6 +45,7 @@ bool SupportsQuantization(Model* model, const Operator& op) {
   }
   // Please add op in alpha-beta sequence.
   static const std::set<OperatorType> supported_ops{
+      OperatorType::kAbs,
       OperatorType::kAdd,
       OperatorType::kArgMax,
       OperatorType::kAveragePool,

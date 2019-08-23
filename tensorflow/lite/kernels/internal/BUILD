@@ -397,6 +397,7 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/abs.h",
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
@@ -408,6 +409,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/abs.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",

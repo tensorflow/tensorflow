@@ -67,6 +67,12 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
   return f;
 }
 
+float GetQuantizeTolerance(int min, int max) {
+  float QuantizedStep = (max - min) / 255.0;
+  float QuantizedTolerance = 2.0 * QuantizedStep;
+  return QuantizedTolerance;
+}
+
 // A test model that contains a single operator. All operator inputs and
 // output are external to the model, so the tests can directly access them.
 // Typical usage:

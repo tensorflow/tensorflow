@@ -75,10 +75,6 @@ inline TfLiteStatus EvalLogical(TfLiteContext* context, TfLiteNode* node,
   return EvalImpl<bool>(context, node, bool_func, kTfLiteBool);
 }
 
-TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::abs);
-}
-
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::sin);
 }
@@ -109,14 +105,6 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 }  // namespace elementwise
-
-TfLiteRegistration* Register_ABS() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::AbsEval};
-  return &r;
-}
 
 TfLiteRegistration* Register_SIN() {
   static TfLiteRegistration r = {

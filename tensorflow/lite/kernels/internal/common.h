@@ -710,6 +710,12 @@ void optimized_ops_prefetch_write_l1_keep(const T* ptr) {
 #endif
 }
 
+// TODO: Use `std::clamp` in C++17.
+template<class T>
+constexpr const T& clamp( const T& v, const T& lo, const T& hi ) {
+  return std::min(std::max(v, lo), hi);
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_

@@ -425,6 +425,7 @@ cc_library(
 cc_library(
     name = "builtin_op_kernels",
     srcs = [
+        "abs.cc",
         "activations.cc",
         "add.cc",
         "add_n.cc",
@@ -974,6 +975,20 @@ cc_test(
     name = "elementwise_test",
     size = "small",
     srcs = ["elementwise_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "abs_test",
+    size = "small",
+    srcs = ["abs_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",

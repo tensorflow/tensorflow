@@ -784,6 +784,14 @@ struct ArithmeticParams {
   int broadcast_shape[5];
 };
 
+struct AbsParams {
+  // uint8 inference params.
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
+};
+
 struct ConcatenationParams {
   int8 axis;
   const int32* input_zeropoint;
