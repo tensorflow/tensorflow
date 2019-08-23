@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -30,8 +32,6 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -597,6 +597,39 @@ static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperand(inputView, viewType, result->operands) ||
       parser->resolveOperands(ops, indexTy, result->operands) ||
       parser->addTypeToList(viewType, result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::TransposeOp::build(Builder *b, OperationState *result,
+                                      Value *view, AffineMapAttr permutation,
+                                      ArrayRef<NamedAttribute> attrs) {
+  // TODO(ntv): once views have static dimensions, compute the permuted type.
+  build(b, result, view->getType(), view, attrs);
+  result->addAttribute(TransposeOp::getPermutationAttrName(), permutation);
+}
+
+static void print(OpAsmPrinter *p, TransposeOp op) {
+  *p << op.getOperationName() << " " << *op.view() << " " << op.permutation();
+  p->printOptionalAttrDict(op.getAttrs(),
+                           {TransposeOp::getPermutationAttrName()});
+  *p << " : " << op.view()->getType();
+}
+
+static ParseResult parseTransposeOp(OpAsmParser *parser,
+                                    OperationState *result) {
+  OpAsmParser::OperandType view;
+  AffineMapAttr permutation;
+  Type type;
+  return failure(parser->parseOperand(view) ||
+                 parser->parseAttribute(permutation,
+                                        TransposeOp::getPermutationAttrName(),
+                                        result->attributes) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(view, type, result->operands) ||
+                 parser->addTypeToList(type, result->types));
 }
 
 //===----------------------------------------------------------------------===//
