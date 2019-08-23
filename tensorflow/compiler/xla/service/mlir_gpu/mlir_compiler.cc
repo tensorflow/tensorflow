@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
-#include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -147,8 +147,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
 
   MLIRContext mlir_context;
   auto mlir_module = ModuleOp::create(UnknownLoc::get(&mlir_context));
-  HloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
-                                 stream_exec->platform(), mlir_module);
+  LhloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
+                                  stream_exec->platform(), mlir_module);
 
   // TODO(b/137624192): Emit function per hlo and turn into ptx string and blob.
   std::string ptx;

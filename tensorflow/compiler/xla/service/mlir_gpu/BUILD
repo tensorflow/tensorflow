@@ -38,7 +38,7 @@ cc_library(
     hdrs = ["mlir_compiler.h"],
     deps = [
         ":failover_compiler",
-        ":hlo_dialect_emitter",
+        ":lhlo_dialect_emitter",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
@@ -58,9 +58,9 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_dialect_emitter",
-    srcs = ["hlo_dialect_emitter.cc"],
-    hdrs = ["hlo_dialect_emitter.h"],
+    name = "lhlo_dialect_emitter",
+    srcs = ["lhlo_dialect_emitter.cc"],
+    hdrs = ["lhlo_dialect_emitter.h"],
     deps = [
         "//tensorflow/compiler/mlir/xla:lxla",
         "//tensorflow/compiler/xla:status",

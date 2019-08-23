@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_HLO_DIALECT_EMITTER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_HLO_DIALECT_EMITTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 
 #include "absl/container/flat_hash_map.h"
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -30,16 +30,18 @@ limitations under the License.
 namespace xla {
 namespace mlir {
 
-// This class is the top-level API for the HLO --> HLO dialect compiler. It
-// implements the DfsHloVisitor interface and emits HLO computations as MLIR IR
-// functions.
-class HloDialectEmitter : public DfsHloVisitorWithDefault,
-                          private gpu::ThunkEmitter::EmissionContext {
+// Implementation for the translation of HLO instructions to a ThunkSequence
+// via MLIR using the LHLO dialect.
+// Implements the DfsHloVisitor interface, emits LHLO computations as MLIR IR
+// functions and transforms them into gpu::Thunk.
+class LhloDialectEmitter : public DfsHloVisitorWithDefault,
+                           private gpu::ThunkEmitter::EmissionContext {
  public:
-  HloDialectEmitter(const HloModule& hlo_module,
-                    const BufferAssignment& assignment,
-                    const se::Platform* platform, ::mlir::ModuleOp mlir_module);
-  ~HloDialectEmitter() override = default;
+  LhloDialectEmitter(const HloModule& hlo_module,
+                     const BufferAssignment& assignment,
+                     const se::Platform* platform,
+                     ::mlir::ModuleOp mlir_module);
+  ~LhloDialectEmitter() override = default;
 
   Status EmitComputation(const HloComputation& computation);
 
@@ -79,10 +81,10 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault,
   // The thunk sequence this IrEmitter generates for the input computation.
   std::unique_ptr<gpu::ThunkSequence> thunk_sequence_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloDialectEmitter);
+  TF_DISALLOW_COPY_AND_ASSIGN(LhloDialectEmitter);
 };
 
 }  // namespace mlir
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_HLO_DIALECT_EMITTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_

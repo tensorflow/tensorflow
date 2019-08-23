@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
@@ -146,10 +146,10 @@ StatusOr<llvm::SmallVector<mlir::Type, 4>> GetInstructionArgTypes(
 
 }  // namespace
 
-HloDialectEmitter::HloDialectEmitter(const HloModule& hlo_module,
-                                     const BufferAssignment& assignment,
-                                     const se::Platform* platform,
-                                     ModuleOp mlir_module)
+LhloDialectEmitter::LhloDialectEmitter(const HloModule& hlo_module,
+                                       const BufferAssignment& assignment,
+                                       const se::Platform* platform,
+                                       ModuleOp mlir_module)
     : mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
@@ -160,26 +160,26 @@ HloDialectEmitter::HloDialectEmitter(const HloModule& hlo_module,
   pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
 }
 
-void HloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
   thunk_sequence_->push_back(std::move(thunk));
 }
 
-StatusOr<BufferAllocation::Slice> HloDialectEmitter::MaybeGetAllocationSlice(
+StatusOr<BufferAllocation::Slice> LhloDialectEmitter::MaybeGetAllocationSlice(
     const HloInstruction& hlo, const ShapeIndex& index) const {
   return buffer_assignment_.GetUniqueSlice(&hlo, index);
 }
 
-int64 HloDialectEmitter::ByteSizeOf(const Shape& shape) const {
+int64 LhloDialectEmitter::ByteSizeOf(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
-const se::Platform* HloDialectEmitter::platform() const { return platform_; }
+const se::Platform* LhloDialectEmitter::platform() const { return platform_; }
 
-Status HloDialectEmitter::EmitComputation(const HloComputation& computation) {
+Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
   return computation.root_instruction()->Accept(this);
 }
 
-StatusOr<FuncOp> HloDialectEmitter::CreateFunction(
+StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
     const HloInstruction& instr) {
   TF_ASSIGN_OR_RETURN(auto args, GetInstructionArgTypes(instr, builder_));
   auto function_type = builder_.getFunctionType(args, {});
@@ -191,7 +191,7 @@ StatusOr<FuncOp> HloDialectEmitter::CreateFunction(
   return Status::OK();
 }
 
-Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
+Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   mlir::OpBuilder func_builder(function.getBody());
   llvm::SmallVector<mlir::Value*, 4> arg_values{function.args_begin(),
@@ -204,15 +204,15 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleFusion(HloInstruction* fusion) {
+Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   LOG(FATAL) << "Not implemented yet.";
 }
 
-Status HloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
+Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
   return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
-Status HloDialectEmitter::FinishVisit(HloInstruction* root) {
+Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {
   LOG(FATAL) << "Not implemented yet.";
 }
 
