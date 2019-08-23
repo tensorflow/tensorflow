@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the XLA dialect.
 
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -42,16 +42,16 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 using namespace mlir;
-using namespace mlir::XLA;
+using namespace mlir::xla_hlo;
 
 XlaHloDialect::XlaHloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.cc.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
       >();
 
   // Support unknown operations because not all XLA operations are registered.
@@ -63,12 +63,13 @@ Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Location loc) {
   // If this is an opaque elements attribute, then generate an xla_hlo.constant.
   if (value.isa<OpaqueElementsAttr>())
-    return builder.create<XLA::ConstOp>(loc, type, value.cast<ElementsAttr>());
+    return builder.create<xla_hlo::ConstOp>(loc, type,
+                                            value.cast<ElementsAttr>());
   return nullptr;
 }
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.cc.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
 // ConstOp

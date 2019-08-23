@@ -19,69 +19,69 @@ package_group(
 )
 
 filegroup(
-    name = "xla_ops_td_files",
+    name = "hlo_ops_td_files",
     srcs = [
-        "ir/lxla_ops.td",
-        "ir/xla_ops.td",
-        "ir/xla_ops_base.td",
+        "ir/hlo_ops.td",
+        "ir/hlo_ops_base.td",
+        "ir/lhlo_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
     ],
 )
 
 gentbl(
-    name = "xla_ops_inc_gen",
+    name = "hlo_ops_inc_gen",
     tbl_outs = [
         (
             "-gen-op-decls",
-            "ir/xla_ops.h.inc",
+            "ir/hlo_ops.h.inc",
         ),
         (
             "-gen-op-defs",
-            "ir/xla_ops.cc.inc",
+            "ir/hlo_ops.cc.inc",
         ),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
-    td_file = "ir/xla_ops.td",
+    td_file = "ir/hlo_ops.td",
     td_srcs = [
-        ":xla_ops_td_files",
+        ":hlo_ops_td_files",
     ],
 )
 
 gentbl(
-    name = "xla_ops_base_inc_gen",
+    name = "hlo_ops_base_inc_gen",
     tbl_outs = [
         (
             "-gen-op-decls",
-            "ir/xla_ops_base.h.inc",
+            "ir/hlo_ops_base.h.inc",
         ),
         (
             "-gen-op-defs",
-            "ir/xla_ops_base.cc.inc",
+            "ir/hlo_ops_base.cc.inc",
         ),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
-    td_file = "ir/xla_ops_base.td",
+    td_file = "ir/hlo_ops_base.td",
     td_srcs = [
-        ":xla_ops_td_files",
+        ":hlo_ops_td_files",
     ],
 )
 
 gentbl(
-    name = "lxla_ops_inc_gen",
+    name = "lhlo_ops_inc_gen",
     tbl_outs = [
         (
             "-gen-op-decls",
-            "ir/lxla_ops.h.inc",
+            "ir/lhlo_ops.h.inc",
         ),
         (
             "-gen-op-defs",
-            "ir/lxla_ops.cc.inc",
+            "ir/lhlo_ops.cc.inc",
         ),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
-    td_file = "ir/lxla_ops.td",
+    td_file = "ir/lhlo_ops.td",
     td_srcs = [
-        ":xla_ops_td_files",
+        ":hlo_ops_td_files",
     ],
 )
 
@@ -96,7 +96,7 @@ gentbl(
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "transforms/legalize_tf_patterns.td",
     td_srcs = [
-        ":xla_ops_td_files",
+        ":hlo_ops_td_files",
         "@local_config_mlir//:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
@@ -110,7 +110,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
-        ":xla",
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
@@ -133,7 +133,7 @@ gentbl(
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "transforms/legalize_to_standard_patterns.td",
     td_srcs = [
-        ":xla_ops_td_files",
+        ":hlo_ops_td_files",
         "@local_config_mlir//:StdOpsTdFiles",
     ],
 )
@@ -145,7 +145,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
-        ":xla",
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
@@ -163,7 +163,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
-        ":xla",
+        ":hlo",
         ":xla_legalize_to_standard_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
@@ -176,21 +176,21 @@ cc_library(
 )
 
 cc_library(
-    name = "xla",
+    name = "hlo",
     srcs = [
-        "ir/xla_ops.cc",
-        "ir/xla_ops.cc.inc",
-        "ir/xla_ops.h.inc",
+        "ir/hlo_ops.cc",
+        "ir/hlo_ops.cc.inc",
+        "ir/hlo_ops.h.inc",
     ],
     hdrs = [
-        "ir/xla_ops.h",
+        "ir/hlo_ops.h",
         "transforms/passes.h",
     ],
     copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
-        ":xla_ops_base_inc_gen",
-        ":xla_ops_inc_gen",
+        ":hlo_ops_base_inc_gen",
+        ":hlo_ops_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -203,20 +203,20 @@ cc_library(
 )
 
 cc_library(
-    name = "lxla",
+    name = "lhlo",
     srcs = [
-        "ir/lxla_ops.cc",
-        "ir/lxla_ops.cc.inc",
-        "ir/lxla_ops.h.inc",
+        "ir/lhlo_ops.cc",
+        "ir/lhlo_ops.cc.inc",
+        "ir/lhlo_ops.h.inc",
     ],
     hdrs = [
-        "ir/lxla_ops.h",
+        "ir/lhlo_ops.h",
         "transforms/passes.h",
     ],
     includes = ["include"],
     deps = [
-        ":lxla_ops_inc_gen",
-        ":xla_ops_base_inc_gen",
+        ":hlo_ops_base_inc_gen",
+        ":lhlo_ops_inc_gen",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -234,8 +234,8 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     copts = ["-std=c++14"],
     deps = [
-        ":lxla",
-        ":xla",
+        ":hlo",
+        ":lhlo",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
@@ -278,8 +278,8 @@ cc_library(
     hdrs = ["mlir_hlo_to_hlo.h"],
     copts = ["-std=c++14"],
     deps = [
+        ":hlo",
         ":type_to_shape",
-        ":xla",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -326,7 +326,7 @@ cc_library(
     ],
     copts = ["-std=c++14"],
     deps = [
-        ":xla",
+        ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status",
@@ -383,15 +383,15 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "//tensorflow/compiler/mlir/xla:ir/xla_ops.td",
-        "//tensorflow/compiler/mlir/xla:ir/xla_ops_base.td",
+        "//tensorflow/compiler/mlir/xla:ir/hlo_ops.td",
+        "//tensorflow/compiler/mlir/xla:ir/hlo_ops_base.td",
     ],
     outs = [
         "operator_writers.inc",
     ],
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/local_config_mlir/include " +
-           "$(location //tensorflow/compiler/mlir/xla:ir/xla_ops.td) " +
+           "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
 )

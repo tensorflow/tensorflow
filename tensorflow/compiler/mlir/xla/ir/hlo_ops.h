@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the LXLA dialect.
+// This file defines the operations used in the XLA dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_LXLA_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_LXLA_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -32,18 +32,23 @@ limitations under the License.
 namespace mlir {
 class OpBuilder;
 
-namespace LXLA {
+namespace xla_hlo {
 
-class LXlaHloDialect : public Dialect {
+class XlaHloDialect : public Dialect {
  public:
-  explicit LXlaHloDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "lxla_hlo"; }
+  explicit XlaHloDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "xla_hlo"; }
+
+  // Registered hook to materialize a constant operation from a given attribute
+  // value with the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
-}  // namespace LXLA
+}  // end namespace xla_hlo
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_LXLA_OPS_H_
+#endif  //  TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_OPS_H_

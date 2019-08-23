@@ -13,23 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef XLA_OPS_BASE
+#ifdef HLO_OPS_BASE
 #else
-#define XLA_OPS_BASE
+#define HLO_OPS_BASE
 
 #ifdef OP_BASE
 #else
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-def XLA_Int : IntOfWidths<[8, 16, 32, 64]>;
-def XLA_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
+def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
+def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-class BXLA_ConstOp {
+class BASE_HLO_ConstOp {
   string summary = "Constant operator";
 
   string description = [{
@@ -37,7 +37,7 @@ class BXLA_ConstOp {
   }];
 }
 
-class BXLA_IotaOp {
+class BASE_HLO_IotaOp {
   string summary = "Iota operator";
 
   string description = [{
@@ -50,7 +50,7 @@ class BXLA_IotaOp {
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
-class BXLA_AbsOp {
+class BASE_HLO_AbsOp {
   string summary = "Absolute value operator";
 
   string description = [{
@@ -61,7 +61,7 @@ class BXLA_AbsOp {
   }];
 }
 
-class BXLA_ConvertOp {
+class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
   string description = [{
@@ -72,7 +72,7 @@ class BXLA_ConvertOp {
   }];
 }
 
-class BXLA_ExpOp {
+class BASE_HLO_ExpOp {
   string summary = "Exponential operator";
 
   string description = [{
@@ -83,7 +83,7 @@ class BXLA_ExpOp {
   }];
 }
 
-class BXLA_NegOp {
+class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
   string description = [{
@@ -94,7 +94,7 @@ class BXLA_NegOp {
   }];
 }
 
-class BXLA_SignOp {
+class BASE_HLO_SignOp {
   string summary = "Sign operator";
 
   string description = [{
@@ -113,7 +113,7 @@ class BXLA_SignOp {
   }];
 }
 
-class BXLA_TanhOp {
+class BASE_HLO_TanhOp {
   string summary = "Tanh operator";
 
   string description = [{
@@ -134,7 +134,7 @@ class BXLA_TanhOp {
 // matching the matrix to dimensions 1 and 2 of the cuboid.
 def BroadcastDimAttr : OptionalAttr<ElementsAttr>;
 
-class BXLA_AddOp {
+class BASE_HLO_AddOp {
   string summary = "Addition operator";
 
   string description = [{
@@ -145,7 +145,7 @@ class BXLA_AddOp {
   }];
 }
 
-class BXLA_DivOp {
+class BASE_HLO_DivOp {
   string summary = "Division operator";
 
   string description = [{
@@ -156,7 +156,7 @@ class BXLA_DivOp {
   }];
 }
 
-class BXLA_MaxOp {
+class BASE_HLO_MaxOp {
   string summary = "Maximum operator";
 
   string description = [{
@@ -167,7 +167,7 @@ class BXLA_MaxOp {
   }];
 }
 
-class BXLA_MinOp {
+class BASE_HLO_MinOp {
   string summary = "Minimum operator";
 
   string description = [{
@@ -178,7 +178,7 @@ class BXLA_MinOp {
   }];
 }
 
-class BXLA_MulOp {
+class BASE_HLO_MulOp {
   string summary = "Multiplication operator";
 
   string description = [{
@@ -189,7 +189,7 @@ class BXLA_MulOp {
   }];
 }
 
-class BXLA_SubOp {
+class BASE_HLO_SubOp {
   string summary = "Subtraction operator";
 
   string description = [{
@@ -200,7 +200,7 @@ class BXLA_SubOp {
   }];
 }
 
-class BXLA_AndOp {
+class BASE_HLO_AndOp {
   string summary = "Logical and";
 
   string description = [{
@@ -215,7 +215,7 @@ class BXLA_AndOp {
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
 
-class BXLA_ReduceOp {
+class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
   string description = [{
@@ -229,7 +229,7 @@ class BXLA_ReduceOp {
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
-class BXLA_GetTupleElementOp {
+class BASE_HLO_GetTupleElementOp {
   string summary = "GetTupleElement operator";
 
   string description = [{
@@ -239,7 +239,7 @@ class BXLA_GetTupleElementOp {
   }];
 }
 
-class BXLA_TupleOp {
+class BASE_HLO_TupleOp {
    string summary = "XLA's tuple op";
 
    string description = [{
@@ -254,43 +254,43 @@ class BXLA_TupleOp {
 //===----------------------------------------------------------------------===//
 
 // These mirror the XLA PrecisionConfig proto enum.
-def XLA_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
-def XLA_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
-def XLA_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
+def HLO_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
+def HLO_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
+def HLO_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
 
-def XLA_PrecisionAttr : StrEnumAttr<"Precision",
+def HLO_PrecisionAttr : StrEnumAttr<"Precision",
     "XLA precision for an operand. Has backend specific meaning.",
-    [XLA_PRECISION_DEFAULT,  XLA_PRECISION_HIGH, XLA_PRECISION_HIGHEST]>;
+    [HLO_PRECISION_DEFAULT,  HLO_PRECISION_HIGH, HLO_PRECISION_HIGHEST]>;
 
 // TODO(b/129153247) See if it's possible to also validate the size.
-def XLA_PrecisionConfigAttr:
+def HLO_PrecisionConfigAttr:
     OptionalAttr<
-          TypedArrayAttrBase<XLA_PrecisionAttr, "Precision Config attribute">>;
+          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
 //===----------------------------------------------------------------------===//
 // Comparison op definitions.
 //===----------------------------------------------------------------------===//
 
 // These mirror the XLA ComparisonDirection enum.
-def XLA_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
-def XLA_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
-def XLA_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
-def XLA_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
-def XLA_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
-def XLA_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
+def HLO_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
+def HLO_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
+def HLO_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
+def HLO_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
+def HLO_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
+def HLO_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
 
-def XLA_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
+def HLO_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
     "Which comparison operation to perform.",
     [
-      XLA_COMPARISON_DIRECTION_EQ,
-      XLA_COMPARISON_DIRECTION_NE,
-      XLA_COMPARISON_DIRECTION_GE,
-      XLA_COMPARISON_DIRECTION_GT,
-      XLA_COMPARISON_DIRECTION_LE,
-      XLA_COMPARISON_DIRECTION_LT
+      HLO_COMPARISON_DIRECTION_EQ,
+      HLO_COMPARISON_DIRECTION_NE,
+      HLO_COMPARISON_DIRECTION_GE,
+      HLO_COMPARISON_DIRECTION_GT,
+      HLO_COMPARISON_DIRECTION_LE,
+      HLO_COMPARISON_DIRECTION_LT
     ]>;
 
-class BXLA_CompareOp {
+class BASE_HLO_CompareOp {
   string summary = "Comparison operator";
 
   string description = [{
@@ -305,7 +305,7 @@ class BXLA_CompareOp {
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
-class BXLA_SliceOp {
+class BASE_HLO_SliceOp {
   string summary = "Slice operator";
 
   string description = [{
@@ -315,7 +315,7 @@ class BXLA_SliceOp {
   }];
 }
 
-class BXLA_DynamicUpdateSliceOp {
+class BASE_HLO_DynamicUpdateSliceOp {
   string summary = "Dynamic Update Slice operator";
 
   string description = [{
@@ -330,7 +330,7 @@ class BXLA_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
-class BXLA_BatchNormInferenceOp {
+class BASE_HLO_BatchNormInferenceOp {
   string summary = "Batch Normalization for Inference";
 
   string description = [{
@@ -340,7 +340,7 @@ class BXLA_BatchNormInferenceOp {
   }];
 }
 
-class BXLA_BroadcastOp  {
+class BASE_HLO_BroadcastOp  {
   string summary = "Broadcast a tensor to a higher rank by prepending dimensions";
 
   string description = [{
@@ -356,7 +356,7 @@ class BXLA_BroadcastOp  {
   }];
 }
 
-class BXLA_BroadcastInDimOp  {
+class BASE_HLO_BroadcastInDimOp  {
   string summary = "Broadcast a tensor into the given shape by adding dimensions.";
 
   string description = [{
@@ -377,7 +377,7 @@ class BXLA_BroadcastInDimOp  {
   }];
 }
 
-class BXLA_ClampOp  {
+class BASE_HLO_ClampOp  {
   string summary = "Clamp operator";
 
   string description = [{
@@ -391,7 +391,7 @@ class BXLA_ClampOp  {
   }];
 }
 
-class BXLA_ConcatenateOp {
+class BASE_HLO_ConcatenateOp {
    string summary = "XLA's concantenate op";
 
    string description = [{
@@ -401,7 +401,7 @@ class BXLA_ConcatenateOp {
    }];
 }
 
-class BXLA_ConvOp {
+class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
   string description = [{
@@ -411,7 +411,7 @@ class BXLA_ConvOp {
   }];
 }
 
-class BXLA_DotOp {
+class BASE_HLO_DotOp {
   string summary = "Dot operator";
   string description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -421,7 +421,7 @@ class BXLA_DotOp {
   }];
 }
 
-class BXLA_GatherOp{
+class BASE_HLO_GatherOp{
   string summary = "Gather operator";
 
   string description = [{
@@ -431,7 +431,7 @@ class BXLA_GatherOp{
   }];
 }
 
-class BXLA_ReshapeOp {
+class BASE_HLO_ReshapeOp {
   string summary = "Reshape operator";
 
   string description = [{
@@ -441,7 +441,7 @@ class BXLA_ReshapeOp {
   }];
 }
 
-class BXLA_SelectOp {
+class BASE_HLO_SelectOp {
   string summary = "Select operator";
 
   string description = [{
@@ -458,7 +458,7 @@ class BXLA_SelectOp {
   }];
 }
 
-class BXLA_ReverseOp {
+class BASE_HLO_ReverseOp {
   string summary = "Reverse operator";
 
   string description = [{
@@ -469,7 +469,7 @@ class BXLA_ReverseOp {
   }];
 }
 
-class BXLA_PadOp {
+class BASE_HLO_PadOp {
   string summary = "Pad operator";
 
   string description = [{
@@ -480,7 +480,7 @@ class BXLA_PadOp {
   }];
 }
 
-class BXLA_TransposeOp {
+class BASE_HLO_TransposeOp {
   string summary = "Transpose operator";
 
   string description = [{
@@ -492,4 +492,4 @@ class BXLA_TransposeOp {
   }];
 }
 
-#endif // XLA_OPS_BASE
+#endif // HLO_OPS_BASE

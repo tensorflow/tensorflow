@@ -15,40 +15,50 @@ limitations under the License.
 
 // This file defines the operations used in the XLA dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_XLA_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_XLA_OPS_H_
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
+#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Support/Functional.h"  // TF:local_config_mlir
+#include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h.inc"
 
 namespace mlir {
-class OpBuilder;
+namespace xla_lhlo {
 
-namespace XLA {
-
-class XlaHloDialect : public Dialect {
- public:
-  explicit XlaHloDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla_hlo"; }
-
-  // Registered hook to materialize a constant operation from a given attribute
-  // value with the desired resultant type.
-  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
-                                 Location loc) override;
-};
+XlaLhloDialect::XlaLhloDialect(MLIRContext* context)
+    : Dialect(getDialectNamespace(), context) {
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
+      >();
+}
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
 
-}  // end namespace XLA
-}  // end namespace mlir
+// TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 
-#endif  //  TENSORFLOW_COMPILER_MLIR_XLA_IR_XLA_OPS_H_
+}  // namespace xla_lhlo
+}  // namespace mlir

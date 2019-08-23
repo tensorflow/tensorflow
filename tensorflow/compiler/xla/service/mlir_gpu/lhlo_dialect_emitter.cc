@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -59,25 +59,25 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     mlir::ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAdd:
-      func_builder.create<::mlir::LXLA::AddOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::AddOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMultiply:
-      func_builder.create<::mlir::LXLA::MulOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::MulOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSubtract:
-      func_builder.create<::mlir::LXLA::SubOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::SubOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kDivide:
-      func_builder.create<::mlir::LXLA::DivOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::DivOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kAnd:
-      func_builder.create<::mlir::LXLA::AndOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::AndOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMinimum:
-      func_builder.create<::mlir::LXLA::MinOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::MinOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kMaximum:
-      func_builder.create<::mlir::LXLA::MaxOp>(loc, rets, args, attrs);
+      func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
       break;
     default:
       return tensorflow::errors::Internal(

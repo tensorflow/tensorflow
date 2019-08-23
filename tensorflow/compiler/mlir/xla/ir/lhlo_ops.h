@@ -13,52 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the LXLA dialect.
 
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_
 
-#include <assert.h>
-#include <stddef.h>
-#include <stdint.h>
-
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.h.inc"
+#include "mlir/Support/Functional.h"  // TF:local_config_mlir
 
 namespace mlir {
-namespace LXLA {
+class OpBuilder;
 
-LXlaHloDialect::LXlaHloDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
-  addOperations<
-#define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.cc.inc"
-      >();
-}
+namespace xla_lhlo {
+
+class XlaLhloDialect : public Dialect {
+ public:
+  explicit XlaLhloDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "xla_lhlo"; }
+};
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/lxla_ops.cc.inc"
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h.inc"
 
-// TODO(cheshire): Support folding, reuse code from xla_ops.cc.
+}  // namespace xla_lhlo
+}  // end namespace mlir
 
-}  // namespace LXLA
-}  // namespace mlir
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_

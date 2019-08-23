@@ -15,27 +15,27 @@ limitations under the License.
 
 // This is the operation definition file for XLA.
 
-#ifdef XLA_OPS
+#ifdef HLO_OPS
 #else
-#define XLA_OPS
+#define HLO_OPS
 
 #ifdef OP_BASE
 #else
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
-#ifdef XLA_OPS_BASE
+#ifdef HLO_OPS_BASE
 #else
-include "tensorflow/compiler/mlir/xla/ir/xla_ops_base.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 #endif
 
-def XLA_Dialect : Dialect {
+def HLO_Dialect : Dialect {
   let name = "xla_hlo";
-  let cppNamespace = "XLA";
+  let cppNamespace = "xla_hlo";
 }
 
-class XLA_Op<string mnemonic, list<OpTrait> traits> :
-    Op<XLA_Dialect, mnemonic, traits> {
+class HLO_Op<string mnemonic, list<OpTrait> traits> :
+    Op<HLO_Dialect, mnemonic, traits> {
   // Whether this operation has a custom conversion to HLO or not.
   bit hasCustomHLOConverter = 0b0;
 }
@@ -45,33 +45,33 @@ class XLA_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def XLA_IntTensor : StaticShapeTensorOf<[XLA_Int]>;
+def HLO_IntTensor : StaticShapeTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def XLA_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
+def HLO_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
 
-def XLA_PredTensor : StaticShapeTensorOf<[XLA_Pred]>;
+def HLO_PredTensor : StaticShapeTensorOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def XLA_IntOrFpTensor : StaticShapeTensorOf<[XLA_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : StaticShapeTensorOf<[HLO_Int, AnyFloat]>;
 
-def XLA_Tensor : StaticShapeTensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : StaticShapeTensorOf<[AnyFloat, AnyInteger]>;
 
-def XLA_Tuple : NestedTupleOf<[XLA_Tensor]>;
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
-def XLA_TensorOrTuple : AnyTypeOf<[XLA_Tensor, XLA_Tuple]>;
+def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_ConstOp : BXLA_ConstOp, XLA_Op<"constant", [NoSideEffect]> {
+def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   let arguments = (ins
     ElementsAttr:$value
   );
 
   let results = (outs
-    XLA_Tensor:$output
+    HLO_Tensor:$output
   );
 
   let builders = [OpBuilder<
@@ -84,10 +84,10 @@ def XLA_ConstOp : BXLA_ConstOp, XLA_Op<"constant", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_IotaOp : BXLA_IotaOp, XLA_Op<"iota", [NoSideEffect]> {
+def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs XLA_Tensor:$output);
+  let results = (outs HLO_Tensor:$output);
 
   let hasFolder = 1;
 
@@ -99,17 +99,17 @@ def XLA_IotaOp : BXLA_IotaOp, XLA_Op<"iota", [NoSideEffect]> {
 // XLA unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
-class XLA_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
-    XLA_Op<mnemonic, traits> {
+class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
+    HLO_Op<mnemonic, traits> {
 
-    let arguments = (ins XLA_Tensor);
-    let results = (outs XLA_Tensor);
+    let arguments = (ins HLO_Tensor);
+    let results = (outs HLO_Tensor);
 }
 
-def XLA_AbsOp: XLA_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BXLA_AbsOp;
+def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AbsOp;
 
-def XLA_ConvertOp : XLA_UnaryElementwiseOp<
-      "convert", [NoSideEffect, SameOperandsAndResultShape]>, BXLA_ConvertOp {
+def HLO_ConvertOp : HLO_UnaryElementwiseOp<
+      "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
   let hasFolder = 1;
 
   // TODO(b/130357376) Convert has a special constructor. Use a custom
@@ -117,56 +117,56 @@ def XLA_ConvertOp : XLA_UnaryElementwiseOp<
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ExpOp: XLA_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BXLA_ExpOp;
+def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 
-def XLA_NegOp: XLA_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BXLA_NegOp;
+def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
 
-def XLA_SignOp: XLA_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BXLA_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_SignOp;
 
-def XLA_TanhOp: XLA_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BXLA_TanhOp;
+def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
+    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
-class XLA_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        XLA_Op<mnemonic, traits> {
+class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
+        HLO_Op<mnemonic, traits> {
   let arguments = (ins
-      XLA_Tensor:$lhs,
-      XLA_Tensor:$rhs,
+      HLO_Tensor:$lhs,
+      HLO_Tensor:$rhs,
       BroadcastDimAttr:$broadcast_dimensions
   );
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 }
 
-def XLA_AddOp : XLA_BinaryElementwiseOp<"add",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_AddOp;
+def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_AddOp;
 
-def XLA_DivOp : XLA_BinaryElementwiseOp<"div",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_DivOp;
+def HLO_DivOp : HLO_BinaryElementwiseOp<"div",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
 
-def XLA_MaxOp : XLA_BinaryElementwiseOp<"max",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MaxOp;
+def HLO_MaxOp : HLO_BinaryElementwiseOp<"max",
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp;
 
-def XLA_MinOp : XLA_BinaryElementwiseOp<"min",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MinOp;
+def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp;
 
-def XLA_MulOp : XLA_BinaryElementwiseOp<"mul",
-      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BXLA_MulOp;
+def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
+      [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
-def XLA_SubOp : XLA_BinaryElementwiseOp<"sub",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_SubOp;
+def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
-def XLA_AndOp: XLA_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BXLA_AndOp;
+def HLO_AndOp: HLO_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BASE_HLO_AndOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
-def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
+def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   string summary = "While operator";
 
   string description = [{
@@ -177,26 +177,26 @@ def XLA_WhileOp: XLA_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   }];
 
   let arguments = (ins
-    Variadic<XLA_TensorOrTuple>:$val,
+    Variadic<HLO_TensorOrTuple>:$val,
     SymbolRefAttr:$cond,
     SymbolRefAttr:$body
   );
 
-  let results = (outs Variadic<XLA_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]>, BXLA_ReduceOp {
+def HLO_ReduceOp: HLO_Op<"reduce", [NoSideEffect]>, BASE_HLO_ReduceOp {
 
   let arguments = (ins
-    Variadic<XLA_TensorOrTuple>:$operands_and_init,
+    Variadic<HLO_TensorOrTuple>:$operands_and_init,
     SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );
 
-  let results = (outs Variadic<XLA_Tensor>);
+  let results = (outs Variadic<HLO_Tensor>);
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -205,67 +205,67 @@ def XLA_ReduceOp: XLA_Op<"reduce", [NoSideEffect]>, BXLA_ReduceOp {
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
-def XLA_GetTupleElementOp: XLA_Op<"get_tuple_element", [NoSideEffect]>, BXLA_GetTupleElementOp {
+def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO_GetTupleElementOp {
   let arguments = (ins
-    XLA_Tuple,
+    HLO_Tuple,
     I32Attr:$index
   );
 
-  let results = (outs XLA_TensorOrTuple);
+  let results = (outs HLO_TensorOrTuple);
 
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_TupleOp : XLA_Op<"tuple", [NoSideEffect]>, BXLA_TupleOp {
-   let arguments = (ins Variadic<XLA_TensorOrTuple>:$val);
-   let results = (outs XLA_Tuple);
+def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
+   let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+   let results = (outs HLO_Tuple);
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_CompareOp: XLA_Op<"compare",
-      [NoSideEffect, SameOperandsAndResultShape]>, BXLA_CompareOp {
+def HLO_CompareOp: HLO_Op<"compare",
+      [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_CompareOp {
   let arguments = (ins
-      XLA_Tensor:$lhs,
-      XLA_Tensor:$rhs,
+      HLO_Tensor:$lhs,
+      HLO_Tensor:$rhs,
       BroadcastDimAttr:$broadcast_dimensions,
-      XLA_ComparisonDirectionAttr:$comparison_direction
+      HLO_ComparisonDirectionAttr:$comparison_direction
   );
-  let results = (outs XLA_PredTensor);
+  let results = (outs HLO_PredTensor);
 }
 
 //===----------------------------------------------------------------------===//
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_SliceOp: XLA_Op<
+def HLO_SliceOp: HLO_Op<
       "slice",
       [NoSideEffect, SameOperandsAndResultElementType,
        AllTypesMatch<["start_indices", "limit_indices"]>]> {
   let arguments = (
-    ins XLA_Tensor:$operand,
+    ins HLO_Tensor:$operand,
     ElementsAttr:$start_indices,
     ElementsAttr:$limit_indices
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_DynamicUpdateSliceOp: XLA_Op<"dynamic-update-slice",
+def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
   let arguments = (ins
-    XLA_Tensor:$operand,
-    XLA_Tensor:$update,
-    Variadic<XLA_Tensor>:$start_indices
+    HLO_Tensor:$operand,
+    HLO_Tensor:$update,
+    Variadic<HLO_Tensor>:$start_indices
   );
 
-  let results = (outs XLA_Tensor:$result);
+  let results = (outs HLO_Tensor:$result);
 
   // TODO(b/129422361) Requires a custom constructor.
   let hasCustomHLOConverter = 1;
@@ -276,30 +276,30 @@ def XLA_DynamicUpdateSliceOp: XLA_Op<"dynamic-update-slice",
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_BatchNormInferenceOp : XLA_Op<"batch_norm_inference", [NoSideEffect]>,
-    BXLA_BatchNormInferenceOp {
+def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
+    BASE_HLO_BatchNormInferenceOp {
 
   let arguments = (ins
-    XLA_Tensor:$operand,
-    XLA_Tensor:$scale,
-    XLA_Tensor:$offset,
-    XLA_Tensor:$mean,
-    XLA_Tensor:$variance,
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scale,
+    HLO_Tensor:$offset,
+    HLO_Tensor:$mean,
+    HLO_Tensor:$variance,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 }
 
-def XLA_BroadcastOp : XLA_Op<"broadcast",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_BroadcastOp {
+def HLO_BroadcastOp : HLO_Op<"broadcast",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BroadcastOp {
   let arguments = (ins
-    XLA_Tensor:$operand,
+    HLO_Tensor:$operand,
     ElementsAttr:$broadcast_sizes
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
@@ -350,14 +350,14 @@ def XLA_BroadcastOp : XLA_Op<"broadcast",
   }];
 }
 
-def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_BroadcastInDimOp {
+def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BroadcastInDimOp {
   let arguments = (ins
-    XLA_Tensor:$operand,
+    HLO_Tensor:$operand,
     BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
@@ -430,15 +430,15 @@ def XLA_BroadcastInDimOp : XLA_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ClampOp : XLA_Op<"clamp",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ClampOp {
+def HLO_ClampOp : HLO_Op<"clamp",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ClampOp {
   let arguments = (ins
-    XLA_Tensor:$min,
-    XLA_Tensor:$operand,
-    XLA_Tensor:$max
+    HLO_Tensor:$min,
+    HLO_Tensor:$operand,
+    HLO_Tensor:$max
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
@@ -471,11 +471,11 @@ def XLA_ClampOp : XLA_Op<"clamp",
   }];
 }
 
-def XLA_ConcatenateOp : XLA_Op<"concatenate",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ConcatenateOp {
+def HLO_ConcatenateOp : HLO_Op<"concatenate",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
 
    let arguments = (
-     ins Variadic<XLA_Tensor>:$val,
+     ins Variadic<HLO_Tensor>:$val,
          I64Attr: $dimension
    );
 
@@ -506,53 +506,53 @@ def XLA_ConcatenateOp : XLA_Op<"concatenate",
      return success();
    }];
 
-   let results = (outs XLA_Tensor);
+   let results = (outs HLO_Tensor);
 
   // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ConvOp : XLA_Op<"conv", [NoSideEffect]>, BXLA_ConvOp {
+def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
   let arguments = (ins
-    XLA_Tensor:$lhs,
-    XLA_Tensor:$rhs
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129422361) Needs additional work to handle attributes.
   // Conv has custom handling because its other args are passed as attributes
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_CopyOp: XLA_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
+def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
   string summary = "Copy operator";
 
   string description = [{
     Returns a copy of `operand`.
   }];
 
-  let arguments = (ins XLA_Tensor);
-  let results = (outs XLA_Tensor);
+  let arguments = (ins HLO_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129422361) Implement special handling.
   // Copy has an HloOpcode, but is not one of the ops defined in xla_builder.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_DotOp: XLA_Op<"dot", [NoSideEffect]>, BXLA_DotOp {
+def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let arguments = (
-        ins XLA_Tensor:$lhs,
-        XLA_Tensor:$rhs,
-        XLA_PrecisionConfigAttr:$precision_config
+        ins HLO_Tensor:$lhs,
+        HLO_Tensor:$rhs,
+        HLO_PrecisionConfigAttr:$precision_config
     );
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 }
 
-def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]>, BXLA_GatherOp {
+def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let arguments = (
-      ins XLA_Tensor:$operand,
-          XLA_IntTensor:$start_indices,
+      ins HLO_Tensor:$operand,
+          HLO_IntTensor:$start_indices,
           I64Attr: $index_vector_dim,
           ElementsAttr: $offset_dims,
           ElementsAttr: $slice_sizes,
@@ -560,18 +560,18 @@ def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]>, BXLA_GatherOp {
           ElementsAttr: $start_index_map
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129422361) Attributes are not by the codegen. The optional argument
   // (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_ReshapeOp: XLA_Op<"reshape",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ReshapeOp {
-  let arguments = (ins XLA_Tensor:$operand);
+def HLO_ReshapeOp: HLO_Op<"reshape",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
+  let arguments = (ins HLO_Tensor:$operand);
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
   let hasFolder = 1;
 
   // TODO(b/129422361) One of the required arguments comes from the new shape,
@@ -581,14 +581,14 @@ def XLA_ReshapeOp: XLA_Op<"reshape",
 }
 
 
-def XLA_SelectOp: XLA_Op<"select", [NoSideEffect]>, BXLA_SelectOp {
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   let arguments = (ins
-    XLA_PredTensor:$pred,
-    XLA_Tensor:$on_true,
-    XLA_Tensor:$on_false
+    HLO_PredTensor:$pred,
+    HLO_Tensor:$on_true,
+    HLO_Tensor:$on_false
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129012527) These should be expressed as type constraints.
   let verifier = [{
@@ -619,30 +619,30 @@ def XLA_SelectOp: XLA_Op<"select", [NoSideEffect]>, BXLA_SelectOp {
   }];
 }
 
-def XLA_ReverseOp: XLA_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_ReverseOp {
+def HLO_ReverseOp: HLO_Op<"reverse",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReverseOp {
   let arguments = (ins
-    XLA_Tensor:$operand,
+    HLO_Tensor:$operand,
     ElementsAttr:$dimensions
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   // TODO(b/129422361): ReverseOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_PadOp: XLA_Op<"pad",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_PadOp {
+def HLO_PadOp: HLO_Op<"pad",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PadOp {
   let arguments = (ins
-    XLA_Tensor:$operand,
-    XLA_Tensor:$padding_value,
+    HLO_Tensor:$operand,
+    HLO_Tensor:$padding_value,
     ElementsAttr: $edge_padding_low,
     ElementsAttr: $edge_padding_high,
     ElementsAttr: $interior_padding
   );
 
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   let description = [{
     Pads the `operand` according to TBD.
@@ -697,13 +697,13 @@ def XLA_PadOp: XLA_Op<"pad",
   let hasCustomHLOConverter = 1;
 }
 
-def XLA_TransposeOp: XLA_Op<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BXLA_TransposeOp {
+def HLO_TransposeOp: HLO_Op<"transpose",
+      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_TransposeOp {
   let arguments = (ins
-    XLA_Tensor:$operand,
+    HLO_Tensor:$operand,
     ElementsAttr:$permutation
   );
-  let results = (outs XLA_Tensor);
+  let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
 
@@ -760,4 +760,4 @@ def XLA_TransposeOp: XLA_Op<"transpose",
   }];
 }
 
-#endif // XLA_OPS
+#endif // HLO_OPS

@@ -62,7 +62,7 @@ cc_library(
     srcs = ["lhlo_dialect_emitter.cc"],
     hdrs = ["lhlo_dialect_emitter.h"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:lxla",
+        "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/service:buffer_assignment",
