@@ -69,6 +69,7 @@ cc_test(
     name = "wait_test",
     srcs = ["wait_test.cc"],
     deps = [
+        ":platform",
         ":wait",
         "@com_google_googletest//:gtest",
     ],

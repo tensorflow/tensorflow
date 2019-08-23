@@ -132,4 +132,11 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_APPLE 0
 #endif
 
+// Detect Emscripten, typically Wasm.
+#ifdef __EMSCRIPTEN__
+#define RUY_DONOTUSEDIRECTLY_EMSCRIPTEN 1
+#else
+#define RUY_DONOTUSEDIRECTLY_EMSCRIPTEN 0
+#endif
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PLATFORM_H_
