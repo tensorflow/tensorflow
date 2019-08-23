@@ -183,6 +183,46 @@ cc_test(
 )
 
 cc_library(
+    name = "conv_powervr",
+    srcs = ["conv_powervr.cc"],
+    hdrs = ["conv_powervr.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "conv_powervr_test",
+    srcs = ["conv_powervr_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":conv_powervr",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "conv_texture",
     srcs = ["conv_texture.cc"],
     hdrs = ["conv_texture.h"],

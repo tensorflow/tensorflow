@@ -362,6 +362,8 @@ bool CLDevice::IsAdreno6xxOrHigher() const {
   return IsAdreno() && info_.adreno_info.gpu_version >= 600;
 }
 
+bool CLDevice::IsPowerVR() const { return info_.vendor == Vendor::POWERVR; }
+
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
 }
