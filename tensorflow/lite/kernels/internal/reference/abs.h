@@ -23,7 +23,7 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-template<typename T>
+template <typename T>
 inline void Abs(const RuntimeShape& input_shape, const T* input_data,
                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);

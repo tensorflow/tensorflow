@@ -24,10 +24,10 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-template<typename T>
-inline void Abs(const AbsParams& params,
-                const RuntimeShape& input_shape, const T* input_data,
-                const RuntimeShape& output_shape, T* output_data) {
+template <typename T>
+inline void Abs(const AbsParams& params, const RuntimeShape& input_shape,
+                const T* input_data, const RuntimeShape& output_shape,
+                T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   const int32_t q_min_val = static_cast<int32_t>(std::numeric_limits<T>::min());
@@ -39,8 +39,7 @@ inline void Abs(const AbsParams& params,
     const int32 input_val = std::abs(params.input_offset + input_data[i]);
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplier(input_val,
-                                      params.output_multiplier,
+        MultiplyByQuantizedMultiplier(input_val, params.output_multiplier,
                                       params.output_shift);
     const int32 clamped_output = clamp(unclamped_result, q_min_val, q_max_val);
     output_data[i] = static_cast<T>(clamped_output);
