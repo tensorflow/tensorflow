@@ -38,7 +38,7 @@ import collections as _collections
 
 import six as _six
 
-from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
@@ -104,15 +104,15 @@ def _is_namedtuple(instance, strict=False):
   Returns:
     True if `instance` is a `namedtuple`.
   """
-  return _pywrap_utils.IsNamedtuple(instance, strict)
+  return _pywrap_tensorflow.IsNamedtuple(instance, strict)
 
 
 # See the swig file (util.i) for documentation.
-_is_mapping = _pywrap_utils.IsMapping
-_is_mapping_view = _pywrap_utils.IsMappingView
-_is_attrs = _pywrap_utils.IsAttrs
-_is_composite_tensor = _pywrap_utils.IsCompositeTensor
-_is_type_spec = _pywrap_utils.IsTypeSpec
+_is_mapping = _pywrap_tensorflow.IsMapping
+_is_mapping_view = _pywrap_tensorflow.IsMappingView
+_is_attrs = _pywrap_tensorflow.IsAttrs
+_is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
+_is_type_spec = _pywrap_tensorflow.IsTypeSpec
 
 
 def _sequence_like(instance, args):
@@ -208,11 +208,11 @@ def _yield_sorted_items(iterable):
 
 
 # See the swig file (util.i) for documentation.
-is_sequence = _pywrap_utils.IsSequence
+is_sequence = _pywrap_tensorflow.IsSequence
 
 
 # See the swig file (util.i) for documentation.
-is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
+is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 
 @tf_export("nest.is_nested")
@@ -260,11 +260,11 @@ def flatten(structure, expand_composites=False):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
-  return _pywrap_utils.Flatten(structure, expand_composites)
+  return _pywrap_tensorflow.Flatten(structure, expand_composites)
 
 
 # See the swig file (util.i) for documentation.
-_same_namedtuples = _pywrap_utils.SameNamedtuples
+_same_namedtuples = _pywrap_tensorflow.SameNamedtuples
 
 
 class _DotString(object):
@@ -315,8 +315,8 @@ def assert_same_structure(nest1, nest2, check_types=True,
       their substructures. Only possible if `check_types` is `True`.
   """
   try:
-    _pywrap_utils.AssertSameStructure(nest1, nest2, check_types,
-                                      expand_composites)
+    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types,
+                                           expand_composites)
   except (ValueError, TypeError) as e:
     str1 = str(map_structure(lambda _: _DOT, nest1))
     str2 = str(map_structure(lambda _: _DOT, nest2))
@@ -1327,6 +1327,6 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
-_pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
-_pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
-_pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)
+_pywrap_tensorflow.RegisterType("Mapping", _collections_abc.Mapping)
+_pywrap_tensorflow.RegisterType("Sequence", _collections_abc.Sequence)
+_pywrap_tensorflow.RegisterType("MappingView", _collections_abc.MappingView)

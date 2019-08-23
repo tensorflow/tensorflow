@@ -22,7 +22,7 @@ import abc
 
 import six
 
-from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.util import nest
 
 
@@ -137,7 +137,7 @@ class CompositeTensor(object):
     return list(set(consumers))
 
 
-_pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
+pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)
 
 
 def replace_composites_with_components(structure):

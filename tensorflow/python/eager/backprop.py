@@ -24,7 +24,6 @@ import sys
 
 import six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -845,7 +844,8 @@ class GradientTape(object):
       ValueError: if it encounters something that is not a tensor.
     """
     for t in nest.flatten(tensor):
-      if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
+      if not (pywrap_tensorflow.IsTensor(t) or
+              pywrap_tensorflow.IsVariable(t)):
         raise ValueError("Passed in object of type {}, not tf.Tensor".format(
             type(t)))
       if not t.dtype.is_floating:

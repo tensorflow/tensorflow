@@ -20,7 +20,6 @@ visibility = [
 ]
 
 load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -100,7 +99,6 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
         ":bitwise_ops",
@@ -376,22 +374,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_utils",
-    srcs = ["util/util_wrapper.cc"],
-    hdrs = ["util/util.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    module_name = "_pywrap_utils",
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -703,7 +685,6 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":_pywrap_utils",
         ":common_shapes",
         ":composite_tensor",
         ":convert_to_constants",
@@ -5006,6 +4987,7 @@ tf_py_wrap_cc(
         "util/tfprof.i",
         "util/traceme.i",
         "util/transform_graph.i",
+        "util/util.i",
         "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5074,20 +5056,14 @@ tf_py_wrap_cc(
 # the dynamic libraries of custom ops can find it at runtime.
 genrule(
     name = "pywrap_tensorflow_filtered_def_file",
-    srcs = [
-        "//tensorflow:tensorflow_def_file",
-        "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ":cpp_python_util",
-    ],
+    srcs = ["//tensorflow:tensorflow_def_file"],
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
         "//tensorflow:windows": """
               $(location @local_config_def_file_filter//:def_file_filter) \\
               --input $(location //tensorflow:tensorflow_def_file) \\
               --output $@ \\
-              --target _pywrap_tensorflow_internal.pyd \\
-              --lib_paths $(execpath :cpp_python_util) \\
-              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind)
+              --target _pywrap_tensorflow_internal.pyd
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),

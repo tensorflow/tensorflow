@@ -24,7 +24,6 @@ import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -1782,7 +1781,7 @@ class UninitializedVariable(BaseResourceVariable):
         synchronization=synchronization, aggregation=aggregation)
 
 
-_pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
+pywrap_tensorflow.RegisterType("ResourceVariable", ResourceVariable)
 math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 

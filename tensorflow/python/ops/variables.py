@@ -26,7 +26,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1351,7 +1351,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
 
 Variable._OverloadAllOperators()  # pylint: disable=protected-access
-_pywrap_utils.RegisterType("Variable", Variable)
+pywrap_tensorflow.RegisterType("Variable", Variable)
 
 
 @tf_export(v1=["Variable"])
