@@ -40,6 +40,11 @@ include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
 #endif // SPIRV_ARITHMETIC_OPS
 
+#ifdef SPIRV_CONTROLFLOW_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
+#endif // SPIRV_CONTROLFLOW_OPS
+
 #ifdef SPIRV_LOGICAL_OPS
 #else
 include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
@@ -246,63 +251,6 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
-}
-
-// -----
-
-def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
-  let summary = "Return with no value from a function with void return type.";
-
-  let description = [{
-    This instruction must be the last instruction in a block.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    return-op ::= `spv.Return`
-    ```
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs);
-
-  let parser = [{ return parseNoIOOp(parser, result); }];
-  let printer = [{ printNoIOOp(getOperation(), p); }];
-
-  let verifier = [{ return verifyReturn(*this); }];
-}
-
-// -----
-
-def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
-  let summary = "Return a value from a function.";
-
-  let description = [{
-    Value is the value returned, by copy, and must match the Return Type
-    operand of the OpTypeFunction type of the OpFunction body this return
-    instruction is in.
-
-    This instruction must be the last instruction in a block.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    return-value-op ::= `spv.ReturnValue` ssa-use `:` spirv-type
-    ```
-
-    For example:
-
-    ```
-    spv.ReturnValue %0 : f32
-    ```
-  }];
-
-  let arguments = (ins
-    SPV_Type:$value
-  );
-
-  let results = (outs);
 }
 
 // -----
