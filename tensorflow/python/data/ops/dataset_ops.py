@@ -974,7 +974,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
 
     For example:
-    
+
     ```python
     # Create a Dataset with 60 elements.
     A = tf.data.Dataset.range(60) # ==> [0, 1, 2, 3, ..., 57, 58, 59]
@@ -986,10 +986,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     # There is no overlap between Datasets B, C and D.
     ```
-    
+
     `shard` is a deterministic operator; the returned Dataset depends only
     on the target Dataset, and the values of `num_shards` and `index`.
-    
+
     This dataset operator is very useful when running distributed training, as
     it allows each worker to read a unique subset.
 
