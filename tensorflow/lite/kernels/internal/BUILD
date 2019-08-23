@@ -383,6 +383,7 @@ cc_library(
         "reference/integer_ops/tanh.h",
         "reference/maximum_minimum.h",
         "reference/neg.h",
+        "reference/non_max_suppression.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -903,6 +904,16 @@ cc_test(
     srcs = ["batch_to_space_nd_test.cc"],
     deps = [
         ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "non_max_suppression_test",
+    srcs = ["non_max_suppression_test.cc"],
+    deps = [
+        ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
