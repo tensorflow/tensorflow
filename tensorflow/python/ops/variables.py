@@ -1837,6 +1837,10 @@ class RefVariable(VariableV1):
           self._variable = state_ops.variable_op_v2(
               shape, self._initial_value.dtype.base_dtype, name=name)
 
+        # Cache the name in `self`, because some APIs call `Variable.name` in a
+        # tight loop, and this halves the cost.
+        self._name = self._variable.name
+
         # Manually overrides the variable's shape with the initial value's.
         if validate_shape:
           initial_value_shape = self._initial_value.get_shape()
@@ -1882,6 +1886,7 @@ class RefVariable(VariableV1):
     self._variable = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._name = self._variable.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
@@ -2539,7 +2544,7 @@ class RefVariable(VariableV1):
   @property
   def name(self):
     """The name of this variable."""
-    return self._variable.name
+    return self._name
 
   @property
   def initializer(self):
