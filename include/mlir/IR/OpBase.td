@@ -902,6 +902,19 @@ def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
 }
 
+def I32ElementsAttr : Attr<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(32)">,
+  "32-bit integer elements attribute"> {
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+  let constBuilderCall = "$_builder.getDenseElementsAttr("
+    "$_builder.getTensorType({}, $_builder.getIntegerType(32)), "
+      "{$_builder.getI32IntegerAttr($0)})";
+  let convertFromStorage = "$_self";
+}
+
 // Attributes containing symbol references.
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {

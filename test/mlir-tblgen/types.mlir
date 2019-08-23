@@ -205,3 +205,27 @@ func @does_not_have_static_memref(%arg0: memref<?xi32>) {
   // expected-error@+1 {{'test.takes_static_memref' op operand #0 must be statically shaped memref of any type values}}
   "test.takes_static_memref"(%arg0) : (memref<?xi32>) -> ()
 }
+
+// -----
+
+func @elements_attr_not_i32_f32() {
+  // expected-error@+1 {{32-bit integer elements attribute}}
+  "test.i32ElementsAttr"() {attr = dense<[1.0, 20.0]>:tensor<2xf32>} : () -> ()
+  return
+}
+
+// -----
+
+func @elements_attr_not_i32_i64() {
+  // expected-error@+1 {{32-bit integer elements attribute}}
+  "test.i32ElementsAttr"() {attr = dense<[1, 20]>:tensor<2xi64>} : () -> ()
+  return
+}
+
+
+// -----
+
+func @elements_attr_i32(%arg0: tensor<1x2xi32>) {
+  "test.i32ElementsAttr"() {attr = dense<[1, 2]>:tensor<2xi32>} : () -> ()
+  return
+}
