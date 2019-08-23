@@ -1055,13 +1055,25 @@ func @op_with_region_args() {
 // CHECK-LABEL: func @op_with_passthrough_region_args
 func @op_with_passthrough_region_args() {
   // CHECK: [[VAL:%.*]] = constant
-  // CHECK: "test.isolated_region"([[VAL]])
-  // CHECK-NEXT: ^{{.*}}([[ARG:%.*]]: index)
-  // CHECK-NEXT: "foo.consumer"([[ARG]]) : (index)
-
   %0 = constant 10 : index
+
+  // CHECK: test.isolated_region [[VAL]] {
+  // CHECK-NEXT: "foo.consumer"([[VAL]]) : (index)
+  // CHECK-NEXT: }
   test.isolated_region %0 {
     "foo.consumer"(%0) : (index) -> ()
   }
+
+  // CHECK: [[VAL:%.*]]:2 = "foo.op"
+  %result:2 = "foo.op"() : () -> (index, index)
+
+  // CHECK: test.isolated_region [[VAL]]#1 {
+  // CHECK-NEXT: "foo.consumer"([[VAL]]#1) : (index)
+  // CHECK-NEXT: }
+  test.isolated_region %result#1 {
+    "foo.consumer"(%result#1) : (index) -> ()
+  }
+
   return
 }
+

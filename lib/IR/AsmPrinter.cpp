@@ -1244,6 +1244,12 @@ public:
     os.indent(currentIndent) << "}";
   }
 
+  /// Renumber the arguments for the specified region to the same names as the
+  /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+  /// operations.  If any entry in namesToUse is null, the corresponding
+  /// argument name is left alone.
+  void shadowRegionArgs(Region &region, ArrayRef<Value *> namesToUse) override;
+
   void printAffineMapOfSSAIds(AffineMapAttr mapAttr,
                               ArrayRef<Value *> operands) override {
     AffineMap map = mapAttr.getValue();
@@ -1270,9 +1276,14 @@ protected:
   void numberValueID(Value *value);
   void numberValuesInRegion(Region &region);
   void numberValuesInBlock(Block &block);
-  void printValueID(Value *value, bool printResultNo = true) const;
+  void printValueID(Value *value, bool printResultNo = true) const {
+    printValueIDImpl(value, printResultNo, os);
+  }
 
 private:
+  void printValueIDImpl(Value *value, bool printResultNo,
+                        raw_ostream &stream) const;
+
   /// Uniques the given value name within the printer. If the given name
   /// conflicts, it is automatically renamed.
   StringRef uniqueValueName(StringRef name);
@@ -1491,7 +1502,8 @@ void OperationPrinter::print(Operation *op) {
   printTrailingLocation(op->getLoc());
 }
 
-void OperationPrinter::printValueID(Value *value, bool printResultNo) const {
+void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
+                                        raw_ostream &stream) const {
   int resultNo = -1;
   auto lookupValue = value;
 
@@ -1507,21 +1519,56 @@ void OperationPrinter::printValueID(Value *value, bool printResultNo) const {
 
   auto it = valueIDs.find(lookupValue);
   if (it == valueIDs.end()) {
-    os << "<<INVALID SSA VALUE>>";
+    stream << "<<INVALID SSA VALUE>>";
     return;
   }
 
-  os << '%';
+  stream << '%';
   if (it->second != nameSentinel) {
-    os << it->second;
+    stream << it->second;
   } else {
     auto nameIt = valueNames.find(lookupValue);
     assert(nameIt != valueNames.end() && "Didn't have a name entry?");
-    os << nameIt->second;
+    stream << nameIt->second;
   }
 
   if (resultNo != -1 && printResultNo)
-    os << '#' << resultNo;
+    stream << '#' << resultNo;
+}
+
+/// Renumber the arguments for the specified region to the same names as the
+/// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+/// operations.  If any entry in namesToUse is null, the corresponding
+/// argument name is left alone.
+void OperationPrinter::shadowRegionArgs(Region &region,
+                                        ArrayRef<Value *> namesToUse) {
+  assert(!region.empty() && "cannot shadow arguments of an empty region");
+  assert(region.front().getNumArguments() == namesToUse.size() &&
+         "incorrect number of names passed in");
+  assert(region.getParentOp()->isKnownIsolatedFromAbove() &&
+         "only KnownIsolatedFromAbove ops can shadow names");
+
+  SmallVector<char, 16> nameStr;
+  for (unsigned i = 0, e = namesToUse.size(); i != e; ++i) {
+    auto *nameToUse = namesToUse[i];
+    if (nameToUse == nullptr)
+      continue;
+
+    auto *nameToReplace = region.front().getArgument(i);
+
+    nameStr.clear();
+    llvm::raw_svector_ostream nameStream(nameStr);
+    printValueIDImpl(nameToUse, /*printResultNo=*/true, nameStream);
+
+    // Entry block arguments should already have a pretty "arg" name.
+    assert(valueIDs[nameToReplace] == nameSentinel);
+
+    // Use the name without the leading %.
+    auto name = StringRef(nameStream.str()).drop_front();
+
+    // Overwrite the name.
+    valueNames[nameToReplace] = name.copy(usedNameAllocator);
+  }
 }
 
 void OperationPrinter::printOperation(Operation *op) {
