@@ -67,7 +67,7 @@ cc_library(
     name = "profiler_utils",
     srcs = ["profiler_utils.cc"],
     hdrs = ["profiler_utils.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:internal"],
     alwayslink = 1,
 )
 
