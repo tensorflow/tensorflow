@@ -238,6 +238,10 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
   let regions = (region SizedRegion<1>:$region);
 }
 
+def I32ElementsAttributesOp : TEST_Op<"i32ElementsAttr"> {
+  let arguments = (ins I32ElementsAttr:$attr);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
