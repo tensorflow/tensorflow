@@ -90,7 +90,10 @@ def BufferAllocOp :
       }]>,
     OpBuilder<
       "Builder *b, OperationState *result, BufferType bufferType, Value *size",
-      [{ build(b, result, bufferType, size, 0); }]>
+      [{
+        result->addOperands(size);
+        result->addTypes(bufferType);
+      }]>
   ];
   let extraClassDeclaration = [{
     static StringRef getAlignmentAttrName() { return "alignment"; }
