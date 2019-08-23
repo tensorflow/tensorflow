@@ -713,7 +713,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   }
 
   Status NewInferenceBuilder(const InferenceOptions& options,
-                             const GraphFloat32& model,
+                             GraphFloat32 model,
                              std::unique_ptr<InferenceBuilder>* builder) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
@@ -724,11 +724,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    GraphFloat32 cl_graph;
-    RETURN_IF_ERROR(model.MakeExactCopy(&cl_graph));
-    RETURN_IF_ERROR(RunGraphTransforms(&cl_graph));
+    RETURN_IF_ERROR(RunGraphTransforms(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, cl_graph));
+    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, model));
     *builder = std::move(builder_impl);
     return OkStatus();
   }
