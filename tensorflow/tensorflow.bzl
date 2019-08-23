@@ -267,7 +267,6 @@ def get_win_copts(is_external = False):
     else:
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
 
-# LINT.IfChange
 def tf_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
@@ -328,8 +327,6 @@ def tf_opts_nortti_if_android():
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
-
-# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 def tf_opts_nortti_if_emscripten():
     return if_emscripten([
