@@ -1384,7 +1384,7 @@ For a more intuitive description, see the "Informal Description" section below.
 :                        :                     : the caller.                   :
 | `unique_indices`       | `bool`              | Whether the indices are       |
 :                        :                     : guaranteed to be unique by    :
-:                        :                     : the caller                    :
+:                        :                     : the caller.                   :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1455,7 +1455,8 @@ then the semantics is implementation defined.
 
 If `unique_indices` is set to true then XLA can assume that all
 element scattered to are unique.  So XLA could use non-atomic
-operation. If they are not, then the semantics is implementation
+operations. If `unique_indices` is set to true and the indices being
+scattered to are not unique then the semantics is implementation
 defined.
 
 ### Informal Description and Examples

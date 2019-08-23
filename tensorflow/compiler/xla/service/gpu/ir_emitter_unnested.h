@@ -230,7 +230,7 @@ class IrEmitterUnnested : public IrEmitter,
   // is false, we will use an atomic update. Using false for unique_indices
   // is safe only when it is guaranteed that there are no duplicate
   // indices.
-  // When using unique_indices=true, it is the caller responsibility to
+  // When using unique_indices=true, it is the caller's responsibility to
   // ensure there is no overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
