@@ -552,6 +552,9 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     if (compile_with_xla) {
       // Note that it is not ideal, but currently correct, to set this
       // attribute after computing the kernel cache key above.
+      // TODO(iga): Creating XlaLaunchOp kernel directly here would be much
+      // better than setting this attribute and relying on
+      // custom_kernel_creator.
       // Note: If the attribute is already set to true, this is a noop.
       op->MutableAttrs()->Set(kXlaCompileAttr, true);
     }
@@ -606,10 +609,9 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
-      kernel.reset(new KernelAndDeviceOp(ctx->GetRendezvous(), ctx->LogMemory(),
-                                         flr, runner,
-                                         ctx->GetCollectiveExecutorHandle(),
-                                         ctx->HostCPU(), compile_with_xla));
+      kernel.reset(new KernelAndDeviceOp(
+          ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
     }
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
