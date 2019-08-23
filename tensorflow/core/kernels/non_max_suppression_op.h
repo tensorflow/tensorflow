@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_NON_MAX_SUPPRESSION_OP_H_
 #define TENSORFLOW_CORE_KERNELS_NON_MAX_SUPPRESSION_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -54,7 +54,8 @@ extern const int kNmsBoxesPerTread;
 Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
               const float iou_threshold, int* d_selected_indices,
               int* h_num_boxes_to_keep, OpKernelContext* context,
-              bool flip_boxes = false,bool legacy_mode=false);
+              const int max_boxes, bool flip_boxes = false,
+              bool legacy_mode = false);
 #endif
 
 }  // namespace tensorflow
