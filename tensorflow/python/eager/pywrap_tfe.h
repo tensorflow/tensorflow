@@ -256,6 +256,17 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // `accumulator`. Returns None if no JVP is available.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 
+// Temporarily push or pop transient state for accumulators in the active set.
+//
+// Allows an accumulator which is currently processing an operation to
+// temporarily reset its state. This is useful when building forwardprop
+// versions of functions, where an accumulator will trigger function building
+// and then must process captured symbolic tensors while building it. Without
+// pushing and poping, accumulators ignore operations executed as a direct
+// result of their own jvp computations.
+PyObject* TFE_Py_ForwardAccumulatorPushState();
+PyObject* TFE_Py_ForwardAccumulatorPopState();
+
 // Collects state from all current forward accumulators related to `tensors`.
 //
 // This is useful for packing JVPs as function inputs before executing a

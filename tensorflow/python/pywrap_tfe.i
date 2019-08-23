@@ -88,6 +88,8 @@ limitations under the License.
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
+%rename("%s") TFE_Py_ForwardAccumulatorPushState;
+%rename("%s") TFE_Py_ForwardAccumulatorPopState;
 %rename("%s") TFE_Py_PackForwardGradients;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;

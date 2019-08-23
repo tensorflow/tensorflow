@@ -1640,6 +1640,22 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   Py_RETURN_FALSE;
 }
 
+PyObject* TFE_Py_ForwardAccumulatorPushState() {
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    accumulator->accumulator->PushState();
+  }
+  Py_RETURN_NONE;
+}
+
+PyObject* TFE_Py_ForwardAccumulatorPopState() {
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    accumulator->accumulator->PopState();
+  }
+  Py_RETURN_NONE;
+}
+
 PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
   if (!TapeCouldPossiblyRecord(tensors)) {
     return GetPythonObjectFromInt(0);

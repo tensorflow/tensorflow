@@ -27,6 +27,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
+from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -273,6 +274,31 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       acc.watch(c, d)
       with self.assertRaisesRegexp(ValueError, "test_error_string"):
         f(c)
+
+  def testPushPopAccumulatorState(self):
+    # Note that this example is somewhat contrived. push_forwardprop_state is
+    # probably only useful in practice for building functions that compute jvps
+    # alongside their usual outputs.
+    with forwardprop.ForwardGradientAccumulator() as acc:
+
+      @custom_gradient.custom_gradient
+      def f(x):
+        y = math_ops.sin(x.numpy())
+
+        def grad(dy):
+          with forwardprop_util.push_forwardprop_state():
+            x_copy = constant_op.constant(x.numpy())
+            acc.watch(x_copy, dy)
+            y_copy = math_ops.sin(x_copy)
+          return dy * acc.jvp(y_copy)
+
+        return y, grad
+
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      output = f(c)
+      self.assertAllClose(d * math_ops.cos(c), acc.jvp(output))
 
   @parameterized.named_parameters(
       [("Order{}".format(order), order, expected)
