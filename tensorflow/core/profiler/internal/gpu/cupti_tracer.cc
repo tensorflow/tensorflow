@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -187,8 +188,7 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
                              CuptiTracerEventType::MemcpyP2P, true);
     }
     default: {
-      LOG_FIRST_N(ERROR, 100)
-          << "Unsupported memcpy activity observed: " << cbid;
+      LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
       return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
@@ -216,7 +216,7 @@ void CUPTIAPI AllocCuptiActivityBuffer(uint8_t **buffer, size_t *size,
   constexpr size_t kBufferSize = 32 * 1024;
   constexpr int kBufferAlignSize = 8;
   *buffer = reinterpret_cast<uint8_t *>(
-      aligned_malloc(kBufferSize, kBufferAlignSize));
+      port::AlignedMalloc(kBufferSize, kBufferAlignSize));
   if (*buffer == nullptr) {
     LOG(WARNING)
         << "Cupti Buffer not allocated, activity records will be dropped";
@@ -240,7 +240,8 @@ void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
           << " size: " << size << " valid_size: " << valid_size;
 
   // Ensure buffer is free when this function returns.
-  auto buffer_cleanup = gtl::MakeCleanup([buffer] { aligned_free(buffer); });
+  auto buffer_cleanup =
+      gtl::MakeCleanup([buffer] { port::AlignedFree(buffer); });
 
   if (valid_size <= 0) {
     return;
@@ -493,7 +494,7 @@ void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
       event.device_id = overhead->objectId.dcs.deviceId;
       break;
     default:
-      DLOG(FATAL) << "Unexpected object kind: " << overhead->objectKind;
+      LOG(ERROR) << "Unexpected object kind: " << overhead->objectKind;
       return;
   }
   collector->AddEvent(std::move(event));
