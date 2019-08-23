@@ -1380,3 +1380,23 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
     ],
 )
+
+# Used by mobile builds.
+filegroup(
+    name = "dataset_ops_srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
+            "optimize_dataset*",  # includes grappler dependency, which isn't supported on mobile.
+            "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
+            "*test.cc",
+            "*test.h",
+            "*_test_*",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
