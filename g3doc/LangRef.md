@@ -283,7 +283,7 @@ Example:
 "foo"(%x) : !avx_m128 -> ()
 ```
 
-### Dialect types
+### Dialect Types
 
 Similarly to operations, dialects may define custom extensions to the type
 system.
@@ -298,7 +298,6 @@ pretty-dialect-type-contents ::= pretty-dialect-type-body
                               | '[' pretty-dialect-type-contents+ ']'
                               | '{' pretty-dialect-type-contents+ '}'
                               | '[^[<({>\])}\0]+'
-
 ```
 
 Dialect types can be specified in a verbose form, e.g. like this:
@@ -735,14 +734,12 @@ dependent-attribute-entry ::= dependent-attribute-name `=` attribute-value
 dependent-attribute-name ::= (letter|[_]) (letter|digit|[_$])*
 ```
 
-Attributes are the mechanism for specifying constant data in MLIR in places
-where a variable is never allowed - e.g. the index of a
+Attributes are the mechanism for specifying constant data on operations in
+places where a variable is never allowed - e.g. the index of a
 [`dim` operation](Dialects/Standard.md#dim-operation), or the stride of a
-convolution. They consist of a name and a
-[concrete attribute value](#attribute-values). It is possible to attach
-attributes to operations. The set of expected attributes, their structure, and
-their interpretation are all contextually dependent on what they are attached
-to.
+convolution. They consist of a name and a concrete attribute value. The set of
+expected attributes, their structure, and their interpretation are all
+contextually dependent on what they are attached to.
 
 There are two main classes of attributes; dependent and dialect. Dependent
 attributes derive their structure and meaning from what they are attached to,
@@ -753,30 +750,99 @@ meaning from a specific dialect. An example of a dialect attribute may be a
 self/context parameter. The context of this attribute is defined by the `swift`
 dialect and not the function argument.
 
-### Operation Attributes
-
-Operations, unlike functions and function arguments, may include both dialect
-specific and dependent attributes. This is because an operation represents a
-distinct semantic context, and can thus provide a single source of meaning to
-dependent attributes.
-
-### Attribute Values
-
 Attributes values are represented by the following forms:
 
 ``` {.ebnf}
-attribute-value ::= affine-map-attribute
-                  | array-attribute
-                  | bool-attribute
-                  | dictionary-attribute
-                  | elements-attribute
-                  | integer-attribute
-                  | integer-set-attribute
-                  | float-attribute
-                  | string-attribute
-                  | symbol-ref-attribute
-                  | type-attribute
-                  | unit-attribute
+attribute-value ::= attribute-alias | dialect-attribute | standard-attribute
+```
+
+### Attribute Value Aliases
+
+``` {.ebnf}
+attribute-alias ::= '#' alias-name '=' 'type' type
+attribute-alias ::= '#' alias-name
+```
+
+MLIR supports defining named aliases for attribute values. An attribute alias is
+an identifier that can be used in the place of the attribute that it defines.
+These aliases *must* be defined before their uses. Alias names may not contain a
+'.', since those names are reserved for
+[dialect attributes](#dialect-attribute-values).
+
+Example:
+
+```mlir {.mlir}
+#map = (d0) -> (d0 + 10)
+
+// Using the original attribute.
+%b = affine.apply (d0) -> (d0 + 10) (%a)
+
+// Using the attribute alias.
+%b = affine.apply #map(%a)
+```
+
+### Dialect Attribute Values
+
+Similarly to operations, dialects may define custom attribute values.
+
+``` {.ebnf}
+dialect-attribute ::= '#' dialect-namespace '<' '"' attr-specific-data '"' '>'
+dialect-attribute ::= '#' alias-name pretty-dialect-attr-body?
+
+pretty-dialect-attr-body ::= '<' pretty-dialect-attr-contents+ '>'
+pretty-dialect-attr-contents ::= pretty-dialect-attr-body
+                              | '(' pretty-dialect-attr-contents+ ')'
+                              | '[' pretty-dialect-attr-contents+ ']'
+                              | '{' pretty-dialect-attr-contents+ '}'
+                              | '[^[<({>\])}\0]+'
+```
+
+Dialect attributes can be specified in a verbose form, e.g. like this:
+
+```mlir {.mlir}
+// Complex attribute
+#foo<"something<abcd>">
+
+// Even more complex attribute
+#foo<"something<a%%123^^^>>>">
+```
+
+Dialect attributes that are simple enough can use the pretty format, which is a
+lighter weight syntax that is equivalent to the above forms:
+
+```mlir {.mlir}
+// Complex attribute
+#foo.something<abcd>
+```
+
+Sufficiently complex dialect attributes are required to use the verbose form for
+generality. For example, the more complex type shown above wouldn't be valid in
+the lighter syntax: `#foo.something<a%%123^^^>>>` because it contains characters
+that are not allowed in the lighter syntax, as well as unbalanced `<>`
+characters.
+
+See [here](DefiningAttributesAndTypes.md) to learn how to define dialect
+attribute values.
+
+### Standard Attribute Values
+
+Standard attributes are a core set of
+[dialect attributes](#dialect-attribute-values) that are defined in a builtin
+dialect and thus available to all users of MLIR.
+
+``` {.ebnf}
+standard-attribute ::=   affine-map-attribute
+                       | array-attribute
+                       | bool-attribute
+                       | dictionary-attribute
+                       | elements-attribute
+                       | float-attribute
+                       | integer-attribute
+                       | integer-set-attribute
+                       | string-attribute
+                       | symbol-ref-attribute
+                       | type-attribute
+                       | unit-attribute
 ```
 
 #### AffineMap Attribute
@@ -897,28 +963,6 @@ Example:
 ///   [0, 0, 0, 0]]
 ```
 
-#### Integer Attribute
-
-Syntax:
-
-``` {.ebnf}
-integer-attribute ::= integer-literal ( `:` (index-type | integer-type) )?
-```
-
-An integer attribute is a literal attribute that represents an integral value of
-the specified integer or index type. The default type for this attribute, if one
-is not specified, is a 64-bit integer.
-
-#### Integer Set Attribute
-
-Syntax:
-
-``` {.ebnf}
-integer-set-attribute ::= affine-map
-```
-
-An integer-set attribute is an attribute that represents a integer-set object.
-
 #### Float Attribute
 
 Syntax:
@@ -945,6 +989,28 @@ Examples:
 0x7CFF : f16 // NaN (one of possible values)
 42 : f32     // Error: expected integer type
 ```
+
+#### Integer Attribute
+
+Syntax:
+
+``` {.ebnf}
+integer-attribute ::= integer-literal ( `:` (index-type | integer-type) )?
+```
+
+An integer attribute is a literal attribute that represents an integral value of
+the specified integer or index type. The default type for this attribute, if one
+is not specified, is a 64-bit integer.
+
+##### Integer Set Attribute
+
+Syntax:
+
+``` {.ebnf}
+integer-set-attribute ::= affine-map
+```
+
+An integer-set attribute is an attribute that represents a integer-set object.
 
 #### String Attribute
 
