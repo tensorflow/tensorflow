@@ -337,3 +337,70 @@ module {
     return %0 : tensor<?xi32>
   }
 }
+
+// -----
+
+// Tests Functions referenced by TPU function via SymbolRefAttr nested in
+// ArrayAttr and DictionaryAttr.
+
+module {
+  // CHECK-LABEL: func @single_tpu_launch_func
+  func @single_tpu_launch_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
+
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func} : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf.MLIRCompileToTPU"(%[[A_SHAPE_OUTPUT]])
+    // CHECK-SAME: _tpu_replicate = "cluster0"
+    // CHECK-SAME: module
+    // CHECK-SAME: func @main
+    // CHECK-SAME: tf.B
+    // CHECK-SAME: func @referenced_func2
+    // CHECK-SAME: tf.H
+    // CHECK-SAME: func @referenced_func3
+    // CHECK-SAME: tf.I
+    // CHECK-SAME: func @referenced_func0
+    // CHECK-SAME: tf.F
+    // CHECK-SAME: func @referenced_func1
+    // CHECK-SAME: tf.G
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK-SAME: Targs = [tensor<?xi32>]
+    // CHECK-SAME: Tresults = [tensor<?xi32>]
+
+    %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
+
+    return %2 : tensor<?xi32>
+    // CHECK: return %[[C_OUTPUT]]
+  }
+
+  func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf.D"(%0) {array_attr_funcs = [@referenced_func0, @referenced_func1]} : (tensor<?xi32>) -> tensor<?xi32>
+    %2 = "tf.E"(%1) {dictionary_attr_funcs = {fn1 = @referenced_func2, fn2 = @referenced_func3}} : (tensor<?xi32>) -> tensor<?xi32>
+    return %0 : tensor<?xi32>
+  }
+
+  func @referenced_func0(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %1 = "tf.F"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+
+  func @referenced_func1(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %1 = "tf.G"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+
+  func @referenced_func2(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %1 = "tf.H"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+
+  func @referenced_func3(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    %1 = "tf.I"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+}
+
+

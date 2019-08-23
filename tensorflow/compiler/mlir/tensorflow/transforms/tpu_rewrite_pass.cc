@@ -49,6 +49,38 @@ struct TPURewritePass : public ModulePass<TPURewritePass> {
   void runOnModule() override;
 };
 
+// Recursively visits all attributes of `op` to find any Attribute of type
+// `SymbolRefAttr`.
+llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
+  llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
+
+  llvm::SmallVector<Attribute, 8> worklist;
+  for (auto named_attr : op->getAttrs()) {
+    worklist.push_back(named_attr.second);
+  }
+
+  while (!worklist.empty()) {
+    Attribute attr = worklist.pop_back_val();
+
+    if (SymbolRefAttr symbol_ref_attr = attr.dyn_cast<SymbolRefAttr>()) {
+      // Found a SymbolRefAttr, add it to result list.
+      symbol_ref_attrs.push_back(symbol_ref_attr);
+    } else if (ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>()) {
+      // Found an ArrayAttr, add its nested Attributes to worklist for further
+      // inspection.
+      worklist.append(array_attr.begin(), array_attr.end());
+    } else if (DictionaryAttr dict_attr = attr.dyn_cast<DictionaryAttr>()) {
+      // Found a DictionaryAttr, add its nested value Attributes to worklist for
+      // further inspection.
+      for (NamedAttribute named_attr : dict_attr.getValue()) {
+        worklist.push_back(named_attr.second);
+      }
+    }
+  }
+
+  return symbol_ref_attrs;
+}
+
 // Creates a new self-contained module that contains `entry_func` and all
 // referenced functions in `entry_func`. entry_func is renamed to "main".
 // Return value is serialized text formate of newly-created module.
@@ -71,11 +103,7 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
     func.walk([&](Operation* op) {
-      for (auto attr : op->getAttrs()) {
-        auto symbol_ref_attr = attr.second.dyn_cast_or_null<SymbolRefAttr>();
-        // Skip non symbol ref attributes.
-        if (!symbol_ref_attr) continue;
-
+      for (auto symbol_ref_attr : GetAllSymbolRefAttrs(op)) {
         FuncOp referenced_func =
             module.lookupSymbol<FuncOp>(symbol_ref_attr.getValue());
 
