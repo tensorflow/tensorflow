@@ -751,7 +751,6 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -2487,7 +2486,6 @@ cc_library(
                ":lib_hash_crc32c_accelerate_internal",
                ":lib_proto_parsing",
                "@com_google_absl//absl/memory",
-               "@com_google_absl//absl/types:variant",
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
                "//tensorflow/core/lib/bfloat16",

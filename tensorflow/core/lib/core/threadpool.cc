@@ -17,7 +17,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/types/variant.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
@@ -118,8 +117,8 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   underlying_threadpool_->Schedule(std::move(fn));
 }
 
-int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(
-    const int64 total, const int64 block_size) {
+int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
+    const int64 block_size, const int64 total) {
   if (block_size <= 0 || total <= 1 || total <= block_size ||
       NumThreads() == 1) {
     return 1;
@@ -127,54 +126,13 @@ int ThreadPool::NumShardsUsedByFixedBlockSizeScheduling(
   return (total + block_size - 1) / block_size;
 }
 
-int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
-    const int64 block_size, const int64 total) {
-  return NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
-}
-
-void ThreadPool::ParallelFor(
-    int64 total, SchedulingStrategy strategy,
-    absl::variant<AdaptiveSchedulingParams, FixedBlockSizeSchedulingParams>
-        scheduling_params,
-    const std::function<void(int64, int64)>& fn) {
-  switch (strategy) {
-    case SchedulingStrategy::kUnknown: {
-      // Invalid scheduling strategy. Do nothing.
-      break;
-    }
-    case SchedulingStrategy::kAdaptive: {
-      const auto* params =
-          absl::get_if<AdaptiveSchedulingParams>(&scheduling_params);
-      if (params) {
-        ParallelFor(total, params->cost_per_unit, fn);
-      }
-      break;
-    }
-    case SchedulingStrategy::kFixedBlockSize: {
-      const auto* params =
-          absl::get_if<FixedBlockSizeSchedulingParams>(&scheduling_params);
-      if (params) {
-        ParallelForFixedBlockSizeScheduling(params->block_size, total, fn);
-      }
-      break;
-    }
-  }
-}
-
+// This functionality is similar to parallelFor, except that reasoning about
+// the number of shards used is significantly easier.
 void ThreadPool::TransformRangeConcurrently(
     const int64 block_size, const int64 total,
     const std::function<void(int64, int64)>& fn) {
-  ParallelFor(total, SchedulingStrategy::kFixedBlockSize,
-              FixedBlockSizeSchedulingParams(block_size), fn);
-}
-
-// This functionality is similar to parallelFor, except that reasoning about
-// the number of shards used is significantly easier.
-void ThreadPool::ParallelForFixedBlockSizeScheduling(
-    const int64 block_size, const int64 total,
-    const std::function<void(int64, int64)>& fn) {
   const int num_shards_used =
-      NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
+      NumShardsUsedByTransformRangeConcurrently(block_size, total);
   if (num_shards_used == 1) {
     fn(0, total);
     return;
@@ -208,7 +166,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(
 }
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
-                             const std::function<void(int64, int64)>& fn) {
+                             std::function<void(int64, int64)> fn) {
   CHECK_GE(total, 0);
   CHECK_EQ(total, (int64)(Eigen::Index)total);
   threadpool_device_->parallelFor(
@@ -233,21 +191,6 @@ void ThreadPool::ParallelForWithWorkerId(
                                     int id = CurrentThreadId() + 1;
                                     fn(start, limit, id);
                                   });
-}
-
-void ThreadPool::ParallelForWithWorkerId(
-    int64 total, SchedulingStrategy strategy,
-    absl::variant<AdaptiveSchedulingParams, FixedBlockSizeSchedulingParams>
-        scheduling_params,
-    const std::function<void(int64, int64, int)>& fn) {
-  ParallelFor(total, strategy, scheduling_params,
-              [this, &fn](int64 start, int64 limit) {
-                // We may use the current thread to do some work synchronously.
-                // When calling CurrentThreadId() from outside of the thread
-                // pool, we get -1, so we can shift every id up by 1.
-                int id = CurrentThreadId() + 1;
-                fn(start, limit, id);
-              });
 }
 
 int ThreadPool::NumThreads() const {
