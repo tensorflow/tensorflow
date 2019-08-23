@@ -85,6 +85,20 @@ func @subview_number_of_indices(%v : !linalg.view<?x?xf32>) {
 
 // -----
 
+func @transpose_not_permutation(%v : !linalg.view<?x?xf32>) {
+  // expected-error @+1 {{expected a permutation map}}
+  linalg.transpose %v (i, j) -> (i, i) : !linalg.view<?x?xf32>
+}
+
+// -----
+
+func @transpose_bad_rank(%v : !linalg.view<?x?xf32>) {
+  // expected-error @+1 {{expected a permutation map of same rank as the view}}
+  linalg.transpose %v (i) -> (i) : !linalg.view<?x?xf32>
+}
+
+// -----
+
 func @view_type(%buf: !linalg.buffer<?xf32>, %min: index, %max: index, %step: index) {
   // expected-error @+2 {{expected view type}}
   %r = linalg.range %min:%max:%step : !linalg.range

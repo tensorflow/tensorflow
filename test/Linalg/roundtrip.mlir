@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s | mlir-opt | FileCheck %s
 
-// CHECK: #[[map0:.*]] = (d0, d1, d2) -> (d0, d2, d1)
-// CHECK: #[[map1:.*]] = (d0, d1, d2) -> (d2, d1, d0)
+// CHECK-DAG: #[[map0:.*]] = (d0, d1, d2) -> (d0, d2, d1)
+// CHECK-DAG: #[[map1:.*]] = (d0, d1, d2) -> (d2, d1, d0)
 
 func @range(%arg0: index, %arg1: index, %arg2: index) {
   %0 = linalg.range %arg0:%arg1:%arg2 : !linalg.range
@@ -120,6 +120,13 @@ func @fill_view(%arg0: !linalg.view<?xf32>, %arg1: f32) {
 }
 // CHECK-LABEL: func @fill_view(%{{.*}}: !linalg.view<?xf32>, %{{.*}}: f32) {
 //       CHECK:   linalg.fill(%{{.*}}, %{{.*}}) : !linalg.view<?xf32>, f32
+
+func @transpose(%arg0: !linalg.view<?x?x?xf32>) {
+  %0 = linalg.transpose %arg0 (i, j, k) -> (k, j, i) : !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @transpose
+//       CHECK:   linalg.transpose %{{.*}} ([[i:.*]], [[j:.*]], [[k:.*]]) -> ([[k]], [[j]], [[i]]) : !linalg.view<?x?x?xf32>
 
 func @fill_view3(%arg0: !linalg.view<?x?x?xf32>, %arg1: f32) {
   linalg.fill(%arg0, %arg1) : !linalg.view<?x?x?xf32>, f32
