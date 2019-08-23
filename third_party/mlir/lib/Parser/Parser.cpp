@@ -836,8 +836,10 @@ Type Parser::parseTupleType() {
 
 /// Parse a vector type.
 ///
-///   vector-type ::= `vector` `<` static-dimension-list type `>`
-///   static-dimension-list ::= (decimal-literal `x`)+
+///   vector-type ::= `vector` `<` non-empty-static-dimension-list type `>`
+///   non-empty-static-dimension-list ::= decimal-literal `x`
+///                                       static-dimension-list
+///   static-dimension-list ::= (decimal-literal `x`)*
 ///
 VectorType Parser::parseVectorType() {
   consumeToken(Token::kw_vector);
@@ -868,7 +870,7 @@ VectorType Parser::parseVectorType() {
 ///   dimension-list-ranked ::= (dimension `x`)*
 ///   dimension ::= `?` | decimal-literal
 ///
-/// When `allowDynamic` is not set, this can be also used to parse
+/// When `allowDynamic` is not set, this is used to parse:
 ///
 ///   static-dimension-list ::= (decimal-literal `x`)*
 ParseResult
