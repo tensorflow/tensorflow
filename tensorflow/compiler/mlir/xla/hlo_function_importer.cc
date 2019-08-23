@@ -77,6 +77,11 @@ StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S16, int16)
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S32, int32)
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S64, int64)
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U8, uint8)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U16, uint16)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U32, uint32)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U64, uint64)
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ",
@@ -432,6 +437,15 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
     case PrimitiveType::S32:
       return builder_->getTensorType(array, builder_->getIntegerType(32));
     case PrimitiveType::S64:
+      return builder_->getTensorType(array, builder_->getIntegerType(64));
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    case PrimitiveType::U8:
+      return builder_->getTensorType(array, builder_->getIntegerType(8));
+    case PrimitiveType::U16:
+      return builder_->getTensorType(array, builder_->getIntegerType(16));
+    case PrimitiveType::U32:
+      return builder_->getTensorType(array, builder_->getIntegerType(32));
+    case PrimitiveType::U64:
       return builder_->getTensorType(array, builder_->getIntegerType(64));
     default:
       return tensorflow::errors::Internal(
