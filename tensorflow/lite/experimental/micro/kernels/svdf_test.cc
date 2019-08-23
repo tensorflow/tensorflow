@@ -222,16 +222,6 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
   }
 }
 
-// Temp method until cl/263242167 lands:
-void ResetVariableTensor(float* tensor_data, size_t len) {
-  int v = 0;
-  char* b = reinterpret_cast<char*>(tensor_data);
-  for (size_t i = 0; i < len; i++) {
-    *b = v;
-    b++;
-  }
-}
-
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
