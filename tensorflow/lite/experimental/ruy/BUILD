@@ -13,8 +13,8 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 # 2. Explicitly pass -O3 on mobile configs where just "-c opt" means "optimize for code size".
 #    We would want to only do that when compilation_mode is "opt", but limitations of
 #    the "select" keyword (no nested selects, no AND boolean) seem to make that difficult
-#    at the moment. For debugging purposes, this can be overridded on the command line, e.g.
-#      bazel build -c dbg --copt=-O0 ...
+#    at the moment. For debugging purposes, one needs to manually edit this to remove these
+#    -O3. Otherwise, not even `bazel build --copt=-O0` will override that.
 RUY_COPTS = select({
     "//tensorflow:android_arm64": [
         "-O3",
