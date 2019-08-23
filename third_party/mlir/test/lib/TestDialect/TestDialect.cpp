@@ -54,6 +54,13 @@ static ParseResult parseIsolatedRegionOp(OpAsmParser *parser,
                              /*enableNameShadowing=*/true);
 }
 
+static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
+  *p << "test.isolated_region ";
+  p->printOperand(op.getOperand());
+  p->shadowRegionArgs(op.region(), op.getOperand());
+  p->printRegion(op.region(), /*printEntryBlockArgs=*/false);
+}
+
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
