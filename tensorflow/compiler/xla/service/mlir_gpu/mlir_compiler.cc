@@ -15,21 +15,43 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
 
+#include <memory>
+
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace mlir {
 
+namespace {
+
 using ::mlir::MLIRContext;
 using ::mlir::LLVM::LLVMDialect;
+using ::xla::gpu::GpuExecutable;
+using ::xla::gpu::GpuHloSchedule;
+using ::xla::gpu::GpuVersion;
+using ::xla::gpu::StreamAssignment;
+using ::xla::gpu::ThunkSchedule;
 
-namespace {
+using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::UnknownLoc;
+
 int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
   LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
   llvm::Module& module = dialect->getLLVMModule();
@@ -37,6 +59,7 @@ int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
   module.setDataLayout(gpu::nvptx::kDataLayout);
   return module.getDataLayout().getPointerSize();
 }
+
 }  // namespace
 
 MlirCompiler::MlirCompiler()
@@ -59,10 +82,93 @@ StatusOr<std::unique_ptr<HloModule>> MlirCompiler::RunHloPasses(
   return std::move(module);
 }
 
+namespace {
+
+// TODO(b/137624192): Move this to custom call handling and share.
+absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                        const HloInstruction* operand,
+                                        const ShapeIndex& user_index) {
+  if (user->opcode() == HloOpcode::kCustomCall) {
+    // Share the bias buffer with the parent instruction.
+    if (user->custom_call_target() == xla::gpu::kGemmCallTarget) {
+      if (user->operand_count() == 3 && user->operand(2) == operand) {
+        return true;
+      }
+    }
+    // The operand of cholesky can be shared with the first output.
+    if (user->custom_call_target() == xla::gpu::kCusolverCholeskyCallTarget) {
+      return user_index.size() == 1 && user_index[0] == 0;
+    }
+  }
+  return absl::nullopt;
+}
+
+// TODO(b/137624192): Share this with nvptx backend.
+GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) {
+  int cc_major, cc_minor;
+  const auto& device_description = stream_exec->GetDeviceDescription();
+  if (!device_description.cuda_compute_capability(&cc_major, &cc_minor)) {
+    LOG(WARNING)
+        << "Couldn't get compute capability for device; assuming sm_20.";
+    cc_major = 2;
+    cc_minor = 0;
+  }
+  return std::make_pair(cc_major, cc_minor);
+}
+
+}  //  namespace
+
 StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented("Not yet implemented in MLIR compiler");
+  // Determine the HLO schedule, which is an ordering of HLO instructions. This
+  // is used by buffer assignment to enable buffer reuse, and the same ordering
+  // must also be used to determine the thunk launch schedule.
+  std::unique_ptr<StreamAssignment> stream_assignment =
+      xla::gpu::AssignStreams(*module);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+
+  // Run buffer analysis on the HLO graph. This analysis figures out which
+  // temporary buffers are required to run the computation.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                      BufferAssigner::Run(
+                          module.get(), hlo_schedule->ConsumeHloOrdering(),
+                          BufferSizeBytesFunction(),
+                          /*color_alignment=*/
+                          [](LogicalBuffer::Color) {
+                            return xla::gpu::kXlaAllocatedBufferAlignBytes;
+                          },
+                          /*allocate_buffers_for_constants=*/true,
+                          /*colorer=*/BufferAssigner::DefaultColorer(),
+                          /*must_not_live_out=*/{}, &CanShareBufferHint));
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
+
+  MLIRContext mlir_context;
+  auto mlir_module = ModuleOp::create(UnknownLoc::get(&mlir_context));
+  HloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
+                                 stream_exec->platform(), mlir_module);
+
+  // TODO(b/137624192): Emit function per hlo and turn into ptx string and blob.
+  std::string ptx;
+  std::vector<uint8> cubin;
+
+  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
+      lhlo_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
+      hlo_schedule->ThunkLaunchOrder());
+
+  if (DumpingEnabledForHloModule(*module)) {
+    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+                            thunk_schedule->ToString());
+  }
+
+  // TODO(b/137624192): Add profiling support.
+
+  return static_cast<std::unique_ptr<Executable>>(
+      absl::make_unique<GpuExecutable>(
+          ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
+          std::move(module), std::move(buffer_assignment), nullptr, nullptr));
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompiler::Compile(

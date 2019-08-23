@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
-namespace gpu {
+namespace mlir {
 
 // This class is the top-level API for the HLO --> HLO dialect compiler. It
 // implements the DfsHloVisitor interface and emits HLO computations as MLIR IR
 // functions.
 class HloDialectEmitter : public DfsHloVisitorWithDefault,
-                          private ThunkEmitter::EmissionContext {
+                          private gpu::ThunkEmitter::EmissionContext {
  public:
   HloDialectEmitter(const HloModule& hlo_module,
                     const BufferAssignment& assignment,
@@ -54,29 +54,35 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault,
 
   Status FinishVisit(HloInstruction* root) override;
 
+  // Transfers the ownship of thunk_sequence_ out.
+  std::unique_ptr<gpu::ThunkSequence> ConsumeThunkSequence() {
+    return std::move(thunk_sequence_);
+  }
+
  private:
-  StatusOr<mlir::FuncOp> CreateFunction(const HloInstruction& instr);
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override;
+  StatusOr<::mlir::FuncOp> CreateFunction(const HloInstruction& instr);
+  // Interface required by ThunkEmitter
+  void AddThunkToThunkSequence(std::unique_ptr<gpu::Thunk> thunk) override;
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index) const override;
   int64 ByteSizeOf(const Shape& shape) const override;
   const se::Platform* platform() const override;
 
-  mlir::ModuleOp mlir_module_;
-  mlir::Builder builder_;
-  absl::flat_hash_map<const xla::HloInstruction*, mlir::FuncOp>
+  ::mlir::ModuleOp mlir_module_;
+  ::mlir::Builder builder_;
+  absl::flat_hash_map<const xla::HloInstruction*, ::mlir::FuncOp>
       instruction_to_mlir_func_;
   const BufferAssignment& buffer_assignment_;
   const se::Platform* platform_;
   // Cached pointer size extracted from the mlir module.
   unsigned pointer_size_;
   // The thunk sequence this IrEmitter generates for the input computation.
-  std::unique_ptr<ThunkSequence> thunk_sequence_;
+  std::unique_ptr<gpu::ThunkSequence> thunk_sequence_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloDialectEmitter);
 };
 
-}  // namespace gpu
+}  // namespace mlir
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_HLO_DIALECT_EMITTER_H_
