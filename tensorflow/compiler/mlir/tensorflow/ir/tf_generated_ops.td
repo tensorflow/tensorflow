@@ -3007,6 +3007,31 @@ shape(t) ==> [2, 2, 3]
   let hasFolder = 1;
 }
 
+def TF_ShapeNOp : TF_Op<"ShapeN", [NoSideEffect]> {
+  let summary = "Returns shape of tensors.";
+
+  let description = [{
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$N
+  );
+
+  let results = (outs
+    Variadic<TF_I32OrI64Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes sigmoid of `x` element-wise.";
 

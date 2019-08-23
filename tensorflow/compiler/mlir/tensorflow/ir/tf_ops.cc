@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <string>
 
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -667,30 +670,45 @@ void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
 // ShapeOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ShapeOp op) {
-  auto inputType = op.input()->getType();
-  auto resultType = op.getType().dyn_cast<RankedTensorType>();
-  if (!resultType || resultType.getShape().size() != 1)
-    return op.emitOpError("requires 1D result type");
+namespace {
+// Validates Shape/ShapeN operand and associated result types.
+LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
+                                          Type result_type,
+                                          int variadic_idx = -1) {
+  std::string variadic_idx_str =
+      variadic_idx < 0 ? "" : llvm::formatv(" #{0}", variadic_idx).str();
 
-  auto rankedTensorType = inputType.dyn_cast<RankedTensorType>();
-  if (rankedTensorType) {
+  auto result_ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!result_ranked_type || result_ranked_type.getShape().size() != 1)
+    return op->emitOpError("requires 1D type for result") << variadic_idx_str;
+
+  auto operand_ranked_type = operand_type.dyn_cast<RankedTensorType>();
+  if (operand_ranked_type) {
     // The operand is a ranked tensor.
-    if (resultType.hasStaticShape()) {
-      if ((!rankedTensorType.getShape().empty() &&
-           resultType.getDimSize(0) != rankedTensorType.getShape().size()))
-        return op.emitOpError(
-            "requires dimension size of result to match rank of operand");
-    }
-  } else {
+    if (result_ranked_type.hasStaticShape() &&
+        !operand_ranked_type.getShape().empty() &&
+        result_ranked_type.getDimSize(0) !=
+            operand_ranked_type.getShape().size())
+      return op->emitOpError("requires dimension size of result")
+             << variadic_idx_str << " to match rank of operand"
+             << variadic_idx_str;
+  } else if (result_ranked_type.hasStaticShape()) {
     // The operand is an unranked tensor, verify that the result is dynamic.
-    if (resultType.hasStaticShape())
-      return op.emitOpError("requires dynamic shape result for unranked input");
+    return op->emitOpError("requires dynamic shape result")
+           << variadic_idx_str << " for unranked operand" << variadic_idx_str;
   }
 
-  Type elt = op.getType().cast<ShapedType>().getElementType();
-  if (elt.isInteger(32) || elt.isInteger(64)) return success();
-  return op.emitOpError("requires int32 or int64 return type");
+  Type element_type = result_ranked_type.getElementType();
+  if (!element_type.isInteger(32) && !element_type.isInteger(64))
+    return op->emitOpError("requires int32 or int64 return type for result")
+           << variadic_idx_str;
+
+  return success();
+}
+}  // anonymous namespace
+
+static LogicalResult Verify(ShapeOp op) {
+  return VerifyShapeOperandAndResult(op, op.input()->getType(), op.getType());
 }
 
 OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
@@ -711,6 +729,30 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 
   auto resultType = b.getTensorType({rank}, elementType);
   return b.getDenseElementsAttr(resultType, dimensions);
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeNOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ShapeNOp op) {
+  const uint64_t n_attr = op.N().getZExtValue();
+
+  if (op.getNumOperands() != n_attr)
+    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+                            << op.getNumOperands() << " operand(s)";
+
+  if (op.getNumResults() != n_attr)
+    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+                            << op.getNumResults() << " result(s)";
+
+  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+    auto verification = VerifyShapeOperandAndResult(
+        op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
+    if (failed(verification)) return verification;
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
