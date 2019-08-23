@@ -146,8 +146,9 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }
 }  // namespace
 
-/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
-  return absl::WrapUnique(new ProfilerSession());
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
+    const profiler::ProfilerOptions& options) {
+  return absl::WrapUnique(new ProfilerSession(options));
 }
 
 Status ProfilerSession::Status() {
@@ -188,7 +189,7 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession()
+ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
     : active_(profiler::AcquireProfilerLock()),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
@@ -199,7 +200,7 @@ ProfilerSession::ProfilerSession()
 
   LOG(INFO) << "Profiler session started.";
 
-  CreateProfilers(&profilers_);
+  CreateProfilers(options, &profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {

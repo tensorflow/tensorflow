@@ -316,12 +316,12 @@ class CuptiCallbackHook {
   CUpti_SubscriberHandle subscriber_;
 };
 
-// 'DeviceTracer' is an interface for collecting low-level execution timings
+// 'GpuTracer' is an interface for collecting low-level execution timings
 // of hardware accelerator (e.g. GPU) computation and DMA transfers.
-class DeviceTracer : public profiler::ProfilerInterface {
+class GpuTracer : public profiler::ProfilerInterface {
  public:
-  DeviceTracer();
-  ~DeviceTracer() override;
+  GpuTracer();
+  ~GpuTracer() override;
 
   // ProfilerInterface interface:
   Status Start() override;
@@ -330,6 +330,9 @@ class DeviceTracer : public profiler::ProfilerInterface {
   // StepStatsCollector.  Does not clear any existing stats.
   // It is an error to call 'Collect' while a trace is running.
   Status CollectData(RunMetadata* run_metadata) override;
+  profiler::DeviceType GetDeviceType() override {
+    return profiler::DeviceType::kGpu;
+  }
 
  private:
   std::unique_ptr<CudaEventRecorder> recorder_;
@@ -339,22 +342,21 @@ class DeviceTracer : public profiler::ProfilerInterface {
   bool enabled_ GUARDED_BY(mu_);
 };
 
-DeviceTracer::DeviceTracer()
-    : recorder_(new CudaEventRecorder()), enabled_(false) {
-  VLOG(1) << "DeviceTracer created.";
+GpuTracer::GpuTracer() : recorder_(new CudaEventRecorder()), enabled_(false) {
+  VLOG(1) << "GpuTracer created.";
 }
 
-DeviceTracer::~DeviceTracer() {
+GpuTracer::~GpuTracer() {
   // Unregister the CUPTI callbacks if needed to prevent them from accessing
   // freed memory.
   Stop().IgnoreError();
 }
 
-Status DeviceTracer::Start() {
-  VLOG(1) << "DeviceTracer::Start";
+Status GpuTracer::Start() {
+  VLOG(1) << "GpuTracer::Start";
   mutex_lock l(mu_);
   if (enabled_) {
-    return errors::FailedPrecondition("DeviceTracer is already enabled.");
+    return errors::FailedPrecondition("GpuTracer is already enabled.");
   }
   cupti_hook_.reset(new CuptiCallbackHook());
   TF_RETURN_IF_ERROR(cupti_hook_->Enable(recorder_.get()));
@@ -365,8 +367,8 @@ Status DeviceTracer::Start() {
   return Status::OK();
 }
 
-Status DeviceTracer::Stop() {
-  VLOG(1) << "DeviceTracer::Stop";
+Status GpuTracer::Stop() {
+  VLOG(1) << "GpuTracer::Stop";
   mutex_lock l(mu_);
   if (!enabled_) {
     return Status::OK();
@@ -638,10 +640,10 @@ class CudaEventCollector {
   int64 end_walltime_us_;
 };
 
-Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
+Status GpuTracer::CollectData(RunMetadata* run_metadata) {
   mutex_lock l(mu_);
   if (enabled_) {
-    return errors::FailedPrecondition("DeviceTracer is still enabled.");
+    return errors::FailedPrecondition("GpuTracer is still enabled.");
   }
 
   StepStatsCollector step_stats_collector(run_metadata->mutable_step_stats());
@@ -653,13 +655,17 @@ Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer() {
+std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
+    const profiler::ProfilerOptions& options) {
   auto status = cuInit(0);
   if (status != CUDA_SUCCESS) {
     LogIfError(ToStatus(status));
     return nullptr;
   }
-  return absl::make_unique<DeviceTracer>();
+  if (options.device_type != profiler::DeviceType::kGpu &&
+      options.device_type != profiler::DeviceType::kUnspecified)
+    return nullptr;
+  return absl::make_unique<GpuTracer>();
 }
 
 auto register_device_tracer_factory = [] {
