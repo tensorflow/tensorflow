@@ -979,6 +979,25 @@ def TFL_InputOp : Op<TFL_Dialect, "pseudo_input", [SameOperandsAndResultType]> {
   let results = (outs AnyTensor:$output);
 }
 
+def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect]> {
+  let summary = "L2 Normalize Operator";
+
+  let description = [{
+    L2Normalization Op
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, TFL_QUI8, TFL_QI8, I8]>:$input,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs TensorOf<[F32, TFL_QUI8, TFL_QI8, I8]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "L2NormOptions";
+}
+
 def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Leaky Relu operator";
 

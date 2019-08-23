@@ -255,3 +255,53 @@ func @PadStridedSliceNewAxisMask(%arg0: tensor<2x3xf32>) -> tensor<1x2x3x1xf32> 
   // CHECK: %1 = "tfl.reshape"(%0) : (tensor<2x3xf32>) -> tensor<1x2x3x1xf32>
   // CHECK: %2 = "tfl.strided_slice"(%1, %cst, %cst, %cst_0) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
 }
+
+// CHECK-LABEL: @L2NormalizePattern
+func @L2NormalizePattern(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %cst = constant dense<[0]> : tensor<1xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2xf32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.mul"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  return %3: tensor<2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.l2_normalization"([[INPUT:%.*]]) {fused_activation_function = "NONE"} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @L2NormalizePattern1
+func @L2NormalizePattern1(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %cst = constant dense<[0]> : tensor<1xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2xf32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.sqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.div"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  return %3: tensor<2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.l2_normalization"([[INPUT:%.*]]) {fused_activation_function = "NONE"} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @InvalidL2NormalizePattern
+// Div and square ops must take the same argument to be eligible.
+func @InvalidL2NormalizePattern(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  %cst = constant dense<[0]> : tensor<1xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2xf32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.sqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.div"(%arg1, %2) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  return %3: tensor<2xf32>
+  // CHECK: %3 = "tfl.div"([[INPUT:%.*]], %2) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK: return %3
+}
+
+// CHECK-LABEL: @InvalidL2NormalizePatternMorethan1Dimension
+// Input has higher rank, it should be limited to 1D only.
+func @InvalidL2NormalizePatternMorethan1Dimension(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<[0]> : tensor<1xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2x2xf32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.sqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.div"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %3: tensor<2x2xf32>
+  // CHECK: %3 = "tfl.div"([[INPUT:%.*]], %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  // CHECK: return %3
+}
