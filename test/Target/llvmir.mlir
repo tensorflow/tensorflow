@@ -836,7 +836,7 @@ func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias = true}) {
   llvm.return
 }
 
-// CHECK-LABEL: @llvm_varargs(...) 
+// CHECK-LABEL: @llvm_varargs(...)
 func @llvm_varargs()
   attributes {std.varargs = true}
 
@@ -911,4 +911,11 @@ func @alloca(%size : !llvm.i64) {
   // CHECK-NEXT: alloca {{.*}} align 8
   llvm.alloca %size x !llvm.i32 {alignment = 8} : (!llvm.i64) -> (!llvm<"i32*">)
   llvm.return
+}
+
+// CHECK-LABEL: @constants
+func @constants() -> !llvm<"<4 x float>"> {
+  // CHECK: ret <4 x float> <float 4.2{{0*}}e+01, float 0.{{0*}}e+00, float 0.{{0*}}e+00, float 0.{{0*}}e+00>
+  %0 = llvm.constant(sparse<[[0]], [4.2e+01]> : vector<4xf32>) : !llvm<"<4 x float>">
+  llvm.return %0 : !llvm<"<4 x float>">
 }
