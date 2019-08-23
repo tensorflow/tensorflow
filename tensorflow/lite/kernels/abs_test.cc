@@ -41,14 +41,13 @@ class BaseAbsOpModel : public SingleOpModel {
   int output_;
 };
 
-template<typename T>
+template <typename T>
 class AbsOpModel : public BaseAbsOpModel {
  public:
   using BaseAbsOpModel::BaseAbsOpModel;
 
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
-
 
 class QuantizedAbsOpModel : public BaseAbsOpModel {
  public:
@@ -70,27 +69,58 @@ void TestQuantizeAbsOp() {
   m.QuantizeAndPopulate<integer_dtype>(m.input(), {-0.8, 0.2, -0.9, 0.7});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
-              ElementsAreArray(ArrayFloatNear({0.8, 0.2, 0.9, 0.7},
-                                              kQuantizedTolerance)));
+              ElementsAreArray(
+                  ArrayFloatNear({0.8, 0.2, 0.9, 0.7}, kQuantizedTolerance)));
 }
-
 
 TEST(AbsOpTest, FloatTest) {
   AbsOpModel<float> m({TensorType_FLOAT32, {1, 2, 4, 1}});
-  m.PopulateTensor<float>(m.input(), {0.f, -6.2f, 2.f, 4.f,
-                                      3.f, -2.f, 10.f, 1.f,});
+  m.PopulateTensor<float>(m.input(), {
+                                         0.f,
+                                         -6.2f,
+                                         2.f,
+                                         4.f,
+                                         3.f,
+                                         -2.f,
+                                         10.f,
+                                         1.f,
+                                     });
   m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.f, 6.2f, 2.f, 4.f,
-                                               3.f, 2.f, 10.f, 1.f,}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.f,
+                                 6.2f,
+                                 2.f,
+                                 4.f,
+                                 3.f,
+                                 2.f,
+                                 10.f,
+                                 1.f,
+                             }));
 }
 
 TEST(AbsOpTest, Int32Test) {
   AbsOpModel<int32_t> m({TensorType_INT32, {1, 2, 4, 1}});
-  m.PopulateTensor<int32_t>(m.input(), {100, -7, -1024, 23,
-                                        -38, 902, -849, 3924,});
+  m.PopulateTensor<int32_t>(m.input(), {
+                                           100,
+                                           -7,
+                                           -1024,
+                                           23,
+                                           -38,
+                                           902,
+                                           -849,
+                                           3924,
+                                       });
   m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({100, 7, 1024, 23,
-                                               38, 902, 849, 3924,}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 100,
+                                 7,
+                                 1024,
+                                 23,
+                                 38,
+                                 902,
+                                 849,
+                                 3924,
+                             }));
 }
 
 TEST(AbsOpTest, QuantizedUInt8Test) {
@@ -100,7 +130,6 @@ TEST(AbsOpTest, QuantizedUInt8Test) {
 TEST(AbsOpTest, QuantizedInt8Test) {
   TestQuantizeAbsOp<TensorType_INT8, int8_t>();
 }
-
 
 }  // namespace
 }  // namespace tflite

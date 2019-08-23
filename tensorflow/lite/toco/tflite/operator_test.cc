@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/operator.h"
 
-#include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/lite/toco/model.h"
@@ -167,29 +167,25 @@ TEST_F(OperatorTest, BuiltinAbs) {
   Model float_model;
   Array& input_float_array = float_model.GetOrCreateArray(abs_op.inputs[0]);
   input_float_array.data_type = ArrayDataType::kFloat;
-  OperatorSignature float_signature = {.op = &abs_op,
-                                       .model = &float_model};
+  OperatorSignature float_signature = {.op = &abs_op, .model = &float_model};
   EXPECT_EQ(op->GetVersion(float_signature), 1);
 
   Model int32_model;
   Array& input_int32_array = int32_model.GetOrCreateArray(abs_op.inputs[0]);
   input_int32_array.data_type = ArrayDataType::kInt32;
-  OperatorSignature int32_signature = {.op = &abs_op,
-                                       .model = &int32_model};
+  OperatorSignature int32_signature = {.op = &abs_op, .model = &int32_model};
   EXPECT_EQ(op->GetVersion(int32_signature), 2);
 
   Model int8_model;
   Array& input_int8_array = int8_model.GetOrCreateArray(abs_op.inputs[0]);
   input_int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.op = &abs_op,
-                                      .model = &int8_model};
+  OperatorSignature int8_signature = {.op = &abs_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 
   Model uint8_model;
   Array& input_uint8_array = uint8_model.GetOrCreateArray(abs_op.inputs[0]);
   input_uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.op = &abs_op,
-                                       .model = &uint8_model};
+  OperatorSignature uint8_signature = {.op = &abs_op, .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 2);
 }
 

@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/abs.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/abs.h"
 #include "tensorflow/lite/kernels/internal/reference/abs.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -61,7 +61,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     double real_multiplier = static_cast<double>(input->params.scale) /
-                             static_cast<double>(output->params.scale) ;
+                             static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
   }
@@ -71,10 +71,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node,
-                     const OpData* data,
-                     const TfLiteTensor* input, TfLiteTensor* output) {
-#define TF_LITE_ABS(type, opname, data_type)                             \
-  type::opname(GetTensorShape(input), GetTensorData<data_type>(input),   \
+                     const OpData* data, const TfLiteTensor* input,
+                     TfLiteTensor* output) {
+#define TF_LITE_ABS(type, opname, data_type)                           \
+  type::opname(GetTensorShape(input), GetTensorData<data_type>(input), \
                GetTensorShape(output), GetTensorData<data_type>(output))
 
   if (output->type == kTfLiteInt32) {
@@ -93,8 +93,8 @@ TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                           const OpData* data,
-                           const TfLiteTensor* input, TfLiteTensor* output) {
+                           const OpData* data, const TfLiteTensor* input,
+                           TfLiteTensor* output) {
   if (input->type == output->type &&
       (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8)) {
     tflite::AbsParams op_params;
@@ -102,9 +102,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     op_params.output_offset = output->params.zero_point;
     op_params.output_multiplier = data->output_multiplier;
     op_params.output_shift = data->output_shift;
-#define TF_LITE_ABS(type, opname, dtype)                            \
-  type::opname(op_params,                                           \
-               GetTensorShape(input), GetTensorData<dtype>(input),  \
+#define TF_LITE_ABS(type, opname, dtype)                                      \
+  type::opname(op_params, GetTensorShape(input), GetTensorData<dtype>(input), \
                GetTensorShape(output), GetTensorData<dtype>(output))
     if (input->type == kTfLiteInt8) {
       TF_LITE_ABS(reference_integer_ops, Abs, int8_t);
@@ -129,13 +128,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
-    TF_LITE_ENSURE_OK(
-        context, EvalAbs<kernel_type>(context, node, data, input,
-                                      output));
+    TF_LITE_ENSURE_OK(context,
+                      EvalAbs<kernel_type>(context, node, data, input, output));
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_OK(
-        context, EvalQuantized<kernel_type>(context, node, data, input,
-                                            output));
+    TF_LITE_ENSURE_OK(context, EvalQuantized<kernel_type>(context, node, data,
+                                                          input, output));
   } else {
     context->ReportError(context,
                          "Abs only supports FLOAT32, INT32 and quantized UINT8,"
@@ -155,9 +152,7 @@ TfLiteRegistration* Register_ABS_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_ABS() {
-  return Register_ABS_REF();
-}
+TfLiteRegistration* Register_ABS() { return Register_ABS_REF(); }
 
 }  // namespace builtin
 }  // namespace ops
