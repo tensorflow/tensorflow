@@ -245,18 +245,14 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     base view. This allows defining a subregion within the underlying buffer to
     operate on only a subset of the buffer.
 
-    A "linalg.slice" op takes a base view and a variadic number of indexings and
-    produces a linalg.view of the same elemental type as the buffer. An indexing
-    is either:
+    A "linalg.slice" op takes a view and a variadic number of indexings and
+    produces a linalg.view of the same elemental type. An indexing is either:
       1. a linalg.range, in which case it does not reduce the rank of the parent
          view.
       2. an index, in which case it reduces the rank of the parent view by one.
 
-    The parent view must be a base view (i.e. either a function argument or has
-    been produced by a linalg.view op). In other words, chains of
-    linalg.slice operations cannot be constructed in the IR. This defines away
-    problems related to keeping track of which dimensions of the base view have
-    been rank-reduced.
+    If an indexing extends past the size of the view, the slice operation
+    automatically truncates it to be within the bounds.
 
     Examples:
 
@@ -331,13 +327,19 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Results<(outs View)> {
   let summary = "subview operation";
   let description = [{
-    The "linalg.subview" operation takes a linalg.view, a list of indices and
-    returns a new linalg.view of the same type that is contained within the
-    operand view.
-    This operation is equivalent to a non-rank-reducing slice operation. The
-    main difference is the operands are all of type `index` and no intermediate
-    linalg.range operations are required. A "linalg.subview" is thus a
-    specialized linalg.slice with a higher level of abstraction.
+    The "linalg.subview" op produces a linalg.view which is a subview of a given
+    base view. This allows defining a subregion within the underlying buffer.
+
+    The "linalg.subview" operation takes a base view, a list of indices and
+    returns a new linalg.view of the same type that is contained within the 
+    view. This operation is equivalent to a non-rank-reducing slice operation. 
+    The main difference is the operands are all of type `index` and no 
+    intermediate linalg.range operations are required. A "linalg.subview" is 
+    thus a specialized linalg.slice with a higher level of abstraction.
+
+    Similary to linalg.slice, if a range extends past the size of the base view,
+    the slice operation automatically truncates it to be within the bounds of
+    the view.
 
     Example:
 
