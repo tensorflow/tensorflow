@@ -2977,7 +2977,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
