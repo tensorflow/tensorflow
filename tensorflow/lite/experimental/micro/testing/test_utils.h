@@ -72,7 +72,7 @@ inline float ScaleFromMinMax(const float min, const float max) {
 template <typename T>
 inline int ZeroPointFromMinMax(const float min, const float max) {
   return static_cast<int>(std::numeric_limits<T>::min()) +
-         static_cast<int>(-min / ScaleFromMinMax<T>(min, max));
+         static_cast<int>(-min / ScaleFromMinMax<T>(min, max) + 0.5f);
 }
 
 // Converts a float value into an unsigned eight-bit quantized value.
