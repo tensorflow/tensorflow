@@ -172,8 +172,7 @@ class DefaultTensorTie : public TensorTie {
     }
     switch (d.object_def.object_type) {
       case ObjectType::CPU_MEMORY: {
-        size_t bytes_size =
-            d.dimensions.product() * SizeOf(d.object_def.data_type);
+        size_t bytes_size = NumElements(d) * SizeOf(d.object_def.data_type);
         cpu_memory_.resize(bytes_size);
         external_obj_ = CpuMemory{cpu_memory_.data(), cpu_memory_.size()};
         break;
