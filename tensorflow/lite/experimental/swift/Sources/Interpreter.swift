@@ -17,32 +17,36 @@ import TensorFlowLiteC
 
 /// A TensorFlow Lite interpreter that performs inference from a given model.
 public final class Interpreter {
-  /// `TfLiteInterpreter` C pointer type represented as an `UnsafePointer<TFL_Interpreter>`.
-  private typealias CInterpreter = OpaquePointer
+  /// The configuration options for the `Interpreter`.
+  public let options: Options?
 
-  /// Total number of input tensors associated with the model.
+  /// The total number of input tensors associated with the model.
   public var inputTensorCount: Int {
     return Int(TfLiteInterpreterGetInputTensorCount(cInterpreter))
   }
 
-  /// Total number of output tensors associated with the model.
+  /// The total number of output tensors associated with the model.
   public var outputTensorCount: Int {
     return Int(TfLiteInterpreterGetOutputTensorCount(cInterpreter))
   }
 
-  /// Underlying `TfLiteInterpreter` C pointer.
+  /// The `TfLiteInterpreter` C pointer type represented as an `UnsafePointer<TfLiteInterpreter>`.
+  private typealias CInterpreter = OpaquePointer
+
+  /// The underlying `TfLiteInterpreter` C pointer.
   private var cInterpreter: CInterpreter?
 
-  /// Creates a new model interpreter instance.
+  /// Creates a new instance with the given values.
   ///
   /// - Parameters:
   ///   - modelPath: Local file path to a TensorFlow Lite model.
-  ///   - options: Custom configurations for the interpreter. Default is `nil` indicating that the
-  ///       interpreter will determine the configuration options.
+  ///   - options: Custom configuration options for the interpreter. Default is `nil` indicating
+  ///       that the interpreter will determine the configuration options.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
-  public init(modelPath: String, options: InterpreterOptions? = nil) throws {
+  public init(modelPath: String, options: Options? = nil) throws {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }
 
+    self.options = options
     let cInterpreterOptions: OpaquePointer? = try options.map { options in
       guard let cOptions = TfLiteInterpreterOptionsCreate() else {
         throw InterpreterError.failedToCreateInterpreter
@@ -105,14 +109,14 @@ public final class Interpreter {
     else {
       throw InterpreterError.allocateTensorsRequired
     }
-    guard let dataType = TensorDataType(type: TfLiteTensorType(cTensor)) else {
+    guard let dataType = Tensor.DataType(type: TfLiteTensorType(cTensor)) else {
       throw InterpreterError.invalidTensorDataType
     }
 
     let name = String(cString: nameCString)
     let rank = TfLiteTensorNumDims(cTensor)
     let dimensions = (0..<rank).map { Int(TfLiteTensorDim(cTensor, $0)) }
-    let shape = TensorShape(dimensions)
+    let shape = Tensor.Shape(dimensions)
     let byteCount = TfLiteTensorByteSize(cTensor)
     let data = Data(bytes: bytes, count: byteCount)
     let cQuantizationParams = TfLiteTensorQuantizationParams(cTensor)
@@ -151,14 +155,14 @@ public final class Interpreter {
     else {
       throw InterpreterError.invokeInterpreterRequired
     }
-    guard let dataType = TensorDataType(type: TfLiteTensorType(cTensor)) else {
+    guard let dataType = Tensor.DataType(type: TfLiteTensorType(cTensor)) else {
       throw InterpreterError.invalidTensorDataType
     }
 
     let name = String(cString: nameCString)
     let rank = TfLiteTensorNumDims(cTensor)
     let dimensions = (0..<rank).map { Int(TfLiteTensorDim(cTensor, $0)) }
-    let shape = TensorShape(dimensions)
+    let shape = Tensor.Shape(dimensions)
     let byteCount = TfLiteTensorByteSize(cTensor)
     let data = Data(bytes: bytes, count: byteCount)
     let cQuantizationParams = TfLiteTensorQuantizationParams(cTensor)
@@ -187,7 +191,7 @@ public final class Interpreter {
   ///   - index: The index for the input tensor.
   ///   - shape: The shape that the input tensor should be resized to.
   /// - Throws: An error if the input tensor at the given index could not be resized.
-  public func resizeInput(at index: Int, to shape: TensorShape) throws {
+  public func resizeInput(at index: Int, to shape: Tensor.Shape) throws {
     let maxIndex = inputTensorCount - 1
     guard case 0...maxIndex = index else {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
@@ -237,7 +241,7 @@ public final class Interpreter {
     return try input(at: index)
   }
 
-  /// Allocates memory for all input tensors based on their `TensorShape`s.
+  /// Allocates memory for all input tensors based on their `Tensor.Shape`s.
   ///
   /// - Note: This is a relatively expensive operation and should only be called after creating the
   ///     interpreter and/or resizing any input tensors.
@@ -249,7 +253,17 @@ public final class Interpreter {
   }
 }
 
-// MARK: - Extensions
+extension Interpreter {
+  /// Options for configuring the `Interpreter`.
+  public struct Options: Equatable, Hashable {
+    /// The maximum number of CPU threads that the interpreter should run on. Default is `nil`
+    /// indicating that the `Interpreter` will decide the number of threads to use.
+    public var threadCount: Int? = nil
+
+    /// Creates a new instance with the default values.
+    public init() {}
+  }
+}
 
 extension String {
   /// Returns a new `String` initialized by using the given format C array as a template into which

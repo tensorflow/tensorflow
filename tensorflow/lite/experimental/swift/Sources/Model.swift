@@ -14,15 +14,15 @@
 
 import TensorFlowLiteC
 
-/// A TensorFlow Lite model used by the 'Interpreter` to perform inference.
+/// A TensorFlow Lite model used by the `Interpreter` to perform inference.
 final class Model {
-  /// `TfLiteModel` C pointer type represented as an `UnsafePointer<TfLiteModel>`.
+  /// The `TfLiteModel` C pointer type represented as an `UnsafePointer<TfLiteModel>`.
   typealias CModel = OpaquePointer
 
-  /// Underlying `TfLiteModel` C pointer.
+  /// The underlying `TfLiteModel` C pointer.
   let cModel: CModel?
 
-  /// Creates a new model instance.
+  /// Creates a new instance with the given `filePath`.
   ///
   /// - Precondition: Initialization can fail if the given `filePath` is invalid.
   /// - Parameters:
