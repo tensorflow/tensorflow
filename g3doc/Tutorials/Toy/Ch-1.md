@@ -5,7 +5,7 @@ MLIR. The goal of this tutorial is to introduce the concepts of MLIR, and
 especially how *dialects* can help easily support language specific constructs
 and transformations, while still offering an easy path to lower to LLVM or other
 codegen infrastructure. This tutorial is based on the model of the
-[LLVM Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/LangImpl01.html).
+[LLVM Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/index.html).
 
 This tutorial is divided in the following chapters:
 
@@ -28,14 +28,14 @@ This tutorial is divided in the following chapters:
 ## The Language
 
 This tutorial will be illustrated with a toy language that we’ll call “Toy”
-(naming is hard...). Toy is an array-based language that allows you to define
+(naming is hard...). Toy is a tensor-based language that allows you to define
 functions, some math computation, and print results.
 
-Because we want to keep things simple, the codegen will be limited to arrays of
-rank <= 2 and the only datatype in Toy is a 64-bit floating point type (aka
+Given that we want to keep things simple, the codegen will be limited to tensors
+of rank <= 2 and the only datatype in Toy is a 64-bit floating point type (aka
 ‘double’ in C parlance). As such, all values are implicitly double precision,
-Values are immutable: every operation returns a newly allocated value, and
-deallocation is automatically managed. But enough with the long description,
+`Values` are immutable (i.e. every operation returns a newly allocated value),
+and deallocation is automatically managed. But enough with the long description,
 nothing is better than walking through an example to get a better understanding:
 
 FIXME: update/modify matrix multiplication to use @ instead of *
@@ -45,9 +45,11 @@ def main() {
   # Define a variable `a` with shape <2, 3>, initialized with the literal value.
   # The shape is inferred from the supplied literal.
   var a = [[1, 2, 3], [4, 5, 6]];
-  # b is identical to a, the literal array is implicitly reshaped: defining new
-  # variables is the way to reshape arrays (element count must match).
+
+  # b is identical to a, the literal tensor is implicitly reshaped: defining new
+  # variables is the way to reshape tensors (element count must match).
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
+
   # transpose() and print() are the only builtin, the following will transpose
   # b and perform a matrix multiplication before printing the result.
   print(a * transpose(b));
@@ -55,14 +57,14 @@ def main() {
 ```
 
 Type checking is statically performed through type inference, the language only
-requires type declarations to specify array shapes when needed. Function are
-generic: their parameters are unranked (in other word we know these are arrays
+requires type declarations to specify tensor shapes when needed. Function are
+generic: their parameters are unranked (in other word we know these are tensors
 but we don't know how many dimensions or the size of the dimensions). They are
 specialized for every newly discovered signature at call sites. Let's revisit
 the previous example by adding a user-defined function:
 
 ```Toy {.toy}
-# User defined generic function that operates on unknown shaped arguments
+# User defined generic function that operates on unknown shaped arguments.
 def multiply_transpose(a, b) {
   return a * transpose(b);
 }
@@ -71,15 +73,19 @@ def main() {
   # Define a variable `a` with shape <2, 3>, initialized with the literal value.
   var a = [[1, 2, 3], [4, 5, 6]];
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
+
   # This call will specialize `multiply_transpose` with <2, 3> for both
   # arguments and deduce a return type of <2, 2> in initialization of `c`.
   var c = multiply_transpose(a, b);
+
   # A second call to `multiply_transpose` with <2, 3> for both arguments will
   # reuse the previously specialized and inferred version and return `<2, 2>`
   var d = multiply_transpose(b, a);
+
   # A new call with `<2, 2>` for both dimension will trigger another
   # specialization of `multiply_transpose`.
   var e = multiply_transpose(c, d);
+
   # Finally, calling into `multiply_transpose` with incompatible shape will
   # trigger a shape inference error.
   var e = multiply_transpose(transpose(a), c);
@@ -144,6 +150,6 @@ The code for the lexer is fairly straightforward, it is all in a single header:
 `examples/toy/Ch1/include/toy/Parser.h`, it is a recursive descent parser. If
 you are not familiar with such Lexer/Parser, these are very similar to the LLVM
 Kaleidoscope equivalent that are detailed in the first two chapters of the
-[Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/LangImpl02.html#the-abstract-syntax-tree-ast).
+[Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl02.html).
 
 The [next chapter](Ch-2.md) will demonstrate how to convert this AST into MLIR.
