@@ -130,9 +130,13 @@ Status InferenceContext::InitFromGraph(const CreateInferenceInfo& create_info,
                                        Environment* env) {
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
-  if (env->device().vendor() == Vendor::MALI) {
+  auto vendor = env->device().vendor();
+  if (vendor == Vendor::MALI) {
     need_flush_ = true;
     need_manual_release_ = true;
+  }
+  if (vendor == Vendor::POWERVR) {
+    need_flush_ = true;
   }
   CopyInAndOutIds(graph);
   CreationContext creation_context;

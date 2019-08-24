@@ -230,8 +230,8 @@ bool IsConvPowerVRSupported(const OperationDef& definition,
                             const Convolution2DAttributes& attr) {
   return attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
          attr.strides == HW(1, 1) && attr.dilations == HW(1, 1) &&
-         attr.padding.prepended == HW(1, 1) &&
-         attr.padding.appended == HW(1, 1) &&
+         attr.padding.prepended == HW(0, 0) &&
+         attr.padding.appended == HW(0, 0) &&
          definition.precision == CalculationsPrecision::F32;
 }
 

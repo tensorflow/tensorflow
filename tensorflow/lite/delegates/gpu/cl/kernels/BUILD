@@ -1164,6 +1164,7 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_buffer_test",
         "conv_constants_test",
+        "conv_powervr_test",
         "conv_texture_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_test",

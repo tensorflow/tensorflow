@@ -88,8 +88,9 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                               ? sizeof(float4)
                               : sizeof(half4);
 
+  const int dst_depth_aligned = AlignByN(dst_depth, block_size_.z);
   const int elements_count =
-      weights.shape.h * weights.shape.w * src_depth * dst_depth * 4;
+      weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
   if (definition_.GetDataType() == DataType::FLOAT32) {
     std::vector<float4> gpu_data(elements_count);
