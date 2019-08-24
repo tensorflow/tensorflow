@@ -123,8 +123,8 @@ if tf.__version__.startswith('1'):
       'tf.contrib.util': ['loader'],
   }
 else:
-  PRIVATE_MAP = {}
-  DO_NOT_DESCEND_MAP = {'tf': ['python']}
+  PRIVATE_MAP = {'tf': ['python', 'core', 'compiler', 'examples', 'tools']}
+  DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
     ## TensorFlow 2.0 RC
 
