@@ -38,7 +38,8 @@ template <typename T>
 void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
                      TfLiteTensor* output_tensor,
                      std::initializer_list<T> expected_output,
-                     std::initializer_list<int> expected_dims) {
+                     std::initializer_list<int> expected_dims,
+                     bool expect_failure) {
   TfLiteContext context;
   TfLiteTensor tensors[3];
   TfLiteNode node;
@@ -85,8 +86,7 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  if (expected_output.size() == 0) {
+  if (expect_failure) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
                             registration->invoke(&context, &node));
     return;
@@ -116,7 +116,8 @@ void TestReshape(std::initializer_list<int> input_dims_data,
                  std::initializer_list<int32_t> shape_data,
                  int* output_dims_data, uint8_t* output_data_raw,
                  std::initializer_list<T> expected_output,
-                 std::initializer_list<int> expected_dims) {
+                 std::initializer_list<int> expected_dims,
+                 bool expect_failure = false) {
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   TfLiteTensor input_tensor = CreateTensor<T, tensor_input_type>(
@@ -126,13 +127,13 @@ void TestReshape(std::initializer_list<int> input_dims_data,
       output_data, output_dims, "input_tensor");
   // Reshape param is passed as op's param.
   TestReshapeImpl<T>(&input_tensor, nullptr, &output_tensor, expected_output,
-                     expected_dims);
+                     expected_dims, expect_failure);
   // Reshape param is passed as a tensor.
   TfLiteIntArray* shape_dims = IntArrayFromInitializer(shape_dims_data);
   auto shape_tensor = CreateTensor<int32_t, kTfLiteInt32>(
       shape_data, shape_dims, "shape_tensor");
   TestReshapeImpl<T>(&input_tensor, &shape_tensor, &output_tensor,
-                     expected_output, expected_dims);
+                     expected_output, expected_dims, expect_failure);
 }
 }  // namespace
 }  // namespace testing
@@ -155,7 +156,8 @@ TF_LITE_MICRO_TEST(MismatchedDimensions) {
                {2, 1},           // shape_data
                output_dims,      // output_dims
                output_data, {},  // expected_output
-               {}                // expected_dims
+               {},               // expected_dims
+               true              // expect failure
   );
 }
 
@@ -183,7 +185,8 @@ TF_LITE_MICRO_TEST(TooManySpecialDimensions) {
                {-1, -1, 2, 4},   // shape_data
                output_dims,      // output_dims
                output_data, {},  // expected_output
-               {}                // expected_dims
+               {},               // expected_dims
+               true              // expect failure
   );
 }
 
@@ -205,7 +208,8 @@ TF_LITE_MICRO_TEST(InvalidShape) {
                                           nullptr,         // shape_tensor
                                           &output_tensor,  // output_tensor
                                           {},              // expected_output
-                                          {}               // expected_dims
+                                          {},              // expected_dims
+                                          true             // expect failure
   );
 }
 
@@ -271,13 +275,15 @@ TF_LITE_MICRO_TEST(LegacyScalarOutput) {
                                           &shape_tensor,   // shape_tensor
                                           &output_tensor,  // output_tensor
                                           {},              // expected_output
-                                          {}               // expected_dims
+                                          {},              // expected_dims
+                                          true             // expect failure
   );
   tflite::testing::TestReshapeImpl<float>(&input_tensor,   // input_tensor
                                           nullptr,         // shape_tensor
                                           &output_tensor,  // output_tensor
                                           {3},             // expected_output
-                                          {}               // expected_dims
+                                          {},              // expected_dims
+                                          false            // expect failure
   );
 }
 
