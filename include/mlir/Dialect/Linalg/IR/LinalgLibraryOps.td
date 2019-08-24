@@ -173,8 +173,8 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
     enforced at the moment.
   }];
   let arguments = (ins
-    View,
-    View,
+    View:$input,
+    View:$output,
     OptionalAttr<AffineMapAttr>:$inputPermutation,
     OptionalAttr<AffineMapAttr>:$outputPermutation);
   // TODO(ntv) this should go away once the usage of OptionalAttr triggers

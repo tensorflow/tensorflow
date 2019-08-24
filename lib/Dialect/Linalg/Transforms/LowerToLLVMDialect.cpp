@@ -782,23 +782,72 @@ public:
     if (!f)
       return matchFailure();
 
-    if (std::is_same<LinalgOp, CopyOp>::value) {
-      auto copyOp = cast<CopyOp>(op);
-
-      // Ensure permutations are identity.
-      // TODO(ntv): insert a transpose op that captures the permutations and
-      // remove this.
-      auto inputPerm = copyOp.inputPermutation();
-      if (inputPerm.hasValue() && !inputPerm->isIdentity())
-        return matchFailure();
-      auto outputPerm = copyOp.outputPermutation();
-      if (outputPerm.hasValue() && !outputPerm->isIdentity())
-        return matchFailure();
-    }
     auto fAttr = rewriter.getSymbolRefAttr(f);
     auto named = rewriter.getNamedAttr("callee", fAttr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
                                               ArrayRef<NamedAttribute>{named});
+    return matchSuccess();
+  }
+};
+
+/// Conversion pattern specialization for CopyOp. This kicks in when both input
+/// and output permutations are left unspecified or are the identity.
+template <> class LinalgOpConversion<CopyOp> : public LLVMOpLowering {
+public:
+  explicit LinalgOpConversion(MLIRContext *context,
+                              LinalgTypeConverter &lowering_)
+      : LLVMOpLowering(CopyOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto copyOp = cast<CopyOp>(op);
+    auto inputPerm = copyOp.inputPermutation();
+    if (inputPerm.hasValue() && !inputPerm->isIdentity())
+      return matchFailure();
+    auto outputPerm = copyOp.outputPermutation();
+    if (outputPerm.hasValue() && !outputPerm->isIdentity())
+      return matchFailure();
+
+    auto f = getLLVMLibraryCallDeclaration<CopyOp>(op, lowering, rewriter);
+    if (!f)
+      return matchFailure();
+
+    auto fAttr = rewriter.getSymbolRefAttr(f);
+    auto named = rewriter.getNamedAttr("callee", fAttr);
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
+                                              ArrayRef<NamedAttribute>{named});
+    return matchSuccess();
+  }
+};
+
+/// A non-conversion rewrite pattern kicks in to convert CopyOp with
+/// permutations into a sequence of TransposeOp and permutation-free CopyOp.
+/// This interplays together with TransposeOpConversion and
+/// LinalgConversion<CopyOp> to create a path to the LLVM dialect.
+class CopyTransposeConversion : public OpRewritePattern<CopyOp> {
+public:
+  using OpRewritePattern<CopyOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(CopyOp op,
+                                     PatternRewriter &rewriter) const override {
+    Value *in = op.input(), *out = op.output();
+
+    // If either inputPerm or outputPerm are non-identities, insert transposes.
+    auto inputPerm = op.inputPermutation();
+    if (inputPerm.hasValue() && !inputPerm->isIdentity())
+      in = rewriter.create<linalg::TransposeOp>(op.getLoc(), in,
+                                                AffineMapAttr::get(*inputPerm));
+    auto outputPerm = op.outputPermutation();
+    if (outputPerm.hasValue() && !outputPerm->isIdentity())
+      out = rewriter.create<linalg::TransposeOp>(
+          op.getLoc(), out, AffineMapAttr::get(*outputPerm));
+
+    // If nothing was transposed, fail and let the conversion kick in.
+    if (in == op.input() && out == op.output())
+      return matchFailure();
+
+    rewriter.replaceOpWithNewOp<CopyOp>(op, in, out);
     return matchSuccess();
   }
 };
@@ -808,6 +857,7 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
+  patterns.insert<CopyTransposeConversion>(ctx);
   patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
                   BufferSizeOpConversion, DimOpConversion,
                   LinalgOpConversion<CopyOp>, LinalgOpConversion<DotOp>,
