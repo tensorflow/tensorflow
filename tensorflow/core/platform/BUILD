@@ -141,6 +141,21 @@ cc_library(
 )
 
 cc_library(
+    name = "numbers",
+    srcs = ["numbers.cc"],
+    hdrs = ["numbers.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
     hdrs = ["rocm_rocdl_path.h"],
@@ -317,6 +332,7 @@ filegroup(
             "**/rocm_rocdl_path.cc",
             "abi.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "scanner.cc",
@@ -414,6 +430,7 @@ filegroup(
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "scanner.cc",

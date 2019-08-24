@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/platform/numbers.h"
 
 #include <cmath>
 #include <string>

@@ -12,7 +12,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/platform/numbers.h"
 
 #include <ctype.h>
 #include <float.h>
@@ -26,7 +26,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "double-conversion/double-conversion.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
