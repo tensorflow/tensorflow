@@ -198,3 +198,19 @@ func @copy(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
 }
 // CHECK-LABEL: func @copy
 //       CHECK:   llvm.call @linalg_copy_viewxxxf32_viewxxxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()
+
+func @transpose(%arg0: !linalg.view<?x?x?xf32>) {
+  %0 = linalg.transpose %arg0 (i, j, k) -> (k, i, j) : !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @transpose
+//       CHECK:   llvm.alloca {{.*}} x !llvm<"{ float*, i64, [3 x i64], [3 x i64] }"> {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">
+//       CHECK:   llvm.insertvalue {{.*}}[0] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:    llvm.insertvalue {{.*}}[1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:   llvm.extractvalue {{.*}}[2, 0] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:    llvm.insertvalue {{.*}}[2, 2] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:   llvm.extractvalue {{.*}}[2, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:    llvm.insertvalue {{.*}}[2, 0] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:   llvm.extractvalue {{.*}}[2, 2] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:    llvm.insertvalue {{.*}}[2, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
+//       CHECK:   llvm.store {{.*}} : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">
