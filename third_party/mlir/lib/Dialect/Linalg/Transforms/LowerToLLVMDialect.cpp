@@ -25,6 +25,8 @@
 #include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -173,6 +175,48 @@ static ArrayAttr positionAttr(Builder &builder, ArrayRef<int> position) {
   return builder.getArrayAttr(attrs);
 }
 
+namespace {
+/// Factor out the common information for all view conversions:
+///   1. common types in (standard and LLVM dialects)
+///   2. `pos` method
+///   3. op of the FuncOp alloca'ed value and descriptor.
+class BaseViewConversionHelper {
+public:
+  BaseViewConversionHelper(Operation *op, ViewType viewType,
+                           ConversionPatternRewriter &rewriter,
+                           LLVMTypeConverter &lowering)
+      : indexType(rewriter.getIndexType()), viewType(viewType),
+        elementTy(getPtrToElementType(viewType, lowering)),
+        int64Ty(
+            lowering.convertType(rewriter.getIntegerType(64)).cast<LLVMType>()),
+        viewDescriptorPtrTy(
+            convertLinalgType(viewType, lowering).cast<LLVMType>()),
+        rewriter(rewriter) {
+
+    OpBuilder::InsertionGuard insertGuard(rewriter);
+    rewriter.setInsertionPointToStart(
+        &op->getParentOfType<FuncOp>().getBlocks().front());
+
+    edsc::ScopedContext context(rewriter, op->getLoc());
+    one = constant(int64Ty, IntegerAttr::get(indexType, 1));
+    // Alloca with proper alignment.
+    allocatedDesc = llvm_alloca(viewDescriptorPtrTy, one, /*alignment=*/8);
+    // Load the alloca'ed descriptor.
+    desc = llvm_load(allocatedDesc);
+  }
+
+  ArrayAttr pos(ArrayRef<int> values) const {
+    return positionAttr(rewriter, values);
+  };
+
+  IndexType indexType;
+  ViewType viewType;
+  LLVMType elementTy, int64Ty, viewDescriptorPtrTy;
+  ConversionPatternRewriter &rewriter;
+  Value *one, *allocatedDesc, *desc;
+};
+} // namespace
+
 // BufferAllocOp creates a new `!linalg.buffer` value.
 class BufferAllocOpConversion : public LLVMOpLowering {
 public:
@@ -222,8 +266,7 @@ public:
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *one = nullptr, *align = nullptr;
     if (allocOp.alignment().hasValue()) {
-      one = constant(int64Ty,
-                     rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+      one = constant(int64Ty, IntegerAttr::get(indexType, 1));
       align =
           constant(int64Ty, rewriter.getIntegerAttr(
                                 rewriter.getIndexType(),
@@ -530,6 +573,71 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   }
 };
 
+/// Conversion pattern that transforms a linalg.transpose op into:
+///   1. A function entry `alloca` operation to allocate a ViewDescriptor.
+///   2. A load of the ViewDescriptor from the pointer allocated in 1.
+///   3. Updates to the ViewDescriptor to introduce the data ptr, offset, size
+///      and stride. Size and stride are permutations of the original values.
+///   4. A store of the resulting ViewDescriptor to the alloca'ed pointer.
+/// The linalg.transpose op is replaced by the alloca'ed pointer.
+class TransposeOpConversion : public LLVMOpLowering {
+public:
+  explicit TransposeOpConversion(MLIRContext *context,
+                                 LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(TransposeOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Initialize the common boilerplate and alloca at the top of the FuncOp.
+    TransposeOpOperandAdaptor adaptor(operands);
+    auto tranposeOp = cast<TransposeOp>(op);
+    BaseViewConversionHelper helper(op, tranposeOp.getViewType(), rewriter,
+                                    lowering);
+    IndexType indexType = helper.indexType;
+    ViewType viewType = helper.viewType;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
+             viewDescriptorPtrTy = helper.viewDescriptorPtrTy;
+    Value *allocatedDesc = helper.allocatedDesc, *desc = helper.desc;
+
+    edsc::ScopedContext context(rewriter, op->getLoc());
+    // Load the descriptor of the view constructed by the helper.
+    Value *baseDesc = llvm_load(adaptor.view());
+
+    // Copy the base pointer from the old descriptor to the new one.
+    ArrayAttr ptrPos = helper.pos(kPtrPosInView);
+    desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
+
+    // Copy the offset pointer from the old descriptor to the new one.
+    ArrayAttr offPos = helper.pos(kOffsetPosInView);
+    desc = insertvalue(desc, extractvalue(int64Ty, baseDesc, offPos), offPos);
+
+    if (tranposeOp.permutation().isIdentity()) {
+      // No permutation, just store back in alloca'ed region.
+      llvm_store(desc, allocatedDesc);
+      return rewriter.replaceOp(op, allocatedDesc), matchSuccess();
+    }
+
+    // Iterate over the dimensions and apply size/stride permutation.
+    for (auto en : llvm::enumerate(tranposeOp.permutation().getResults())) {
+      int sourcePos = en.index();
+      int targetPos = en.value().cast<AffineDimExpr>().getPosition();
+      Value *size = extractvalue(int64Ty, baseDesc,
+                                 helper.pos({kSizePosInView, sourcePos}));
+      desc = insertvalue(desc, size, helper.pos({kSizePosInView, targetPos}));
+      Value *stride = extractvalue(int64Ty, baseDesc,
+                                   helper.pos({kStridePosInView, sourcePos}));
+      desc =
+          insertvalue(desc, stride, helper.pos({kStridePosInView, targetPos}));
+    }
+
+    // Store back in alloca'ed region.
+    llvm_store(desc, allocatedDesc);
+    rewriter.replaceOp(op, allocatedDesc);
+    return matchSuccess();
+  }
+};
+
 /// Conversion pattern that transforms a linalg.view op into:
 ///   1. A function entry `alloca` operation to allocate a ViewDescriptor.
 ///   2. A load of the ViewDescriptor from the pointer allocated in 1.
@@ -705,7 +813,8 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                   LinalgOpConversion<CopyOp>, LinalgOpConversion<DotOp>,
                   LinalgOpConversion<FillOp>, LinalgOpConversion<MatmulOp>,
                   LoadOpConversion, RangeOpConversion, SliceOpConversion,
-                  StoreOpConversion, ViewOpConversion>(ctx, converter);
+                  StoreOpConversion, TransposeOpConversion, ViewOpConversion>(
+      ctx, converter);
 }
 
 namespace {
