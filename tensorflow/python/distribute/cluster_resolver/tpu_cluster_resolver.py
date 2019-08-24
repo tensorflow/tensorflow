@@ -292,7 +292,8 @@ class TPUClusterResolver(ClusterResolver):
 
         # Remove '.brain' suffix.
         # TODO(b/139700237): Support bns address with named port.
-        if self._tpu.endswith(compat.as_bytes('.brain')):
+        if ops.executing_eagerly_outside_functions() and self._tpu.endswith(
+            compat.as_bytes('.brain')):
           self._tpu = self._tpu[:-6]
     else:
       self._environment = ''
