@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
