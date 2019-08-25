@@ -8,6 +8,7 @@ op {
   
   ```python
   x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2] , dtype = tf.float32)
+  
   tf.math.acos(x) ==> [0.  2.0943952  nan  1.3694384  1.5707964  nan]
   ```
 }
