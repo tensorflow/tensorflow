@@ -2,6 +2,13 @@ op {
   graph_op_name: "Add"
   summary: "Returns x + y element-wise."
   description: <<END
+  Given two input tensors, tf.math.add computes and returns the element wise sum of the tensors.
+  Input range is `[-inf, inf]` and output range is `[-inf, inf]`.
+  ```python
+  x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2] , dtype = tf.float32)
+  y = tf.constant([1.7, -2.3, 11.4, -1.0, 0.0, -5] , dtype = tf.float32)
+  ```
+  tf.math.add(x,y) ==> [2.7  -2.8  14.8  -0.8  0.0  -7]
 *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 END
