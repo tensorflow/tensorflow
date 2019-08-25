@@ -22,7 +22,7 @@ import abc
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.util import nest
 
