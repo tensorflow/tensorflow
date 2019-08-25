@@ -296,7 +296,11 @@ REGISTER_OP("Tan").UNARY();
 
 REGISTER_OP("Asin").UNARY();
 
-REGISTER_OP("Acos").UNARY();
+REGISTER_OP("Acos").UNARY()
+  .Input("x: T")
+  .Output("y: T")
+  .Attr("T:{bfloat16, half, float32, float64, int32, int64, complex64, complex128}")
+  .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Atan").UNARY();
 
