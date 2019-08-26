@@ -946,7 +946,8 @@ inline void LstmStepQuantized(
     int32 n_input, int32 n_output, int32 output_batch_leading_dim,
     int8_t* activation_ptr, int32_t activation_zp, int16_t* cell_ptr,
     int8_t* output_ptr, int16_t* scratch_0_ptr, int16_t* scratch_1_ptr,
-    int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr) {
+    int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr,
+    int32_t* scratch_5_ptr) {
   TFLITE_DCHECK(input_to_forget_weight_x_input_zp);
   TFLITE_DCHECK(recurrent_to_forget_weight_x_activation_zp);
   TFLITE_DCHECK(input_to_cell_weight_x_input_zp);
@@ -967,13 +968,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_forget_weight_x_input_zp, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_1_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_forget_weight_x_activation_zp,
       recurrent_to_forget_weight_ptr, effective_recurrent_to_forget_scale_a,
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_1_ptr);
+      scratch_5_ptr, scratch_1_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
                                forget_bias_ptr, layer_norm_forget_scale_a,
@@ -986,13 +987,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_cell_weight_x_input_zp, input_to_cell_weight_ptr,
       effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
-      n_input, n_cell, 0, scratch_2_ptr);
+      n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_cell_weight_x_activation_zp,
       recurrent_to_cell_weight_ptr, effective_recurrent_to_cell_scale_a,
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_2_ptr);
+      scratch_5_ptr, scratch_2_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
                                cell_bias_ptr, layer_norm_cell_scale_a,
@@ -1005,13 +1006,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_output_weight_x_input_zp, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_3_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_output_weight_x_activation_zp,
       recurrent_to_output_weight_ptr, effective_recurrent_to_output_scale_a,
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_3_ptr);
+      scratch_5_ptr, scratch_3_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
                                output_bias_ptr, layer_norm_output_scale_a,
@@ -1024,13 +1025,13 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_input_weight_x_input_zp, input_to_input_weight_ptr,
       effective_input_to_input_scale_a, effective_input_to_input_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_0_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       activation_ptr, recurrent_to_input_weight_x_activation_zp,
       recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
       effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_0_ptr);
+      scratch_5_ptr, scratch_0_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
                                input_bias_ptr, layer_norm_input_scale_a,
@@ -1063,7 +1064,7 @@ inline void LstmStepQuantized(
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       scratch_4_ptr, projection_bias_accu, proj_weight_ptr,
       effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell, n_output,
-      activation_zp, output_ptr);
+      activation_zp, scratch_5_ptr, output_ptr);
 
   if (quantized_proj_clip > 0) {
     tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
@@ -1601,7 +1602,8 @@ TfLiteStatus EvalQuantized(
     const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4) {
+    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
+    TfLiteTensor* scratch5) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1771,7 +1773,7 @@ TfLiteStatus EvalQuantized(
         n_input, n_output, output_batch_leading_dim, activation_ptr,
         activation_zp, cell_ptr, output_ptr, scratch0->data.i16,
         scratch1->data.i16, scratch2->data.i16, scratch3->data.i16,
-        scratch4->data.int8);
+        scratch4->data.int8, scratch5->data.i32);
   }
 
   return kTfLiteOk;

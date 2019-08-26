@@ -211,7 +211,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int16_t* output) {
+    int32_t* scratch, int16_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
       input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
       shift, n_batch, n_input, n_output, output_zp, output);
@@ -221,7 +221,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int8_t* output) {
+    int32_t* scratch, int8_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
       input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
       shift, n_batch, n_input, n_output, output_zp, output);

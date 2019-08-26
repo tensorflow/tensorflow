@@ -171,7 +171,8 @@ TfLiteStatus EvalQuantized(
     const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4);
+    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
+    TfLiteTensor* scratch5);
 
 }  // namespace lstm_eval
 }  // namespace builtin

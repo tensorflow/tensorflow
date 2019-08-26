@@ -864,7 +864,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (is_hybrid_op) {
     node->temporaries = TfLiteIntArrayCreate(7);
   } else if (is_fully_quantized) {
-    node->temporaries = TfLiteIntArrayCreate(5);
+    node->temporaries = TfLiteIntArrayCreate(6);
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
   }
@@ -985,16 +985,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     PopulateQuantizedLstmParams(context, node, &op_data->quantized_lstm_param);
 
     // Allocate scratch buffer. Need 6 16bit buffer with size n_batch * n_cell
-    // and 1 8bit buffer with size n_batch * n_cell.
+    // and 1 8bit buffer with size n_batch * n_cell. We also need 1 32 bit
+    // buffer with size n_batch * n_cell.
     //
     // TODO(jianlijianli): Handle cifg case as well, which might save one
     // buffer.
-    for (int scratch_index = 0; scratch_index < 5; ++scratch_index) {
+    for (int scratch_index = 0; scratch_index < 6; ++scratch_index) {
       node->temporaries->data[scratch_index] =
           op_data->scratch_tensor_index + scratch_index;
       TfLiteTensor* scratch_tensor =
           GetTemporary(context, node, /*index=*/scratch_index);
-      scratch_tensor->type = scratch_index == 4 ? kTfLiteInt8 : kTfLiteInt16;
+      scratch_tensor->type = kTfLiteInt16;
+      if (scratch_index == 4) {
+        scratch_tensor->type = kTfLiteInt8;
+      } else if (scratch_index == 5) {
+        scratch_tensor->type = kTfLiteInt32;
+      }
       scratch_tensor->allocation_type = kTfLiteArenaRw;
       const int scratch_dimension[2] = {n_batch, n_cell};
       if (!TfLiteIntArrayEqualsArray(scratch_tensor->dims, 2,
@@ -1152,6 +1158,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
         TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
         TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
+        TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
         return lstm_eval::EvalQuantized(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -1164,7 +1171,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_bias, output_gate_bias, projection_weights, projection_bias,
             params, &op_data->quantized_lstm_param, activation_state,
             cell_state, output, scratch0, scratch1, scratch2, scratch3,
-            scratch4);
+            scratch4, scratch5);
         return kTfLiteOk;
       }
     }
