@@ -140,11 +140,11 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   mlir::PassManager pm;
   bool run_quantize = tensorflow::ShouldRunQuantizePasses(module.get());
-  mlir::TFL::PassConfig pass_config{
-    emit_builtin_tflite_ops : emit_builtin_tflite_ops,
-    lower_tensor_list_ops : true,
-    run_quantize : run_quantize
-  };
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.run_quantize = run_quantize;
+  pass_config.lower_tensor_list_ops = true;
+
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   return ConvertTFExecutorToTFLOrFlatbuffer(

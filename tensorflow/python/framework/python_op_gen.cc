@@ -23,11 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -102,7 +101,7 @@ void Unflatten(const string& prefix, const std::vector<string>& output_sizes,
 string TensorPBString(const TensorProto& pb) {
   // Note: This gets used in the argument list, and so must survive naive
   // word wrapping.
-  return strings::StrCat("\"\"\"", ProtoShortDebugString(pb), "\"\"\"");
+  return strings::StrCat("\"\"\"", pb.ShortDebugString(), "\"\"\"");
 }
 
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
@@ -1078,7 +1077,7 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
 )");
 
   result.append("# ");
-  auto ops_text = ProtoDebugString(cleaned_ops);
+  auto ops_text = cleaned_ops.DebugString();
   absl::StripTrailingAsciiWhitespace(&ops_text);
   result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
   result.append("\n");

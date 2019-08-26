@@ -179,6 +179,13 @@ private:
   std::unique_ptr<detail::LLVMDialectImpl> impl;
 };
 
+/// Create an LLVM global containing the string "value" at the module containing
+/// surrounding the insertion point of builder. Obtain the address of that
+/// global and use it to compute the address of the first character in the
+/// string (operations inserted at the builder insertion point).
+Value *createGlobalString(Location loc, OpBuilder &builder, StringRef name,
+                          StringRef value, LLVM::LLVMDialect *llvmDialect);
+
 } // end namespace LLVM
 } // end namespace mlir
 

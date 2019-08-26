@@ -588,7 +588,7 @@ class TrtGraphConverter(object):
       for k, v in input_map_fn().items():
         if not isinstance(k, str):
           raise ValueError("Keys of input_map_fn must be of type str")
-        if not isinstance(v, tf.Tensor):
+        if not isinstance(v, ops.Tensor):
           raise ValueError("Values of input_map_fn must be of type tf.Tensor")
 
     self._calibration_graph = ops.Graph()

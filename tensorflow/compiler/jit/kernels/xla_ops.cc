@@ -190,14 +190,12 @@ se::DeviceMemoryAllocator* GetAllocator(
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
             .ValueOrDie();
-    tf_allocator_adapter->emplace(platform, ctx->device()->GetAllocator({}),
-                                  /*stream=*/nullptr);
+    tf_allocator_adapter->emplace(ctx->device()->GetAllocator({}), platform);
     return &tf_allocator_adapter->value();
   }
   // platform_info.
-  tf_allocator_adapter->emplace(
-      ctx->op_device_context()->stream()->parent()->platform(),
-      ctx->device()->GetAllocator({}), ctx->op_device_context()->stream());
+  tf_allocator_adapter->emplace(ctx->device()->GetAllocator({}),
+                                ctx->op_device_context()->stream());
   return &tf_allocator_adapter->value();
 }
 

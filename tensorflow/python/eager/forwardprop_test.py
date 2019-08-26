@@ -27,6 +27,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
+from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -258,6 +260,46 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
+  def testExceptionInCustomGradientNotSwallowed(self):
+
+    @custom_gradient.custom_gradient
+    def f(unused_x):
+      def grad(unused_dy):
+        raise ValueError("test_error_string")
+      return 1., grad
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      with self.assertRaisesRegexp(ValueError, "test_error_string"):
+        f(c)
+
+  def testPushPopAccumulatorState(self):
+    # Note that this example is somewhat contrived. push_forwardprop_state is
+    # probably only useful in practice for building functions that compute jvps
+    # alongside their usual outputs.
+    with forwardprop.ForwardGradientAccumulator() as acc:
+
+      @custom_gradient.custom_gradient
+      def f(x):
+        y = math_ops.sin(x.numpy())
+
+        def grad(dy):
+          with forwardprop_util.push_forwardprop_state():
+            x_copy = constant_op.constant(x.numpy())
+            acc.watch(x_copy, dy)
+            y_copy = math_ops.sin(x_copy)
+          return dy * acc.jvp(y_copy)
+
+        return y, grad
+
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      output = f(c)
+      self.assertAllClose(d * math_ops.cos(c), acc.jvp(output))
+
   @parameterized.named_parameters(
       [("Order{}".format(order), order, expected)
        for order, expected in enumerate(_X11_35_DERIVATIVES)])
@@ -304,6 +346,35 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testJVPPacking(self):
+    two = constant_op.constant(2.)
+    with forwardprop.ForwardGradientAccumulator() as outer_acc:
+      primal_in = constant_op.constant(1.)
+      outer_acc.watch(primal_in, constant_op.constant(2.))
+      with forwardprop.ForwardGradientAccumulator() as inner_acc:
+        inner_jvp = constant_op.constant(3.)
+        inner_acc.watch(primal_in, inner_jvp)
+        outer_acc.watch(inner_jvp, constant_op.constant(4.))
+        packed_input_indices, packed_input_tangents = (
+            pywrap_tensorflow.TFE_Py_PackForwardGradients([primal_in]))
+        self.assertAllClose([3., 2., 4.], packed_input_tangents)
+        expected_indices = (
+            # inner_acc watches primal_in
+            ((0, 1),),
+            # outer_acc watches primal_in and inner_jvp
+            ((0, 2),
+             (1, 3)))
+        self.assertAllEqual(expected_indices, packed_input_indices)
+        primal_out = primal_in * two
+        self.assertAllClose(6., inner_acc.jvp(primal_out))
+        self.assertAllClose(4., outer_acc.jvp(primal_out))
+        self.assertAllClose(8., outer_acc.jvp(inner_acc.jvp(primal_out)))
+        packed_output_indices, packed_output_tangents = (
+            pywrap_tensorflow.TFE_Py_PackForwardGradients([primal_out]))
+        self.assertAllClose([6., 4., 8.], packed_output_tangents)
+        self.assertAllEqual(expected_indices, packed_output_indices)
+
   def testFunctionGradInFunctionPureForward(self):
 
     @def_function.function
@@ -339,6 +410,27 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         f,
         [constant_op.constant([1., 2.])],
         order=3)
+
+  def testReusingForwardGradient(self):
+    m1 = random_ops.random_uniform((256, 2096))
+    m2 = array_ops.identity(m1)
+    tangent1 = random_ops.random_uniform((256, 2096))
+    tangent2 = random_ops.random_uniform((256, 2096))
+    matmul = def_function.function(math_ops.matmul)
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(m1, tangent1)
+      result1 = matmul(m1, m1, transpose_b=True)
+      acc.watch(m2, tangent2)
+      result2 = matmul(m2, m2, transpose_b=True)
+
+    def _expected(mat, tangent):
+      return (math_ops.matmul(tangent, mat, transpose_b=True)
+              + math_ops.matmul(mat, tangent, transpose_b=True))
+
+    self.assertAllClose(result1, result2)
+    self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1))
+    self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testHVPMemory(self):

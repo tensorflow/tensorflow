@@ -5817,7 +5817,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if distribution_strategy._in_multi_worker_mode():
+  if distribution_strategy.extended._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

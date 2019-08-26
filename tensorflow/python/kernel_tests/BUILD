@@ -2977,7 +2977,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -3134,6 +3133,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 15,
+    tags = ["no_windows"],  # b/139739217
     xla_enable_strict_auto_jit = True,
 )
 

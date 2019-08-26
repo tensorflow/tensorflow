@@ -172,8 +172,7 @@ class DefaultTensorTie : public TensorTie {
     }
     switch (d.object_def.object_type) {
       case ObjectType::CPU_MEMORY: {
-        size_t bytes_size =
-            d.dimensions.product() * SizeOf(d.object_def.data_type);
+        size_t bytes_size = NumElements(d) * SizeOf(d.object_def.data_type);
         cpu_memory_.resize(bytes_size);
         external_obj_ = CpuMemory{cpu_memory_.data(), cpu_memory_.size()};
         break;
@@ -413,12 +412,10 @@ class TensorTieFactory {
 
 class InferenceRunnerImpl : public InferenceRunner {
  public:
-  InferenceRunnerImpl(const InferenceEnvironmentOptions& env_options,
-                      Environment* environment,
+  InferenceRunnerImpl(Environment* environment,
                       std::unique_ptr<InferenceContext> context,
                       std::unique_ptr<GlInteropFabric> gl_interop_fabric)
-      : env_options_(env_options),
-        environment_(environment),
+      : queue_(environment->queue()),
         context_(std::move(context)),
         gl_interop_fabric_(std::move(gl_interop_fabric)) {}
 
@@ -474,8 +471,8 @@ class InferenceRunnerImpl : public InferenceRunner {
     for (auto& obj : inputs_) {
       RETURN_IF_ERROR(obj->CopyFromExternalObject());
     }
-    RETURN_IF_ERROR(context_->AddToQueue(environment_->queue()));
-    clFlush(environment_->queue()->queue());
+    RETURN_IF_ERROR(context_->AddToQueue(queue_));
+    clFlush(queue_->queue());
     for (auto& obj : outputs_) {
       RETURN_IF_ERROR(obj->CopyToExternalObject());
     }
@@ -508,8 +505,7 @@ class InferenceRunnerImpl : public InferenceRunner {
     return defs;
   }
 
-  const InferenceEnvironmentOptions env_options_;
-  Environment* environment_;
+  CLCommandQueue* queue_;
   std::unique_ptr<InferenceContext> context_;
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
   std::vector<std::unique_ptr<TensorTie>> inputs_;
@@ -531,22 +527,16 @@ TensorObjectDef TensorToDef(const Tensor& tensor) {
 
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
-  InferenceBuilderImpl(const InferenceOptions& options,
-                       const InferenceEnvironmentOptions env_options,
-                       const InferenceEnvironmentProperties properties,
-                       Environment* environment,
-                       std::unique_ptr<GraphFloat32> graph)
-      : options_(options),
-        env_options_(env_options),
-        properties_(properties),
-        environment_(environment),
-        graph_(std::move(graph)) {}
+  explicit InferenceBuilderImpl(Environment* environment)
+      : environment_(environment) {}
 
-  Status Initialize() {
+  Status Initialize(const InferenceOptions& options,
+                    const InferenceEnvironmentOptions& env_options,
+                    const GraphFloat32& graph) {
     // Select precision based on given options.
     CalculationsPrecision precision = CalculationsPrecision::F32;
-    if (options_.allow_precision_loss) {
-      precision = options_.priority == InferencePriority::MAX_PRECISION
+    if (options.allow_precision_loss) {
+      precision = options.priority == InferencePriority::MAX_PRECISION
                       ? CalculationsPrecision::F32_F16
                       : CalculationsPrecision::F16;
     }
@@ -572,18 +562,17 @@ class InferenceBuilderImpl : public InferenceBuilder {
         environment_->device().IsAdreno6xxOrHigher()) {
       create_info.hints.Add(ModelHints::kFastTuning);
     }
-    RETURN_IF_ERROR(
-        context_->InitFromGraph(create_info, *graph_, environment_));
+    RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
-    if (env_options_.IsGlAware()) {
+    if (env_options.IsGlAware()) {
       gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
-          env_options_.egl_display, environment_);
+          env_options.egl_display, environment_);
     }
     tie_factory_ = absl::make_unique<TensorTieFactory>(
         environment_, context_.get(), gl_interop_fabric_.get());
 
-    inputs_ = LinkTensors(graph_->inputs());
-    outputs_ = LinkTensors(graph_->outputs());
+    inputs_ = LinkTensors(graph, graph.inputs());
+    outputs_ = LinkTensors(graph, graph.outputs());
     return OkStatus();
   }
 
@@ -635,8 +624,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
       gl_interop_fabric_.reset(nullptr);
     }
     auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
-        env_options_, environment_, std::move(context_),
-        std::move(gl_interop_fabric_));
+        environment_, std::move(context_), std::move(gl_interop_fabric_));
     RETURN_IF_ERROR(
         runner_impl->Initialize(inputs_, outputs_, tie_factory_.get()));
     *runner = std::move(runner_impl);
@@ -646,13 +634,14 @@ class InferenceBuilderImpl : public InferenceBuilder {
  private:
   // Links internal tensors with external user-facing objects.
   std::vector<TensorTieDef> LinkTensors(
+      const GraphFloat32& graph,
       const std::vector<Value<TensorRef<BHWC>>*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {
       TensorObjectDef def = TensorToDef(*context_->GetTensor(value->id));
-      AccessType access = graph_->IsGraphInput(value->id) ? AccessType::READ
-                                                          : AccessType::WRITE;
+      AccessType access =
+          graph.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
       links.push_back({value->id, access, def, def});
     }
     return links;
@@ -685,15 +674,10 @@ class InferenceBuilderImpl : public InferenceBuilder {
     return defs;
   }
 
-  const InferenceOptions options_;
-  const InferenceEnvironmentOptions env_options_;
-  const InferenceEnvironmentProperties properties_;
-
   std::unique_ptr<InferenceContext> context_;
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
   Environment* environment_;
 
-  std::unique_ptr<GraphFloat32> graph_;
   std::vector<TensorTieDef> inputs_;
   std::vector<TensorTieDef> outputs_;
   std::unique_ptr<TensorTieFactory> tie_factory_;
@@ -729,7 +713,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   }
 
   Status NewInferenceBuilder(const InferenceOptions& options,
-                             const GraphFloat32& model,
+                             GraphFloat32 model,
                              std::unique_ptr<InferenceBuilder>* builder) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
@@ -740,12 +724,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    auto cl_graph = absl::make_unique<GraphFloat32>();
-    RETURN_IF_ERROR(model.MakeExactCopy(cl_graph.get()));
-    RETURN_IF_ERROR(RunGraphTransforms(cl_graph.get()));
-    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
-        options, options_, properties_, &environment_, std::move(cl_graph));
-    RETURN_IF_ERROR(builder_impl->Initialize());
+    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
+    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, model));
     *builder = std::move(builder_impl);
     return OkStatus();
   }

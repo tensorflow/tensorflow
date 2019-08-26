@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -1248,8 +1248,8 @@ Status FindKernelRegistration(
             "Multiple OpKernel registrations match NodeDef '",
             FormatNodeDefForError(node_name, has_experimental_debug_info,
                                   experimental_debug_info),
-            "': '", ProtoShortDebugString((*reg)->def), "' and '",
-            ProtoShortDebugString(iter->second.def), "'");
+            "': '", (*reg)->def.ShortDebugString(), "' and '",
+            iter->second.def.ShortDebugString(), "'");
       }
       *reg = &iter->second;
     } else {
@@ -1274,8 +1274,8 @@ Status FindKernelRegistration(
               "Multiple Default OpKernel registrations match NodeDef '",
               FormatNodeDefForError(node_name, has_experimental_debug_info,
                                     experimental_debug_info),
-              "': '", ProtoShortDebugString((*reg)->def), "' and '",
-              ProtoShortDebugString(iter->second.def), "'");
+              "': '", (*reg)->def.ShortDebugString(), "' and '",
+              iter->second.def.ShortDebugString(), "'");
         }
         *reg = &iter->second;
       } else {
@@ -1424,7 +1424,7 @@ Status SupportedDeviceTypesForNode(
 void LogAllRegisteredKernels() {
   KernelList kernel_list = GetAllRegisteredKernels();
   for (const auto& kernel_def : kernel_list.kernel()) {
-    LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
+    LOG(INFO) << "OpKernel ('" << kernel_def.ShortDebugString() << "')";
   }
 }
 
@@ -1572,7 +1572,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
     if (!status.ok()) {
       // TODO(josh11b): Make this a hard error.
-      LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
+      LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }

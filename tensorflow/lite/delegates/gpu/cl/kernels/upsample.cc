@@ -52,13 +52,21 @@ std::string GetUpsampleCode(
   c += "  st.xy = (int2)(f_coords.x, f_coords.y);\n";
   c += "  st.zw = min(st.xy + (int2)(1, 1), borders);\n";
   c += "  float2 t = f_coords - (float2)(st.x, st.y);\n";
-  c += "  float4 src0 = " + src_tensor.ReadAsFloat3D("st.x", "st.y", "Z") +
+  c += "  float4 src0 = " +
+       src_tensor.ReadAsFloat3D("st.x", "st.y", "Z",
+                                TextureAddressMode::DONT_CARE) +
        ";\n";
-  c += "  float4 src1 = " + src_tensor.ReadAsFloat3D("st.z", "st.y", "Z") +
+  c += "  float4 src1 = " +
+       src_tensor.ReadAsFloat3D("st.z", "st.y", "Z",
+                                TextureAddressMode::DONT_CARE) +
        ";\n";
-  c += "  float4 src2 = " + src_tensor.ReadAsFloat3D("st.x", "st.w", "Z") +
+  c += "  float4 src2 = " +
+       src_tensor.ReadAsFloat3D("st.x", "st.w", "Z",
+                                TextureAddressMode::DONT_CARE) +
        ";\n";
-  c += "  float4 src3 = " + src_tensor.ReadAsFloat3D("st.z", "st.w", "Z") +
+  c += "  float4 src3 = " +
+       src_tensor.ReadAsFloat3D("st.z", "st.w", "Z",
+                                TextureAddressMode::DONT_CARE) +
        ";\n";
   c += "  FLT4 r0 = TO_FLT4(mix(mix(src0, src1, t.x), mix(src2, src3, t.x), "
        "t.y));\n";

@@ -1,13 +1,13 @@
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
+# distributed under the License is distributed on an 'AS IS' BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
@@ -79,6 +79,90 @@ class SerializeKerasObjectTest(test.TestCase):
     deserialized = keras.utils.generic_utils.deserialize_keras_object(
         serialized)
     self.assertEqual(deserialized, None)
+
+  def test_serialize_custom_class_with_default_name(self):
+
+    @keras.utils.generic_utils.register_keras_serializable()
+    class TestClass(object):
+
+      def __init__(self, value):
+        self._value = value
+
+      def get_config(self):
+        return {'value': self._value}
+
+    serialized_name = 'Custom>TestClass'
+    inst = TestClass(value=10)
+    class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[TestClass]
+    self.assertEqual(serialized_name, class_name)
+    config = keras.utils.generic_utils.serialize_keras_object(inst)
+    self.assertEqual(class_name, config['class_name'])
+    new_inst = keras.utils.generic_utils.deserialize_keras_object(config)
+    self.assertIsNot(inst, new_inst)
+    self.assertIsInstance(new_inst, TestClass)
+    self.assertEqual(10, new_inst._value)
+
+  def test_serialize_custom_class_with_custom_name(self):
+
+    @keras.utils.generic_utils.register_keras_serializable(
+        'TestPackage', 'CustomName')
+    class OtherTestClass(object):
+
+      def __init__(self, val):
+        self._val = val
+
+      def get_config(self):
+        return {'val': self._val}
+
+    serialized_name = 'TestPackage>CustomName'
+    inst = OtherTestClass(val=5)
+    class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[OtherTestClass]
+    self.assertEqual(serialized_name, class_name)
+    config = keras.utils.generic_utils.serialize_keras_object(inst)
+    self.assertEqual(class_name, config['class_name'])
+    new_inst = keras.utils.generic_utils.deserialize_keras_object(config)
+    self.assertIsNot(inst, new_inst)
+    self.assertIsInstance(new_inst, OtherTestClass)
+    self.assertEqual(5, new_inst._val)
+
+  def test_serialize_custom_function(self):
+
+    @keras.utils.generic_utils.register_keras_serializable()
+    def my_fn():
+      return 42
+
+    serialized_name = 'Custom>my_fn'
+    class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[my_fn]
+    self.assertEqual(serialized_name, class_name)
+    config = keras.utils.generic_utils.serialize_keras_object(my_fn)
+    self.assertEqual(class_name, config)
+    fn = keras.utils.generic_utils.deserialize_keras_object(config)
+    self.assertEqual(42, fn())
+
+  def test_serialize_custom_class_without_get_config_fails(self):
+
+    with self.assertRaisesRegex(
+        ValueError, 'Cannot register a class that does '
+        'not have a get_config.*'):
+
+      @keras.utils.generic_utils.register_keras_serializable(  # pylint: disable=unused-variable
+          'TestPackage', 'TestClass')
+      class TestClass(object):
+
+        def __init__(self, value):
+          self._value = value
+
+  def test_serialize_custom_objects_with_overwrite_fails(self):
+    with self.assertRaisesRegex(ValueError, '.*has already been registered.*'):
+
+      @keras.utils.generic_utils.register_keras_serializable()  # pylint: disable=unused-variable
+      class TestClass(object):
+
+        def __init__(self, value):
+          self._value = value
+
+        def get_config(self):
+          return {'value': self._value}
 
 
 class SliceArraysTest(test.TestCase):

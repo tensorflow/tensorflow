@@ -111,6 +111,7 @@ class CLDevice {
   bool IsAdreno5xx() const;
   bool IsAdreno6xx() const;
   bool IsAdreno6xxOrHigher() const;
+  bool IsPowerVR() const;
 
   // To track bug on some Adreno. b/131099086
   bool SupportsOneLayerTextureArray() const;

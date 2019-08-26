@@ -251,6 +251,15 @@ public:
   /// Parse a raw location instance.
   ParseResult parseLocationInstance(LocationAttr &loc);
 
+  /// Parse a callsite location instance.
+  ParseResult parseCallSiteLocation(LocationAttr &loc);
+
+  /// Parse a fused location instance.
+  ParseResult parseFusedLocation(LocationAttr &loc);
+
+  /// Parse a name or FileLineCol location instance.
+  ParseResult parseNameOrFileLineColLocation(LocationAttr &loc);
+
   /// Parse an optional trailing location.
   ///
   ///   trailing-location     ::= location?
@@ -605,7 +614,7 @@ Type Parser::parseExtendedType() {
 
 /// Parse a function type.
 ///
-///   function-type ::= type-list-parens `->` type-list
+///   function-type ::= type-list-parens `->` function-result-type
 ///
 Type Parser::parseFunctionType() {
   assert(getToken().is(Token::l_paren));
@@ -621,7 +630,7 @@ Type Parser::parseFunctionType() {
 
 /// Parse a memref type.
 ///
-///   memref-type ::= `memref` `<` dimension-list-ranked element-type
+///   memref-type ::= `memref` `<` dimension-list-ranked type
 ///                   (`,` semi-affine-map-composition)? (`,` memory-space)? `>`
 ///
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
@@ -765,7 +774,7 @@ Type Parser::parseNonFunctionType() {
 
 /// Parse a tensor type.
 ///
-///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
+///   tensor-type ::= `tensor` `<` dimension-list type `>`
 ///   dimension-list ::= dimension-list-ranked | `*x`
 ///
 Type Parser::parseTensorType() {
@@ -827,8 +836,10 @@ Type Parser::parseTupleType() {
 
 /// Parse a vector type.
 ///
-///   vector-type ::= `vector` `<` static-dimension-list primitive-type `>`
-///   static-dimension-list ::= (decimal-literal `x`)+
+///   vector-type ::= `vector` `<` non-empty-static-dimension-list type `>`
+///   non-empty-static-dimension-list ::= decimal-literal `x`
+///                                       static-dimension-list
+///   static-dimension-list ::= (decimal-literal `x`)*
 ///
 VectorType Parser::parseVectorType() {
   consumeToken(Token::kw_vector);
@@ -859,7 +870,7 @@ VectorType Parser::parseVectorType() {
 ///   dimension-list-ranked ::= (dimension `x`)*
 ///   dimension ::= `?` | decimal-literal
 ///
-/// When `allowDynamic` is not set, this can be also used to parse
+/// When `allowDynamic` is not set, this is used to parse:
 ///
 ///   static-dimension-list ::= (decimal-literal `x`)*
 ParseResult
@@ -1680,143 +1691,154 @@ ParseResult Parser::parseLocation(LocationAttr &loc) {
 ///                    '[' location-inst (location-inst ',')* ']'
 /// unknown-location ::= 'unknown'
 ///
-ParseResult Parser::parseLocationInstance(LocationAttr &loc) {
+ParseResult Parser::parseCallSiteLocation(LocationAttr &loc) {
   auto *ctx = getContext();
 
-  // Handle either name or filelinecol locations.
-  if (getToken().is(Token::string)) {
-    auto str = getToken().getStringValue();
-    consumeToken(Token::string);
+  consumeToken(Token::bare_identifier);
 
-    // If the next token is ':' this is a filelinecol location.
-    if (consumeIf(Token::colon)) {
-      // Parse the line number.
-      if (getToken().isNot(Token::integer))
-        return emitError("expected integer line number in FileLineColLoc");
-      auto line = getToken().getUnsignedIntegerValue();
-      if (!line.hasValue())
-        return emitError("expected integer line number in FileLineColLoc");
-      consumeToken(Token::integer);
+  // Parse the '('.
+  if (parseToken(Token::l_paren, "expected '(' in callsite location"))
+    return failure();
 
-      // Parse the ':'.
-      if (parseToken(Token::colon, "expected ':' in FileLineColLoc"))
-        return failure();
+  // Parse the callee location.
+  LocationAttr calleeLoc;
+  if (parseLocationInstance(calleeLoc))
+    return failure();
 
-      // Parse the column number.
-      if (getToken().isNot(Token::integer))
-        return emitError("expected integer column number in FileLineColLoc");
-      auto column = getToken().getUnsignedIntegerValue();
-      if (!column.hasValue())
-        return emitError("expected integer column number in FileLineColLoc");
-      consumeToken(Token::integer);
+  // Parse the 'at'.
+  if (getToken().isNot(Token::bare_identifier) ||
+      getToken().getSpelling() != "at")
+    return emitError("expected 'at' in callsite location");
+  consumeToken(Token::bare_identifier);
 
-      loc = FileLineColLoc::get(str, line.getValue(), column.getValue(), ctx);
-      return success();
-    }
+  // Parse the caller location.
+  LocationAttr callerLoc;
+  if (parseLocationInstance(callerLoc))
+    return failure();
 
-    // Otherwise, this is a NameLoc.
+  // Parse the ')'.
+  if (parseToken(Token::r_paren, "expected ')' in callsite location"))
+    return failure();
 
-    // Check for a child location.
-    if (consumeIf(Token::l_paren)) {
-      auto childSourceLoc = getToken().getLoc();
+  // Return the callsite location.
+  loc = CallSiteLoc::get(calleeLoc, callerLoc, ctx);
+  return success();
+}
 
-      // Parse the child location.
-      LocationAttr childLoc;
-      if (parseLocationInstance(childLoc))
-        return failure();
+ParseResult Parser::parseFusedLocation(LocationAttr &loc) {
+  consumeToken(Token::bare_identifier);
 
-      // The child must not be another NameLoc.
-      if (childLoc.isa<NameLoc>())
-        return emitError(childSourceLoc,
-                         "child of NameLoc cannot be another NameLoc");
-      loc = NameLoc::get(Identifier::get(str, ctx), childLoc, ctx);
-
-      // Parse the closing ')'.
-      if (parseToken(Token::r_paren,
-                     "expected ')' after child location of NameLoc"))
-        return failure();
-    } else {
-      loc = NameLoc::get(Identifier::get(str, ctx), ctx);
-    }
-
-    return success();
+  // Try to parse the optional metadata.
+  Attribute metadata;
+  if (consumeIf(Token::less)) {
+    metadata = parseAttribute();
+    if (!metadata)
+      return emitError("expected valid attribute metadata");
+    // Parse the '>' token.
+    if (parseToken(Token::greater,
+                   "expected '>' after fused location metadata"))
+      return failure();
   }
 
-  // Check for a 'unknown' for an unknown location.
-  if (getToken().is(Token::bare_identifier) &&
-      getToken().getSpelling() == "unknown") {
-    consumeToken(Token::bare_identifier);
-    loc = UnknownLoc::get(ctx);
+  llvm::SmallVector<Location, 4> locations;
+  auto parseElt = [&] {
+    LocationAttr newLoc;
+    if (parseLocationInstance(newLoc))
+      return failure();
+    locations.push_back(newLoc);
     return success();
-  }
+  };
 
-  // If the token is 'fused', then this is a fused location.
-  if (getToken().is(Token::bare_identifier) &&
-      getToken().getSpelling() == "fused") {
-    consumeToken(Token::bare_identifier);
+  if (parseToken(Token::l_square, "expected '[' in fused location") ||
+      parseCommaSeparatedList(parseElt) ||
+      parseToken(Token::r_square, "expected ']' in fused location"))
+    return failure();
 
-    // Try to parse the optional metadata.
-    Attribute metadata;
-    if (consumeIf(Token::less)) {
-      metadata = parseAttribute();
-      if (!metadata)
-        return emitError("expected valid attribute metadata");
-      // Parse the '>' token.
-      if (parseToken(Token::greater,
-                     "expected '>' after fused location metadata"))
-        return failure();
-    }
+  // Return the fused location.
+  loc = FusedLoc::get(locations, metadata, getContext());
+  return success();
+}
 
-    llvm::SmallVector<Location, 4> locations;
-    auto parseElt = [&] {
-      LocationAttr newLoc;
-      if (parseLocationInstance(newLoc))
-        return failure();
-      locations.push_back(newLoc);
-      return success();
-    };
+ParseResult Parser::parseNameOrFileLineColLocation(LocationAttr &loc) {
+  auto *ctx = getContext();
+  auto str = getToken().getStringValue();
+  consumeToken(Token::string);
 
-    if (parseToken(Token::l_square, "expected '[' in fused location") ||
-        parseCommaSeparatedList(parseElt) ||
-        parseToken(Token::r_square, "expected ']' in fused location"))
+  // If the next token is ':' this is a filelinecol location.
+  if (consumeIf(Token::colon)) {
+    // Parse the line number.
+    if (getToken().isNot(Token::integer))
+      return emitError("expected integer line number in FileLineColLoc");
+    auto line = getToken().getUnsignedIntegerValue();
+    if (!line.hasValue())
+      return emitError("expected integer line number in FileLineColLoc");
+    consumeToken(Token::integer);
+
+    // Parse the ':'.
+    if (parseToken(Token::colon, "expected ':' in FileLineColLoc"))
       return failure();
 
-    // Return the fused location.
-    loc = FusedLoc::get(locations, metadata, getContext());
+    // Parse the column number.
+    if (getToken().isNot(Token::integer))
+      return emitError("expected integer column number in FileLineColLoc");
+    auto column = getToken().getUnsignedIntegerValue();
+    if (!column.hasValue())
+      return emitError("expected integer column number in FileLineColLoc");
+    consumeToken(Token::integer);
+
+    loc = FileLineColLoc::get(str, line.getValue(), column.getValue(), ctx);
     return success();
   }
+
+  // Otherwise, this is a NameLoc.
+
+  // Check for a child location.
+  if (consumeIf(Token::l_paren)) {
+    auto childSourceLoc = getToken().getLoc();
+
+    // Parse the child location.
+    LocationAttr childLoc;
+    if (parseLocationInstance(childLoc))
+      return failure();
+
+    // The child must not be another NameLoc.
+    if (childLoc.isa<NameLoc>())
+      return emitError(childSourceLoc,
+                       "child of NameLoc cannot be another NameLoc");
+    loc = NameLoc::get(Identifier::get(str, ctx), childLoc, ctx);
+
+    // Parse the closing ')'.
+    if (parseToken(Token::r_paren,
+                   "expected ')' after child location of NameLoc"))
+      return failure();
+  } else {
+    loc = NameLoc::get(Identifier::get(str, ctx), ctx);
+  }
+
+  return success();
+}
+
+ParseResult Parser::parseLocationInstance(LocationAttr &loc) {
+  // Handle either name or filelinecol locations.
+  if (getToken().is(Token::string))
+    return parseNameOrFileLineColLocation(loc);
+
+  // Bare tokens required for other cases.
+  if (!getToken().is(Token::bare_identifier))
+    return emitError("expected location instance");
 
   // Check for the 'callsite' signifying a callsite location.
-  if (getToken().is(Token::bare_identifier) &&
-      getToken().getSpelling() == "callsite") {
+  if (getToken().getSpelling() == "callsite")
+    return parseCallSiteLocation(loc);
+
+  // If the token is 'fused', then this is a fused location.
+  if (getToken().getSpelling() == "fused")
+    return parseFusedLocation(loc);
+
+  // Check for a 'unknown' for an unknown location.
+  if (getToken().getSpelling() == "unknown") {
     consumeToken(Token::bare_identifier);
-
-    // Parse the '('.
-    if (parseToken(Token::l_paren, "expected '(' in callsite location"))
-      return failure();
-
-    // Parse the callee location.
-    LocationAttr calleeLoc;
-    if (parseLocationInstance(calleeLoc))
-      return failure();
-
-    // Parse the 'at'.
-    if (getToken().isNot(Token::bare_identifier) ||
-        getToken().getSpelling() != "at")
-      return emitError("expected 'at' in callsite location");
-    consumeToken(Token::bare_identifier);
-
-    // Parse the caller location.
-    LocationAttr callerLoc;
-    if (parseLocationInstance(callerLoc))
-      return failure();
-
-    // Parse the ')'.
-    if (parseToken(Token::r_paren, "expected ')' in callsite location"))
-      return failure();
-
-    // Return the callsite location.
-    loc = CallSiteLoc::get(calleeLoc, callerLoc, ctx);
+    loc = UnknownLoc::get(getContext());
     return success();
   }
 

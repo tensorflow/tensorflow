@@ -1678,6 +1678,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64>> slice_sizes;
       attrs["slice_sizes"] = {/*required=*/true, AttrTy::kBracedInt64List,
                               &slice_sizes};
+      optional<bool> indices_are_sorted = false;
+      attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
+                                     &indices_are_sorted};
 
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1693,7 +1696,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
 
       instruction = builder->AddInstruction(HloInstruction::CreateGather(
           shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
-          dim_numbers, *slice_sizes));
+          dim_numbers, *slice_sizes, indices_are_sorted.value()));
       break;
     }
     case HloOpcode::kScatter: {
@@ -1714,6 +1717,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> update_computation;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &update_computation};
+      optional<bool> indices_are_sorted = false;
+      attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
+                                     &indices_are_sorted};
 
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
@@ -1729,7 +1735,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
 
       instruction = builder->AddInstruction(HloInstruction::CreateScatter(
           shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
-          /*updates=*/operands[2], *update_computation, dim_numbers));
+          /*updates=*/operands[2], *update_computation, dim_numbers,
+          indices_are_sorted.value()));
       break;
     }
     case HloOpcode::kDomain: {

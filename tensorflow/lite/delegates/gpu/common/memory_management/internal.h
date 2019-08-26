@@ -30,6 +30,21 @@ namespace gpu {
 
 const size_t kNotAssigned = std::numeric_limits<size_t>::max();
 
+// This structure is used to save the initial indices of usage records after
+// they are sorted.
+template <typename TensorSizeT>
+struct TensorUsageWithIndex {
+  const TensorUsageRecord<TensorSizeT>* usage_record;
+  size_t idx;
+
+  TensorUsageWithIndex(const TensorUsageRecord<TensorSizeT>* usage_record,
+                       size_t idx)
+      : usage_record(usage_record), idx(idx) {}
+};
+
+bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
+                   const TensorUsageWithIndex<size_t>& second);
+
 // TaskProfile is a vector with information about all intermediate tensors, that
 // should exist in memory during the executon of the task. Elements of the
 // vector must be sorted in non-increasing order of corresponding tensors sizes.

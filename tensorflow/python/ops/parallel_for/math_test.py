@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
@@ -35,7 +37,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MathTest(PForTestCase):
+class MathTest(PForTestCase, parameterized.TestCase):
 
   def _test_unary_cwise_ops(self, ops, is_complex):
     for op in ops:
@@ -452,6 +454,61 @@ class MathTest(PForTestCase):
         # pylint: enable=cell-var-from-loop
 
         self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 3)
+
+  @parameterized.parameters((math_ops.sparse_segment_sum_v2, True),
+                            (math_ops.sparse_segment_mean_v2, True),
+                            (math_ops.sparse_segment_sqrt_n_v2, True),
+                            (math_ops.sparse_segment_sum_v2, False),
+                            (math_ops.sparse_segment_mean_v2, False),
+                            (math_ops.sparse_segment_sqrt_n_v2, False))
+  def test_sparse_segment(self, op_func, with_num_segments):
+    data = random_ops.random_uniform([3, 4, 2])
+    indices = constant_op.constant([[1, 2, 3], [0, 1, 2], [0, 2, 3]])
+    seg_ids = constant_op.constant([[0, 0, 2], [1, 1, 1], [0, 1, 1]])
+    if with_num_segments:
+      num_segments = 3
+    else:
+      num_segments = None
+
+    def loop_fn(i):
+      data_i = array_ops.gather(data, i)
+      data_0 = array_ops.gather(data, 0)
+      indices_i = array_ops.gather(indices, i)
+      indices_0 = array_ops.gather(indices, 0)
+      seg_ids_i = array_ops.gather(seg_ids, i)
+      seg_ids_0 = array_ops.gather(seg_ids, 0)
+      outputs = [
+          op_func(data_0, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_0, indices_0, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_0, seg_ids_0, num_segments=num_segments)
+      ]
+      if with_num_segments:
+        # For this case, we support loop variant segment_ids as well.
+        outputs += [
+            op_func(data_0, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_0, indices_0, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_0, seg_ids_i, num_segments=num_segments)
+        ]
+      return outputs
+
+    num_outputs = 8 if with_num_segments else 4
+    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * num_outputs)
+
+  @parameterized.parameters(math_ops.sparse_segment_mean_grad,
+                            math_ops.sparse_segment_sqrt_n_grad)
+  def test_sparse_segment_grad(self, op_func):
+    grad = random_ops.random_uniform([3, 3, 2])
+    indices = constant_op.constant([1, 2, 3])
+    seg_ids = constant_op.constant([0, 0, 2])
+    dim0 = 4
+
+    def loop_fn(i):
+      grad_i = array_ops.gather(grad, i)
+      return op_func(grad_i, indices, seg_ids, dim0)
+
+    self._test_loop_fn(loop_fn, 3)
 
   def test_cast(self):
     x = constant_op.constant([[1], [2]])

@@ -147,9 +147,8 @@ def replicate(dataset, devices):
   # pylint: disable=protected-access
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
-    stateful_whitelist = dataset.options().experimental_stateful_whitelist
-    graph_def = dataset._as_serialized_graph(
-        stateful_whitelist=stateful_whitelist)
+    allow_stateful = dataset.options().experimental_allow_stateful
+    graph_def = dataset._as_serialized_graph(allow_stateful=allow_stateful)
   datasets = {}
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)

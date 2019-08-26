@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
+#include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
@@ -83,6 +84,13 @@ public:
   /// Prints a region.
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
+
+  /// Renumber the arguments for the specified region to the same names as the
+  /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+  /// operations.  If any entry in namesToUse is null, the corresponding
+  /// argument name is left alone.
+  virtual void shadowRegionArgs(Region &region,
+                                ArrayRef<Value *> namesToUse) = 0;
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
@@ -526,6 +534,36 @@ private:
                                           bool isOperandList,
                                           int requiredOperandCount,
                                           Delimiter delimiter);
+};
+
+//===--------------------------------------------------------------------===//
+// Dialect OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+class OpAsmDialectInterface
+    : public DialectInterface::Base<OpAsmDialectInterface> {
+public:
+  OpAsmDialectInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Hooks for getting identifier aliases for symbols. The identifier is used
+  /// in place of the symbol when printing textual IR.
+  ///
+  /// Hook for defining Attribute kind aliases. This will generate an alias for
+  /// all attributes of the given kind in the form : <alias>[0-9]+. These
+  /// aliases must not contain `.`.
+  virtual void getAttributeKindAliases(
+      SmallVectorImpl<std::pair<unsigned, StringRef>> &aliases) const {}
+  /// Hook for defining Attribute aliases. These aliases must not contain `.` or
+  /// end with a numeric digit([0-9]+).
+  virtual void getAttributeAliases(
+      SmallVectorImpl<std::pair<Attribute, StringRef>> &aliases) const {}
+  /// Hook for defining Type aliases.
+  virtual void
+  getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
+
+  /// Get a special name to use when printing the given operation. The desired
+  /// name should be streamed into 'os'.
+  virtual void getOpResultName(Operation *op, raw_ostream &os) const {}
 };
 
 } // end namespace mlir

@@ -80,6 +80,7 @@ const char* PathName(Path path) {
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
 #elif RUY_PLATFORM(X86)
+    RUY_PATHNAME_CASE(kAvx2)
     RUY_PATHNAME_CASE(kAvx512)
 #endif
     default:
@@ -575,6 +576,13 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::DoMul(TestResultType* result) {
                               prepacked_rhs_ptr);
 }
 
+// When building for WAsm, ASSERT_DEATH is not defined.
+#ifdef ASSERT_DEATH
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE) ASSERT_DEATH(CONDITION, MESSAGE)
+#else
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE)
+#endif
+
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().explicit_tuning = result->tuning;
@@ -593,7 +601,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
 #if (!defined NDEBUG) && (!defined RUY_ASAN) && (!defined RUY_TSAN)
-    ASSERT_DEATH(DoMul(result), "");
+    RUY_ASSERT_DEATH(DoMul(result), "");
 #endif
   } else {
     RUY_CHECK(false);

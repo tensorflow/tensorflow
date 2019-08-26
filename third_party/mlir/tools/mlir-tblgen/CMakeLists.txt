@@ -9,6 +9,7 @@ add_tablegen(mlir-tblgen MLIR
   mlir-tblgen.cpp
   OpDefinitionsGen.cpp
   OpDocGen.cpp
+  OpInterfacesGen.cpp
   ReferenceImplGen.cpp
   RewriterGen.cpp
   SPIRVUtilsGen.cpp

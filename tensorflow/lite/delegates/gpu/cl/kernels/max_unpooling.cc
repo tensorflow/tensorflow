@@ -29,11 +29,14 @@ std::string GetMaxUnoolingKernelCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& src_ind_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data", "src_size", src_descriptor);
   TensorCodeGenerator src_ind("src_data_indices", "src_size",
                               src_ind_descriptor);
   TensorCodeGenerator dst("dst_data", "dst_size", dst_descriptor);
+
+  const auto address_mode = GetFastestZeroMode(device);
 
   std::string code = GetCommonDefines(precision);
 
@@ -61,12 +64,16 @@ std::string GetMaxUnoolingKernelCode(
     code += "  FLT4 src = (FLT4)(0.0f);\n";
     code += "  int4 ind = (int4)(0);\n";
     code += "  if (!outside) {\n";
-    code += "    src = " + src.Read3D("src_adr") + ";\n";
-    code += "    ind = convert_int4(" + src_ind.Read3D("src_adr") + ");\n";
+    code +=
+        "    src = " + src.Read3D("src_adr", TextureAddressMode::DONT_CARE) +
+        ";\n";
+    code += "    ind = convert_int4(" +
+            src_ind.Read3D("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
     code += "  }\n";
-  } else {  // for textures no boundary checks
-    code += "  FLT4 src = " + src.Read3D("src_adr") + ";\n";
-    code += "  int4 ind = convert_int4(" + src_ind.Read3D("src_adr") + ");\n";
+  } else {
+    code += "  FLT4 src = " + src.Read3D("src_adr", address_mode) + ";\n";
+    code += "  int4 ind = convert_int4(" +
+            src_ind.Read3D("src_adr", address_mode) + ");\n";
   }
   code += "  int t_x = X - (src_x * stride.x - padding.x);\n";
   code += "  int t_y = Y - (src_y * stride.y - padding.y);\n";
@@ -116,7 +123,8 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 Status MaxUnpooling::Compile(const CreationContext& creation_context) {
   const auto code = GetMaxUnoolingKernelCode(
       definition_.src_tensors[0], definition_.src_tensors[1],
-      definition_.dst_tensors[0], definition_.precision, linked_operations_);
+      definition_.dst_tensors[0], definition_.precision,
+      *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

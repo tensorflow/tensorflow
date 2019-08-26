@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
@@ -101,7 +102,7 @@ static int PrintFunctionResultMapping(const std::string &result,
 
 int main(int argc, char **argv) {
   // TODO(jpienaar): Revise the command line option parsing here.
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
 
   // TODO(antiagainst): We are pulling in multiple transformations as follows.
   // Each transformation has its own set of command-line options; options of one
@@ -112,13 +113,8 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
-
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
-
-  // TODO(ashwinm): Enable command line parsing for both sides.
-  int fake_argc = 1;
-  tensorflow::port::InitMain(argv[0], &fake_argc, &argv);
 
   MLIRContext context;
   llvm::SourceMgr source_mgr;
@@ -138,12 +134,12 @@ int main(int argc, char **argv) {
   mlir::PassManager pm;
   bool run_quantize =
       tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
-  mlir::TFL::PassConfig pass_config{
-    emit_builtin_tflite_ops : emit_builtin_tflite_ops,
-    emit_quant_adaptor_ops : emit_quant_adaptor_ops,
-    lower_tensor_list_ops : lower_tensor_list_ops,
-    run_quantize : run_quantize
-  };
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
+  pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.run_quantize = run_quantize;
+
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;

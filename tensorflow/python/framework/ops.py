@@ -3969,8 +3969,12 @@ class Graph(object):
         c = []
         regex = re.compile(scope)
         for item in collection:
-          if hasattr(item, "name") and regex.match(item.name):
-            c.append(item)
+          try:
+            if regex.match(item.name):
+              c.append(item)
+          except AttributeError:
+            # Collection items with no name are ignored.
+            pass
         return c
 
   def get_all_collection_keys(self):

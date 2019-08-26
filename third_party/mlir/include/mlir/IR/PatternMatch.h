@@ -456,6 +456,8 @@ private:
 /// work-list driven manner. Return true if no more patterns can be matched in
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
+/// Note: This method also performs folding and simply dead-code elimination
+///       before attempting to match any of the provided patterns.
 ///
 bool applyPatternsGreedily(Operation *op,
                            const OwningRewritePatternList &patterns);

@@ -60,62 +60,64 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int16_t* output) {
-  PortableMatrixBatchVectorMultiplyAccumulate(
-      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
-      gate_bias, n_batch, n_input, n_output, output_zp, output);
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, input,
+                   input_zeropoint_times_weights, input_to_gate_weights,
+                   multiplier, shift, n_batch, n_input, n_output, output_zp,
+                   scratch, output);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int8_t* output) {
-  PortableMatrixBatchVectorMultiplyAccumulate(
-      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
-      gate_bias, n_batch, n_input, n_output, output_zp, output);
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, input,
+                   input_zeropoint_times_weights, input_to_gate_weights,
+                   multiplier, shift, n_batch, n_input, n_output, output_zp,
+                   scratch, output);
 }
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
                     int32_t layer_norm_scale_b, int32_t variance_limit,
                     int n_batch, int n_input, int16_t* output) {
-  PortableApplyLayerNorm(input, layer_norm_weights, bias, layer_norm_scale_a,
-                         layer_norm_scale_b, variance_limit, n_batch, n_input,
-                         output);
+  NEON_OR_PORTABLE(ApplyLayerNorm, input, layer_norm_weights, bias,
+                   layer_norm_scale_a, layer_norm_scale_b, variance_limit,
+                   n_batch, n_input, output);
 }
 
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output) {
-  PortableApplySigmoid(input, n_batch, n_input, output);
+  NEON_OR_PORTABLE(ApplySigmoid, input, n_batch, n_input, output);
 }
 
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output) {
-  PortableApplyTanh3(input, n_batch, n_input, output);
+  NEON_OR_PORTABLE(ApplyTanh3, input, n_batch, n_input, output);
 }
 
 void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output) {
-  PortableApplyTanh4(input, n_batch, n_input, output);
+  NEON_OR_PORTABLE(ApplyTanh4, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int16_t* output) {
-  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
+  NEON_OR_PORTABLE(CwiseMul, input_1, input_2, n_batch, n_input, shift, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output) {
-  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
+  NEON_OR_PORTABLE(CwiseMul, input_1, input_2, n_batch, n_input, shift, output);
 }
 
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output) {
-  PortableCwiseAdd(input_1, input_2, n_batch, n_input, output);
+  NEON_OR_PORTABLE(CwiseAdd, input_1, input_2, n_batch, n_input, output);
 }
 
 void CwiseClipping(int16_t* input, const int16_t clipping_value,

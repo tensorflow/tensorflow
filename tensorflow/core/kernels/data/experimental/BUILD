@@ -54,7 +54,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/optimizers/data:auto_shard",
-        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:rewrite_utils",
     ],
 )
 
@@ -304,7 +304,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/optimizers/data:rebatch",
-        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:rewrite_utils",
     ],
 )
 
@@ -374,7 +374,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:rewrite_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/time",
     ],

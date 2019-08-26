@@ -418,6 +418,7 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
+      .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
              return buffer.DeviceBuffer() == nullptr;
@@ -573,7 +574,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IRFFT", FftType::IRFFT);
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"));
+          py::arg("dimension_numbers"), py::arg("slice_sizes"),
+          py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
   ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
           py::arg("config") = "");

@@ -80,7 +80,7 @@ class LinearOperatorMatmulSolve(linalg.LinearOperator):
         is_square=is_square)
 
   def _shape(self):
-    return self._matrix.get_shape()
+    return self._matrix.shape
 
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)
@@ -136,7 +136,7 @@ class LinearOperatorTest(test.TestCase):
     operator = LinearOperatorMatmulSolve(matrix)
     with self.cached_session():
       operator_dense = operator.to_dense()
-      self.assertAllEqual((2, 3, 4), operator_dense.get_shape())
+      self.assertAllEqual((2, 3, 4), operator_dense.shape)
       self.assertAllClose(matrix, self.evaluate(operator_dense))
 
   def test_generic_to_dense_method_non_square_matrix_tensor(self):
@@ -152,7 +152,7 @@ class LinearOperatorTest(test.TestCase):
     x = [1., 1.]
     with self.cached_session():
       y = operator.matvec(x)
-      self.assertAllEqual((2,), y.get_shape())
+      self.assertAllEqual((2,), y.shape)
       self.assertAllClose([1., 2.], self.evaluate(y))
 
   def test_solvevec(self):
@@ -161,7 +161,7 @@ class LinearOperatorTest(test.TestCase):
     y = [1., 1.]
     with self.cached_session():
       x = operator.solvevec(y)
-      self.assertAllEqual((2,), x.get_shape())
+      self.assertAllEqual((2,), x.shape)
       self.assertAllClose([1., 1 / 2.], self.evaluate(x))
 
   def test_is_square_set_to_true_for_square_static_shapes(self):

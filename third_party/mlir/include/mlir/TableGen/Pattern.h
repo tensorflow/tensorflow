@@ -262,8 +262,19 @@ public:
     // symbol as a value (if this symbol represents one static value) or a value
     // range (if this symbol represents multiple static values). `name` is the
     // name of the C++ variable that this symbol bounds to. `index` should only
-    // be used for indexing results.
-    std::string getValueAndRangeUse(StringRef name, int index) const;
+    // be used for indexing results.  `fmt` is used to format each value.
+    // `separator` is used to separate values if this is a value range.
+    std::string getValueAndRangeUse(StringRef name, int index, const char *fmt,
+                                    const char *separator) const;
+
+    // Returns a string containing the C++ expression for referencing this
+    // symbol as a value range regardless of how many static values this symbol
+    // represents. `name` is the name of the C++ variable that this symbol
+    // bounds to. `index` should only be used for indexing results. `fmt` is
+    // used to format each value. `separator` is used to separate values in the
+    // range.
+    std::string getAllRangeUse(StringRef name, int index, const char *fmt,
+                               const char *separator) const;
 
     const Operator *op; // The op where the bound entity belongs
     Kind kind;          // The kind of the bound entity
@@ -309,8 +320,18 @@ public:
 
   // Returns a string containing the C++ expression for referencing this
   // symbol as a value (if this symbol represents one static value) or a value
-  // range (if this symbol represents multiple static values).
-  std::string getValueAndRangeUse(StringRef symbol) const;
+  // range (if this symbol represents multiple static values). `fmt` is used to
+  // format each value. `separator` is used to seperate values if `symbol`
+  // represents a value range.
+  std::string getValueAndRangeUse(StringRef symbol, const char *fmt = "{0}",
+                                  const char *separator = ", ") const;
+
+  // Returns a string containing the C++ expression for referencing this
+  // symbol as a value range regardless of how many static values this symbol
+  // represents. `fmt` is used to format each value. `seperator` is used to
+  // separate values in the range.
+  std::string getAllRangeUse(StringRef symbol, const char *fmt = "{0}",
+                             const char *separator = ", ") const;
 
   // Splits the given `symbol` into a value pack name and an index. Returns the
   // value pack name and writes the index to `index` on sucess. Returns `symbol`

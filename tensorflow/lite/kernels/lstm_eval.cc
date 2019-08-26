@@ -17,6 +17,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+
 #ifdef GEMMLOWP_PROFILING
 #include "profiling/profiler.h"
 #endif
@@ -886,8 +888,7 @@ inline void LstmStepWithAuxInput(
 }
 
 inline void LstmStepQuantized(
-    const int8_t* input_ptr, int32_t input_zp,
-    const int8_t* input_to_input_weight_ptr,
+    const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
     int32_t effective_input_to_input_scale_b,
     const int8_t* input_to_forget_weight_ptr,
@@ -931,12 +932,32 @@ inline void LstmStepQuantized(
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
     const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
-    const int32_t* proj_bias_ptr, int32 quantized_cell_clip,
-    int32 quantized_proj_clip, const int32_t* inv_large_value, int32 n_batch,
-    int32 n_cell, int32 n_input, int32 n_output, int32 output_batch_leading_dim,
+    int32 quantized_cell_clip, int32 quantized_proj_clip,
+    const int32_t* inv_large_value,
+    const int32_t* input_to_forget_weight_x_input_zp,
+    const int32_t* recurrent_to_forget_weight_x_activation_zp,
+    const int32_t* input_to_cell_weight_x_input_zp,
+    const int32_t* recurrent_to_cell_weight_x_activation_zp,
+    const int32_t* input_to_output_weight_x_input_zp,
+    const int32_t* recurrent_to_output_weight_x_activation_zp,
+    const int32_t* input_to_input_weight_x_input_zp,
+    const int32_t* recurrent_to_input_weight_x_activation_zp,
+    const int32_t* projection_bias_accu, int32 n_batch, int32 n_cell,
+    int32 n_input, int32 n_output, int32 output_batch_leading_dim,
     int8_t* activation_ptr, int32_t activation_zp, int16_t* cell_ptr,
     int8_t* output_ptr, int16_t* scratch_0_ptr, int16_t* scratch_1_ptr,
-    int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr) {
+    int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr,
+    int32_t* scratch_5_ptr) {
+  TFLITE_DCHECK(input_to_forget_weight_x_input_zp);
+  TFLITE_DCHECK(recurrent_to_forget_weight_x_activation_zp);
+  TFLITE_DCHECK(input_to_cell_weight_x_input_zp);
+  TFLITE_DCHECK(recurrent_to_cell_weight_x_activation_zp);
+  TFLITE_DCHECK(input_to_output_weight_x_input_zp);
+  TFLITE_DCHECK(recurrent_to_output_weight_x_activation_zp);
+  TFLITE_DCHECK(input_to_input_weight_x_input_zp);
+  TFLITE_DCHECK(recurrent_to_input_weight_x_activation_zp);
+  TFLITE_DCHECK(projection_bias_accu);
+
   // Set scratch to 0.
   memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_1_ptr, 0, n_batch * n_cell * sizeof(int16_t));
@@ -945,15 +966,15 @@ inline void LstmStepQuantized(
 
   // Forget gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_zp, input_to_forget_weight_ptr,
+      input_ptr, input_to_forget_weight_x_input_zp, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
-      nullptr, n_batch, n_input, n_cell, 0, scratch_1_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, activation_zp, recurrent_to_forget_weight_ptr,
-      effective_recurrent_to_forget_scale_a,
-      effective_recurrent_to_forget_scale_b, nullptr, n_batch, n_output, n_cell,
-      0, scratch_1_ptr);
+      activation_ptr, recurrent_to_forget_weight_x_activation_zp,
+      recurrent_to_forget_weight_ptr, effective_recurrent_to_forget_scale_a,
+      effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
+      scratch_5_ptr, scratch_1_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
                                forget_bias_ptr, layer_norm_forget_scale_a,
@@ -964,14 +985,15 @@ inline void LstmStepQuantized(
 
   // Modulation gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_zp, input_to_cell_weight_ptr,
-      effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, nullptr,
-      n_batch, n_input, n_cell, 0, scratch_2_ptr);
+      input_ptr, input_to_cell_weight_x_input_zp, input_to_cell_weight_ptr,
+      effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
+      n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, activation_zp, recurrent_to_cell_weight_ptr,
-      effective_recurrent_to_cell_scale_a, effective_recurrent_to_cell_scale_b,
-      nullptr, n_batch, n_output, n_cell, 0, scratch_2_ptr);
+      activation_ptr, recurrent_to_cell_weight_x_activation_zp,
+      recurrent_to_cell_weight_ptr, effective_recurrent_to_cell_scale_a,
+      effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
+      scratch_5_ptr, scratch_2_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
                                cell_bias_ptr, layer_norm_cell_scale_a,
@@ -982,15 +1004,15 @@ inline void LstmStepQuantized(
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_zp, input_to_output_weight_ptr,
+      input_ptr, input_to_output_weight_x_input_zp, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
-      nullptr, n_batch, n_input, n_cell, 0, scratch_3_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, activation_zp, recurrent_to_output_weight_ptr,
-      effective_recurrent_to_output_scale_a,
-      effective_recurrent_to_output_scale_b, nullptr, n_batch, n_output, n_cell,
-      0, scratch_3_ptr);
+      activation_ptr, recurrent_to_output_weight_x_activation_zp,
+      recurrent_to_output_weight_ptr, effective_recurrent_to_output_scale_a,
+      effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
+      scratch_5_ptr, scratch_3_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
                                output_bias_ptr, layer_norm_output_scale_a,
@@ -1001,15 +1023,15 @@ inline void LstmStepQuantized(
 
   // Input gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_zp, input_to_input_weight_ptr,
+      input_ptr, input_to_input_weight_x_input_zp, input_to_input_weight_ptr,
       effective_input_to_input_scale_a, effective_input_to_input_scale_b,
-      nullptr, n_batch, n_input, n_cell, 0, scratch_0_ptr);
+      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, activation_zp, recurrent_to_input_weight_ptr,
-      effective_recurrent_to_input_scale_a,
-      effective_recurrent_to_input_scale_b, nullptr, n_batch, n_output, n_cell,
-      0, scratch_0_ptr);
+      activation_ptr, recurrent_to_input_weight_x_activation_zp,
+      recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
+      effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
+      scratch_5_ptr, scratch_0_ptr);
 
   tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
                                input_bias_ptr, layer_norm_input_scale_a,
@@ -1040,9 +1062,9 @@ inline void LstmStepQuantized(
   // Projection.
   memset(output_ptr, 0, n_batch * n_output * sizeof(int8_t));
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      scratch_4_ptr, 0, proj_weight_ptr, effective_proj_scale_a,
-      effective_proj_scale_b, proj_bias_ptr, n_batch, n_cell, n_output,
-      activation_zp, output_ptr);
+      scratch_4_ptr, projection_bias_accu, proj_weight_ptr,
+      effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell, n_output,
+      activation_zp, scratch_5_ptr, output_ptr);
 
   if (quantized_proj_clip > 0) {
     tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
@@ -1580,7 +1602,8 @@ TfLiteStatus EvalQuantized(
     const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4) {
+    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
+    TfLiteTensor* scratch5) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1624,7 +1647,6 @@ TfLiteStatus EvalQuantized(
   int32_t* forget_bias_ptr = nullptr;
   int32_t* cell_bias_ptr = nullptr;
   int32_t* output_bias_ptr = nullptr;
-  int32_t* proj_bias_ptr = nullptr;
   int16_t* cell_ptr = nullptr;
   int8_t* activation_ptr = nullptr;
   int8_t* output_ptr = nullptr;
@@ -1659,9 +1681,6 @@ TfLiteStatus EvalQuantized(
 
   if (use_projection) {
     proj_weight_ptr = projection_weights->data.int8;
-    if (projection_bias) {
-      proj_bias_ptr = projection_bias->data.i32;
-    }
   }
 
   input_to_forget_weight_ptr = input_to_forget_weights->data.int8;
@@ -1691,7 +1710,7 @@ TfLiteStatus EvalQuantized(
     // Input can be int8 asymmetric or int16 symmetric.
     const int8_t* input_ptr = input->data.int8 + t_rel * input_step;
     LstmStepQuantized(
-        input_ptr, input_zp, input_to_input_weight_ptr,
+        input_ptr, input_to_input_weight_ptr,
         quantized_lstm_param->effective_input_to_input_scale_a,
         quantized_lstm_param->effective_input_to_input_scale_b,
         input_to_forget_weight_ptr,
@@ -1738,13 +1757,23 @@ TfLiteStatus EvalQuantized(
         layer_norm_output_weight_ptr,
         quantized_lstm_param->layer_norm_output_scale_a,
         quantized_lstm_param->layer_norm_output_scale_b, input_bias_ptr,
-        forget_bias_ptr, cell_bias_ptr, output_bias_ptr, proj_bias_ptr,
+        forget_bias_ptr, cell_bias_ptr, output_bias_ptr,
         quantized_lstm_param->quantized_cell_clip,
         quantized_lstm_param->quantized_proj_clip,
-        quantized_lstm_param->inv_large_value.data(), n_batch, n_cell, n_input,
-        n_output, output_batch_leading_dim, activation_ptr, activation_zp,
-        cell_ptr, output_ptr, scratch0->data.i16, scratch1->data.i16,
-        scratch2->data.i16, scratch3->data.i16, scratch4->data.int8);
+        quantized_lstm_param->inv_large_value.data(),
+        quantized_lstm_param->input_to_forget_weight_x_input_zp.get(),
+        quantized_lstm_param->recurrent_to_forget_weight_x_activation_zp.get(),
+        quantized_lstm_param->input_to_cell_weight_x_input_zp.get(),
+        quantized_lstm_param->recurrent_to_cell_weight_x_activation_zp.get(),
+        quantized_lstm_param->input_to_output_weight_x_input_zp.get(),
+        quantized_lstm_param->recurrent_to_output_weight_x_activation_zp.get(),
+        quantized_lstm_param->input_to_input_weight_x_input_zp.get(),
+        quantized_lstm_param->recurrent_to_input_weight_x_activation_zp.get(),
+        quantized_lstm_param->projection_bias_accu.get(), n_batch, n_cell,
+        n_input, n_output, output_batch_leading_dim, activation_ptr,
+        activation_zp, cell_ptr, output_ptr, scratch0->data.i16,
+        scratch1->data.i16, scratch2->data.i16, scratch3->data.i16,
+        scratch4->data.int8, scratch5->data.i32);
   }
 
   return kTfLiteOk;

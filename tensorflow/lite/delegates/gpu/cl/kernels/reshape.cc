@@ -61,7 +61,10 @@ std::string GetReshapeCode(
   c += "      int src_ch = (p % plane_xz.x) % src_size.z;\n";
   c += "      int src_z = src_ch / 4;\n";
   c += "      int src_sub_ch = src_ch % 4;\n";
-  c += "      FLT4 t =" + src_tensor.Read3D("src_x", "src_y", "src_z") + ";\n";
+  c += "      FLT4 t =" +
+       src_tensor.Read3D("src_x", "src_y", "src_z",
+                         TextureAddressMode::DONT_CARE) +
+       ";\n";
   c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
   c += "      temps[i] = t_ar[src_sub_ch];\n";
   c += "    }\n";

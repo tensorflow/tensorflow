@@ -246,3 +246,19 @@ func @empty_and_filled_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, te
 // CHECK-NEXT: %[[OP_D:[0-9]*]] = "tf.opD"(%[[ARG_0]])
 // CHECK-NEXT: %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]])
 // CHECK-NEXT: return %[[OP_E]], %[[ARG_0]], %[[ARG_0]], %[[OP_A]], %[[ARG_0]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+
+
+// Test single empty island in graph with control output in graph fetch results
+// in graph being removed.
+// CHECK-LABEL: func @empty_island
+func @empty_island() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    tf_executor.fetch %0 : !tf_executor.control
+  }
+  return
+}
+
+// CHECK-NEXT: return

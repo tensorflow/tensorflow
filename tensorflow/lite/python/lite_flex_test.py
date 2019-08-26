@@ -54,8 +54,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError) as error:
       interpreter.allocate_tensors()
     self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
+        'Regular TensorFlow ops are not supported by this interpreter.',
         str(error.exception))
 
   def testDeprecatedFlags(self):
@@ -84,8 +83,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError) as error:
       interpreter.allocate_tensors()
     self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
+        'Regular TensorFlow ops are not supported by this interpreter.',
         str(error.exception))
 
 
@@ -111,8 +109,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError) as error:
       interpreter.allocate_tensors()
     self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
+        'Regular TensorFlow ops are not supported by this interpreter.',
         str(error.exception))
 
 

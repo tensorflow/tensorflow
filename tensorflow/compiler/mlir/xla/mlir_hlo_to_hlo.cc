@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -154,7 +154,7 @@ class ConvertToHloModule {
   // if an error was encountered.
   LogicalResult RunOnFunction(mlir::FuncOp f);
 
-  xla::HloModuleProto ConsumeMainProto() {
+  ::xla::HloModuleProto ConsumeMainProto() {
     return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
         .proto();
   }
@@ -176,7 +176,7 @@ LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
   if (auto xla_op = CreateXlaOperator(inst, value_lowering)) return success();
 
   // TODO(riverriddle) We currently don't support lowering constant operations.
-  if (isa<mlir::XLA::ConstOp>(inst)) {
+  if (isa<mlir::xla_hlo::ConstOp>(inst)) {
     inst->emitError("unable to lower 'xla_hlo.constant' operation");
     return failure();
   }
