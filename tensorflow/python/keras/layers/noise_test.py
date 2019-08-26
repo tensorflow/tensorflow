@@ -39,16 +39,16 @@ class NoiseLayersTest(keras_parameterized.TestCase):
 
   def test_GaussianDropout(self):
     testing_utils.layer_test(
-      keras.layers.GaussianDropout,
-      kwargs={'rate': 0.5},
-      input_shape=(3, 2, 3)
+        keras.layers.GaussianDropout,
+        kwargs={'rate': 0.5},
+        input_shape=(3, 2, 3)
     )
 
     def test_AlphaDropout(self):
       testing_utils.layer_test(
-        keras.layers.AlphaDropout,
-        kwargs={'rate': 0.2},
-        input_shape=(3, 2, 3)
+          keras.layers.AlphaDropout,
+          kwargs={'rate': 0.2},
+          input_shape=(3, 2, 3)
       )
 
     @staticmethod
@@ -67,9 +67,9 @@ class NoiseLayersTest(keras_parameterized.TestCase):
     def _train_model(self, dtype, gtype):
       model = self._make_model(dtype, gtype)
       model.compile(
-        optimizer='sgd',
-        loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly()
+          optimizer='sgd',
+          loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly()
       )
       model.train_on_batch(np.zeros((8, 32)), np.zeros((8, 8)))
 
