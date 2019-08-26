@@ -958,6 +958,19 @@ inline void LstmStepQuantized(
   TFLITE_DCHECK(recurrent_to_input_weight_x_activation_zp);
   TFLITE_DCHECK(projection_bias_accu);
 
+  // TODO(renjieliu): Handle optional arguments processing here:
+  // case cifg: input_to_input_weights should be nullptr
+  //            recurrent_to_input_weight should be nullptr
+  //            input_bias should be nullptr
+  // case not peephole: cell_to_forget_weight should be nullptr
+  //                    cell_to_output_weight should be nullptr
+  //                    cifg: cell_to_input_weight should be nullptr
+  // case not layer_norm_lstm: layer_norm_forget_weight should be nullptr
+  //                           layer_nrom_cell_weight should be nullptr
+  //                           layer_norm_output_weight should be nullptr
+  //                           cifg: layer_norm_input_weight should be nullptr
+  // case not use_projection: proj_weight should be nullptr
+
   // Set scratch to 0.
   memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_1_ptr, 0, n_batch * n_cell * sizeof(int16_t));
@@ -1619,81 +1632,51 @@ TfLiteStatus EvalQuantized(
   const int n_cell = input_to_output_weights->dims->data[0];
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
-  // Since we have already checked that weights are all there or none, we can
-  // check the existence of only one to get the condition.
-  const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
-  const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);
-  const bool use_projection = (projection_weights != nullptr);
-
   // Weights and states.
-  int8_t* input_to_input_weight_ptr = nullptr;
-  int8_t* recurrent_to_input_weight_ptr = nullptr;
-  int8_t* cell_to_input_weight_ptr = nullptr;
-  int8_t* input_to_forget_weight_ptr = nullptr;
-  int8_t* recurrent_to_forget_weight_ptr = nullptr;
-  int8_t* cell_to_forget_weight_ptr = nullptr;
-  int8_t* input_to_cell_weight_ptr = nullptr;
-  int8_t* recurrent_to_cell_weight_ptr = nullptr;
-  int8_t* input_to_output_weight_ptr = nullptr;
-  int8_t* recurrent_to_output_weight_ptr = nullptr;
-  int8_t* cell_to_output_weight_ptr = nullptr;
-  int8_t* proj_weight_ptr = nullptr;
-  int16_t* layer_norm_input_weight_ptr = nullptr;
-  int16_t* layer_norm_forget_weight_ptr = nullptr;
-  int16_t* layer_norm_cell_weight_ptr = nullptr;
-  int16_t* layer_norm_output_weight_ptr = nullptr;
-  int32_t* input_bias_ptr = nullptr;
-  int32_t* forget_bias_ptr = nullptr;
-  int32_t* cell_bias_ptr = nullptr;
-  int32_t* output_bias_ptr = nullptr;
-  int16_t* cell_ptr = nullptr;
-  int8_t* activation_ptr = nullptr;
-  int8_t* output_ptr = nullptr;
+  const int8_t* input_to_input_weight_ptr =
+      GetTensorData<int8_t>(input_to_input_weights);
+  const int8_t* recurrent_to_input_weight_ptr =
+      GetTensorData<int8_t>(recurrent_to_input_weights);
+  const int8_t* cell_to_input_weight_ptr =
+      GetTensorData<int8_t>(cell_to_input_weights);
+  const int8_t* input_to_forget_weight_ptr =
+      GetTensorData<int8_t>(input_to_forget_weights);
+  const int8_t* recurrent_to_forget_weight_ptr =
+      GetTensorData<int8_t>(recurrent_to_forget_weights);
+  const int8_t* cell_to_forget_weight_ptr =
+      GetTensorData<int8_t>(cell_to_forget_weights);
+  const int8_t* input_to_cell_weight_ptr =
+      GetTensorData<int8_t>(input_to_cell_weights);
+  const int8_t* recurrent_to_cell_weight_ptr =
+      GetTensorData<int8_t>(recurrent_to_cell_weights);
+  const int8_t* input_to_output_weight_ptr =
+      GetTensorData<int8_t>(input_to_output_weights);
+  const int8_t* recurrent_to_output_weight_ptr =
+      GetTensorData<int8_t>(recurrent_to_output_weights);
+  const int8_t* cell_to_output_weight_ptr =
+      GetTensorData<int8_t>(cell_to_output_weights);
+  const int8_t* proj_weight_ptr = GetTensorData<int8_t>(projection_weights);
+  const int16_t* layer_norm_input_weight_ptr =
+      GetTensorData<int16_t>(input_layer_norm_coefficients);
+  const int16_t* layer_norm_forget_weight_ptr =
+      GetTensorData<int16_t>(forget_layer_norm_coefficients);
+  const int16_t* layer_norm_cell_weight_ptr =
+      GetTensorData<int16_t>(cell_layer_norm_coefficients);
+  const int16_t* layer_norm_output_weight_ptr =
+      GetTensorData<int16_t>(output_layer_norm_coefficients);
+  const int32_t* input_bias_ptr = GetTensorData<int32_t>(input_gate_bias);
+  const int32_t* forget_bias_ptr = GetTensorData<int32_t>(forget_gate_bias);
+  const int32_t* cell_bias_ptr = GetTensorData<int32_t>(cell_bias);
+  const int32_t* output_bias_ptr = GetTensorData<int32_t>(output_gate_bias);
+
+  int16_t* cell_ptr = GetTensorData<int16_t>(cell_state);
+  int8_t* activation_ptr = GetTensorData<int8_t>(activation_state);
+  int8_t* output_ptr = GetTensorData<int8_t>(output);
 
   // Zero points
   int input_zp = 0;
   int activation_zp = 0;
 
-  // Populate all the values.
-  if (!use_cifg) {
-    input_to_input_weight_ptr = input_to_input_weights->data.int8;
-    recurrent_to_input_weight_ptr = recurrent_to_input_weights->data.int8;
-    input_bias_ptr = input_gate_bias->data.i32;
-  }
-
-  if (use_peephole) {
-    if (!use_cifg) {
-      cell_to_input_weight_ptr = cell_to_input_weights->data.int8;
-    }
-    cell_to_forget_weight_ptr = cell_to_forget_weights->data.int8;
-    cell_to_output_weight_ptr = cell_to_output_weights->data.int8;
-  }
-
-  if (is_layer_norm_lstm) {
-    if (!use_cifg) {
-      layer_norm_input_weight_ptr = input_layer_norm_coefficients->data.i16;
-    }
-    layer_norm_forget_weight_ptr = forget_layer_norm_coefficients->data.i16;
-    layer_norm_cell_weight_ptr = cell_layer_norm_coefficients->data.i16;
-    layer_norm_output_weight_ptr = output_layer_norm_coefficients->data.i16;
-  }
-
-  if (use_projection) {
-    proj_weight_ptr = projection_weights->data.int8;
-  }
-
-  input_to_forget_weight_ptr = input_to_forget_weights->data.int8;
-  input_to_cell_weight_ptr = input_to_cell_weights->data.int8;
-  input_to_output_weight_ptr = input_to_output_weights->data.int8;
-  recurrent_to_forget_weight_ptr = recurrent_to_forget_weights->data.int8;
-  recurrent_to_cell_weight_ptr = recurrent_to_cell_weights->data.int8;
-  recurrent_to_output_weight_ptr = recurrent_to_output_weights->data.int8;
-  forget_bias_ptr = forget_gate_bias->data.i32;
-  cell_bias_ptr = cell_bias->data.i32;
-  output_bias_ptr = output_gate_bias->data.i32;
-  activation_ptr = activation_state->data.int8;
-  cell_ptr = cell_state->data.i16;
   input_zp = input->params.zero_point;
   activation_zp = activation_state->params.zero_point;
 
@@ -1705,10 +1688,10 @@ TfLiteStatus EvalQuantized(
 
   for (int t = 0; t < max_time; t++) {
     const int t_rel = t;
-    output_ptr = output->data.int8 + t_rel * output_step;
+    output_ptr = output_ptr + t_rel * output_step;
 
     // Input can be int8 asymmetric or int16 symmetric.
-    const int8_t* input_ptr = input->data.int8 + t_rel * input_step;
+    const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
     LstmStepQuantized(
         input_ptr, input_to_input_weight_ptr,
         quantized_lstm_param->effective_input_to_input_scale_a,
@@ -1771,9 +1754,10 @@ TfLiteStatus EvalQuantized(
         quantized_lstm_param->recurrent_to_input_weight_x_activation_zp.get(),
         quantized_lstm_param->projection_bias_accu.get(), n_batch, n_cell,
         n_input, n_output, output_batch_leading_dim, activation_ptr,
-        activation_zp, cell_ptr, output_ptr, scratch0->data.i16,
-        scratch1->data.i16, scratch2->data.i16, scratch3->data.i16,
-        scratch4->data.int8, scratch5->data.i32);
+        activation_zp, cell_ptr, output_ptr, GetTensorData<int16_t>(scratch0),
+        GetTensorData<int16_t>(scratch1), GetTensorData<int16_t>(scratch2),
+        GetTensorData<int16_t>(scratch3), GetTensorData<int8_t>(scratch4),
+        GetTensorData<int32_t>(scratch5));
   }
 
   return kTfLiteOk;
