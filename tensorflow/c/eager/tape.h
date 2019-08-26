@@ -334,8 +334,9 @@ class ForwardAccumulator {
     // executions not forwarded to backward_tape should be ignored.
     bool accumulating;
   };
-  std::stack<AccumulatorCallState, std::vector<AccumulatorCallState>>
-      call_state_;
+  // A deque-backed stack, whose element references are not invalidated by
+  // pushes and pops at the back.
+  std::stack<AccumulatorCallState> call_state_;
 };
 
 // Template instantiations here
