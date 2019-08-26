@@ -194,6 +194,7 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
+        "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/prepare_composite_functions_tf.cc",

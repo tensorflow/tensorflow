@@ -45,6 +45,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   // Ophint extraction will happen after island extraction pass.
   pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
+  // Convert composite op pass will happen after ophint extraction pass.
+  pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
 
   if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
