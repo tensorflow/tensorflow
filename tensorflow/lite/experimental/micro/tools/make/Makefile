@@ -137,8 +137,6 @@ tensorflow/lite/kernels/kernel_util.h \
 tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/string.h \
-tensorflow/lite/string_util.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \
