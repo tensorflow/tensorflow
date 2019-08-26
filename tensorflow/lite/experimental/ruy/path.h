@@ -80,7 +80,7 @@ enum class Path : std::uint8_t {
   // Optimized path making use of ARM NEON dot product instructions that are
   // available on newer ARM cores.
   kNeonDotprod = 0x8,
-#endif
+#endif  // RUY_PLATFORM(ARM)
 
 #if RUY_PLATFORM(X86)
   // x86 architectures.
@@ -89,7 +89,7 @@ enum class Path : std::uint8_t {
   kAvx2 = 0x4,
   // Optimized for AVX-512.
   kAvx512 = 0x8,
-#endif
+#endif  // RUY_PLATFORM(X86)
 };
 
 inline constexpr Path operator|(Path p, Path q) {
