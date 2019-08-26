@@ -200,7 +200,7 @@ cc_library(
         ":mangling_util",
         ":mlir_roundtrip_flags",
         ":tensorflow",
-        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
