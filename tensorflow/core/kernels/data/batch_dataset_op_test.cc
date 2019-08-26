@@ -226,8 +226,18 @@ TEST_F(BatchDatasetOpTest, DatasetTypeString) {
 }
 
 TEST_F(BatchDatasetOpTest, DatasetOutputDtypes) {
-  auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(batch_dataset_params.get()));
+  auto batch_dataset_params =
+      DatasetParamsBuilder()
+          .Range(/*start=*/0,
+                 /*stop=*/12,
+                 /*step=*/1)
+          .Batch(/*batch_size=*/4,
+                 /*drop_remainder=*/false,
+                 /*parallel_copy=*/true,
+                 /*output_dtypes=*/{DT_INT64},
+                 /*output_shapes=*/{PartialTensorShape({4})})
+          .GetDatasetParams<BatchDatasetParams>();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 

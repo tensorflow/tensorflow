@@ -178,6 +178,65 @@ static std::shared_ptr<RangeDatasetParams> Range(int64 start, int64 stop,
   return std::make_shared<RangeDatasetParams>(start, stop, step);
 }
 
+class DatasetParamsBuilder {
+ public:
+  DatasetParamsBuilder() = default;
+
+  DatasetParamsBuilder Range(int64 start, int64 stop, int64 step) {
+    string node_name = GetNodeName(RangeDatasetOp::kDatasetType);
+    auto range_dataset_params = new RangeDatasetParams(
+        start, stop, step, {DT_INT64}, {PartialTensorShape({})}, node_name);
+    dataset_params_.reset(range_dataset_params);
+    return *this;
+  }
+
+  DatasetParamsBuilder Batch(
+      int64 batch_size, bool drop_remainder, bool parallel_copy,
+      const DataTypeVector& output_dtypes,
+      const std::vector<PartialTensorShape>& output_shapes) {
+    string node_name = GetNodeName(BatchDatasetOp::kDatasetType);
+    auto batch_dataset_params = new BatchDatasetParams(
+        dataset_params_, batch_size, drop_remainder, parallel_copy,
+        output_dtypes, output_shapes, node_name);
+    dataset_params_.reset(batch_dataset_params);
+    return *this;
+  }
+
+  DatasetParamsBuilder Map(const std::vector<Tensor>& other_arguments,
+                           const FunctionDefHelper::AttrValueWrapper& func,
+                           const std::vector<FunctionDef>& func_lib,
+                           const DataTypeVector& type_arguments,
+                           const DataTypeVector& output_dtypes,
+                           const std::vector<PartialTensorShape>& output_shapes,
+                           bool use_inter_op_parallelism,
+                           bool preserve_cardinality) {
+    string node_name = GetNodeName(MapDatasetOp::kDatasetType);
+    auto map_dataset_params = new MapDatasetParams(
+        dataset_params_, other_arguments, func, func_lib, type_arguments,
+        output_dtypes, output_shapes, use_inter_op_parallelism,
+        preserve_cardinality, node_name);
+    dataset_params_.reset(map_dataset_params);
+    return *this;
+  }
+
+  template <typename T>
+  T GetDatasetParams() {
+    auto dataset_params = dynamic_cast<T*>(dataset_params_.get());
+    return *dataset_params;
+  }
+
+ private:
+  string GetNodeName(const string& dataset_type) {
+    string node_name = absl::StrCat(dataset_type, "_",
+                                    node_name_id[RangeDatasetOp::kDatasetType]);
+    node_name_id[dataset_type] += 1;
+    return node_name;
+  }
+
+  std::shared_ptr<DatasetParams> dataset_params_;
+  std::unordered_map<string, int64> node_name_id;
+};
+
 }  // namespace data
 }  // namespace tensorflow
 
