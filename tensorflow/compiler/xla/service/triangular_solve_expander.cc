@@ -266,8 +266,12 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
     int64 m_dim = (left_side) ? -1 : -2;
     int64 m = ShapeUtil::GetDimension(b_shape, m_dim);
 
+    std::vector<XlaOp> update_ops;
+    int bdims = b_shape.rank();
+    int64 block_dim = (left_side) ? bdims - 2 : bdims - 1;
+
     // Initialize the solution
-    auto x = ZerosLike(b);
+    XlaOp x;
 
     // This loop is unrolled for performance reasons, but it could be expressed
     // rolled as well since the matrices are of the same size each iteration
@@ -304,9 +308,9 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       if (i == 0) {
         remainder = b_row;
       } else {
-        // This matrix multiply involves a lot of multiplying with zero (namely,
-        // X[i * block_size:] = 0), but this is faster than slicing...
-        end = {k, n};
+        // This matrix multiply get rid of a lot of multiplying with zero
+        // (namely, X[i * block_size:] = 0), L[i, :i] @ X[:i]
+        end = {k, std::min(i * block_size, n)};
         if (!left_side) {
           std::swap(end[0], end[1]);
         }
@@ -335,7 +339,12 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
             BatchDot(remainder, false, inv_block, transpose_a, precision);
         std::swap(update_starts[0], update_starts[1]);
       }
-      x = DynamicUpdateSliceInMinorDims(x, x_update, /*starts=*/update_starts);
+
+      if (i == 0) {
+        x = x_update;
+      } else {
+        x = ConcatInDim(builder, {x, x_update}, block_dim);
+      }
     }
 
     return x;
