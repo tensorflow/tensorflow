@@ -21,15 +21,18 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA
 
@@ -63,7 +66,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
   return CompileGpuAsm(device_ordinal, ptx, compilation_options);
 }
 
-#else
+#elif GOOGLE_CUDA
 
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
@@ -166,11 +169,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
   gpu::GpuDeviceHandle handle;
-  TF_RETURN_IF_ERROR(cuda::CUDADriver::GetDevice(device_ordinal, &handle));
+  TF_RETURN_IF_ERROR(gpu::GpuDriver::GetDevice(device_ordinal, &handle));
   int cc_major;
   int cc_minor;
   TF_RETURN_IF_ERROR(
-      cuda::CUDADriver::GetComputeCapability(&cc_major, &cc_minor, handle));
+      gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, handle));
 
   string ptxas_path;
   auto env = tensorflow::Env::Default();
@@ -243,6 +246,6 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   return cubin_vector;
 }
 
-#endif  // PLATFORM_WINDOWS
+#endif
 
 }  // namespace stream_executor

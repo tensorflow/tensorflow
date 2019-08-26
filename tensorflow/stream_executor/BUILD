@@ -4,6 +4,7 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:default/cuda_build_defs.bzl",
@@ -507,6 +508,7 @@ cc_library(
     name = "gpu_asm_opts",
     srcs = ["gpu_asm_opts.cc"],
     hdrs = ["gpu_asm_opts.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",

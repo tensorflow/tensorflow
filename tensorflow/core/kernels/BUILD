@@ -518,8 +518,6 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
@@ -528,6 +526,8 @@ tf_cuda_library(
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:gpu_asm_opts",
         "//tensorflow/stream_executor:redzone_allocator",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
