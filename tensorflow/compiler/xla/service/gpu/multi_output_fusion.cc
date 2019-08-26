@@ -123,9 +123,9 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   for (HloInstruction* consumer : producer->users()) {
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
-    if (!IsFusibleAsMultiOutputFusionRoot(*consumer)) {
+    if (!IsInputFusibleReduction(*consumer)) {
       VLOG(3) << "Consumer " << consumer->name()
-              << " is not eligible as multi-output fusion root.";
+              << " is not an input-fusible reduction..";
       continue;
     }
     if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
