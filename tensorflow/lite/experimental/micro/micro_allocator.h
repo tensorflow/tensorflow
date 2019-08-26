@@ -49,7 +49,27 @@ class MicroAllocator {
   // registerPreallocatedInput.
   TfLiteStatus AllocateTensors();
 
+  // Ensure all tensors needed to execute operator `op_index` are allocated.
+  // Note: this method is used by MicroInterpreter and shouldn't be called
+  // manually.
+  TfLiteStatus AllocateForOperator(int op_index);
+
+  // Try to reclaim tensor data memory after executing operator `op_index`.
+  // Note: this method is used by MicroInterpreter and shouldn't be called
+  // manually.
+  TfLiteStatus DeallocateAfterOperator(int op_index);
+
  private:
+  // Initialises all fields in a TFLiteTensor struct from a flatbuffer object.
+  TfLiteStatus InitialiseTensor(
+          const tflite::Tensor& flatbuffer_tensor,
+          const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+          ErrorReporter* error_reporter, TfLiteTensor* result,
+          uint8_t* preallocated_memory=nullptr);
+
+  TfLiteStatus AllocateTensorBuffer(TfLiteTensor* tensor, ErrorReporter* error_reporter);
+  TfLiteStatus DeallocateTensorBuffer(TfLiteTensor* tensor, ErrorReporter* error_reporter);
+
   const Model* model_;
   SimpleTensorAllocator tensor_allocator_;
   ErrorReporter* error_reporter_;
@@ -58,6 +78,7 @@ class MicroAllocator {
   const SubGraph* subgraph_;
   const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
   const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
+  int *create_tensor_before_, *destroy_tensor_after_;
 };
 
 }  // namespace tflite

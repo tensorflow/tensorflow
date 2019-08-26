@@ -164,6 +164,8 @@ TfLiteStatus MicroInterpreter::Invoke() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
   for (size_t i = 0; i < operators_->size(); ++i) {
+    allocator_.AllocateForOperator(i);
+
     const auto* op = operators_->Get(i);
     size_t index = op->opcode_index();
     if (index < 0 || index >= opcodes->size()) {
@@ -263,6 +265,8 @@ TfLiteStatus MicroInterpreter::Invoke() {
     if (registration->free) {
       registration->free(&context_, user_data);
     }
+
+    allocator_.DeallocateAfterOperator(i);
   }
   return status;
 }
