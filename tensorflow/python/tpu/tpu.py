@@ -287,7 +287,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
-                                            name=name + "/handle")
+                                            name=name + "/handle",
+                                            is_mirrored_variable=True)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
