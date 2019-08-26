@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,29 +15,15 @@ limitations under the License.
 
 #include <jni.h>
 
-#include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/testing/init_tensorflow.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_flex_FlexDelegate_nativeInitTensorFlow(JNIEnv* env,
-                                                                jclass clazz) {
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_TensorFlowLite_initTensorFlow(
+    JNIEnv* env, jclass clazz) {
   ::tflite::InitTensorFlow();
-}
-
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_flex_FlexDelegate_nativeCreateDelegate(JNIEnv* env,
-                                                                jclass clazz) {
-  return reinterpret_cast<jlong>(tflite::FlexDelegate::Create().release());
-}
-
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_flex_FlexDelegate_nativeDeleteDelegate(
-    JNIEnv* env, jclass clazz, jlong delegate) {
-  delete reinterpret_cast<tflite::FlexDelegate*>(delegate);
 }
 
 #ifdef __cplusplus
