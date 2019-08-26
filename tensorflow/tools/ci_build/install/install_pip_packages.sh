@@ -15,11 +15,20 @@
 # ==============================================================================
 
 set -e
+ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
+  awk -F'.' '{print $1}')
 
 # Get the latest version of pip so it recognize manylinux2010
-easy_install3 -U pip
-easy_install -U pip
-
+# easy_install is not available on ubuntu 18.04
+if [[ "$ubuntu_version" == "18" ]]; then
+  wget https://bootstrap.pypa.io/get-pip.py
+  python3 get-pip.py
+  python get-pip.py
+  rm -f get-pip.py
+else
+  easy_install3 -U pip
+  easy_install -U pip
+fi
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
@@ -91,6 +100,12 @@ pip2 install psutil
 pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
+
+# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
+# Latest version of lazy-object-proxy (1.4.2) fails to install from source
+# when using setuptools 39.1.0
+pip2 install lazy-object-proxy==1.4.1
+pip3 install lazy-object-proxy==1.4.1
 
 # pylint tests require the following:
 pip2 install pylint==1.6.4
