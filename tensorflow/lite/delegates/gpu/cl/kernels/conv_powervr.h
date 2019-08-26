@@ -84,15 +84,14 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
-  const int float4_size = definition_.precision == CalculationsPrecision::F32
-                              ? sizeof(float4)
-                              : sizeof(half4);
+  const bool f32_weights = definition_.precision != CalculationsPrecision::F16;
+  const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   const int dst_depth_aligned = AlignByN(dst_depth, block_size_.z);
   const int elements_count =
       weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (f32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeight(weights, absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),

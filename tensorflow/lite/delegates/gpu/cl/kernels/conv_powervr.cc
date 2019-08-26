@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
@@ -47,8 +49,8 @@ std::string GenerateConvPowerVR1x1(
   c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __global FLT4* filters_buffer,    \n";
-  c += "    __global FLT4* biases             \n";
+  c += "    __global ACCUM_FLT4* filters_buffer,    \n";
+  c += "    __global ACCUM_FLT4* biases             \n";
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,                   \n";
@@ -68,8 +70,9 @@ std::string GenerateConvPowerVR1x1(
       }
     }
   }
-  c += "  __local FLT4 data[" + std::to_string(block_size.z * 4) + "];\n";
-  c += "  __global FLT4* filters_loc = filters_buffer + Z * 4 * src_size.w;\n";
+  c += "  __local ACCUM_FLT4 data[" + std::to_string(block_size.z * 4) + "];\n";
+  c += "  __global ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
+       "src_size.w;\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     c += "  const int src_layer_offset = src_size.x * src_size.y;\n";
     for (int y = 0; y < block_size.y; ++y) {
@@ -87,15 +90,28 @@ std::string GenerateConvPowerVR1x1(
     for (int x = 0; x < block_size.x; ++x) {
       if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
         std::string id = std::to_string(y) + std::to_string(x);
-        c += "    FLT4 src" + id + " = src_data[src_a_" + id + "];\n";
+        if (precision == CalculationsPrecision::F32_F16) {
+          c += "    ACCUM_FLT4 src" + id + " = convert_float4(src_data[src_a_" +
+               id + "]);\n";
+        } else {
+          c += "    FLT4 src" + id + " = src_data[src_a_" + id + "];\n";
+        }
         c += "    src_a_" + id + " += src_layer_offset;\n";
       } else {
         std::string id = std::to_string(y) + std::to_string(x);
-        c += "    FLT4 src" + id + " = " +
-             src_tensor.Read3D("X + " + std::to_string(x),
-                               "Y + " + std::to_string(y), "s",
-                               TextureAddressMode::DONT_CARE) +
-             ";\n";
+        if (precision == CalculationsPrecision::F32_F16) {
+          c += "    ACCUM_FLT4 src" + id + " = " +
+               src_tensor.ReadAsFloat3D("X + " + std::to_string(x),
+                                        "Y + " + std::to_string(y), "s",
+                                        TextureAddressMode::DONT_CARE) +
+               ";\n";
+        } else {
+          c += "    FLT4 src" + id + " = " +
+               src_tensor.Read3D("X + " + std::to_string(x),
+                                 "Y + " + std::to_string(y), "s",
+                                 TextureAddressMode::DONT_CARE) +
+               ";\n";
+        }
       }
     }
   }
@@ -136,8 +152,8 @@ std::string GenerateConvPowerVR1x1(
         const std::string r_id =
             std::to_string(z) + std::to_string(y) + std::to_string(x);
         c += "  if (" + xs + " < dst_size.x && " + ys + " < dst_size.y) {\n";
-        c += "    FLT4 res = TO_FLT4(r" + r_id + ") + data[" +
-             std::to_string(z) + "];\n";
+        c += "    FLT4 res = TO_FLT4(r" + r_id + " + data[" +
+             std::to_string(z) + "]);\n";
         c += "    " + dst_tensor.GetAddress("address", xs, ys, zs) + "\n";
         c += PostProcess(linked_operations, "res", zs, "address");
         c += "    " + dst_tensor.Write3D("res", "address") + "\n";
@@ -193,8 +209,13 @@ Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const std::string code = GenerateConvPowerVR1x1(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, block_size_, linked_operations_);
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      creation_context.device->IsPowerVR()) {
+    options.push_back(CompilerOptions::POWERVR_FP16);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
+      code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
@@ -231,20 +252,35 @@ bool IsConvPowerVRSupported(const OperationDef& definition,
   return attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
          attr.strides == HW(1, 1) && attr.dilations == HW(1, 1) &&
          attr.padding.prepended == HW(0, 0) &&
-         attr.padding.appended == HW(0, 0) &&
-         definition.precision == CalculationsPrecision::F32;
+         attr.padding.appended == HW(0, 0);
 }
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
                          ConvPowerVR* result) {
-  *result = ConvPowerVR(definition, attr, {1, 1, 4});
+  int3 block_size = int3(1, 1, 4);
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  if (dst_depth % 8 == 0 || dst_depth >= 32) {
+    block_size.z = 8;
+  } else if (dst_depth % 4 == 0 || dst_depth >= 8) {
+    block_size.z = 4;
+  } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
+    block_size.z = 2;
+  } else {
+    block_size.z = dst_depth;
+  }
+  if (definition.precision == CalculationsPrecision::F16) {
+    block_size.y = 2;
+  }
+  *result = ConvPowerVR(definition, attr, block_size);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition.GetDataType();
+  create_info.data_type = definition.precision == CalculationsPrecision::F16
+                              ? DataType::FLOAT16
+                              : DataType::FLOAT32;
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
