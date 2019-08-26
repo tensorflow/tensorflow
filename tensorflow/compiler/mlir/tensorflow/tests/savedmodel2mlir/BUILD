@@ -5,6 +5,7 @@ package(licenses = ["notice"])
 tf_cc_test(
     name = "half_plus_two",
     srcs = ["half_plus_two.cc"],
+    tags = ["no_rocm"],
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
