@@ -44,46 +44,46 @@ class NoiseLayersTest(keras_parameterized.TestCase):
         input_shape=(3, 2, 3)
     )
 
-    def test_AlphaDropout(self):
-      testing_utils.layer_test(
-          keras.layers.AlphaDropout,
-          kwargs={'rate': 0.2},
-          input_shape=(3, 2, 3)
-      )
+  def test_AlphaDropout(self):
+    testing_utils.layer_test(
+        keras.layers.AlphaDropout,
+        kwargs={'rate': 0.2},
+        input_shape=(3, 2, 3)
+    )
 
-    @staticmethod
-    def _make_model(dtype, gtype):
-      assert dtype in (dtypes_module.float32, dtypes_module.float64)
-      assert gtype in ('noise', 'dropout')
-      model = keras.Sequential()
-      model.add(keras.layers.Dense(8, input_shape=(32,), dtype=dtype))
-      if gtype == 'noise':
-        gaussian = keras.layers.GaussianNoise(0.0003)
-      else:
-        gaussian = keras.layers.GaussianDropout(0.1)
-      model.add(gaussian)
-      return model
+  @staticmethod
+  def _make_model(dtype, gtype):
+    assert dtype in (dtypes_module.float32, dtypes_module.float64)
+    assert gtype in ('noise', 'dropout')
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(8, input_shape=(32,), dtype=dtype))
+    if gtype == 'noise':
+      gaussian = keras.layers.GaussianNoise(0.0003)
+    else:
+      gaussian = keras.layers.GaussianDropout(0.1)
+    model.add(gaussian)
+    return model
 
-    def _train_model(self, dtype, gtype):
-      model = self._make_model(dtype, gtype)
-      model.compile(
-          optimizer='sgd',
-          loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly()
-      )
-      model.train_on_batch(np.zeros((8, 32)), np.zeros((8, 8)))
+  def _train_model(self, dtype, gtype):
+    model = self._make_model(dtype, gtype)
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly()
+    )
+    model.train_on_batch(np.zeros((8, 32)), np.zeros((8, 8)))
 
-    def test_noise_float32(self):
-      self._train_model(dtypes_module.float32, 'noise')
+  def test_noise_float32(self):
+    self._train_model(dtypes_module.float32, 'noise')
 
-    def test_noise_float64(self):
-      self._train_model(dtypes_module.float64, 'noise')
+  def test_noise_float64(self):
+    self._train_model(dtypes_module.float64, 'noise')
 
-    def test_dropout_float32(self):
-      self._train_model(dtypes_module.float32, 'dropout')
+  def test_dropout_float32(self):
+    self._train_model(dtypes_module.float32, 'dropout')
 
-    def test_dropout_float64(self):
-      self._train_model(dtypes_module.float64, 'dropout')
+  def test_dropout_float64(self):
+    self._train_model(dtypes_module.float64, 'dropout')
 
 
 if __name__ == '__main__':
