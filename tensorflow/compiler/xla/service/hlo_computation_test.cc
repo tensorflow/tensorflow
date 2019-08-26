@@ -703,5 +703,104 @@ ENTRY entry {
                           op::Add(), op::Tuple()));
 }
 
+// Tests that the equals function takes dangling side-effect instructions into
+// account.
+TEST_F(HloComputationTest, EqualsWithSideEffectsTest) {
+  // Using all-reduce with channel as it has side effects and supports
+  // identical.
+  const char* const hlo_string = R"(
+HloModule Module
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+comp0 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT root = () tuple()
+}
+
+comp1 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  a0 = f32[] all-reduce(p0), to_apply=add, channel_id=1
+  a1 = f32[] all-reduce(p1), to_apply=add, channel_id=1
+  ROOT root = () tuple()
+}
+
+comp2 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  a0 = f32[] all-reduce(p0), to_apply=add, channel_id=1
+  a1 = f32[] all-reduce(p1), to_apply=add, channel_id=1
+  c2 = f32[] constant(2)
+  ROOT root = () tuple()
+}
+
+comp3 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  a0 = f32[] all-reduce(p0), to_apply=add, channel_id=1
+  a1 = f32[] all-reduce(p0), to_apply=add, channel_id=1
+  ROOT root = () tuple()
+}
+
+comp4 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  rng = f32[2] rng(f32[] p0, f32[] p1), distribution=rng_uniform
+  ROOT root = () tuple()
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  r0 = () call(p0, p1), to_apply=comp0
+  r1 = () call(p0, p1), to_apply=comp1
+  r2 = () call(p0, p1), to_apply=comp2
+  r3 = () call(p0, p1), to_apply=comp3
+  ROOT root = (f32[]) tuple(p0, p1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // comp0 has no side-effect.
+  HloComputation* comp0 = FindComputation(module.get(), "comp0");
+  // comp1 two unique all-reduce instructions with side-effect.
+  HloComputation* comp1 = FindComputation(module.get(), "comp1");
+  // comp2 is same as comp1 but has an extra unreachable instruction.
+  HloComputation* comp2 = FindComputation(module.get(), "comp2");
+  // comp3 has two of the same all-reduce instruction. Used to make sure the
+  // function is symmetric.
+  HloComputation* comp3 = FindComputation(module.get(), "comp3");
+  // comp4 has an rng.
+  HloComputation* comp4 = FindComputation(module.get(), "comp4");
+
+  EXPECT_FALSE(*comp0 == *comp1);
+  EXPECT_FALSE(*comp1 == *comp0);
+  EXPECT_FALSE(*comp0 == *comp2);
+  EXPECT_FALSE(*comp2 == *comp0);
+  EXPECT_FALSE(*comp0 == *comp3);
+  EXPECT_FALSE(*comp3 == *comp0);
+  EXPECT_FALSE(*comp0 == *comp4);
+  EXPECT_FALSE(*comp4 == *comp0);
+
+  EXPECT_TRUE(*comp1 == *comp2);
+  EXPECT_TRUE(*comp2 == *comp1);
+  EXPECT_FALSE(*comp1 == *comp3);
+  EXPECT_FALSE(*comp3 == *comp1);
+  EXPECT_FALSE(*comp1 == *comp4);
+  EXPECT_FALSE(*comp4 == *comp1);
+
+  EXPECT_FALSE(*comp2 == *comp3);
+  EXPECT_FALSE(*comp3 == *comp2);
+  EXPECT_FALSE(*comp2 == *comp4);
+  EXPECT_FALSE(*comp4 == *comp2);
+
+  EXPECT_FALSE(*comp3 == *comp4);
+  EXPECT_FALSE(*comp4 == *comp3);
+}
+
 }  // namespace
 }  // namespace xla
