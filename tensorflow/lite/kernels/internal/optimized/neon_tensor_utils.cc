@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
@@ -90,6 +91,14 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #else
   int64x2_t pairwiseAdded = vpaddlq_s32(lane);
   return vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
+#endif
+}
+
+inline int64_t AccumulateNeonLane64(const int64x2_t lane) {
+#ifdef __aarch64__
+  return vaddvq_s64(lane);
+#else
+  return vgetq_lane_s64(lane, 0) + vgetq_lane_s64(lane, 1);
 #endif
 }
 
@@ -502,6 +511,452 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     free(aligned_row_free);
   }
   free(aligned_vec_free);
+}
+
+inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
+  int64x2x2_t result;
+  const int64x2_t lhs_low = vmovl_s32(vget_low_s32(lhs));
+  const int64x2_t lhs_high = vmovl_s32(vget_low_s32(lhs));
+  const int64_t lhs_0 = vgetq_lane_s64(lhs_low, 0);
+  const int64_t lhs_1 = vgetq_lane_s64(lhs_low, 1);
+  const int64_t lhs_2 = vgetq_lane_s64(lhs_high, 0);
+  const int64_t lhs_3 = vgetq_lane_s64(lhs_high, 1);
+
+  const int64x2_t rhs_low = vmovl_s32(vget_low_s32(rhs));
+  const int64x2_t rhs_high = vmovl_s32(vget_low_s32(rhs));
+  const int64_t rhs_0 = vgetq_lane_s64(rhs_low, 0);
+  const int64_t rhs_1 = vgetq_lane_s64(rhs_low, 1);
+  const int64_t rhs_2 = vgetq_lane_s64(rhs_high, 0);
+  const int64_t rhs_3 = vgetq_lane_s64(rhs_high, 1);
+
+  const int64x2_t mul_0 = {lhs_0 * rhs_0, lhs_1 * rhs_1};
+  const int64x2_t mul_1 = {lhs_2 * rhs_2, lhs_3 * rhs_3};
+
+  result.val[0] = vaddq_s64(vmovl_s32(vget_low_s32(acc)), mul_0);
+  result.val[1] = vaddq_s64(vmovl_s32(vget_high_s32(acc)), mul_1);
+  return result;
+}
+
+// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
+// neon_tensor_utils.cc.
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  int left_shift = shift > 0 ? shift : 0;
+  int right_shift = shift > 0 ? 0 : -shift;
+  int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
+  int32x4x4_t result;
+  result.val[0] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[1] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[2] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[3] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  return result;
+}
+
+void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
+                        const int32_t* bias, int32_t layer_norm_scale_a,
+                        int32_t layer_norm_scale_b, int32_t variance_limit,
+                        int n_batch, int n_input, int16_t* output) {
+  const int32 int16_max = std::numeric_limits<int16>::max();
+  const int32 int16_min = std::numeric_limits<int16>::min();
+  const int32 temp = 1048576 / n_input;
+
+  for (int i = 0; i < n_batch; ++i) {
+    int64_t sum = 0;
+    int64_t sum_sq = 0;
+
+    int j = 0;
+    for (; j <= n_input - 16; j += 16) {
+      const int32 index = i * n_input + j;
+      const int16x8_t val_s16 = vld1q_s16(input + index);
+      const int32x4_t val_s32_0 = vmovl_s16(vget_low_s16(val_s16));
+      const int32x4_t val_s32_1 = vmovl_s16(vget_high_s16(val_s16));
+
+      sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_0));
+      sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_1));
+
+      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_0)));
+      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_0)));
+      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_1)));
+      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_1)));
+    }
+    for (; j < n_input; ++j) {
+      const int32 index = i * n_input + j;
+      int32 val = static_cast<int32_t>(input[index]);
+      sum += val;
+      sum_sq += val * val;
+    }
+
+    int32_t mean =
+        static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
+    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
+    int64_t variance =
+        sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
+    int32_t variance2 = static_cast<int32>(variance / 1048576);
+    if (variance2 < 1) {
+      variance2 = variance_limit;
+    }
+    int32_t stddev_inverse_a;
+    int stddev_inverse_b;
+    GetInvSqrtQuantizedMultiplierExp(variance2, /*reverse_shift*/ -1,
+                                     &stddev_inverse_a, &stddev_inverse_b);
+
+    j = 0;
+    const int32x4_t mean_dup = vdupq_n_s32(mean);
+    for (; j <= n_input - 32; j += 32) {
+      // Load 32 items at once.
+      const int32 index = i * n_input + j;
+      const int16x8_t val_s16_0 = vld1q_s16(input + index);
+      const int16x8_t val_s16_1 = vld1q_s16(input + index + 16);
+
+      int32x4x4_t shifted;
+      shifted.val[0] = vsubq_s32(
+          vshlq_n_s32(vmovl_s16(vget_low_s16(val_s16_0)), 10), mean_dup);
+      shifted.val[1] = vsubq_s32(
+          vshlq_n_s32(vmovl_s16(vget_high_s16(val_s16_0)), 10), mean_dup);
+      shifted.val[2] = vsubq_s32(
+          vshlq_n_s32(vmovl_s16(vget_low_s16(val_s16_1)), 10), mean_dup);
+      shifted.val[3] = vsubq_s32(
+          vshlq_n_s32(vmovl_s16(vget_high_s16(val_s16_1)), 10), mean_dup);
+
+      int32x4x4_t rescaled = MultiplyByQuantizedMultiplier4Rows(
+          shifted, stddev_inverse_a, stddev_inverse_b);
+
+      const int32x4_t bias_0 = vld1q_s32(bias + j);
+      const int32x4_t bias_1 = vld1q_s32(bias + j + 4);
+      const int32x4_t bias_2 = vld1q_s32(bias + j + 8);
+      const int32x4_t bias_3 = vld1q_s32(bias + j + 12);
+
+      const int16x8_t layer_norm_weights_s16_0 =
+          vld1q_s16(layer_norm_weights + j);
+      const int16x8_t layer_norm_weights_s16_1 =
+          vld1q_s16(layer_norm_weights + j + 8);
+      const int32x4_t layer_norm_weights_s32_0 =
+          vmovl_s32(vget_low_s16(layer_norm_weights_s16_0));
+      const int32x4_t layer_norm_weights_s32_1 =
+          vmovl_s32(vget_high_s16(layer_norm_weights_s16_0));
+      const int32x4_t layer_norm_weights_s32_2 =
+          vmovl_s32(vget_low_s16(layer_norm_weights_s16_1));
+      const int32x4_t layer_norm_weights_s32_3 =
+          vmovl_s32(vget_high_s16(layer_norm_weights_s16_1));
+
+      int64x2x2_t val3_0 =
+          MulAdd(bias_0, rescaled.val[0], layer_norm_weights_s32_0);
+      int64x2x2_t val3_1 =
+          MulAdd(bias_1, rescaled.val[1], layer_norm_weights_s32_1);
+      int64x2x2_t val3_2 =
+          MulAdd(bias_2, rescaled.val[2], layer_norm_weights_s32_2);
+      int64x2x2_t val3_3 =
+          MulAdd(bias_3, rescaled.val[3], layer_norm_weights_s32_3);
+
+      int32x4x4_t val4;
+      val4.val[0] = vcombine_s32(vmovn_s64(vrshrq_n_s64(val3_0.val[0], 10)),
+                                 vmovn_s64(vrshrq_n_s64(val3_0.val[1], 10)));
+      val4.val[1] = vcombine_s32(vmovn_s64(vrshrq_n_s64(val3_1.val[0], 10)),
+                                 vmovn_s64(vrshrq_n_s64(val3_1.val[1], 10)));
+      val4.val[2] = vcombine_s32(vmovn_s64(vrshrq_n_s64(val3_2.val[0], 10)),
+                                 vmovn_s64(vrshrq_n_s64(val3_2.val[1], 10)));
+      val4.val[3] = vcombine_s32(vmovn_s64(vrshrq_n_s64(val3_3.val[0], 10)),
+                                 vmovn_s64(vrshrq_n_s64(val3_3.val[1], 10)));
+
+      int32x4x4_t val5_s32 = MultiplyByQuantizedMultiplier4Rows(
+          val4, layer_norm_scale_a, layer_norm_scale_b + 12);
+      vst1_s16(output + index, vqmovn_s32(val5_s32.val[0]));
+      vst1_s16(output + index + 4, vqmovn_s32(val5_s32.val[1]));
+      vst1_s16(output + index + 8, vqmovn_s32(val5_s32.val[2]));
+      vst1_s16(output + index + 12, vqmovn_s32(val5_s32.val[3]));
+    }
+    for (; j < n_input; ++j) {
+      const int32 index = i * n_input + j;
+      int32 val = static_cast<int32_t>(input[index]);
+      int32 shifted = 1024 * val - mean;
+      int32 rescaled = MultiplyByQuantizedMultiplier(shifted, stddev_inverse_a,
+                                                     stddev_inverse_b);
+      // TODO(jianlijianli): Saturate this.
+      int64_t val3 = rescaled * layer_norm_weights[j] + bias[j];
+      int32 val4 =
+          static_cast<int32>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
+      int32 val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
+                                                 layer_norm_scale_b + 12);
+      val5 = std::min(std::max(int16_min, val5), int16_max);
+      output[index] = static_cast<int16_t>(val5);
+    }
+  }
+}
+
+void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
+                      int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+#ifdef GEMMLOWP_NEON
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
+
+    for (; i <= n_input - 16; i += 16) {
+      const int index = batch * n_input + i;
+      F3 input0 = F3::FromRaw(vld1q_s16(input + index));
+      F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
+      F0 output0 = gemmlowp::logistic(input0);
+      F0 output1 = gemmlowp::logistic(input1);
+      vst1q_s16(output + index, output0.raw());
+      vst1q_s16(output + index + 8, output1.raw());
+    }
+#endif  // GEMMLOWP_NEON
+    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    using F3_Scalar = gemmlowp::FixedPoint<int16_t, 3>;
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      F3_Scalar input_f3 = F3_Scalar::FromRaw(input[index]);
+      F0_Scalar output_f0 = gemmlowp::logistic(input_f3);
+      output[index] = output_f0.raw();
+    }
+  }
+}
+
+void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+#ifdef GEMMLOWP_NEON
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
+    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
+
+    for (; i <= n_input - 16; i += 16) {
+      const int index = batch * n_input + i;
+      F3 input0 = F3::FromRaw(vld1q_s16(input + index));
+      F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
+      F0 output0 = gemmlowp::tanh(input0);
+      F0 output1 = gemmlowp::tanh(input1);
+      vst1q_s16(output + index, output0.raw());
+      vst1q_s16(output + index + 8, output1.raw());
+    }
+#endif  // GEMMLOWP_NEON
+    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    using F3_Scalar = gemmlowp::FixedPoint<int16_t, 3>;
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      F3_Scalar input_f3 = F3_Scalar::FromRaw(input[index]);
+      F0_Scalar output_f0 = gemmlowp::tanh(input_f3);
+      output[index] = output_f0.raw();
+    }
+  }
+}
+
+void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+#ifdef GEMMLOWP_NEON
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    // F4 uses 4 integer bits, range [-16, 16], the input range expected here.
+    using F4 = gemmlowp::FixedPoint<int16x8_t, 4>;
+
+    for (; i <= n_input - 16; i += 16) {
+      const int index = batch * n_input + i;
+      F4 input0 = F4::FromRaw(vld1q_s16(input + index));
+      F4 input1 = F4::FromRaw(vld1q_s16(input + index + 8));
+      F0 output0 = gemmlowp::tanh(input0);
+      F0 output1 = gemmlowp::tanh(input1);
+      vst1q_s16(output + index, output0.raw());
+      vst1q_s16(output + index + 8, output1.raw());
+    }
+#endif  // GEMMLOWP_NEON
+    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    using F4_Scalar = gemmlowp::FixedPoint<int16_t, 4>;
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      F4_Scalar input_f4 = F4_Scalar::FromRaw(input[index]);
+      F0_Scalar output_f0 = gemmlowp::tanh(input_f4);
+      output[index] = output_f0.raw();
+    }
+  }
+}
+
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+                  int n_input, int shift, int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+    for (; i <= n_input - 8; i += 8) {
+      const int index = batch * n_input + i;
+      const int16x8_t a = vld1q_s16(input_1 + index);
+      const int16x8_t b = vld1q_s16(input_2 + index);
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+
+      int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
+      int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
+      x_0 = gemmlowp::RoundingDivideByPOT(x_0, shift);
+      x_1 = gemmlowp::RoundingDivideByPOT(x_1, shift);
+
+      const int16x8_t result = vcombine_s16(vmovn_s32(x_0), vmovn_s32(x_1));
+      vst1q_s16(output + index, result);
+    }
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      const int16_t a = input_1[index];
+      const int16_t b = input_2[index];
+      int64_t x = a * b;
+      if (x > std::numeric_limits<std::int32_t>::max()) {
+        x = std::numeric_limits<std::int32_t>::max();
+      }
+      const int32_t value = static_cast<int32_t>(x);
+      output[index] =
+          static_cast<int16_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+    }
+  }
+}
+
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
+                  int n_input, int shift, int8_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+    for (; i <= n_input - 8; i += 8) {
+      const int index = batch * n_input + i;
+      const int16x8_t a = vld1q_s16(input_1 + index);
+      const int16x8_t b = vld1q_s16(input_2 + index);
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+
+      int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
+      int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
+      x_0 = gemmlowp::RoundingDivideByPOT(x_0, shift);
+      x_1 = gemmlowp::RoundingDivideByPOT(x_1, shift);
+
+      const int16x8_t result = vcombine_s16(vmovn_s32(x_0), vmovn_s32(x_1));
+      vst1_s8(output + index, vmovn_s16(result));
+    }
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      const int16_t a = input_1[index];
+      const int16_t b = input_2[index];
+      int64_t x = a * b;
+      if (x > std::numeric_limits<std::int32_t>::max()) {
+        x = std::numeric_limits<std::int32_t>::max();
+      }
+      const int32_t value = static_cast<int32_t>(x);
+      output[index] =
+          static_cast<int8_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+    }
+  }
+}
+
+void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
+                  int n_input, int16_t* output) {
+  const int32 int16_max = std::numeric_limits<int16>::max();
+  const int32 int16_min = std::numeric_limits<int16>::min();
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+    for (; i <= n_input - 8; i += 8) {
+      const int index = batch * n_input + i;
+      const int16x8_t a = vld1q_s16(input_1 + index);
+      const int16x8_t b = vld1q_s16(input_2 + index);
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+
+      const int32x4_t sum_0 = vaddq_s32(a_s32_0, b_s32_0);
+      const int32x4_t sum_1 = vaddq_s32(a_s32_1, b_s32_1);
+      vst1_s16(output + index, vqmovn_s32(sum_0));
+      vst1_s16(output + index + 4, vqmovn_s32(sum_1));
+    }
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      int32_t sum = input_1[index] + input_2[index];
+      const int32 sum_clamped = std::min(int16_max, std::max(int16_min, sum));
+      output[index] = static_cast<int16_t>(sum_clamped);
+    }
+  }
+}
+
+void NeonCwiseClipping(int16_t* input, const int16_t clipping_value,
+                       int32_t n_batch, int32_t n_input) {
+  const int16x8_t max_dup = vdupq_n_s16(clipping_value);
+  const int16x8_t min_dup = vdupq_n_s16(-clipping_value);
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+    for (; i <= n_input - 16; i += 16) {
+      const int index = batch * n_input + i;
+      int16x8_t val_0 = vld1q_s16(input + index);
+      int16x8_t val_1 = vld1q_s16(input + index + 8);
+      val_0 = vminq_s16(val_0, max_dup);
+      val_1 = vminq_s16(val_1, max_dup);
+      val_0 = vmaxq_s16(val_0, min_dup);
+      val_1 = vmaxq_s16(val_1, min_dup);
+      vst1q_s16(input + index, val_0);
+      vst1q_s16(input + index + 8, val_1);
+    }
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      if (input[index] > clipping_value) {
+        input[index] = clipping_value;
+      }
+      if (input[index] < -clipping_value) {
+        input[index] = -clipping_value;
+      }
+    }
+  }
+}
+
+void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
+                       int32_t n_batch, int32_t n_input) {
+  const int8x16_t max_dup = vdupq_n_s8(clipping_value);
+  const int8x16_t min_dup = vdupq_n_s8(-clipping_value);
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+    for (; i <= n_input - 32; i += 32) {
+      const int index = batch * n_input + i;
+      int8x16_t val_0 = vld1q_s8(input + index);
+      int8x16_t val_1 = vld1q_s8(input + index + 16);
+      val_0 = vminq_s8(val_0, max_dup);
+      val_1 = vminq_s8(val_1, max_dup);
+      val_0 = vmaxq_s8(val_0, min_dup);
+      val_1 = vmaxq_s8(val_1, min_dup);
+      vst1q_s8(input + index, val_0);
+      vst1q_s8(input + index + 16, val_1);
+    }
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      if (input[index] > clipping_value) {
+        input[index] = clipping_value;
+      }
+      if (input[index] < -clipping_value) {
+        input[index] = -clipping_value;
+      }
+    }
+  }
 }
 
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
