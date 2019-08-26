@@ -127,14 +127,16 @@ consists of defining a pattern as well as adding a C++ function to perform the
 replacement:
 
 ```td {.td}
-def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a),
-          (cOp<"createTFLLeakyRelu"> $arg, $a)>;
+def createTFLLeakyRelu : NativeCodeCall<
+    "createTFLLeakyRelu($_builder, $0->getDefiningOp(), $1, $2)">;
+
+def : Pat<(TF_LeakyReluOp:$old_value, $arg, F32Attr:$a),
+          (createTFLLeakyRelu $old_value, $arg, $a)>;
 ```
 
 ```c++
-static Value *createTFLLeakyRelu(Operation *op, ArrayRef<Value *> operands,
-                                 ArrayRef<Attribute> attrs,
-                                 PatternRewriter &rewriter) {
+static Value* createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
+                                 Value* operand, Attribute attr) {
   return rewriter.create<mlir::TFL::LeakyReluOp>(
       op->getLoc(), operands[0]->getType(), /*arg=*/operands[0],
       /*alpha=*/attrs[0].cast<FloatAttr>());
