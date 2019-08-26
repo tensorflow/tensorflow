@@ -150,6 +150,10 @@ class ReductionOp : public OpKernel {
     const Tensor& axes = ctx->input(1);
     VLOG(1) << "data shape: " << data.shape().DebugString();
     VLOG(1) << "axes      : " << axes.SummarizeValue(10);
+    // If the input is empty, should throw an error message
+    OP_REQUIRES(ctx, data.NumElements() != 0,
+                errors::InvalidArgument(
+                    "The input number of elements should larger than 0"));
 
     ReductionHelper helper;
     OP_REQUIRES_OK(ctx, helper.Simplify(data, axes, keep_dims_));
