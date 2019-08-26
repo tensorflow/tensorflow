@@ -393,6 +393,12 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
         if (op_def_.attr(i).type() == "type") {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op._get_attr_type(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "bool") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_bool(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "int") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_int(\"", attr_name, "\")");
         } else {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op.get_attr(\"", attr_name, "\")");

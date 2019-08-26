@@ -2406,20 +2406,26 @@ class Operation(object):
     return getattr(x, oneof_value)
 
   def _get_attr_type(self, name):
-    """Returns the value of the attr of this op with the given `name`.
-
-    Args:
-      name: The name of the attr to fetch.
-
-    Returns:
-      The value of the attr, as a Python object.
-
-    Raises:
-      ValueError: If this op does not have an attr with the given `name`.
-    """
+    """Returns the `DType` value of the attr of this op with the given `name`."""
     try:
       dtype_enum = c_api.TF_OperationGetAttrType(self._c_op, name)
       return _DTYPES_INTERN_TABLE[dtype_enum]
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+
+  def _get_attr_bool(self, name):
+    """Returns the `bool` value of the attr of this op with the given `name`."""
+    try:
+      return c_api.TF_OperationGetAttrBool(self._c_op, name)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+
+  def _get_attr_int(self, name):
+    """Returns the `int` value of the attr of this op with the given `name`."""
+    try:
+      return c_api.TF_OperationGetAttrInt(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
