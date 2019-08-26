@@ -32,9 +32,9 @@ class NoiseLayersTest(keras_parameterized.TestCase):
 
   def test_GaussianNoise(self):
     testing_utils.layer_test(
-      keras.layers.GaussianNoise,
-      kwargs={'stddev': 1.},
-      input_shape=(3, 2, 3)
+        keras.layers.GaussianNoise,
+        kwargs={'stddev': 1.},
+        input_shape=(3, 2, 3)
     )
 
   def test_GaussianDropout(self):
