@@ -1215,8 +1215,9 @@ XlaOp XlaBuilder::ConvGeneralDilated(
           rhs_shape.dimensions(dimension_numbers.kernel_spatial_dimensions(i));
     }
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   lhs_dilation, rhs_dilation));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            lhs_dilation, rhs_dilation));
 
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferConvolveShape(
@@ -1235,60 +1236,6 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
   });
-}
-
-StatusOr<Window> XlaBuilder::MakeWindow(
-    absl::Span<const int64> window_dimensions,
-    absl::Span<const int64> window_strides,
-    absl::Span<const std::pair<int64, int64>> padding,
-    absl::Span<const int64> lhs_dilation,
-    absl::Span<const int64> rhs_dilation) const {
-  const auto verify_size = [&](const size_t x, const char* x_name) {
-    if (x == 0 || x == window_dimensions.size()) {
-      return Status::OK();
-    } else {
-      return InvalidArgument(
-          "%s", absl::StrCat(
-                    "Window has different number of window dimensions than of ",
-                    x_name,
-                    "\nNumber of window dimensions: ", window_dimensions.size(),
-                    "\nNumber of ", x_name, ": ", x, "\n"));
-    }
-  };
-  TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
-  TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
-  TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
-  TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
-
-  Window window;
-  for (size_t i = 0; i < window_dimensions.size(); i++) {
-    auto dim = window.add_dimensions();
-    dim->set_size(window_dimensions[i]);
-    if (!window_strides.empty()) {
-      dim->set_stride(window_strides[i]);
-    } else {
-      dim->set_stride(1);
-    }
-    if (!padding.empty()) {
-      dim->set_padding_low(padding[i].first);
-      dim->set_padding_high(padding[i].second);
-    } else {
-      dim->set_padding_low(0);
-      dim->set_padding_high(0);
-    }
-    if (!lhs_dilation.empty()) {
-      dim->set_base_dilation(lhs_dilation[i]);
-    } else {
-      dim->set_base_dilation(1);
-    }
-    if (!rhs_dilation.empty()) {
-      dim->set_window_dilation(rhs_dilation[i]);
-    } else {
-      dim->set_window_dilation(1);
-    }
-    dim->set_window_reversal(false);
-  }
-  return window;
 }
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
@@ -1967,9 +1914,10 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/base_dilations,
-                                   /*rhs_dilation=*/window_dilations));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/base_dilations,
+                            /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferReduceWindowShape(
                                          operand_shape, init_shape,
                                          instr.window(), to_apply_shape));
@@ -2214,8 +2162,9 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
                         scatter.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSelectAndScatterShape(
                             operand_shape, select_shape, instr.window(),

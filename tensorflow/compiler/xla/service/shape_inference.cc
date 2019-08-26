@@ -2117,10 +2117,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window, const ProgramShape& to_apply_shape) {
-  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
   TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
                                         {operand_shape.element_type()},
                                         /*inputs=*/1));
+  return InferReduceWindowShape(operand_shape, init_value_shape, window);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
+    const Shape& operand_shape, const Shape& init_value_shape,
+    const Window& window) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
   return InferWindowOutputShape(operand_shape, window,
                                 init_value_shape.element_type(),
                                 /*allow_negative_padding=*/false);
@@ -2203,6 +2209,60 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   return ShapeUtil::MakeShape(U32, {});
+}
+
+/* static */ StatusOr<Window> ShapeInference::InferWindowFromDimensions(
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation,
+    absl::Span<const int64> rhs_dilation) {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
+    if (x == 0 || x == window_dimensions.size()) {
+      return Status::OK();
+    } else {
+      return InvalidArgument(
+          "%s", absl::StrCat(
+                    "Window has different number of window dimensions than of ",
+                    x_name,
+                    "\nNumber of window dimensions: ", window_dimensions.size(),
+                    "\nNumber of ", x_name, ": ", x, "\n"));
+    }
+  };
+  TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
+  TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
+  TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
+  TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
+
+  Window window;
+  for (size_t i = 0; i < window_dimensions.size(); i++) {
+    auto dim = window.add_dimensions();
+    dim->set_size(window_dimensions[i]);
+    if (!window_strides.empty()) {
+      dim->set_stride(window_strides[i]);
+    } else {
+      dim->set_stride(1);
+    }
+    if (!padding.empty()) {
+      dim->set_padding_low(padding[i].first);
+      dim->set_padding_high(padding[i].second);
+    } else {
+      dim->set_padding_low(0);
+      dim->set_padding_high(0);
+    }
+    if (!lhs_dilation.empty()) {
+      dim->set_base_dilation(lhs_dilation[i]);
+    } else {
+      dim->set_base_dilation(1);
+    }
+    if (!rhs_dilation.empty()) {
+      dim->set_window_dilation(rhs_dilation[i]);
+    } else {
+      dim->set_window_dilation(1);
+    }
+    dim->set_window_reversal(false);
+  }
+  return window;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(

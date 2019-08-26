@@ -651,14 +651,6 @@ class XlaBuilder {
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
 
-  // Helper function for creating a Window proto from user-supplied data.
-  // Returns error if the user-supplied data was invalid.
-  StatusOr<Window> MakeWindow(absl::Span<const int64> window_dimensions,
-                              absl::Span<const int64> window_strides,
-                              absl::Span<const std::pair<int64, int64>> padding,
-                              absl::Span<const int64> lhs_dilation,
-                              absl::Span<const int64> rhs_dilation) const;
-
   int64 GetNextId() { return ++next_id_; }
 
   // Populates the module with the input/output alias information stored within
