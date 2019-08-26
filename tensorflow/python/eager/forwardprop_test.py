@@ -28,6 +28,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -468,6 +469,74 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
     self.assertAllClose(backback_hvp, forwardback_hvp_function)
+
+  def testShouldRecordAndStopRecord(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      c_tangent = constant_op.constant(2.)
+      acc.watch(c, c_tangent)
+      with backprop.GradientTape() as tape:
+        self.assertFalse(tape_lib.should_record_backprop([c]))
+        self.assertEqual(
+            1, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        tape.watch(c)
+        self.assertEqual(
+            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertTrue(tape_lib.should_record_backprop([c]))
+        with tape_lib.stop_recording():
+          self.assertEqual(
+              0, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+          self.assertFalse(tape_lib.should_record_backprop([c]))
+          d = c * 2.
+        self.assertEqual(
+            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertTrue(tape_lib.should_record_backprop([c]))
+        self.assertFalse(tape_lib.should_record_backprop([d]))
+        self.assertIsNone(acc.jvp(d))
+      self.assertIsNone(tape.gradient(d, c))
+
+  def testRecordingSelectively(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      c_tangent = constant_op.constant(2.)
+      acc.watch(c, c_tangent)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(c)
+        with tape_lib.stop_recording():
+          two = constant_op.constant(2.)
+          d = c * two
+          three = constant_op.constant(3.)
+          e = c * three
+        self.assertIsNone(acc.jvp(d))
+        self.assertIsNone(acc.jvp(e))
+        self.assertIsNone(tape.gradient(d, c))
+        self.assertIsNone(tape.gradient(e, c))
+        tape_lib.record_operation_forwardprop_only(
+            "CustomForwardMul", [d], [c, two],
+            lambda dd: (two * dd, c * dd), None)
+        tape_lib.record_operation_backprop_only(
+            "CustomBackwardMul", [e], [c, three],
+            lambda de: (three * de, c * de))
+        self.assertAllClose(4., acc.jvp(d))
+        self.assertIsNone(acc.jvp(e))
+        self.assertIsNone(tape.gradient(d, c))
+        self.assertAllClose(3., tape.gradient(e, c))
+
+  def testRecordingWithJVPIndices(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      acc.watch(c, 10.)
+      _, packed_input_tangents = (
+          pywrap_tensorflow.TFE_Py_PackForwardGradients([c]))
+      self.assertAllClose([10.], packed_input_tangents)
+      d = constant_op.constant(2.)
+      d_tangent = constant_op.constant(3.)
+      tape_lib.record_operation_forwardprop_only(
+          "FunctionWithInlineJVPs",
+          [d] + [d_tangent],
+          [c] + packed_input_tangents,
+          None, (((0, 1),),))
+      self.assertAllClose(3., acc.jvp(d))
 
 
 if __name__ == "__main__":
