@@ -117,8 +117,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string Code() override;
 
  protected:
-  void HandleGraphMode(const string& function_setup,
-                       const std::vector<string>& output_sizes);
+  void HandleGraphMode(const string& function_setup);
 
   string GetEagerNotAllowedError();
   void ExpectListArg(const string& indentation, const string& arg_name,
@@ -360,8 +359,7 @@ string GenEagerPythonOp::Code() {
   return prelude_ + result_;
 }
 
-void GenEagerPythonOp::HandleGraphMode(
-    const string& function_setup, const std::vector<string>& output_sizes) {
+void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
   strings::StrAppend(&result_, function_setup);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
@@ -384,6 +382,7 @@ void GenEagerPythonOp::HandleGraphMode(
                          "  if not _result:\n"
                          "    return _op\n");
     }
+    strings::StrAppend(&result_, "  _inputs_flat = _op.inputs\n");
 
     // Compute graph-mode attrs.
     if (op_def_.attr_size() > 0) {
@@ -406,33 +405,11 @@ void GenEagerPythonOp::HandleGraphMode(
         }
       }
       strings::StrAppend(&attr_values, ")");
-
-      strings::StrAppend(&result_, "  if _execute.must_record_gradient():\n");
-      strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
-      strings::StrAppend(&result_,
-                         WordWrap("    _attrs = (", attr_values, kRightMargin),
-                         "\n");
-      strings::StrAppend(&result_, "    _execute.record_gradient(\n",
-                         "        \"", op_def_.name(),
-                         "\", _inputs_flat, _attrs, _result, name)\n");
-    }
-    if (num_outs_ == 1 && !output_sizes[0].empty()) {
-      // Single list result.
-    } else if (num_outs_ == 1) {
-      // Execute returns a single-element list which we need to destructure.
-      strings::StrAppend(&result_, "  ", "_result, = _result\n");
+      strings::StrAppend(
+          &result_, WordWrap("  _attrs = (", attr_values, kRightMargin), "\n");
     } else {
-      // Have multiple outputs, so we will need to reformat the return
-      // value of execute() to be a list with one entry per op output
-      // (that entry will be a list of tensors if that output is of list
-      // type).
-      // For list outputs, convert the right subrange of _result into a list.
-      Unflatten("  ", output_sizes, "_result", &result_);
-      // Convert to a named tuple.
-      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(&result_, "  _attrs = None\n");
     }
-    strings::StrAppend(&result_, "  return _result\n\n");
   } else {
     strings::StrAppend(&result_, "  return _op\n");
   }
@@ -643,10 +620,8 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
     bool execute_record_gradient) {
   if (num_outs_ > 0) {
     if (execute_record_gradient) {
-      strings::StrAppend(&result_, indentation,
-                         "if _execute.must_record_gradient():\n");
-      strings::StrAppend(&result_, indentation, "  _execute.record_gradient(\n",
-                         "        \"", op_def_.name(),
+      strings::StrAppend(&result_, indentation, "_execute.record_gradient(\n",
+                         "      \"", op_def_.name(),
                          "\", _inputs_flat, _attrs, _result, name)\n");
     }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
@@ -706,7 +681,9 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     result_ = function_setup;
     return false;
   }
-  HandleGraphMode(function_setup, output_sizes);
+  HandleGraphMode(function_setup);
+  AddEagerFunctionTeardown("  ", output_sizes,
+                           true /* execute_record_gradient */);
 
   AddRawOpExport(parameters);
   strings::StrAppend(&result_, "\n\n");

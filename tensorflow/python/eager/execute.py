@@ -145,11 +145,6 @@ def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
 execute = quick_execute
 
 
-def must_record_gradient():
-  """Import backprop if you want gradients recorded."""
-  return False
-
-
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
                     unused_name):
   """Import backprop if you want gradients recorded."""
