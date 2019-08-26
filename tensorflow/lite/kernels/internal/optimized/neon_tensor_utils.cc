@@ -914,13 +914,13 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       const int16x8_t layer_norm_weights_s16_1 =
           vld1q_s16(layer_norm_weights + j + 8);
       const int32x4_t layer_norm_weights_s32_0 =
-          vmovl_s32(vget_low_s16(layer_norm_weights_s16_0));
+          vmovl_s16(vget_low_s16(layer_norm_weights_s16_0));
       const int32x4_t layer_norm_weights_s32_1 =
-          vmovl_s32(vget_high_s16(layer_norm_weights_s16_0));
+          vmovl_s16(vget_high_s16(layer_norm_weights_s16_0));
       const int32x4_t layer_norm_weights_s32_2 =
-          vmovl_s32(vget_low_s16(layer_norm_weights_s16_1));
+          vmovl_s16(vget_low_s16(layer_norm_weights_s16_1));
       const int32x4_t layer_norm_weights_s32_3 =
-          vmovl_s32(vget_high_s16(layer_norm_weights_s16_1));
+          vmovl_s16(vget_high_s16(layer_norm_weights_s16_1));
 
       int64x2x2_t val3_0 =
           MulAdd(bias_0, rescaled.val[0], layer_norm_weights_s32_0);
@@ -1073,10 +1073,10 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
       const int index = batch * n_input + i;
       const int16x8_t a = vld1q_s16(input_1 + index);
       const int16x8_t b = vld1q_s16(input_2 + index);
-      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
-      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
-      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
-      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s16(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s16(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s16(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s16(b));
 
       int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
       int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
@@ -1109,10 +1109,10 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
       const int index = batch * n_input + i;
       const int16x8_t a = vld1q_s16(input_1 + index);
       const int16x8_t b = vld1q_s16(input_2 + index);
-      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
-      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
-      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
-      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s16(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s16(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s16(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s16(b));
 
       int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
       int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
@@ -1147,10 +1147,10 @@ void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
       const int index = batch * n_input + i;
       const int16x8_t a = vld1q_s16(input_1 + index);
       const int16x8_t b = vld1q_s16(input_2 + index);
-      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s32(a));
-      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s32(a));
-      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s32(b));
-      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s32(b));
+      const int32x4_t a_s32_0 = vmovl_s16(vget_low_s16(a));
+      const int32x4_t a_s32_1 = vmovl_s16(vget_high_s16(a));
+      const int32x4_t b_s32_0 = vmovl_s16(vget_low_s16(b));
+      const int32x4_t b_s32_1 = vmovl_s16(vget_high_s16(b));
 
       const int32x4_t sum_0 = vaddq_s32(a_s32_0, b_s32_0);
       const int32x4_t sum_1 = vaddq_s32(a_s32_1, b_s32_1);
