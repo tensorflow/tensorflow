@@ -394,6 +394,12 @@ class Tensor(_TensorLike):
     self._id = uid()
     self._name = None
 
+  @staticmethod
+  def _create_with_tf_output(op, value_index, dtype, tf_output):
+    ret = Tensor(op, value_index, dtype)
+    ret._tf_output = tf_output
+    return ret
+
   @property
   def op(self):
     """The `Operation` that produces this tensor as an output."""
@@ -1774,14 +1780,12 @@ class Operation(object):
 
     # Initialize self._outputs.
     num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
-    output_types = [
-        c_api.TF_OperationOutputType(c_api_util.tf_output(self._c_op, i))
-        for i in range(num_outputs)
-    ]
-    self._outputs = [
-        Tensor(self, i, output_type)
-        for i, output_type in enumerate(output_types)
-    ]
+    self._outputs = []
+    for i in range(num_outputs):
+      tf_output = c_api_util.tf_output(self._c_op, i)
+      output_type = c_api.TF_OperationOutputType(tf_output)
+      tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
+      self._outputs.append(tensor)
 
     self._graph._add_op(self)  # pylint: disable=protected-access
 
