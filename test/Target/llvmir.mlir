@@ -919,3 +919,13 @@ func @constants() -> !llvm<"<4 x float>"> {
   %0 = llvm.constant(sparse<[[0]], [4.2e+01]> : vector<4xf32>) : !llvm<"<4 x float>">
   llvm.return %0 : !llvm<"<4 x float>">
 }
+
+func @fp_casts(%fp1 : !llvm<"float">, %fp2 : !llvm<"double">) -> !llvm.i16 {
+// CHECK:    fptrunc double {{.*}} to float
+  %a = llvm.fptrunc %fp2 : !llvm<"double"> to !llvm<"float">
+// CHECK:    fpext float {{.*}} to double
+  %b = llvm.fpext %fp1 : !llvm<"float"> to !llvm<"double">
+// CHECK:    fptosi double {{.*}} to i16
+  %c = llvm.fptosi %b : !llvm<"double"> to !llvm.i16
+  llvm.return %c : !llvm.i16
+}
