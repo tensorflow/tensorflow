@@ -1692,8 +1692,6 @@ ParseResult Parser::parseLocation(LocationAttr &loc) {
 /// unknown-location ::= 'unknown'
 ///
 ParseResult Parser::parseCallSiteLocation(LocationAttr &loc) {
-  auto *ctx = getContext();
-
   consumeToken(Token::bare_identifier);
 
   // Parse the '('.
@@ -1721,7 +1719,7 @@ ParseResult Parser::parseCallSiteLocation(LocationAttr &loc) {
     return failure();
 
   // Return the callsite location.
-  loc = CallSiteLoc::get(calleeLoc, callerLoc, ctx);
+  loc = CallSiteLoc::get(calleeLoc, callerLoc);
   return success();
 }
 
@@ -1805,7 +1803,7 @@ ParseResult Parser::parseNameOrFileLineColLocation(LocationAttr &loc) {
     if (childLoc.isa<NameLoc>())
       return emitError(childSourceLoc,
                        "child of NameLoc cannot be another NameLoc");
-    loc = NameLoc::get(Identifier::get(str, ctx), childLoc, ctx);
+    loc = NameLoc::get(Identifier::get(str, ctx), childLoc);
 
     // Parse the closing ')'.
     if (parseToken(Token::r_paren,

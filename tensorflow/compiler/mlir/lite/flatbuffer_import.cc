@@ -98,8 +98,7 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
     return base;
   }
-  return mlir::NameLoc::get(builder.getIdentifier(tensor.name), base,
-                            builder.getContext());
+  return mlir::NameLoc::get(builder.getIdentifier(tensor.name), base);
 }
 
 // Returns the correct type for a quantized tensor
@@ -478,8 +477,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
-  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc,
-                                     builder.getContext());
+  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc);
 
   // Construct function type
   for (auto input : subgraph.inputs) {
