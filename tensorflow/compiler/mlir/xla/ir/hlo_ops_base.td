@@ -83,6 +83,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_LogOp {
+  string summary = "Logarithm operator";
+
+  string description = [{
+    Returns `log(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
