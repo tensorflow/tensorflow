@@ -80,16 +80,13 @@ this UI, to see the logs for a failed build:
 
 ##### How to start CI
 * Submit special pull request (PR) comment to trigger CI: **bot:mlx:test**
-* Test session is run automatically for users/groups in the WhiteList (configured by Mellanox)
-* Test session start requires an approval if the CI initiator is not from the WhiteList (list of the approvers are configured by Mellanox). 
-The approvers should reply with '**ok to test**' keyword to start CI.
-E-mail notification is sent to the approvers.
+* Test session is run automatically.
 * Test results and artefacts (log files) are reported via PR comments
 
 ##### CI Steps
 CI includes the following steps:
-* Build TensorFlow (from PR commit), GPU version, run under docker env
-* Run TensorFlow tests (run under docker env):
+* Build TensorFlow (GPU version)
+* Run TensorFlow tests:
   * [TF CNN benchmarks](https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py) (TensorFlow 1.13 and less)
   * [TF models](https://github.com/tensorflow/models/tree/master/official/r1/resnet) (TensorFlow 2.0): ResNet, synthetic data, NCCL, multi_worker_mirrored distributed strategy
 
@@ -99,9 +96,8 @@ CI is run in the Mellanox lab on a 2-node cluster with the following parameters:
   * IB: 1x ConnectX-6 HCA (connected to Mellanox Quantum™ HDR switch)
   * GPU: 1x Nvidia Tesla K40m
 * Software
-  * [MLNX_OFED](https://www.mellanox.com/page/products_dyn?product_family=26) 4.6-1.0.1.1
   * Ubuntu 16.04.6
-  * Internal stable [HPC-X™](https://www.mellanox.com/page/hpcx_overview) and [SHARP™](https://www.mellanox.com/page/products_dyn?product_family=261&mtag=sharp) versions
+  * Internal stable [MLNX_OFED](https://www.mellanox.com/page/products_dyn?product_family=26), [HPC-X™](https://www.mellanox.com/page/hpcx_overview) and [SHARP™](https://www.mellanox.com/page/products_dyn?product_family=261&mtag=sharp) versions
 
 ##### Support (Mellanox)
 With any questions/suggestions or in case of issues contact [Artem Ryabov](mailto:artemry@mellanox.com).
