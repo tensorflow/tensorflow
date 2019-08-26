@@ -253,13 +253,8 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   }();
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
-<<<<<<< HEAD
   se::RedzoneAllocator input_output_allocator(
-      &stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
-=======
-  se::cuda::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromConfig(hlo_module_config));
->>>>>>> google_upstream/master
+      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
 
   BufferComparator comparator(instr->shape(), hlo_module_config);
 

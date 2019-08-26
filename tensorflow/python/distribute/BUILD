@@ -875,12 +875,8 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-=======
         "no_oss",  # TODO(b/139815303): enable after this is fixed.
-        "no_rocm",
         "notap",  # TODO(b/139815303): enable after this is fixed.
->>>>>>> google_upstream/master
     ],
     deps = [
         ":mirrored_strategy",

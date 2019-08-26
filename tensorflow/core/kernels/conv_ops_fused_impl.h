@@ -327,15 +327,9 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
   }
 
   se::TfAllocatorAdapter tf_allocator_adapter(
-<<<<<<< HEAD
-      stream->parent()->platform(), context->device()->GetAllocator({}));
+      context->device()->GetAllocator({}), stream);
   se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                     se::cuda::PtxCompilationOptions());
-=======
-      context->device()->GetAllocator({}), stream);
-  se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                          se::cuda::PtxCompilationOptions());
->>>>>>> google_upstream/master
   se::DeviceMemory<T> output_ptr_rz(
       WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 

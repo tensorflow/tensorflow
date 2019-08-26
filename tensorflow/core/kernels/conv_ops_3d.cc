@@ -449,15 +449,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
       se::TfAllocatorAdapter tf_allocator_adapter(
-<<<<<<< HEAD
-          stream->parent()->platform(), ctx->device()->GetAllocator({}));
+          ctx->device()->GetAllocator({}), stream);
       se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                         se::cuda::PtxCompilationOptions());
-=======
-          ctx->device()->GetAllocator({}), stream);
-      se::cuda::RedzoneAllocator rz_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
->>>>>>> google_upstream/master
       se::DeviceMemory<T> output_ptr_rz(
           WrapRedzoneBestEffort(&rz_allocator, output_ptr));
       std::vector<AlgorithmDesc> algorithms;

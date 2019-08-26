@@ -977,17 +977,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
 
-<<<<<<< HEAD
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::cuda::PtxCompilationOptions());
-=======
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
->>>>>>> google_upstream/master
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::cuda::PtxCompilationOptions());
 
     se::DeviceMemory<T> filter_backprop_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, filter_backprop_ptr));

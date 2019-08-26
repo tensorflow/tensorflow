@@ -1198,36 +1198,11 @@ cc_library(
         "amdgpu_compiler.cc",
     ],
     hdrs = [
-<<<<<<< HEAD
         "amdgpu_compiler.h"
     ],
     deps = [
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
-=======
-        "amdgpu_compiler.h",
-    ],
-    deps = [
-        ":cudnn_conv_padding_legalization",
-        ":cudnn_conv_rewriter",
-        ":gpu_compiler",
-        ":gpu_layout_assignment",
-        ":target_constants",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:algebraic_simplifier",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_constant_folding",
-        "//tensorflow/compiler/xla/service:hlo_cse",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
->>>>>>> google_upstream/master
         "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
