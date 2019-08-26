@@ -65,8 +65,8 @@ class GaussianNoise(Layer):
 
     def noised():
       return inputs + K.random_normal(
-        shape=array_ops.shape(inputs), mean=0., stddev=self.stddev,
-        dtype=inputs.dtype
+          shape=array_ops.shape(inputs), mean=0., stddev=self.stddev,
+          dtype=inputs.dtype
       )
 
     return K.in_train_phase(noised, inputs, training=training)
@@ -117,8 +117,8 @@ class GaussianDropout(Layer):
       def noised():
         stddev = np.sqrt(self.rate / (1.0 - self.rate))
         return inputs * K.random_normal(
-          shape=array_ops.shape(inputs), mean=1.0, stddev=stddev,
-          dtype=inputs.dtype
+            shape=array_ops.shape(inputs), mean=1.0, stddev=stddev,
+            dtype=inputs.dtype
         )
 
       return K.in_train_phase(noised, inputs, training=training)
@@ -184,7 +184,7 @@ class AlphaDropout(Layer):
         alpha_p = -alpha * scale
 
         kept_idx = math_ops.greater_equal(
-          K.random_uniform(noise_shape, seed=seed), rate
+            K.random_uniform(noise_shape, seed=seed), rate
         )
         kept_idx = math_ops.cast(kept_idx, K.floatx())
 
