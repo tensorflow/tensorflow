@@ -1302,6 +1302,21 @@ cc_test(
 )
 
 cc_test(
+    name = "lstm_eval_test",
+    size = "small",
+    srcs = ["lstm_eval_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":lstm_eval",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "skip_gram_test",
     size = "small",
     srcs = ["skip_gram_test.cc"],
