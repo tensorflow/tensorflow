@@ -36,21 +36,18 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
-namespace mlir {
-
+namespace mlir_gpu {
 namespace {
 
 using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::UnknownLoc;
 using ::mlir::LLVM::LLVMDialect;
 using ::xla::gpu::GpuExecutable;
 using ::xla::gpu::GpuHloSchedule;
 using ::xla::gpu::GpuVersion;
 using ::xla::gpu::StreamAssignment;
 using ::xla::gpu::ThunkSchedule;
-
-using ::mlir::MLIRContext;
-using ::mlir::ModuleOp;
-using ::mlir::UnknownLoc;
 
 int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
   LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
@@ -184,14 +181,14 @@ MlirCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   return Unimplemented("Not yet implemented in MLIR compiler");
 }
 
-}  // namespace mlir
+}  // namespace mlir_gpu
 }  // namespace xla
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId, []() {
         return absl::make_unique<xla::FailoverCompiler>(
-            absl::make_unique<xla::mlir::MlirCompiler>(),
+            absl::make_unique<xla::mlir_gpu::MlirCompiler>(),
             absl::make_unique<xla::gpu::NVPTXCompiler>());
       });
   return true;

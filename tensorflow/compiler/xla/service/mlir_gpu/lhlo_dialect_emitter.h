@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
-namespace mlir {
+namespace mlir_gpu {
 
 // Implementation for the translation of HLO instructions to a ThunkSequence
 // via MLIR using the LHLO dialect.
@@ -84,7 +84,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   TF_DISALLOW_COPY_AND_ASSIGN(LhloDialectEmitter);
 };
 
-}  // namespace mlir
+}  // namespace mlir_gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
