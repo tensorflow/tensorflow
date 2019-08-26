@@ -86,9 +86,15 @@ LEGACY_RANDOM_OPS = [
     "RandomPoisson",
     "RandomPoissonV2",
 ]
+
+_ORDER_INSENSITIVE_STATEFUL_OPS = [
+    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"
+]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
-_ALL_BLACKLISTED_OPS = set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
+_ALL_BLACKLISTED_OPS = (
+    set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
+    | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
 
 def op_is_stateful(op):

@@ -49,7 +49,7 @@ class ConstantFolding : public GraphOptimizer {
 
   ~ConstantFolding() override {}
 
-  string name() const override { return "constant folding"; };
+  string name() const override { return "constant_folding"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

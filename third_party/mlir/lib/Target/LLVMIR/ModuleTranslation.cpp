@@ -22,9 +22,9 @@
 
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -90,12 +90,12 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
                                   splatAttr.getSplatValue(), loc);
     return llvm::ConstantVector::getSplat(vectorType->getNumElements(), child);
   }
-  if (auto denseAttr = attr.dyn_cast<DenseElementsAttr>()) {
+  if (auto elementsAttr = attr.dyn_cast<ElementsAttr>()) {
     auto *vectorType = cast<llvm::VectorType>(llvmType);
     SmallVector<llvm::Constant *, 8> constants;
     uint64_t numElements = vectorType->getNumElements();
     constants.reserve(numElements);
-    for (auto n : denseAttr.getAttributeValues()) {
+    for (auto n : elementsAttr.getValues<Attribute>()) {
       constants.push_back(
           getLLVMConstant(vectorType->getElementType(), n, loc));
       if (!constants.back())
@@ -202,7 +202,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return position;
   };
 
-#include "mlir/LLVMIR/LLVMConversions.inc"
+#include "mlir/Dialect/LLVMIR/LLVMConversions.inc"
 
   // Emit function calls.  If the "callee" attribute is present, this is a
   // direct function call and we also need to look up the remapped function

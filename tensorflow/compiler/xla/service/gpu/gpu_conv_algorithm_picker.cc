@@ -282,10 +282,13 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
 
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
 
+=======
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -297,6 +300,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     allocator = &*se_allocator;
   }
 
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Secifically, we need to make sure redzone allocator related
@@ -324,6 +328,17 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   const Shape& result_shape = instr.shape().tuple_shapes(0);
   const auto device_ordinal = stream_exec_->device_ordinal();
+=======
+  absl::optional<se::Stream> stream_opt;
+  se::Stream* stream = [&] {
+    if (allocator->GetStream()) {
+      return allocator->GetStream();
+    }
+    stream_opt.emplace(stream_exec_);
+    stream_opt->Init();
+    return &stream_opt.value();
+  }();
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
 
   int64 rng_state = 0;
 
@@ -336,8 +351,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+=======
+  se::cuda::RedzoneAllocator input_output_allocator(
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -373,9 +393,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const auto canonical_hlo =
       std::get<1>(AutotuneCacheKeyfromInstruction(&instr, stream_exec_));
 
+  string blas_version;
+  if (auto* blas = stream_exec_->AsBlas()) {
+    (void)blas->GetVersion(&blas_version);
+  }
+
   absl::Span<const AlgorithmDesc> blacklisted_algos =
       GetBlacklistedConvAlgorithms(GetComputeCapability(stream_exec_),
-                                   GetCudnnVersion(stream_exec_),
+                                   GetCudnnVersion(stream_exec_), blas_version,
                                    canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
@@ -390,8 +415,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       continue;
     }
 
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
     se::RedzoneAllocator scratch_allocator(
         stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+=======
+    se::cuda::RedzoneAllocator scratch_allocator(
+        stream, allocator, PtxOptsFromConfig(hlo_module_config));
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -401,7 +431,11 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
         RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+=======
+        RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
                      &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
@@ -426,11 +460,19 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // Check for writes to redzones.
     TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
                         CheckRedzones(input_output_allocator, stream,
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
                                       "input/output", &instr, &result));
 
     TF_ASSIGN_OR_RETURN(
         bool scratch_allocator_redzone_clear,
         CheckRedzones(scratch_allocator, stream, "scratch", &instr, &result));
+=======
+                                      "input/output", instr, &result));
+
+    TF_ASSIGN_OR_RETURN(
+        bool scratch_allocator_redzone_clear,
+        CheckRedzones(scratch_allocator, stream, "scratch", instr, &result));
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
@@ -439,6 +481,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       entry->set_hlo(canonical_hlo);
       *entry->mutable_cc() = GetComputeCapability(stream_exec_);
       *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
+      entry->set_blas_version(blas_version);
       auto algo = entry->add_algos();
       algo->set_id(alg.algo_id());
       algo->set_tensor_ops(alg.tensor_ops_enabled());
@@ -471,8 +514,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         LOG(ERROR)
             << "Results mismatch between different convolution algorithms. "
                "This is likely a bug/unexpected loss of precision in cudnn.\n"
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
             << instr.ToString() << " for " << AlgorithmToString(first_algorithm)
             << " vs " << AlgorithmToString(alg);
+=======
+            << instr->ToString() << " for "
+            << AlgorithmToString(first_algorithm) << " vs "
+            << AlgorithmToString(alg);
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
         PrintPlatformInfo(stream);
         VLOG(1) << "Full module on failure: \n"
                 << instr.GetModule()->ToString();
@@ -519,14 +568,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    {
-      string blas_version;
-      if (auto* blas = stream_exec_->AsBlas()) {
-        if (blas->GetVersion(&blas_version).ok()) {
-          log.set_blas_version(blas_version);
-        }
-      }
-    }
+    log.set_blas_version(blas_version);
     VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.

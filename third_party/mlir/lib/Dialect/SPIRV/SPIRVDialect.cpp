@@ -84,15 +84,24 @@ static bool parseNumberX(StringRef &spec, int64_t &number) {
   return true;
 }
 
+static bool isValidSPIRVIntType(IntegerType type) {
+  return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
+                            type.getWidth());
+}
+
 static bool isValidSPIRVScalarType(Type type) {
   if (type.isa<FloatType>()) {
     return !type.isBF16();
   }
   if (auto intType = type.dyn_cast<IntegerType>()) {
-    return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
-                              intType.getWidth());
+    return isValidSPIRVIntType(intType);
   }
   return false;
+}
+
+static bool isValidSPIRVVectorType(VectorType type) {
+  return type.getRank() == 1 && isValidSPIRVScalarType(type.getElementType()) &&
+         type.getNumElements() >= 2 && type.getNumElements() <= 4;
 }
 
 bool SPIRVDialect::isValidSPIRVType(Type type) const {
@@ -104,9 +113,7 @@ bool SPIRVDialect::isValidSPIRVType(Type type) const {
     return true;
   }
   if (auto vectorType = type.dyn_cast<VectorType>()) {
-    return (isValidSPIRVScalarType(vectorType.getElementType()) &&
-            vectorType.getNumElements() >= 2 &&
-            vectorType.getNumElements() <= 4);
+    return isValidSPIRVVectorType(vectorType);
   }
   return false;
 }
@@ -132,9 +139,8 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
       return Type();
     }
   } else if (auto t = type.dyn_cast<IntegerType>()) {
-    if (!llvm::is_contained(llvm::ArrayRef<unsigned>({8, 16, 32, 64}),
-                            t.getWidth())) {
-      emitError(loc, "only 8/16/32/64-bit integer type allowed but found ")
+    if (!isValidSPIRVIntType(t)) {
+      emitError(loc, "only 1/8/16/32/64-bit integer type allowed but found ")
           << type;
       return Type();
     }

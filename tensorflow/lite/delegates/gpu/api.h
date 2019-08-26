@@ -167,6 +167,9 @@ struct TensorObjectDef {
 // @return true if tensor object def is defined.
 bool IsValid(const TensorObjectDef& def);
 
+// @return the number of elements in a tensor object.
+uint32_t NumElements(const TensorObjectDef& def);
+
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory, OpenClBuffer, OpenClTexture>;
 

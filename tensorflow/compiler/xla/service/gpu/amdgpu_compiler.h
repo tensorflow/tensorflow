@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+<<<<<<< HEAD
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -33,6 +34,11 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+=======
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/statusor.h"
+>>>>>>> google_upstream/master
 
 namespace xla {
 namespace gpu {

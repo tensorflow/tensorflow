@@ -39,8 +39,8 @@ struct SplitCandidate {
   float gain = 0.0;
   int32 threshold = 0.0;
   int32 dimension_id = 0;
-  float left_node_contrib = 0.0;
-  float right_node_contrib = 0.0;
+  std::vector<float> left_node_contribs;
+  std::vector<float> right_node_contribs;
   // The split type, i.e., with missing value to left/right.
   string split_type;
 };

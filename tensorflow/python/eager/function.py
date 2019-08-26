@@ -32,6 +32,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -1416,8 +1417,8 @@ class ConcreteFunction(object):
     return ret
 
 
-pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
-pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1698,7 +1699,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
                                             flat_input_signature)):
-    if not pywrap_tensorflow.IsTensor(value):
+    if not _pywrap_utils.IsTensor(value):
       try:
         flatten_inputs[index] = ops.convert_to_tensor(
             value, dtype_hint=spec.dtype)

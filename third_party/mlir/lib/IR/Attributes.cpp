@@ -62,8 +62,7 @@ Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 //===----------------------------------------------------------------------===//
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
-  return Base::get(value.getResult(0).getContext(),
-                   StandardAttributes::AffineMap, value);
+  return Base::get(value.getContext(), StandardAttributes::AffineMap, value);
 }
 
 AffineMap AffineMapAttr::getValue() const { return getImpl()->value; }
@@ -414,6 +413,25 @@ ElementsAttr ElementsAttr::mapValues(
   default:
     llvm_unreachable("unsupported ElementsAttr subtype");
   }
+}
+
+/// Returns the 1 dimenional flattened row-major index from the given
+/// multi-dimensional index.
+uint64_t ElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
+  assert(isValidIndex(index) && "expected valid multi-dimensional index");
+  auto type = getType();
+
+  // Reduce the provided multidimensional index into a flattended 1D row-major
+  // index.
+  auto rank = type.getRank();
+  auto shape = type.getShape();
+  uint64_t valueIndex = 0;
+  uint64_t dimMultiplier = 1;
+  for (int i = rank - 1; i >= 0; --i) {
+    valueIndex += index[i] * dimMultiplier;
+    dimMultiplier *= shape[i];
+  }
+  return valueIndex;
 }
 
 //===----------------------------------------------------------------------===//
@@ -780,25 +798,6 @@ DenseElementsAttr DenseElementsAttr::mapValues(
   return cast<DenseFPElementsAttr>().mapValues(newElementType, mapping);
 }
 
-/// Returns the 1 dimenional flattened index from the given multi-dimensional
-/// index.
-uint64_t DenseElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
-  assert(isValidIndex(index) && "expected valid multi-dimensional index");
-  auto type = getType();
-
-  // Reduce the provided multidimensional index into a flattended 1D row-major
-  // index.
-  auto rank = type.getRank();
-  auto shape = type.getShape();
-  uint64_t valueIndex = 0;
-  uint64_t dimMultiplier = 1;
-  for (int i = rank - 1; i >= 0; --i) {
-    valueIndex += index[i] * dimMultiplier;
-    dimMultiplier *= shape[i];
-  }
-  return valueIndex;
-}
-
 //===----------------------------------------------------------------------===//
 // DenseFPElementsAttr
 //===----------------------------------------------------------------------===//
@@ -939,15 +938,6 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   assert(isValidIndex(index) && "expected valid multi-dimensional index");
   auto type = getType();
 
-  /// Return an attribute corresponding to '0' for the element type.
-  auto getZeroAttr = [=]() -> Attribute {
-    auto eltType = type.getElementType();
-    if (eltType.isa<FloatType>())
-      return FloatAttr::get(eltType, 0);
-    assert(eltType.isa<IntegerType>() && "unexpected element type");
-    return IntegerAttr::get(eltType, 0);
-  };
-
   // The sparse indices are 64-bit integers, so we can reinterpret the raw data
   // as a 1-D index array.
   auto sparseIndices = getIndices();
@@ -982,6 +972,58 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Otherwise, return the held sparse value element.
   return getValues().getValue(it->second);
+}
+
+/// Get a zero APFloat for the given sparse attribute.
+APFloat SparseElementsAttr::getZeroAPFloat() const {
+  auto eltType = getType().getElementType().cast<FloatType>();
+  return APFloat(eltType.getFloatSemantics());
+}
+
+/// Get a zero APInt for the given sparse attribute.
+APInt SparseElementsAttr::getZeroAPInt() const {
+  auto eltType = getType().getElementType().cast<IntegerType>();
+  return APInt::getNullValue(eltType.getWidth());
+}
+
+/// Get a zero attribute for the given attribute type.
+Attribute SparseElementsAttr::getZeroAttr() const {
+  auto eltType = getType().getElementType();
+
+  // Handle floating point elements.
+  if (eltType.isa<FloatType>())
+    return FloatAttr::get(eltType, 0);
+
+  // Otherwise, this is an integer.
+  auto intEltTy = eltType.cast<IntegerType>();
+  if (intEltTy.getWidth() == 1)
+    return BoolAttr::get(false, eltType.getContext());
+  return IntegerAttr::get(eltType, 0);
+}
+
+/// Flatten, and return, all of the sparse indices in this attribute in
+/// row-major order.
+std::vector<ptrdiff_t> SparseElementsAttr::getFlattenedSparseIndices() const {
+  std::vector<ptrdiff_t> flatSparseIndices;
+
+  // The sparse indices are 64-bit integers, so we can reinterpret the raw data
+  // as a 1-D index array.
+  auto sparseIndices = getIndices();
+  auto sparseIndexValues = sparseIndices.getValues<uint64_t>();
+  if (sparseIndices.isSplat()) {
+    SmallVector<uint64_t, 8> indices(getType().getRank(),
+                                     *sparseIndexValues.begin());
+    flatSparseIndices.push_back(getFlattenedIndex(indices));
+    return flatSparseIndices;
+  }
+
+  // Otherwise, reinterpret each index as an ArrayRef when flattening.
+  auto numSparseIndices = sparseIndices.getType().getDimSize(0);
+  size_t rank = getType().getRank();
+  for (size_t i = 0, e = numSparseIndices; i != e; ++i)
+    flatSparseIndices.push_back(getFlattenedIndex(
+        {&*std::next(sparseIndexValues.begin(), i * rank), rank}));
+  return flatSparseIndices;
 }
 
 //===----------------------------------------------------------------------===//

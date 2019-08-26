@@ -237,6 +237,15 @@ class DatasetAdapterTest(DataAdapterTestBase):
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
 
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.dataset_input, y=self.dataset_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(self.dataset_input, sample_weights=self.dataset_input)
+
 
 class GeneratorDataAdapterTest(DataAdapterTestBase):
 
@@ -281,6 +290,16 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
 
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.generator_input, y=self.generator_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(
+          self.generator_input, sample_weights=self.generator_input)
+
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
 
@@ -324,6 +343,15 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     adapter = self.adapter_cls(self.sequence_input)
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
+
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.sequence_input, y=self.sequence_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(self.sequence_input, sample_weights=self.sequence_input)
 
 
 if __name__ == '__main__':

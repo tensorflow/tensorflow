@@ -397,8 +397,6 @@ REGISTER_OP("Add")
         "complex64, complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
-// use AddV2 (b/68646025).
 REGISTER_OP("AddV2")
     .Input("x: T")
     .Input("y: T")

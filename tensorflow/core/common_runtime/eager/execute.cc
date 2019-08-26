@@ -21,6 +21,7 @@ limitations under the License.
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -181,7 +182,6 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
                         ctx->MirrorTensors(), &result_handle);
   activity.Stop();
   if (!status.ok()) {
-    if (result_handle != nullptr) result_handle->Unref();
     return errors::Internal("Failed copying input tensor from ",
                             handle_device->name(), " to ",
                             expected_input_device->name(), " in order to run ",
@@ -282,6 +282,8 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
 
   VLOG(1) << "Placer place op [" << op->Name()
           << "] on device: " << final_devices[0]->name();
+  VLOG(4) << "Available kernels for " << op->Name() << "are "
+          << KernelsRegisteredForOp(op->Name());
   op->SetDevice(final_devices[0]);
   *device = final_devices[0];
   return Status::OK();

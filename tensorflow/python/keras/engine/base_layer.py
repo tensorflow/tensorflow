@@ -2639,6 +2639,9 @@ class AddLoss(Layer):
   """
 
   def __init__(self, unconditional, **kwargs):
+    # Pass autocast=False, as there is no reason to cast loss to a different
+    # dtype.
+    kwargs['autocast'] = False
     super(AddLoss, self).__init__(**kwargs)
     self.unconditional = unconditional
 

@@ -74,7 +74,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
     ],
     # TODO: Include?    alwayslink = 1,

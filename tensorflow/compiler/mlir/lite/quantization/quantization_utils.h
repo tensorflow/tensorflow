@@ -22,10 +22,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace TFL {
@@ -98,12 +98,13 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     SmallVector<Value*, 4> inputs;
     inputs.reserve(quantized_op->getNumOperands());
     for (auto operand : quantized_op->getOperands()) {
-      auto tensor_type = operand->getType().dyn_cast<TensorType>();
-      if (!tensor_type) {
-        // There are none type values.
-        return matchFailure();
+      Type operand_type = operand->getType();
+      if (operand_type.isa<NoneType>()) {
+        inputs.push_back(operand);
+        continue;
       }
-      auto operand_ele_type = tensor_type.getElementType();
+      auto operand_ele_type =
+          operand->getType().cast<TensorType>().getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
       } else if (operand_ele_type.isa<IntegerType>()) {
@@ -120,17 +121,26 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     llvm::SmallDenseMap<Value*, int> outputs_replaced;
     SmallVector<Type, 4> output_types;
     output_types.reserve(quantized_op->getNumResults());
-    for (auto result : llvm::enumerate(quantized_op->getResults())) {
-      if (!result.value()->hasOneUse()) return matchFailure();
-      auto result_ele_type =
-          result.value()->getType().cast<TensorType>().getElementType();
-      if (auto user = dyn_cast_or_null<Q>(*result.value()->user_begin())) {
-        outputs_replaced.insert({user.output(), result.index()});
+    for (auto enumerated_result : llvm::enumerate(quantized_op->getResults())) {
+      Value* result = enumerated_result.value();
+      Type result_type = result->getType();
+      // Add this to the test coverage once we create test ops with none type
+      // results.
+      if (result_type.isa<NoneType>()) {
+        outputs_replaced.insert({result, enumerated_result.index()});
+        output_types.push_back(result_type);
+        continue;
+      }
+      if (!result->hasOneUse()) return matchFailure();
+      Type result_ele_type =
+          result->getType().cast<TensorType>().getElementType();
+      if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
+        outputs_replaced.insert({user.output(), enumerated_result.index()});
         output_types.push_back(user.getType());
       } else if (result_ele_type.template isa<IntegerType>()) {
         // If the result is an integer tensor, then it doesn't require the
         // D op in the pattern.
-        outputs_replaced.insert({result.value(), result.index()});
+        outputs_replaced.insert({result, enumerated_result.index()});
         output_types.push_back(result_ele_type);
       } else {
         return matchFailure();

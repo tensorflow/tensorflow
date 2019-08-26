@@ -19,9 +19,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -37,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
@@ -459,9 +457,9 @@ llvm::DenseSet<Operation*> BfsForReachableOps(ArrayRef<Operation*> input_ops) {
 
 // Convert ophint to stub will remove all ops within the ophint region and
 // place a new fused op right before the first op.
-void ConvertOphintToStub(StringRef stub_name,
-                         OphintCompositeOp ophint_composite_op,
-                         OpBuilder* builder, ModuleOp* module_op) {
+LogicalResult ConvertOphintToStub(StringRef stub_name,
+                                  OphintCompositeOp ophint_composite_op,
+                                  OpBuilder* builder, ModuleOp* module_op) {
   // Step 1, find all ops reachable by inputs.
   const llvm::DenseSet<Operation*>& reachable_by_inputs =
       BfsForReachableOps(ophint_composite_op.GetAllInputOps());
@@ -489,6 +487,7 @@ void ConvertOphintToStub(StringRef stub_name,
 
   for (const auto& kv : aggregated_inputs) {
     Operation* op = kv.second->getDefiningOp();
+    if (op == nullptr) return failure();
     op->moveBefore(fused_op);
   }
 
@@ -508,6 +507,7 @@ void ConvertOphintToStub(StringRef stub_name,
   };
 
   builder->getBlock()->walk(removeRemovableOps);
+  return success();
 }
 
 struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
@@ -518,6 +518,8 @@ struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
   int ophint_composite_ops_count = 0;
 };
 
+// TODO(renjieliu): Current ophint extraction does not support inputs/outputs
+// cross functions, we need to do that.
 void ExtractOphintPass::runOnModule() {
   ModuleOp module = getModule();
   for (auto function : module.getOps<FuncOp>()) {
@@ -532,7 +534,7 @@ void ExtractOphintPass::runOnModule() {
       for (const auto& kv : ophint_composite_ops) {
         if (failed(kv.getValue().VerifyOphint())) {
           module.emitError()
-              << "Find walformed ophint regions, missing inputs or outputs.";
+              << "Found malformed ophint regions: missing inputs or outputs.";
           return signalPassFailure();
         }
       }
@@ -542,14 +544,18 @@ void ExtractOphintPass::runOnModule() {
       // Convert.
       OpBuilder builder(&bb);
       for (const auto& kv : ophint_composite_ops) {
-        ConvertOphintToStub(kv.getKey(), kv.getValue(), &builder, &module);
+        if (failed(ConvertOphintToStub(kv.getKey(), kv.getValue(), &builder,
+                                       &module))) {
+          module.emitError()
+              << "Convert ophint failed, malformed inputs or outputs.";
+          return signalPassFailure();
+        }
       }
     }
   }
 }
 
 void ExtractOphintPass::Verify() {
-  SymbolTable symbol_table = SymbolTable(getModule());
   ModuleOp module = getModule();
   int ophint_func_op_count = 0;
   for (FuncOp func : getModule().getOps<FuncOp>()) {

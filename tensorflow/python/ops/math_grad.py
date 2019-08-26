@@ -193,8 +193,16 @@ def _SumGrad(op, grad):
         return [array_ops.tile(grad, tile_scaling), None]
 
   input_shape = array_ops.shape(op.inputs[0])
-  # TODO(apassos) remove this once device placement for eager ops makes more
-  # sense.
+
+  if compat.forward_compatible(2019, 9, 23):
+    if not op.get_attr("keep_dims"):
+      with ops.colocate_with(input_shape):
+        # TODO(apassos) remove this once device placement for eager ops makes
+        # more sense.
+        output_shape_kept_dims = math_ops.reduced_shape(input_shape,
+                                                        op.inputs[1])
+      grad = array_ops.reshape(grad, output_shape_kept_dims)
+    return [array_ops.broadcast_to(grad, input_shape), None]
   with ops.colocate_with(input_shape):
     output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
     tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
@@ -205,10 +213,13 @@ def _SumGrad(op, grad):
 def _MinOrMaxGrad(op, grad):
   """Gradient for Min or Max. Amazingly it's precisely the same code."""
   input_shape = array_ops.shape(op.inputs[0])
-  output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   y = op.outputs[0]
-  y = array_ops.reshape(y, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
+  if not op.get_attr("keep_dims"):
+    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+    y = array_ops.reshape(y, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+  else:
+    output_shape_kept_dims = array_ops.shape(y)
 
   # Compute the number of selected (maximum or minimum) elements in each
   # reduction dimension. If there are multiple minimum or maximum elements
@@ -263,11 +274,18 @@ def _ProdGrad(op, grad):
   # Reshape reduction indices for the case where the parameter is a scalar
   reduction_indices = array_ops.reshape(op.inputs[1], [-1])
 
-  # Expand grad to full input shape
-  output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-  tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
-  grad = array_ops.tile(grad, tile_scaling)
+  if compat.forward_compatible(2019, 9, 23):
+    # Expand grad to full input shape
+    if not op.get_attr("keep_dims"):
+      output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+      grad = array_ops.reshape(grad, output_shape_kept_dims)
+
+    grad = array_ops.broadcast_to(grad, input_shape)
+  else:
+    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+    grad = array_ops.tile(grad, tile_scaling)
 
   # Pack all reduced dimensions into a single one, so we can perform the
   # cumprod ops. If the reduction dims list is empty, it defaults to float32,

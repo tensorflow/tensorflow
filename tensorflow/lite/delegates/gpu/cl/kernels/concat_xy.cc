@@ -64,7 +64,8 @@ std::string GetConcatKernelCode(
     const std::string offset_name = "dst_offset_" + std::to_string(i);
     const std::string size_name = "src_size_" + std::to_string(i);
     c += "  if (X < " + size_name + ".x && Y < " + size_name + ".y) { \n";
-    c += "    FLT4 result = " + srcs[i]->Read3D("X", "Y", "Z") + ";\n";
+    c += "    FLT4 result = " +
+         srcs[i]->Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
     c += "    int dst_x = X + " + offset_name + ".x;\n";
     c += "    int dst_y = Y + " + offset_name + ".y;\n";
     c += "    " + dst.GetAddress("dst_adr", "dst_x", "dst_y", "Z");

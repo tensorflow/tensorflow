@@ -18,9 +18,10 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -183,12 +184,12 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                            \
-  do {                                                                 \
-    if (!(EXPR)) {                                                     \
-      return errors::InvalidArgument(                                  \
-          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
-    }                                                                  \
+#define VALIDATE(EXPR, ...)                                        \
+  do {                                                             \
+    if (!(EXPR)) {                                                 \
+      return errors::InvalidArgument(                              \
+          __VA_ARGS__, "; in OpDef: ", op_def.ShortDebugString()); \
+    }                                                              \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,

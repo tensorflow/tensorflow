@@ -958,11 +958,18 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
 
+<<<<<<< HEAD
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
 
     se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                       se::cuda::PtxCompilationOptions());
+=======
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                            se::cuda::PtxCompilationOptions());
+>>>>>>> google_upstream/master
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 

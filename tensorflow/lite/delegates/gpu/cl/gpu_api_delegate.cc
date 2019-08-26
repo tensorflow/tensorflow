@@ -128,29 +128,42 @@ class Delegate {
     }
     RETURN_IF_ERROR(status);
 
+    std::vector<uint32_t> input_refs;
+    {
+      const auto& inputs = graph.inputs();
+      input_refs.reserve(inputs.size());
+      for (auto input : inputs) {
+        input_refs.push_back(input->tensor.ref);
+      }
+    }
+    std::vector<uint32_t> output_refs;
+    {
+      const auto& outputs = graph.outputs();
+      output_refs.reserve(outputs.size());
+      for (auto output : outputs) {
+        output_refs.push_back(output->tensor.ref);
+      }
+    }
+
     InferenceOptions options;
     options.priority = ToPriority(options_.compile_options.inference_priority);
     options.allow_precision_loss =
         options_.compile_options.precision_loss_allowed != 0;
     std::unique_ptr<InferenceBuilder> builder;
     RETURN_IF_ERROR(
-        environment_->NewInferenceBuilder(options, graph, &builder));
+        environment_->NewInferenceBuilder(options, std::move(graph), &builder));
 
     // At this point tflite didn't allocate tensors yet, therefore, collect
     // indices and set all input and output tensors from tflite later.
-    auto inputs = graph.inputs();
-    input_indices_.reserve(inputs.size());
-    for (auto input : inputs) {
-      auto tensor_index = input->tensor.ref;
+    input_indices_.reserve(input_refs.size());
+    for (auto tensor_index : input_refs) {
       int object_index = input_indices_.size();
       input_indices_.push_back(tensor_index);
       RETURN_IF_ERROR(
           builder->SetInputObjectDef(object_index, GetObjectDef(tensor_index)));
     }
-    auto outputs = graph.outputs();
-    output_indices_.reserve(outputs.size());
-    for (auto output : outputs) {
-      auto tensor_index = output->tensor.ref;
+    output_indices_.reserve(output_refs.size());
+    for (auto tensor_index : output_refs) {
       int object_index = output_indices_.size();
       output_indices_.push_back(tensor_index);
       RETURN_IF_ERROR(builder->SetOutputObjectDef(object_index,

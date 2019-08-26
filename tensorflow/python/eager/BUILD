@@ -67,6 +67,7 @@ py_library(
         ":execute",
         ":execution_callbacks",
         ":forwardprop",
+        ":forwardprop_util",
         ":function",
         ":graph_only_ops",
         ":monitoring",
@@ -258,6 +259,13 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+<<<<<<< HEAD
+=======
+    tags = [
+        "no_rocm",
+        "no_windows",  #TODO(b/139745667)
+    ],
+>>>>>>> google_upstream/master
     xla_enable_strict_auto_jit = True,
 )
 
@@ -266,6 +274,7 @@ cuda_py_test(
     srcs = ["forwardprop_test.py"],
     additional_deps = [
         ":forwardprop",
+        ":forwardprop_util",
         ":test",
     ],
     shard_count = 5,
@@ -410,6 +419,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
     ],
@@ -521,6 +531,16 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "forwardprop_util",
+    srcs = ["forwardprop_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 

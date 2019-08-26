@@ -19,11 +19,17 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+<<<<<<< HEAD
 #endif
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+=======
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
+>>>>>>> google_upstream/master
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 

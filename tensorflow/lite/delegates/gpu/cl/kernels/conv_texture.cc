@@ -32,7 +32,7 @@ namespace {
 std::string GenerateConvCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    bool is1x1, bool adreno4xx_optimization,
+    bool is1x1, bool adreno4xx_optimization, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(precision);
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
@@ -117,10 +117,11 @@ std::string GenerateConvCode(
   c += "    FLT4 f5 = READ_IMAGE(filters1, smp_none, " + fc1 + ");\n";
   c += "    FLT4 f6 = READ_IMAGE(filters2, smp_none, " + fc1 + ");\n";
   c += "    FLT4 f7 = READ_IMAGE(filters3, smp_none, " + fc1 + ");\n";
-  c += "    FLT4 src0 =" + src_tensor.Read3D(s_x0, s_y0, "s") + ";\n";
-  c += "    FLT4 src1 =" + src_tensor.Read3D(s_x1, s_y0, "s") + ";\n";
-  c += "    FLT4 src2 =" + src_tensor.Read3D(s_x0, s_y1, "s") + ";\n";
-  c += "    FLT4 src3 =" + src_tensor.Read3D(s_x1, s_y1, "s") + ";\n";
+  const auto mode = GetFastestZeroMode(device);
+  c += "    FLT4 src0 =" + src_tensor.Read3D(s_x0, s_y0, "s", mode) + ";\n";
+  c += "    FLT4 src1 =" + src_tensor.Read3D(s_x1, s_y0, "s", mode) + ";\n";
+  c += "    FLT4 src2 =" + src_tensor.Read3D(s_x0, s_y1, "s", mode) + ";\n";
+  c += "    FLT4 src3 =" + src_tensor.Read3D(s_x1, s_y1, "s", mode) + ";\n";
   for (int i = 0; i < 4; ++i) {
     c += "    CONV1(r" + std::to_string(i) + ", src" + std::to_string(i) +
          ");\n";
@@ -239,9 +240,10 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
-  std::string code = GenerateConvCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, is1x1, adreno4xx_optimization, linked_operations_);
+  std::string code =
+      GenerateConvCode(definition_.src_tensors[0], definition_.dst_tensors[0],
+                       definition_.precision, is1x1, adreno4xx_optimization,
+                       *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);

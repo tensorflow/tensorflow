@@ -211,6 +211,17 @@ func @QuantizeLogistic(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>
 // CHECK: return %3 : tensor<1x6x6x16xf32>
 }
 
+// CHECK-LABEL: NotQuantizeConcatConstantOperand
+func @NotQuantizeConcatConstantOperand(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  %0 = constant dense<1.0> : tensor<2xf32>
+  %1 = "tfl.concatenation"(%arg0, %0) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+
+// CHECK-NEXT: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<2xf32>
+// CHECK-NEXT: %[[cc:.*]] = "tfl.concatenation"(%arg0, %[[cst]])
+// CHECK-NEXT: return %[[cc]]
+}
+
 // CHECK-LABEL: QuantizeConcatOperand0ToAll
 func @QuantizeConcatOperand0ToAll(tensor<2x!quant.uniform<u8:f32, 0.1:128>>, tensor<2xf32>) -> tensor<2x2xf32> {
 ^bb0(%arg0: tensor<2x!quant.uniform<u8:f32, 0.1:128>>, %arg1: tensor<2xf32>):

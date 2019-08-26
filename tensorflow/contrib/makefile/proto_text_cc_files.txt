@@ -30,11 +30,8 @@ tensorflow/core/lib/random/distribution_sampler.cc
 tensorflow/core/lib/random/random.cc
 tensorflow/core/lib/random/simple_philox.cc
 tensorflow/core/lib/random/weighted_picker.cc
-tensorflow/core/lib/strings/numbers.cc
 tensorflow/core/lib/strings/ordered_code.cc
 tensorflow/core/lib/strings/proto_text_util.cc
-tensorflow/core/lib/strings/scanner.cc
-tensorflow/core/lib/strings/str_util.cc
 tensorflow/core/lib/strings/strcat.cc
 tensorflow/core/lib/wav/wav_io.cc
 tensorflow/core/platform/cpu_info.cc
@@ -45,6 +42,7 @@ tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/env.cc
 tensorflow/core/platform/file_system.cc
 tensorflow/core/platform/file_system_helper.cc
+tensorflow/core/platform/numbers.cc
 tensorflow/core/platform/posix/env.cc
 tensorflow/core/platform/posix/env_time.cc
 tensorflow/core/platform/posix/error.cc
@@ -53,8 +51,10 @@ tensorflow/core/platform/posix/port.cc
 tensorflow/core/platform/posix/posix_file_system.cc
 tensorflow/core/platform/protobuf.cc
 tensorflow/core/platform/protobuf_util.cc
+tensorflow/core/platform/scanner.cc
 tensorflow/core/platform/setround.cc
 tensorflow/core/platform/stringprintf.cc
+tensorflow/core/platform/str_util.cc
 tensorflow/core/platform/tensor_coding.cc
 tensorflow/core/platform/tracing.cc
 tensorflow/tools/proto_text/gen_proto_text_functions.cc

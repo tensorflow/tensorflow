@@ -633,12 +633,12 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         // clang-format off
 
         // Load the first 64 bytes of LHS and RHS data.
-        "vld1.32 {d0, d1}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d4, d5}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d6, d7}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d8, d9}, [%[rhs_ptr]]!\n"
-        "vld1.32 {d10, d11}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d10, d11}, [%[rhs_ptr]]!\n"
 
         "sub sp, sp, #" RUY_STR(RUY_STACK_OFFSET_SIZE) "\n"
 
@@ -729,13 +729,13 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vpadal.s16 q13, q15\n"
 
         // Load the next 64 bytes of LHS and RHS data.
-        "vld1.32 {d0, d1}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d4, d5}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d6, d7}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[lhs_ptr]]\n")
-        "vld1.32 {d8, d9}, [%[rhs_ptr]]!\n"
-        "vld1.32 {d10, d11}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d10, d11}, [%[rhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[rhs_ptr]]\n")
 
         // Each iteration of this loop advances by 16 levels of depth.
@@ -897,12 +897,12 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         // main loop will need to load, we start loading the first 32 bytes of
         // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
         // in the rest of the work on the current block.
-        "vld1.32 {d0, d1}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d4, d5}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d6, d7}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
+        "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[lhs_ptr]]\n")
-        "vld1.32 {d8, d9, d10, d11}, [%[rhs_ptr]]!\n"
+        "vld1.8 {d8, d9, d10, d11}, [%[rhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[rhs_ptr]]\n")
 
         // Add to the bias values the product
@@ -927,7 +927,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "ldr r4, [sp, #" RUY_STR(RUY_STACK_OFFSET_COL) "]\n"
         // Offset by current col * number of bytes per value
         "add r3, r3, r4, lsl #2\n"
-        "vld1.32 d12, [r3]\n"
+        "vld1.32 { d12 }, [r3]\n"
         "ldr r5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
         "vdup.32 q10, r5\n"  // create lhs_zero_point_vec
         // Subtract rhs_sums * lhs_zero_point, per
@@ -947,7 +947,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "ldr r5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
 
         // Load 4 lhs_sums values.
-        "vld1.32 q11, [r2]\n"
+        "vld1.32 {d22, d23}, [r2]\n"
         "vdup.32 d13, r5\n" // rhs_zero_point
 
         // Compute lhs_sums * rhs_zero_point.

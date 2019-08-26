@@ -31,6 +31,7 @@ std::string GenerateConvolutionTransposedCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     int src_depth, int dst_channels, const int2& kernel_size,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
@@ -69,7 +70,8 @@ std::string GenerateConvolutionTransposedCode(
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " + src_tensor.Read3D("X", "Y", "0") + ";\n";
+  c += "  FLT4 src = " +
+       src_tensor.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ";\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
@@ -89,7 +91,9 @@ std::string GenerateConvolutionTransposedCode(
     } else {
       c += "  {\n";
     }
-    c += "  FLT4 src = " + src_tensor.Read3D("X", "Y", std::to_string(i)) +
+    c += "  FLT4 src = " +
+         src_tensor.Read3D("X", "Y", std::to_string(i),
+                           TextureAddressMode::DONT_CARE) +
          ";\n";
     for (int y = 0; y < kernel_size.y; ++y) {
       for (int x = 0; x < kernel_size.x; ++x) {
@@ -178,7 +182,8 @@ Status ConvolutionTransposedThin::Compile(
   const auto code = GenerateConvolutionTransposedCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, IntegralDivideRoundUp(src_channels_, 4),
-      dst_channels_, kernel_size_, linked_operations_);
+      dst_channels_, kernel_size_, *creation_context.device,
+      linked_operations_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&

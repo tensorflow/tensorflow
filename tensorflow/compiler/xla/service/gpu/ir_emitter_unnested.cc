@@ -37,39 +37,34 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+<<<<<<< HEAD
 #ifndef TENSORFLOW_USE_ROCM
   #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
+=======
+>>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
-#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -344,6 +339,7 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+<<<<<<< HEAD
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
 
@@ -535,49 +531,17 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        custom_call->custom_call_target());
+=======
+  return ThunkEmitter(this).HandleCustomCall(custom_call);
+>>>>>>> google_upstream/master
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
-  TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(fft->operand(0)->shape().layout()));
-  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(fft->shape().layout()));
-  AddThunkToThunkSequence(BuildFftThunk(fft));
-  return Status::OK();
+  return ThunkEmitter(this).HandleFft(fft);
 }
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
-  auto has_fortran_layout = [](const Layout& layout) {
-    int n = layout.minor_to_major_size();
-    return layout.minor_to_major(0) == n - 2 &&
-           layout.minor_to_major(1) == n - 1;
-  };
-  TF_RET_CHECK(has_fortran_layout(hlo->operand(0)->shape().layout()));
-  TF_RET_CHECK(has_fortran_layout(hlo->operand(1)->shape().layout()));
-  TF_RET_CHECK(has_fortran_layout(hlo->shape().layout()));
-
-  std::vector<std::unique_ptr<Thunk>> thunks;
-
-  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
-  // aren't the same buffer.
-  auto operand_buffer = GetAllocationSlice(*hlo->operand(1));
-  auto destination_buffer = GetAllocationSlice(*hlo);
-  if (operand_buffer != destination_buffer) {
-    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/operand_buffer,
-        /*destination_buffer=*/destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(1)->shape()), hlo));
-  }
-
-  thunks.push_back(BuildTriangularSolveThunk(hlo));
-
-  // Elide the sequential thunk if there's no copy.
-  if (thunks.size() == 1) {
-    AddThunkToThunkSequence(std::move(thunks[0]));
-  } else {
-    AddThunkToThunkSequence(
-        absl::make_unique<SequentialThunk>(std::move(thunks), hlo));
-  }
-  return Status::OK();
+  return ThunkEmitter(this).HandleTriangularSolve(hlo);
 }
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
@@ -593,7 +557,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           int unroll_factor = ComputeMaxUnrollFactor(fusion);
           thunks.push_back(BuildKernelThunk(
               fusion, /*implements_whole_instruction=*/false, unroll_factor));
-
           GpuElementalIrEmitter operand_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
               GetNestedComputer());
@@ -698,7 +661,11 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
   if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
                         copy->shape().layout()) &&
       buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
-    AddThunkToThunkSequence(BuildDeviceToDeviceCopyThunk(copy));
+    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*copy->operand(0)),
+        /*destination_buffer=*/GetAllocationSlice(*copy),
+        /*mem_size=*/
+        ByteSizeOf(copy->operand(0)->shape()), copy));
     return Status::OK();
   }
   if (CheckAndEmitHloWithTile021(copy)) {
@@ -1475,17 +1442,15 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
-  return Status::OK();
-}
-
-Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {
-  AddThunkToThunkSequence(BuildInfeedThunk(infeed));
-  return Status::OK();
+Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
+  return ThunkEmitter(this).HandleInfeed(xla_infeed);
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
-  AddThunkToThunkSequence(BuildOutfeedThunk(outfeed));
+  return ThunkEmitter(this).HandleOutfeed(outfeed);
+}
+
+Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
@@ -1707,132 +1672,6 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   return absl::make_unique<KernelThunk>(
       non_constant_buffers, kernel->getName(),
       implements_whole_instruction ? inst : nullptr, unroll_factor);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
-    const HloInstruction* inst) {
-  const HloInstruction* operand = inst->operand(0);
-  CHECK_EQ(HloOpcode::kConstant, operand->opcode());
-  return absl::make_unique<HostToDeviceCopyThunk>(
-      /*source_address=*/operand->literal().untyped_data(),
-      /*destination_buffer=*/GetAllocationSlice(*inst),
-      /*mem_size=*/
-      llvm_ir::ByteSizeOf(operand->shape(),
-                          ir_emitter_context_->llvm_module()->getDataLayout()),
-      inst);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildDeviceToDeviceCopyThunk(
-    const HloInstruction* inst) {
-  const HloInstruction* operand = inst->operand(0);
-  return absl::make_unique<DeviceToDeviceCopyThunk>(
-      /*source_address=*/GetAllocationSlice(*operand),
-      /*destination_buffer=*/GetAllocationSlice(*inst),
-      /*mem_size=*/
-      llvm_ir::ByteSizeOf(operand->shape(),
-                          ir_emitter_context_->llvm_module()->getDataLayout()),
-      inst);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
-    const HloInstruction* inst) {
-  CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
-
-  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
-  slices.ForEachMutableElement(
-      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
-        *slice = ir_emitter_context_->buffer_assignment()
-                     .GetUniqueSlice(inst, index)
-                     .ConsumeValueOrDie();
-      });
-  return absl::make_unique<InfeedThunk>(slices, inst);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildOutfeedThunk(
-    const HloInstruction* inst) {
-  CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
-
-  ShapeTree<BufferAllocation::Slice> slices(inst->operand(0)->shape());
-  slices.ForEachMutableElement(
-      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
-        auto status_or_slice =
-            ir_emitter_context_->buffer_assignment().GetUniqueSlice(
-                inst->operand(0), index);
-        if (status_or_slice.ok()) {
-          *slice = status_or_slice.ConsumeValueOrDie();
-        }
-      });
-  return absl::make_unique<OutfeedThunk>(std::move(slices), inst);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
-    const HloInstruction* inst) {
-  auto config_or = inst->backend_config<GemmBackendConfig>();
-  GemmBackendConfig gemm_config = std::move(config_or.ValueOrDie());
-  const HloInstruction* lhs = inst->operand(0);
-  const HloInstruction* rhs = inst->operand(1);
-
-  // The bias is passed inside the output buffer. If those buffers are shared
-  // we can just use it, otherwise copy the bias values into the output buffer
-  // first.
-  if (gemm_config.beta() != 0.0) {
-    const HloInstruction* bias = inst->operand(2);
-    CHECK_EQ(bias->shape(), inst->shape());
-    if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
-      std::vector<std::unique_ptr<Thunk>> thunks;
-      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-          /*source_buffer=*/GetAllocationSlice(*bias),
-          /*destination_buffer=*/GetAllocationSlice(*inst),
-          /*mem_size=*/ShapeUtil::ByteSizeOf(inst->shape()), nullptr));
-      thunks.push_back(absl::make_unique<GemmThunk>(
-          GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
-          GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
-          GetAllocationSlice(*inst),  // The output buffer.
-          /*implements_whole_instruction=*/false, inst,
-          std::move(gemm_config)));
-      return absl::make_unique<SequentialThunk>(std::move(thunks), inst);
-    }
-  }
-
-  return absl::make_unique<GemmThunk>(
-      GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
-      GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
-      GetAllocationSlice(*inst),  // The output buffer.
-      /*implements_whole_instruction=*/true, inst, std::move(gemm_config));
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
-    const HloInstruction* inst) {
-  const HloInstruction* operand = inst->operand(0);
-  return absl::make_unique<FftThunk>(
-      inst->fft_type(), inst->fft_length(),
-      /*input_buffer=*/GetAllocationSlice(*operand),
-      /*output_buffer=*/GetAllocationSlice(*inst),
-      /*input_shape=*/operand->shape(),
-      /*output_shape=*/inst->shape(), inst);
-}
-
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildTriangularSolveThunk(
-    const HloInstruction* inst) {
-  const HloInstruction* a = inst->operand(0);
-  const HloInstruction* b = inst->operand(1);
-  int64 m = b->shape().dimensions(b->shape().rank() - 2);
-  int64 n = b->shape().dimensions(b->shape().rank() - 1);
-  int64 batch_size = std::accumulate(
-      b->shape().dimensions().begin(), b->shape().dimensions().end() - 2,
-      int64{1}, [](int64 a, int64 b) { return a * b; });
-  int64 elem_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(inst->shape().element_type());
-  int64 a_batch_stride = inst->triangular_solve_options().left_side()
-                             ? m * m * elem_size
-                             : n * n * elem_size;
-  int64 b_batch_stride = m * n * elem_size;
-  return absl::make_unique<TriangularSolveThunk>(
-      inst->triangular_solve_options(),
-      /*a_input_buffer=*/GetAllocationSlice(*a),
-      /*b_input_buffer=*/GetAllocationSlice(*inst),
-      inst->shape().element_type(), batch_size, m, n, a_batch_stride,
-      b_batch_stride, inst);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
+<<<<<<< HEAD
 #include <stdlib.h>
 
 #include <atomic>
@@ -102,6 +103,23 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+=======
+#include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+// TODO(whchung@gmail.com): Add gpu_conv_algorithm_picker after its PR merged.
+#include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
+#include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/core/platform/rocm_rocdl_path.h"
+>>>>>>> google_upstream/master
 
 namespace xla {
 namespace gpu {
@@ -168,7 +186,13 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+<<<<<<< HEAD
   pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
+=======
+
+  // TODO(whchung@gmail.com): Add gpu_conv_algorithm_picker after its PR merged.
+
+>>>>>>> google_upstream/master
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
 
@@ -184,8 +208,13 @@ AMDGPUCompiler::AMDGPUCompiler()
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   int isa_version = 0;
+<<<<<<< HEAD
   if (!stream_exec->GetDeviceDescription().
                     rocm_amdgpu_isa_version(&isa_version)) {
+=======
+  if (!stream_exec->GetDeviceDescription().rocm_amdgpu_isa_version(
+          &isa_version)) {
+>>>>>>> google_upstream/master
     LOG(WARNING)
         << "Couldn't get AMDGPU ISA version for device; assuming gfx803.";
     isa_version = 803;
