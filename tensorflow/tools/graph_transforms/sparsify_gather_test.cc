@@ -116,7 +116,7 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({1}));
-      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
                                 tensor_shapes_slices_node);
 
@@ -327,8 +327,8 @@ class SparsifyGatherTest : public ::testing::Test {
       NodeDef* tensor_shapes_slices_node = CreateNode(
           "save/RestoreV2/shape_and_slices", "Const", {}, &graph_def);
       Tensor shapes_slices_val(DT_STRING, TensorShape({2}));
-      shapes_slices_val.flat<string>()(0) = "4 1 0,4:0,1";
-      shapes_slices_val.flat<string>()(1) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(0) = "4 1 0,4:0,1";
+      shapes_slices_val.flat<tstring>()(1) = "4 1 0,4:0,1";
       SetNodeTensorAttr<string>("value", shapes_slices_val,
                                 tensor_shapes_slices_node);
 

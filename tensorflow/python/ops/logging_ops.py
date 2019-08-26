@@ -23,6 +23,7 @@ import pprint
 import random
 import sys
 
+from absl import logging
 import six
 
 from tensorflow.python import pywrap_tensorflow
@@ -69,21 +70,7 @@ except NameError:
             "directly specified in session.run or used as a "
             "control dependency for other operators. This is "
             "only a concern in graph mode. Below is an example "
-            "of how to ensure tf.print executes in graph mode:\n"
-            """```python
-    sess = tf.compat.v1.Session()
-    with sess.as_default():
-        tensor = tf.range(10)
-        print_op = tf.print(tensor)
-        with tf.control_dependencies([print_op]):
-          out = tf.add(tensor, tensor)
-        sess.run(out)
-    ```
-Additionally, to use tf.print in python 2.7, users must make sure to import
-the following:
-
-  `from __future__ import print_function`
-""")
+            "of how to ensure tf.print executes in graph mode:\n")
 @tf_export(v1=["Print"])
 def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   """Prints a list of tensors.
@@ -94,6 +81,11 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
   Note: This op prints to the standard error. It is not currently compatible
     with jupyter notebook (printing to the notebook *server's* output, not into
     the notebook).
+
+  Additionally, to use tf.print in python 2.7, users must make sure to import
+  the following:
+
+  `from __future__ import print_function`
 
   Args:
     input_: A tensor passed through this op.
@@ -107,6 +99,16 @@ def Print(input_, data, message=None, first_n=None, summarize=None, name=None):
 
   Returns:
     A `Tensor`. Has the same type and contents as `input_`.
+
+    ```python
+    sess = tf.compat.v1.Session()
+    with sess.as_default():
+        tensor = tf.range(10)
+        print_op = tf.print(tensor)
+        with tf.control_dependencies([print_op]):
+          out = tf.add(tensor, tensor)
+        sess.run(out)
+    ```
   """
   return gen_logging_ops._print(input_, data, message, first_n, summarize, name)
 
@@ -138,18 +140,11 @@ def _is_filepath(output_stream):
 def print_v2(*inputs, **kwargs):
   """Print the specified inputs.
 
-  Returns an operator that prints the specified inputs to a desired
+  A TensorFlow operator that prints the specified inputs to a desired
   output stream or logging level. The inputs may be dense or sparse Tensors,
-  primitive python objects, data structures that contain Tensors, and printable
-  python objects. Printed tensors will recursively show the first and last
-  `summarize` elements of each dimension.
-
-  With eager execution enabled and/or inside a `tf.contrib.eager.defun` this
-  operator will automatically execute, and users only need to call `tf.print`
-  without using the return value. When constructing graphs outside of a
-  `tf.contrib.eager.defun`, one must either include the returned op
-  in the input to `session.run`, or use the operator as a control dependency for
-  executed ops by specifying `with tf.control_dependencies([print_op])`.
+  primitive python objects, data structures that contain tensors, and printable
+  Python objects. Printed tensors will recursively show the first and last
+  elements of each dimension to summarize.
 
   @compatibility(python2)
   In python 2.7, make sure to import the following:
@@ -160,7 +155,6 @@ def print_v2(*inputs, **kwargs):
     Single-input usage:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
     tensor = tf.range(10)
     tf.print(tensor, output_stream=sys.stderr)
     ```
@@ -170,7 +164,6 @@ def print_v2(*inputs, **kwargs):
     Multi-input usage:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
     tensor = tf.range(10)
     tf.print("tensors:", tensor, {2: tensor * 2}, output_stream=sys.stdout)
     ```
@@ -178,12 +171,19 @@ def print_v2(*inputs, **kwargs):
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
 
-    Usage in a defun:
+    Changing the input separator:
+    ```python
+    tensor_a = tf.range(2)
+    tensor_b = tensor_a * 2
+    tf.print(tensor_a, tensor_b, output_stream=sys.stderr, sep=',')
+    ```
+
+    (This prints "[0 1],[0 2]" to sys.stderr)
+
+    Usage in a `tf.function`:
 
     ```python
-    tf.compat.v1.enable_eager_execution()
-
-    @tf.contrib.eager.defun
+    @tf.function
     def f():
         tensor = tf.range(10)
         tf.print(tensor, output_stream=sys.stderr)
@@ -194,7 +194,16 @@ def print_v2(*inputs, **kwargs):
 
     (This prints "[0 1 2 ... 7 8 9]" to sys.stderr)
 
-    Usage when constructing graphs:
+  @compatibility(TF 1.x Graphs and Sessions)
+  In graphs manually created outside of `tf.function`, this method returns
+  the created TF operator that prints the data. To make sure the
+  operator runs, users need to pass the produced op to
+  `tf.compat.v1.Session`'s run method, or to use the op as a control
+  dependency for executed ops by specifying
+  `with tf.compat.v1.control_dependencies([print_op])`.
+  @end_compatibility
+
+    Compatibility usage in TF 1.x graphs:
 
     ```python
     sess = tf.compat.v1.Session()
@@ -210,7 +219,7 @@ def print_v2(*inputs, **kwargs):
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
 
-  Note: In Jupyter notebooks and colabs, this operator prints to the notebook
+  Note: In Jupyter notebooks and colabs, `tf.print` prints to the notebook
     cell outputs. It will not write to the notebook kernel's console logs.
 
   Args:
@@ -221,10 +230,10 @@ def print_v2(*inputs, **kwargs):
       ways), and printable python objects.
     output_stream: The output stream, logging level, or file to print to.
       Defaults to sys.stderr, but sys.stdout, tf.compat.v1.logging.info,
-      tf.compat.v1.logging.warning, and tf.compat.v1.logging.error are also
-      supported. To print to
-      a file, pass a string started with "file://" followed by the file path,
-      e.g., "file:///tmp/foo.out".
+      tf.compat.v1.logging.warning, tf.compat.v1.logging.error,
+      absl.logging.info, absl.logging.warning and absl.loogging,error are also
+      supported. To print to a file, pass a string started with "file://"
+      followed by the file path, e.g., "file:///tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
@@ -235,8 +244,10 @@ def print_v2(*inputs, **kwargs):
     name: A name for the operation (optional).
 
   Returns:
-    A print operator that prints the specified inputs in the specified output
-    stream or logging level.
+    None when executing eagerly. During graph tracing this returns
+    a TF operator that prints the specified inputs in the specified output
+    stream or logging level. This operator will be automatically executed
+    except inside of `tf.compat.v1` graphs and sessions.
 
   Raises:
     ValueError: If an unsupported output stream is specified.
@@ -268,6 +279,15 @@ def print_v2(*inputs, **kwargs):
       tf_logging.warn: "log(warning)",
       tf_logging.ERROR: "log(error)",
       tf_logging.error: "log(error)",
+      logging.INFO: "log(info)",
+      logging.info: "log(info)",
+      logging.INFO: "log(info)",
+      logging.WARNING: "log(warning)",
+      logging.WARN: "log(warning)",
+      logging.warning: "log(warning)",
+      logging.warn: "log(warning)",
+      logging.ERROR: "log(error)",
+      logging.error: "log(error)",
   }
 
   if _is_filepath(output_stream):

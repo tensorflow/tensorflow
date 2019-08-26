@@ -77,6 +77,8 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//learning/brain:__subpackages__",
+        "//learning/lib/ami/simple_ml/link_other_ml_tools/tensorflow:__subpackages__",
+        "//storage/d/analysis/prefetch:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
@@ -154,6 +156,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses:losses",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 py_test(

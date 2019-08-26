@@ -140,12 +140,12 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
   output_images_folder = os.path.join(output_folder_path, 'images')
   if not os.path.exists(output_images_folder):
     os.makedirs(output_images_folder)
-  output_proto_file = os.path.join(output_folder_path, 'grouth_truth.pbtxt')
+  output_proto_file = os.path.join(output_folder_path, 'ground_truth.pbtxt')
 
-  grouth_truth_data = evaluation_stages_pb2.ObjectDetectionGroundTruth()
+  ground_truth_data = evaluation_stages_pb2.ObjectDetectionGroundTruth()
   for image_dict in ground_truth_detections.values():
     # Create an ObjectsSet proto for this file's ground truth.
-    detection_result = grouth_truth_data.detection_results.add()
+    detection_result = ground_truth_data.detection_results.add()
     detection_result.image_name = image_dict['file_name']
     for detection_dict in image_dict['detections']:
       object_instance = detection_result.objects.add()
@@ -161,7 +161,7 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
 
   # Dump proto.
   with open(output_proto_file, 'w') as proto_file:
-    proto_file.write(str(grouth_truth_data))
+    proto_file.write(str(ground_truth_data))
 
 
 def _parse_args():

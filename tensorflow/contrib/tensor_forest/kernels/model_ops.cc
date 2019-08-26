@@ -52,7 +52,7 @@ class CreateTreeVariableOp : public OpKernel {
 
     auto* result = new DecisionTreeResource(param_proto_);
     if (!ParseProtoUnlimited(result->mutable_decision_tree(),
-                             tree_config_t->scalar<string>()())) {
+                             tree_config_t->scalar<tstring>()())) {
       result->Unref();
       OP_REQUIRES(context, false,
                   errors::InvalidArgument("Unable to parse tree  config."));
@@ -85,7 +85,7 @@ class TreeSerializeOp : public OpKernel {
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape(), &output_config_t));
-    output_config_t->scalar<string>()() =
+    output_config_t->scalar<tstring>()() =
         decision_tree_resource->decision_tree().SerializeAsString();
   }
 };
@@ -116,7 +116,7 @@ class TreeDeserializeOp : public OpKernel {
     decision_trees::Model* config =
         decision_tree_resource->mutable_decision_tree();
     OP_REQUIRES(context,
-                ParseProtoUnlimited(config, tree_config_t->scalar<string>()()),
+                ParseProtoUnlimited(config, tree_config_t->scalar<tstring>()()),
                 errors::InvalidArgument("Unable to parse tree  config."));
     decision_tree_resource->MaybeInitialize();
   }
@@ -224,7 +224,7 @@ class TreePredictionsV4Op : public OpKernel {
                                                                   : 0);
     OP_REQUIRES_OK(context, context->allocate_output(1, output_paths_shape,
                                                      &output_tree_paths));
-    auto out_paths = output_tree_paths->unaligned_flat<string>();
+    auto out_paths = output_tree_paths->unaligned_flat<tstring>();
 
     // TODO(gilberth): If this slows down inference too much, consider having
     // a filter that only serializes paths for the predicted label that we're

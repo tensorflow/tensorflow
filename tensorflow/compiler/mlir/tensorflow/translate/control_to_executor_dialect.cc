@@ -22,12 +22,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -147,7 +147,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
     if (op.getName().getStringRef() == "_tf.Switch") {
       replacement = builder.create<tf_executor::SwitchOp>(
           loc, types, operands, ArrayRef<NamedAttribute>{});
-    } else if (op.getName().getStringRef() == "_tf.SwitchN") {
+    } else if (op.getName().getStringRef() == "_tf._SwitchN") {
       replacement = builder.create<tf_executor::SwitchNOp>(
           loc, types, operands, ArrayRef<NamedAttribute>{});
     } else if (op.getName().getStringRef() == "_tf.Merge") {
@@ -155,7 +155,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
           loc, types, operands, ArrayRef<NamedAttribute>{});
     } else if (op.getName().getStringRef() == "_tf.NextIteration.source") {
       replacement = builder.create<tf_executor::NextIterationSourceOp>(
-          loc, op.getResult(0)->getType(), operands);
+          loc, op.getResult(0)->getType());
       // Record a mapping of the name to the nextiteration.source so that when
       // we convert the sink we can get the token.
       StringAttr frame = op.getAttrOfType<StringAttr>("name");

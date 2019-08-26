@@ -1909,4 +1909,4 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -57,6 +57,12 @@ void Reroute(const string& from, const string& to, Model* model) {
       to_array.final_data_type == ArrayDataType::kNone) {
     to_array.final_data_type = from_array.final_data_type;
   }
+  // The 'from' array may now be unused. We delete it here immediately
+  // so that this function doesn't violate graph invariants (no unused arrays)
+  // and as it's not trivial to get this right for the caller since
+  // DeleteOpAndArrays will no longer delete this array, since it's no longer
+  // referenced by this op.
+  DeleteArrayIfUnused(from, model);
 }
 
 }  // namespace

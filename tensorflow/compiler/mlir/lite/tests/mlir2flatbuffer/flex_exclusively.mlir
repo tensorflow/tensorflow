@@ -16,7 +16,7 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }, {
-// CHECK-NEXT:        shape: [  ],
+// CHECK-NEXT:        shape: [ 3, 2 ],
 // CHECK-NEXT:        buffer: 2,
 // CHECK-NEXT:        name: "tf.AddV2",
 // CHECK-NEXT:        quantization: {

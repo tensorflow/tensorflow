@@ -38,6 +38,7 @@ class ExecuteNode : public EagerNode {
               NodeExecStats* maybe_stats, StepStats* maybe_step_stats,
               GraphCollector* graph_collector,
               const DataTypeVector& output_dtypes,
+              CancellationManager* cancellation_manager,
               absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         ctx_(ctx),
@@ -45,7 +46,8 @@ class ExecuteNode : public EagerNode {
         kernel_(std::move(kernel)),
         maybe_stats_(maybe_stats),
         maybe_step_stats_(maybe_step_stats),
-        graph_collector_(graph_collector) {
+        graph_collector_(graph_collector),
+        cancellation_manager_(cancellation_manager) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
@@ -63,7 +65,7 @@ class ExecuteNode : public EagerNode {
   Status Run() override {
     const Status status = EagerKernelExecute(
         ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
-        graph_collector_, absl::MakeSpan(retvals_));
+        graph_collector_, cancellation_manager_, absl::MakeSpan(retvals_));
     if (!status.ok()) {
       Abort(status);
       return status;
@@ -101,6 +103,7 @@ class ExecuteNode : public EagerNode {
   std::unique_ptr<NodeExecStats> maybe_stats_;
   StepStats* maybe_step_stats_;
   GraphCollector* graph_collector_;
+  CancellationManager* const cancellation_manager_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

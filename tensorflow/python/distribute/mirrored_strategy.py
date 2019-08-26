@@ -342,7 +342,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the future.
+  To use `MirroredStrategy` with multiple workers, please refer to
+  `tf.distribute.MultiWorkerMirroredStrategy`.
 
   Args:
     devices: a list of device strings.  If `None`, all available GPUs are used.
@@ -374,8 +375,22 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
-    if devices is None:
-      devices = all_devices()
+    if context.executing_eagerly():
+      if devices and not _is_device_list_local(devices):
+        raise RuntimeError("In-graph multi-worker training with "
+                           "`MirroredStrategy` is not supported in eager mode.")
+      else:
+        if TFConfigClusterResolver().cluster_spec().as_dict():
+          # if you are executing in eager mode, only the single machine code
+          # path is supported.
+          logging.info("Initializing local devices since in-graph multi-worker "
+                       "training with `MirroredStrategy` is not supported in "
+                       "eager mode. TF_CONFIG will be ignored when "
+                       "when initializing `MirroredStrategy`.")
+        devices = devices or all_local_devices()
+    else:
+      devices = devices or all_devices()
+
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
@@ -405,6 +420,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
+    self._is_multi_worker_training = False
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
@@ -431,6 +447,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, worker_devices)
+    self._is_multi_worker_training = True
 
     if len(workers) > 1:
       if not isinstance(self._cross_device_ops,
@@ -556,7 +573,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.DistributedDatasetsFromFunction(
+    return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
         input_contexts,
@@ -779,6 +796,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       Boolean.
     """
     return True
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    return False
 
 
 class _MirroredReplicaThread(threading.Thread):

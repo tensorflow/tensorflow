@@ -1,5 +1,6 @@
 # TensorFlow Lite for Swift
 
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
@@ -14,9 +15,7 @@ swift_library(
     srcs = glob(["Sources/*.swift"]),
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS,
-    visibility = [
-        "//third_party/py/tensorflow_examples/lite:__subpackages__",
-    ],
+    visibility = ios_visibility_whitelist(),
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],
@@ -26,7 +25,9 @@ ios_unit_test(
     name = "Tests",
     size = "small",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        "nozapfhahn",  # Fails during coverage build, see b/139134323.
+    ],
     deps = [
         ":TestsLibrary",
     ],
@@ -36,7 +37,9 @@ swift_library(
     name = "TestsLibrary",
     testonly = 1,
     srcs = glob(["Tests/*.swift"]),
-    tags = TFL_DEFAULT_TAGS,
+    tags = TFL_DEFAULT_TAGS + [
+        "nozapfhahn",  # Fails during coverage build, see b/139134323.
+    ],
     deps = [
         ":Resources",
         ":TensorFlowLite",

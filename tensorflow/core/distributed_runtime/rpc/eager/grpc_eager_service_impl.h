@@ -44,6 +44,10 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                        ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
+  // Create a master context in eager service.
+  Status CreateMasterContext(const tensorflow::uint64 context_id,
+                             EagerContext* context);
+
   void HandleRPCsLoop() override;
   void Shutdown() override;
 
@@ -80,8 +84,12 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   // so the local service impl just puts the request on eager executor queue.
   void StreamingEnqueueHandler(
       StreamingCall<EnqueueRequest, EnqueueResponse>* call) {
+    // NOTE(fishx): Use the address of StreamingCall as the stream_id since we
+    // reuse the same StreamingCall for multiple requests in the same streaming
+    // connection.
     Status status =
-        local_impl_.Enqueue(&call->request(), call->mutable_response());
+        local_impl_.Enqueue(&call->request(), call->mutable_response(),
+                            reinterpret_cast<uint64>(static_cast<void*>(call)));
 
     if (status.ok()) {
       VLOG(1) << "local_impl_.Enqueue completed successfully";

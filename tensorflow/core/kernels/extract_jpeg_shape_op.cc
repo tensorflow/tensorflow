@@ -41,7 +41,7 @@ class ExtractJpegShapeOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
                 errors::InvalidArgument("contents must be scalar, got shape ",
                                         contents.shape().DebugString()));
-    const StringPiece input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<tstring>()();
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
                 errors::InvalidArgument("JPEG contents are too large for int: ",
                                         input.size()));

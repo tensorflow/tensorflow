@@ -12,8 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/tf2xla/kernels/image_resize_ops.h"
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -253,6 +258,15 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
 
   ResizeConvolutionDims dims =
       ComputeResizeConvolutionParameters(in_size, out_size, align_corners);
+
+  if (dims.kernel_size[0] * dims.kernel_size[1] >
+      kMax2DKernelSize * kMax2DKernelSize) {
+    BroadcastOptimizationRemark(
+        XlaOptimizationRemark::SLOW_IMAGE_RESIZE_DIMENSIONS,
+        absl::StrFormat("%dx%d", dims.kernel_size[0], dims.kernel_size[1]))
+        .IgnoreError();
+  }
+
   xla::XlaOp output;
 
   // Concatenation and padding below currently assumes num_spatial_dims is 2 to
@@ -503,7 +517,11 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
   }
 
   // Output is always type float if 'is_kernel_bilinear' is true.
-  if (is_kernel_bilinear) {
+  // GPU with integer input also uses float, because XLA
+  // integer convolution on CuDNN is either not supported or not allowed
+  // directly.
+  xla::PrimitiveType original_input_type = input_type;
+  if (is_kernel_bilinear || (xla::primitive_util::IsIntegralType(input_type))) {
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
@@ -555,164 +573,143 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
     }
   }
 
+  // Bilinear always outputs float, but nearest neighbor keeps the original type
+  if (!is_kernel_bilinear && original_input_type != input_type) {
+    input = xla::ConvertElementType(input, original_input_type);
+  }
   ctx->SetOutput(0, input);
 }
+}  // namespace
 
-class ResizeNearestNeighborOp : public XlaOpKernel {
- public:
-  explicit ResizeNearestNeighborOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-    OP_REQUIRES(
-        ctx, align_corners_ == true,
-        errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
-                              "is not yet implemented"));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-    OP_REQUIRES(ctx, half_pixel_centers_ == false,
-                errors::Unimplemented(
-                    "ResizeNearestNeighbor with half_pixel_centers=True is "
-                    "not yet implemented"));
-  }
+ResizeNearestNeighborOp::ResizeNearestNeighborOp(OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+  OP_REQUIRES(
+      ctx, align_corners_ == true,
+      errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
+                            "is not yet implemented"));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES(ctx, half_pixel_centers_ == false,
+              errors::Unimplemented(
+                  "ResizeNearestNeighbor with half_pixel_centers=True is "
+                  "not yet implemented"));
+}
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
-  }
-
- private:
-  bool align_corners_ = true;
-  bool half_pixel_centers_ = true;
-  bool is_kernel_bilinear_ = false;
-};
+void ResizeNearestNeighborOp::Compile(XlaOpKernelContext* ctx) {
+  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+}
 
 REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
                 ResizeNearestNeighborOp);
 
-class ResizeBilinearOp : public XlaOpKernel {
- public:
-  explicit ResizeBilinearOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-    OP_REQUIRES(
-        ctx, half_pixel_centers_ == false,
-        errors::Unimplemented("ResizeBilinear with half_pixel_centers=True is "
-                              "not yet implemented"));
-  }
+ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES(
+      ctx, half_pixel_centers_ == false,
+      errors::Unimplemented("ResizeBilinear with half_pixel_centers=True is "
+                            "not yet implemented"));
+}
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
-  }
-
- private:
-  bool align_corners_ = true;
-  bool half_pixel_centers_ = true;
-  bool is_kernel_bilinear_ = true;
-};
+void ResizeBilinearOp::Compile(XlaOpKernelContext* ctx) {
+  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+}
 
 REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
                 ResizeBilinearOp);
 
-class ResizeBilinearGradOp : public XlaOpKernel {
- public:
-  explicit ResizeBilinearGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-    OP_REQUIRES(
-        ctx, align_corners_ == true,
-        errors::Unimplemented("ResizeBilinearGrad with align_corners=False is "
-                              "not yet implemented"));
-    OP_REQUIRES(ctx, half_pixel_centers_ == false,
-                errors::Unimplemented(
-                    "ResizeBilinearGrad with half_pixel_centers=True is "
-                    "not yet implemented"));
+ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
+    : XlaOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES(
+      ctx, align_corners_ == true,
+      errors::Unimplemented("ResizeBilinearGrad with align_corners=False is "
+                            "not yet implemented"));
+  OP_REQUIRES(ctx, half_pixel_centers_ == false,
+              errors::Unimplemented(
+                  "ResizeBilinearGrad with half_pixel_centers=True is "
+                  "not yet implemented"));
 
-    DataType output_dtype;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
-    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(output_dtype, &output_type_));
-  }
+  DataType output_dtype;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
+  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(output_dtype, &output_type_));
+}
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
+void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
+  xla::XlaBuilder* b = ctx->builder();
 
-    TensorShape input_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, input_shape.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input_shape.DebugString()));
-    const int64 batch = input_shape.dim_size(0);
-    std::vector<int64> in_size = {input_shape.dim_size(1),
-                                  input_shape.dim_size(2)};
-    const int64 channels = input_shape.dim_size(3);
-    OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
-                errors::InvalidArgument("input size must be positive, got [",
-                                        in_size[0], ",", in_size[1], "]"));
+  TensorShape input_shape = ctx->InputShape(1);
+  OP_REQUIRES(ctx, input_shape.dims() == 4,
+              errors::InvalidArgument("input must be 4-dimensional",
+                                      input_shape.DebugString()));
+  const int64 batch = input_shape.dim_size(0);
+  std::vector<int64> in_size = {input_shape.dim_size(1),
+                                input_shape.dim_size(2)};
+  const int64 channels = input_shape.dim_size(3);
+  OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
+              errors::InvalidArgument("input size must be positive, got [",
+                                      in_size[0], ",", in_size[1], "]"));
 
-    TensorShape grad_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, grad_shape.dims() == 4,
-                errors::InvalidArgument("gradient must be 4-dimensional",
-                                        grad_shape.DebugString()));
-    const int64 grad_batch = grad_shape.dim_size(0);
-    const std::vector<int64> grad_size = {grad_shape.dim_size(1),
-                                          grad_shape.dim_size(2)};
-    const int64 grad_channels = grad_shape.dim_size(3);
-    OP_REQUIRES(ctx, batch == grad_batch,
-                errors::InvalidArgument(
-                    "activations and gradients must have the same batch size (",
-                    batch, " vs. ", grad_batch, ")"));
-    OP_REQUIRES(ctx, grad_size[0] > 0 && grad_size[1] > 0,
-                errors::InvalidArgument("gradient size must be positive, got [",
-                                        grad_size[0], ",", grad_size[1], "]"));
-    OP_REQUIRES(
-        ctx, channels == grad_channels,
-        errors::InvalidArgument(
-            "activations and gradients must have the same number of channels (",
-            channels, " vs. ", grad_channels, ")"));
+  TensorShape grad_shape = ctx->InputShape(0);
+  OP_REQUIRES(ctx, grad_shape.dims() == 4,
+              errors::InvalidArgument("gradient must be 4-dimensional",
+                                      grad_shape.DebugString()));
+  const int64 grad_batch = grad_shape.dim_size(0);
+  const std::vector<int64> grad_size = {grad_shape.dim_size(1),
+                                        grad_shape.dim_size(2)};
+  const int64 grad_channels = grad_shape.dim_size(3);
+  OP_REQUIRES(ctx, batch == grad_batch,
+              errors::InvalidArgument(
+                  "activations and gradients must have the same batch size (",
+                  batch, " vs. ", grad_batch, ")"));
+  OP_REQUIRES(ctx, grad_size[0] > 0 && grad_size[1] > 0,
+              errors::InvalidArgument("gradient size must be positive, got [",
+                                      grad_size[0], ",", grad_size[1], "]"));
+  OP_REQUIRES(
+      ctx, channels == grad_channels,
+      errors::InvalidArgument(
+          "activations and gradients must have the same number of channels (",
+          channels, " vs. ", grad_channels, ")"));
 
-    const int num_spatial_dims = 2;
+  const int num_spatial_dims = 2;
 
-    xla::XlaOp grad = ctx->Input(0);
+  xla::XlaOp grad = ctx->Input(0);
 
-    xla::XlaOp output = grad;
-    while (in_size != grad_size) {
-      if (in_size[0] != 1 && in_size[1] != 1) {
-        std::vector<float> k = {
-            (static_cast<float>(grad_size[0]) - 1) / ((in_size[0] - 1) * 2),
-            (static_cast<float>(grad_size[1]) - 1) / ((in_size[1] - 1) * 2)};
-        if ((k[0] == std::floor(k[0])) && (k[1] == std::floor(k[1])) &&
-            k[0] > 1 && k[1] > 1) {
-          std::vector<int64> next_grad_size = {(in_size[0] - 1) * 2 + 1,
-                                               (in_size[1] - 1) * 2 + 1};
-          output = ResizeUsingDilationAndConvolutionGradOp(
-              b, grad, xla::F32, num_spatial_dims, in_size, next_grad_size,
-              channels, align_corners_, true);
-          grad = output;
-          in_size = next_grad_size;
-        } else {
-          output = ResizeUsingDilationAndConvolutionGradOp(
-              b, grad, xla::F32, num_spatial_dims, in_size, grad_size, channels,
-              align_corners_, true);
-          in_size = grad_size;
-        }
+  xla::XlaOp output = grad;
+  while (in_size != grad_size) {
+    if (in_size[0] != 1 && in_size[1] != 1) {
+      std::vector<float> k = {
+          (static_cast<float>(grad_size[0]) - 1) / ((in_size[0] - 1) * 2),
+          (static_cast<float>(grad_size[1]) - 1) / ((in_size[1] - 1) * 2)};
+      if ((k[0] == std::floor(k[0])) && (k[1] == std::floor(k[1])) &&
+          k[0] > 1 && k[1] > 1) {
+        std::vector<int64> next_grad_size = {(in_size[0] - 1) * 2 + 1,
+                                             (in_size[1] - 1) * 2 + 1};
+        output = ResizeUsingDilationAndConvolutionGradOp(
+            b, grad, xla::F32, num_spatial_dims, in_size, next_grad_size,
+            channels, align_corners_, true);
+        grad = output;
+        in_size = next_grad_size;
       } else {
         output = ResizeUsingDilationAndConvolutionGradOp(
             b, grad, xla::F32, num_spatial_dims, in_size, grad_size, channels,
             align_corners_, true);
         in_size = grad_size;
       }
+    } else {
+      output = ResizeUsingDilationAndConvolutionGradOp(
+          b, grad, xla::F32, num_spatial_dims, in_size, grad_size, channels,
+          align_corners_, true);
+      in_size = grad_size;
     }
-
-    output = xla::ConvertElementType(output, output_type_);
-    ctx->SetOutput(0, output);
   }
 
- private:
-  bool align_corners_;
-  bool half_pixel_centers_ = true;
-  xla::PrimitiveType output_type_;
-};
+  output = xla::ConvertElementType(output, output_type_);
+  ctx->SetOutput(0, output);
+}
 
 REGISTER_XLA_OP(Name("ResizeBilinearGrad"), ResizeBilinearGradOp);
 
-}  // namespace
 }  // namespace tensorflow

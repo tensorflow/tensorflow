@@ -67,9 +67,9 @@ class MnistEagerGanBenchmark(tf.test.Benchmark):
         generator = mnist.Generator(data_format())
         discriminator = mnist.Discriminator(data_format())
         with tf.variable_scope('generator'):
-          generator_optimizer = tf.train.AdamOptimizer(0.001)
+          generator_optimizer = tf.compat.v1.train.AdamOptimizer(0.001)
         with tf.variable_scope('discriminator'):
-          discriminator_optimizer = tf.train.AdamOptimizer(0.001)
+          discriminator_optimizer = tf.compat.v1.train.AdamOptimizer(0.001)
 
         with tf.contrib.summary.create_file_writer(
             tempfile.mkdtemp(), flush_millis=SUMMARY_FLUSH_MS).as_default():

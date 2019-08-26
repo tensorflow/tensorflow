@@ -24,8 +24,7 @@ extern "C" {
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
     jboolean dynamic_batch_enabled, jint preferred_gl_object_type) {
-  TfLiteGpuDelegateOptions options;
-  options.metadata = nullptr;
+  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
   options.compile_options.precision_loss_allowed =
       precision_loss_allowed == JNI_TRUE ? 1 : 0;
   options.compile_options.preferred_gl_object_type =

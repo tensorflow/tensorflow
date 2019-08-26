@@ -12,16 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
+
 #include <cstring>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
 namespace {
 tensorflow::string* g_test_model_file = nullptr;
@@ -187,6 +189,91 @@ TEST(CalibratorTest, MultipleInvokes) {
 
   EXPECT_NEAR(stats.at(6).min, 9.0f, eps);
   EXPECT_NEAR(stats.at(6).max, 9.0f, eps);
+}
+
+TEST(CalibratorTest, UpdateMinMax) {
+  auto flatbuffer_model = ReadModel();
+  ASSERT_TRUE(flatbuffer_model);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status = BuildLoggingInterpreter(*flatbuffer_model,
+                                        ops::builtin::BuiltinOpResolver{},
+                                        &interpreter, &reader);
+  EXPECT_EQ(kTfLiteOk, status);
+  auto readonly_model = flatbuffer_model->GetModel();
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+
+  ASSERT_TRUE(interpreter);
+  ASSERT_TRUE(reader);
+  status = interpreter->AllocateTensors();
+
+  EXPECT_EQ(kTfLiteOk, status);
+  const size_t tensor_size = 1 * 8 * 8 * 3;
+  for (size_t i = 0; i < interpreter->inputs().size(); i++) {
+    int input_tensor_idx = interpreter->inputs()[i];
+    TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+    ASSERT_EQ(tensor->bytes, tensor_size * sizeof(float));
+    for (size_t j = 0; j < tensor_size; j++) {
+      tensor->data.f[j] = i + 1;
+    }
+  }
+  auto input_0_quant_params =
+      absl::make_unique<tflite::QuantizationParametersT>();
+  input_0_quant_params->min.push_back(0.5);
+  input_0_quant_params->max.push_back(1.5);
+  model.subgraphs[0]->tensors[0]->quantization =
+      std::move(input_0_quant_params);
+
+  // Invoke with update == true.
+  status = interpreter->Invoke();
+  ASSERT_EQ(kTfLiteOk, status);
+  const float eps = 1e-6f;
+  // Verify that min max of tensors.
+  const float expected_min[7] = {
+      0.5f,  // input 0
+      2.0f,  // input 1
+      3.0f,  // input 2
+      4.0f,  // input 3
+      5.0f,  // Add(1, 2)
+      6.0f,  // Output 5: Add(0, Add(1,2))
+      9.0f,  // Output 6: Add(Add(1,2), 3)
+  };
+  const float expected_max[7] = {
+      1.5f,  // input 0
+      2.0f,  // input 1
+      3.0f,  // input 2
+      4.0f,  // input 3
+      5.0f,  // Add(1, 2)
+      6.0f,  // Output 5: Add(0, Add(1,2))
+      9.0f,  // Output 6: Add(Add(1,2), 3)
+  };
+  status = reader->AddCalibrationToModel(&model, /*update=*/true);
+  for (int tensor_idx = 0; tensor_idx < 7; tensor_idx++) {
+    EXPECT_NEAR(model.subgraphs[0]->tensors[tensor_idx]->quantization->min[0],
+                expected_min[tensor_idx], eps);
+    EXPECT_NEAR(model.subgraphs[0]->tensors[tensor_idx]->quantization->max[0],
+                expected_max[tensor_idx], eps);
+  }
+
+  // Invoke with update == false;
+  // Verify that min max of tensors.
+  const float expected_value[7] = {
+      1.0f,  // input 0
+      2.0f,  // input 1
+      3.0f,  // input 2
+      4.0f,  // input 3
+      5.0f,  // Add(1, 2)
+      6.0f,  // Output 5: Add(0, Add(1,2))
+      9.0f,  // Output 6: Add(Add(1,2), 3)
+  };
+  status = reader->AddCalibrationToModel(&model, /*update=*/false);
+  for (int tensor_idx = 0; tensor_idx < 7; tensor_idx++) {
+    EXPECT_NEAR(model.subgraphs[0]->tensors[tensor_idx]->quantization->min[0],
+                expected_value[tensor_idx], eps);
+    EXPECT_NEAR(model.subgraphs[0]->tensors[tensor_idx]->quantization->max[0],
+                expected_value[tensor_idx], eps);
+  }
 }
 
 }  // namespace

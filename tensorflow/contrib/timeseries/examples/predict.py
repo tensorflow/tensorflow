@@ -137,4 +137,4 @@ if __name__ == "__main__":
       required=False,
       help="Input csv file (omit to use the data/period_trend.csv).")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

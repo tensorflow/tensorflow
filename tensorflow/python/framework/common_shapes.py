@@ -42,7 +42,7 @@ def rank(tensor):
 
 def scalar_shape(unused_op):
   """Shape function for ops that output a scalar value."""
-  return [tensor_shape.scalar()]
+  return [tensor_shape.TensorShape([])]
 
 
 def unchanged_shape(op):

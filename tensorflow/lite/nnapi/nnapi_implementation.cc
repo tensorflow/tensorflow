@@ -178,7 +178,13 @@ const NnApi LoadNnApi() {
     }
   }
 #else
-  nnapi.ASharedMemory_create = ASharedMemory_create;
+  // Mock ASharedMemory_create only if libneuralnetworks.so was successfully
+  // loaded. This ensures identical behaviour on platforms which use this
+  // implementation, but don't have libneuralnetworks.so library, and
+  // platforms which use nnapi_implementation_disabled.cc stub.
+  if (libneuralnetworks != nullptr) {
+    nnapi.ASharedMemory_create = ASharedMemory_create;
+  }
 #endif  // __ANDROID__
 
   // API 28 (NN 1.1) methods.

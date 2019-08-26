@@ -58,7 +58,7 @@ class AutoShardDatasetSerializationTest(
       dataset = distribute._AutoShardDataset(dataset, 5, 3)
       return dataset
 
-    self.run_core_tests(build_dataset, None, 20)
+    self.run_core_tests(build_dataset, 20)
 
 
 if __name__ == "__main__":

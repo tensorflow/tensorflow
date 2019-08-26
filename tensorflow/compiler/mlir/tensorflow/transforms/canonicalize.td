@@ -20,9 +20,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 /// TODO(b/130756570): Support OpBase constraints in PatternRewrites.
 def SingleResultAndOperandHaveSameElementType : Constraint<
-  CPred<"$0->getResult(0)->getType().cast<ShapedType>()"
-        ".getElementType() == "
-        "$1->getType().cast<ShapedType>().getElementType()">>;
+  CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.

@@ -94,10 +94,8 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
             .sum(reduction_axis);
 
     x_backprop.reshape(rest_by_depth).device(d) =
-        (y_backprop_rest_by_depth * ((scratch1 * scale)
-                                         .eval()
-                                         .reshape(one_by_depth)
-                                         .broadcast(rest_by_one)))
+        (y_backprop_rest_by_depth *
+         ((scratch1 * scale).reshape(one_by_depth).broadcast(rest_by_one)))
             .template cast<T>();
     scale_backprop.device(d) = scratch2 * scratch1;
   }

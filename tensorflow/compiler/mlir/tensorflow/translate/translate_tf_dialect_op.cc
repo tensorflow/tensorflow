@@ -59,7 +59,8 @@ static LogicalResult MlirToTfNodeDef(ModuleOp module,
     return failure();
   }
 
-  auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(op, "node_name");
+  auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(
+      op, "node_name", /*ignore_unregistered_attrs=*/false);
   if (!node_def_or.ok()) {
     op->emitError("failed to convert to TF NodeDef:")
         << node_def_or.status().ToString();

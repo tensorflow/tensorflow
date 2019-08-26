@@ -702,6 +702,12 @@ XlaOp XlaBuilder::BroadcastInDim(
     // not necessarily the same as the dimension sizes of the output shape.
     auto output_shape =
         ShapeUtil::MakeShape(operand_shape.element_type(), out_dim_size);
+    if (operand_shape.rank() != broadcast_dimensions.size()) {
+      return InvalidArgument(
+          "Size of broadcast_dimensions has to match operand's rank; operand "
+          "rank: %lld, size of broadcast_dimensions %u.",
+          operand_shape.rank(), broadcast_dimensions.size());
+    }
     for (int i = 0; i < broadcast_dimensions.size(); i++) {
       if (broadcast_dimensions[i] < 0 ||
           broadcast_dimensions[i] > out_dim_size.size()) {
@@ -1026,6 +1032,11 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
     if (!tuple_shape.IsTuple()) {
       return InvalidArgument(
           "Operand to GetTupleElement() is not a tuple; got %s",
+          ShapeUtil::HumanString(tuple_shape));
+    }
+    if (index < 0 || index >= ShapeUtil::TupleElementCount(tuple_shape)) {
+      return InvalidArgument(
+          "GetTupleElement() index (%d) out of range for tuple shape %s", index,
           ShapeUtil::HumanString(tuple_shape));
     }
     *instr.mutable_shape() =
@@ -1739,9 +1750,11 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
 
 XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
                          const GatherDimensionNumbers& dimension_numbers,
-                         absl::Span<const int64> slice_sizes) {
+                         absl::Span<const int64> slice_sizes,
+                         bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_indices_are_sorted(indices_are_sorted);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
@@ -1764,9 +1777,11 @@ XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
 XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                           const XlaOp& updates,
                           const XlaComputation& update_computation,
-                          const ScatterDimensionNumbers& dimension_numbers) {
+                          const ScatterDimensionNumbers& dimension_numbers,
+                          bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_indices_are_sorted(indices_are_sorted);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
@@ -3361,16 +3376,18 @@ XlaOp ReducePrecision(const XlaOp operand, const int exponent_bits,
 
 XlaOp Gather(const XlaOp input, const XlaOp start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             absl::Span<const int64> slice_sizes) {
+             absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
   return input.builder()->Gather(input, start_indices, dimension_numbers,
-                                 slice_sizes);
+                                 slice_sizes, indices_are_sorted);
 }
 
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
               const XlaOp updates, const XlaComputation& update_computation,
-              const ScatterDimensionNumbers& dimension_numbers) {
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted) {
   return input.builder()->Scatter(input, scatter_indices, updates,
-                                  update_computation, dimension_numbers);
+                                  update_computation, dimension_numbers,
+                                  indices_are_sorted);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {

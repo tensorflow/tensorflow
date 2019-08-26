@@ -576,7 +576,7 @@ def unpack_grad_tuple(gv, gpt):
      reduction.
   """
   elt_widths = [x.num_elements() for x in gpt.shapes]
-  with ops.device(gv[0][0].device):
+  with ops.device(gv[0].device):
     with ops.name_scope('unpack'):
       splits = array_ops.split(gv[0], elt_widths)
       unpacked_gv = []

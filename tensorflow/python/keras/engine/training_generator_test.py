@@ -151,7 +151,8 @@ class TestGeneratorMethods(ForkRobustTestCase):
         loss='mse',
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     self._sleep_at_end = True
     model.evaluate_generator(custom_generator(),
@@ -179,6 +180,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self._sleep_at_end = True
     model.predict_generator(custom_generator(),
@@ -218,7 +220,8 @@ class TestGeneratorMethods(ForkRobustTestCase):
         loss='mse',
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit_generator(custom_generator(mode=3),
                         steps_per_epoch=5,
@@ -246,15 +249,17 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_invalid_use_case(self):
-
     def invalid_generator():
       while 1:
         yield (0, 0, 0, 0)
 
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
-    model.compile(loss='mse', optimizer=rmsprop.RMSprop(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSprop(1e-3),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     err_msg = 'Output of generator should be a tuple of 1 or 2 or 3 elements'
     with self.assertRaisesRegex(ValueError, err_msg):
@@ -296,8 +301,11 @@ class TestGeneratorMethods(ForkRobustTestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=10, num_classes=1, input_dim=10)
 
-    model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        rmsprop.RMSprop(0.001),
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(
         ones_generator(),
         steps_per_epoch=2,
@@ -305,6 +313,34 @@ class TestGeneratorMethods(ForkRobustTestCase):
         epochs=2)
     model.evaluate(ones_generator(), steps=2)
     model.predict(ones_generator(), steps=2)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_batch_size_argument(self):
+
+    def ones_generator():
+      while True:
+        yield np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    model = testing_utils.get_small_mlp(
+        num_hidden=10, num_classes=1, input_dim=10)
+
+    model.compile(
+        'adam',
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.fit(ones_generator(), batch_size=2, epochs=2)
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.evaluate(ones_generator(), batch_size=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.predict(ones_generator(), batch_size=2)
 
 
 class TestGeneratorMethodsWithSequences(ForkRobustTestCase):

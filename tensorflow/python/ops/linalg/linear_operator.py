@@ -24,9 +24,11 @@ import contextlib
 import numpy as np
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
@@ -44,7 +46,7 @@ __all__ = ["LinearOperator"]
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
 @six.add_metaclass(abc.ABCMeta)
-class LinearOperator(object):
+class LinearOperator(module.Module):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
@@ -198,9 +200,10 @@ class LinearOperator(object):
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
-    self._dtype = dtype
+    self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
     self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
@@ -268,7 +271,7 @@ class LinearOperator(object):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.get_shape()`.
+    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.shape`.
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
@@ -305,7 +308,7 @@ class LinearOperator(object):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb])`, equivalent to `A.get_shape()[:-2]`
+    `TensorShape([B1,...,Bb])`, equivalent to `A.shape[:-2]`
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
@@ -560,7 +563,7 @@ class LinearOperator(object):
 
   def _check_input_dtype(self, arg):
     """Check that arg.dtype == self.dtype."""
-    if arg.dtype != self.dtype:
+    if arg.dtype.base_dtype != self.dtype:
       raise TypeError(
           "Expected argument to have dtype %s.  Found: %s in tensor %s" %
           (self.dtype, arg.dtype, arg))
@@ -620,7 +623,7 @@ class LinearOperator(object):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              x.get_shape()[arg_dim])
+              x.shape[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -661,7 +664,7 @@ class LinearOperator(object):
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(x.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(x.shape[-1])
       return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
@@ -806,7 +809,7 @@ class LinearOperator(object):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[arg_dim])
+              rhs.shape[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -860,8 +863,7 @@ class LinearOperator(object):
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(rhs.shape[-1])
 
       return self._solvevec(rhs, adjoint=adjoint)
 
@@ -937,8 +939,6 @@ class LinearOperator(object):
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
-    logging.warn("Using (possibly slow) default implementation of to_dense."
-                 "  Converts by self.matmul(identity).")
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:

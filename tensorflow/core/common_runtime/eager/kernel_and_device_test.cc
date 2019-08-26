@@ -144,7 +144,7 @@ void BM_KernelAndDeviceRun(int iters) {
   TF_CHECK_OK(k.Init(ndef, nullptr));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr, nullptr, nullptr));
+    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr, nullptr, nullptr, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

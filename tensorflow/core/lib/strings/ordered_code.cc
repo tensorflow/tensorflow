@@ -18,8 +18,8 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace strings {

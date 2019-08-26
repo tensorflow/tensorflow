@@ -21,9 +21,9 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
@@ -45,8 +45,8 @@ def make_csv_dataset(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=dataset_ops.AUTOTUNE,
-    num_parallel_reads=1,
+    prefetch_buffer_size=None,
+    num_parallel_reads=None,
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
@@ -112,7 +112,7 @@ def make_csv_dataset(
       batches to prefetch for performance improvement. Recommended value is the
       number of batches consumed per training step. Defaults to auto-tune.
     num_parallel_reads: Number of threads used to read CSV records from files.
-      If >1, the results will be interleaved.
+      If >1, the results will be interleaved. Defaults to `1`.
     sloppy: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -173,9 +173,9 @@ def make_batched_features_dataset(file_pattern,
                                   shuffle=True,
                                   shuffle_buffer_size=10000,
                                   shuffle_seed=None,
-                                  prefetch_buffer_size=dataset_ops.AUTOTUNE,
-                                  reader_num_threads=1,
-                                  parser_num_threads=2,
+                                  prefetch_buffer_size=None,
+                                  reader_num_threads=None,
+                                  parser_num_threads=None,
                                   sloppy_ordering=False,
                                   drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
@@ -248,9 +248,9 @@ def make_batched_features_dataset(file_pattern,
       improve performance. Recommended value is the number of batches consumed
       per training step. Defaults to auto-tune.
     reader_num_threads: Number of threads used to read `Example` records. If >1,
-      the results will be interleaved.
+      the results will be interleaved. Defaults to `1`.
     parser_num_threads: Number of threads to use for parsing `Example` tensors
-      into a dictionary of `Feature` tensors.
+      into a dictionary of `Feature` tensors. Defaults to `2`.
     sloppy_ordering: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -401,5 +401,5 @@ class LMDBDataset(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return (structure.TensorStructure(dtypes.string, []),
-            structure.TensorStructure(dtypes.string, []))
+    return (tensor_spec.TensorSpec([], dtypes.string),
+            tensor_spec.TensorSpec([], dtypes.string))

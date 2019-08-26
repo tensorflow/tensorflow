@@ -278,8 +278,8 @@ def main(_):
   model_objects = {
       'generator': Generator(data_format),
       'discriminator': Discriminator(data_format),
-      'generator_optimizer': tf.train.AdamOptimizer(FLAGS.lr),
-      'discriminator_optimizer': tf.train.AdamOptimizer(FLAGS.lr),
+      'generator_optimizer': tf.compat.v1.train.AdamOptimizer(FLAGS.lr),
+      'discriminator_optimizer': tf.compat.v1.train.AdamOptimizer(FLAGS.lr),
       'step_counter': tf.train.get_or_create_global_step(),
   }
 
@@ -363,4 +363,4 @@ if __name__ == '__main__':
       help='disables GPU usage even if a GPU is available')
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

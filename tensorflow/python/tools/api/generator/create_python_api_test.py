@@ -67,16 +67,28 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
-    expected_import = ('\'test_op1\': '
-                       '(\'tensorflow.python.test_module\','
-                       ' \'test_op\')')
+    if create_python_api._LAZY_LOADING:
+      expected_import = (
+          '\'test_op1\': '
+          '(\'tensorflow.python.test_module\','
+          ' \'test_op\')')
+    else:
+      expected_import = (
+          'from tensorflow.python.test_module '
+          'import test_op as test_op1')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
 
-    expected_import = ('\'test_op\': '
-                       '(\'tensorflow.python.test_module\','
-                       ' \'test_op\')')
+    if create_python_api._LAZY_LOADING:
+      expected_import = (
+          '\'test_op\': '
+          '(\'tensorflow.python.test_module\','
+          ' \'test_op\')')
+    else:
+      expected_import = (
+          'from tensorflow.python.test_module '
+          'import test_op')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
@@ -90,10 +102,15 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2)
-    expected_import = (
-        '\'NewTestClass\':'
-        ' (\'tensorflow.python.test_module\','
-        ' \'TestClass\')')
+    if create_python_api._LAZY_LOADING:
+      expected_import = (
+          '\'NewTestClass\':'
+          ' (\'tensorflow.python.test_module\','
+          ' \'TestClass\')')
+    else:
+      expected_import = (
+          'from tensorflow.python.test_module '
+          'import TestClass')
     self.assertTrue(
         'TestClass' in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
@@ -104,9 +121,13 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
-    expected = ('\'_TEST_CONSTANT\':'
-                ' (\'tensorflow.python.test_module\','
-                ' \'_TEST_CONSTANT\')')
+    if create_python_api._LAZY_LOADING:
+      expected = ('\'_TEST_CONSTANT\':'
+                  ' (\'tensorflow.python.test_module\','
+                  ' \'_TEST_CONSTANT\')')
+    else:
+      expected = ('from tensorflow.python.test_module '
+                  'import _TEST_CONSTANT')
     self.assertTrue(expected in str(imports),
                     msg='%s not in %s' % (expected, str(imports)))
 

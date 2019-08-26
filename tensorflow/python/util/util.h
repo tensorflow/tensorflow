@@ -86,6 +86,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a collections.MappingView.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMappingView(PyObject* o);
+
 // A version of PyMapping_Keys that works in C++11
 //
 // Args:
@@ -107,16 +116,34 @@ bool IsAttrs(PyObject* o);
 // Returns a true if its input is an ops.Tensor.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
 
+// Returns a true if its input is a ResourceVariable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a ResourceVariable.
+bool IsResourceVariable(PyObject* o);
+
+// Returns a true if its input is a Variable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a Variable.
+bool IsVariable(PyObject* o);
+
 // Returns a true if its input is an ops.IndexesSlices.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is an ops.IndexedSlices.

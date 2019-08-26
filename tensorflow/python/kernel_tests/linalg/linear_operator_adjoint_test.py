@@ -161,6 +161,13 @@ class LinearOperatorAdjointTest(
             full_matrix1.matmul(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
 
+  def test_matvec(self):
+    matrix = np.array([[1., 2.], [3., 4.]])
+    x = np.array([1., 2.])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.assertAllClose(matrix.dot(x), self.evaluate(operator.matvec(x)))
+    self.assertAllClose(matrix.T.dot(x), self.evaluate(operator.H.matvec(x)))
+
   def test_solve_adjoint_operator(self):
     matrix1 = self.evaluate(
         linear_operator_test_util.random_tril_matrix(
@@ -222,6 +229,15 @@ class LinearOperatorAdjointTest(
         self.evaluate(
             full_matrix1.solve(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
+
+  def test_solvevec(self):
+    matrix = np.array([[1., 2.], [3., 4.]])
+    inv_matrix = np.linalg.inv(matrix)
+    x = np.array([1., 2.])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.assertAllClose(inv_matrix.dot(x), self.evaluate(operator.solvevec(x)))
+    self.assertAllClose(
+        inv_matrix.T.dot(x), self.evaluate(operator.H.solvevec(x)))
 
 
 class LinearOperatorAdjointNonSquareTest(

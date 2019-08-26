@@ -30,8 +30,17 @@ void BufferDefinitionEvent::SetDefinitionEvent(EventPool::Handle event,
   streams_defined_on_.push_back(stream);
 }
 
+bool BufferDefinitionEvent::EventHasBeenRecorded() {
+  return event_.event() != nullptr;
+}
+
 void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
   absl::MutexLock lock(&mu_);
+
+  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
+  // newly created events are deemed to have already happened past.
+  mu_.Await(
+      absl::Condition(this, &BufferDefinitionEvent::EventHasBeenRecorded));
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.

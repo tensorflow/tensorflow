@@ -153,7 +153,7 @@ class GenerateBigQueryReaderPartitionsOp : public OpKernel {
                    context->allocate_output(0, TensorShape({num_partitions_}),
                                             &output_tensor));
 
-    auto output = output_tensor->template flat<string>();
+    auto output = output_tensor->template flat<tstring>();
     for (int64 i = 0; i < num_partitions_; ++i) {
       BigQueryTablePartition partition;
       partition.set_start_index(i * partition_size);

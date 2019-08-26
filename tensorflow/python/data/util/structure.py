@@ -31,44 +31,35 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Define backwards-compatiblity wrappers for using TypeSpec and its subclasses
-# to replace Structure and its subclasses.  Note that the constructor argument
-# order is different in many cases -- in particular, TypeSpec follows TensorSpec
-# and uses the order (shape, dtype); but most Structure subclasses use the
-# order (dtype, shape).
-#
-# TODO(b/133606651) Update tf.data to use TypeSpec directly, and then remove
-# these compatibility wrappers.
-
-
-Structure = type_spec.TypeSpec
-
-
 # pylint: disable=invalid-name
-
-
-@tf_export("data.experimental.TensorStructure")
-def TensorStructure(dtype, shape):
+@tf_export(v1=["data.experimental.TensorStructure"])
+@deprecation.deprecated(None, "Use `tf.TensorSpec` instead.")
+def _TensorStructure(dtype, shape):
   return tensor_spec.TensorSpec(shape, dtype)
 
 
-@tf_export("data.experimental.SparseTensorStructure")
-def SparseTensorStructure(dtype, shape):
+@tf_export(v1=["data.experimental.SparseTensorStructure"])
+@deprecation.deprecated(None, "Use `tf.SparseTensorSpec` instead.")
+def _SparseTensorStructure(dtype, shape):
   return sparse_tensor.SparseTensorSpec(shape, dtype)
 
 
-@tf_export("data.experimental.TensorArrayStructure")
-def TensorArrayStructure(dtype, element_shape, dynamic_size, infer_shape):
+@tf_export(v1=["data.experimental.TensorArrayStructure"])
+@deprecation.deprecated(None, "Use `tf.TensorArraySpec` instead.")
+def _TensorArrayStructure(dtype, element_shape, dynamic_size, infer_shape):
   return tensor_array_ops.TensorArraySpec(element_shape, dtype,
                                           dynamic_size, infer_shape)
 
 
-@tf_export("data.experimental.RaggedTensorStructure")
-def RaggedTensorStructure(dtype, shape, ragged_rank):
+@tf_export(v1=["data.experimental.RaggedTensorStructure"])
+@deprecation.deprecated(None, "Use `tf.RaggedTensorSpec` instead.")
+def _RaggedTensorStructure(dtype, shape, ragged_rank):
   return ragged_tensor.RaggedTensorSpec(shape, dtype, ragged_rank)
+# pylint: enable=invalid-name
 
 
 # TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
@@ -103,8 +94,7 @@ def normalize_element(element):
             ragged_tensor.convert_to_tensor_or_ragged_tensor(
                 t, name="component_%d" % i))
       elif isinstance(
-          spec,
-          (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetStructure)):
+          spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
         normalized_components.append(t)
       elif isinstance(t, composite_tensor.CompositeTensor):
         normalized_components.append(t)
@@ -150,14 +140,14 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
     if isinstance(flat_class, type_spec.TypeSpec):
       flat_ret.append(flat_class)
     elif issubclass(flat_class, sparse_tensor.SparseTensor):
-      flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
+      flat_ret.append(sparse_tensor.SparseTensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, ops.Tensor):
-      flat_ret.append(TensorStructure(flat_type, flat_shape))
+      flat_ret.append(tensor_spec.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
       # We sneaked the dynamic_size and infer_shape into the legacy shape.
       flat_ret.append(
-          TensorArrayStructure(
-              flat_type, flat_shape[2:],
+          tensor_array_ops.TensorArraySpec(
+              flat_shape[2:], flat_type,
               dynamic_size=tensor_shape.dimension_value(flat_shape[0]),
               infer_shape=tensor_shape.dimension_value(flat_shape[1])))
     else:

@@ -19,6 +19,12 @@ limitations under the License.
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 %}
 
+// The TensorFlow exception handler releases the GIL with
+// Py_BEGIN_ALLOW_THREADS. Remove that because these function use the Python
+// API to decode inputs.
+%noexception toco::TocoConvert;
+%noexception toco::TocoGetPotentiallySupportedOps;
+
 namespace toco {
 
 // Convert a model represented in `input_contents`. `model_flags_proto`

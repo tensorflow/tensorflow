@@ -25,11 +25,10 @@ namespace tensorflow {
 // execution and all the resource writes to the end.  This means it cannot
 // enforce arbitrary ordering dependencies (via control or data edges) between
 // resource operations.  Since all resource reads happen before all resource
-// writes, edges constraining resource reads to happen before resource writes
-// are fine, but all other kinds of edges are problematic.  This analysis
-// returns the set of pairs of resource operations that cannot be put in the
-// same cluster because XLA cannot respect the dependencies between them in the
-// TensorFlow program.
+// writes, edges constraining resource writes to happen before resource reads
+// are problematic.  This analysis returns the set of pairs of resource
+// operations that cannot be put in the same cluster because XLA cannot respect
+// the dependencies between them in the TensorFlow program.
 //
 // The restrictions are not transitive: it is fine to put A and C in the same
 // cluster even if the returned set contains (A,B) and (B,C).
@@ -41,19 +40,15 @@ namespace tensorflow {
 //
 // For instance if we auto-cluster all operations in this TensorFlow graph:
 //
-//         ReadVariablepOp0  ->  ReadVariableOp1
+//         AssignVariablepOp0  ->  AssignVariableOp1
 //                                      |
 //                                      v
-//                              AssignVariableOp0  ->  AssignVariableOp1
+//                              ReadVariableOp0  ->  ReadVariableOp1
 //
-// we will lose the ReadVariablepOp0 -> ReadVariableOp1 and the
-// AssignVariableOp0 -> AssignVariableOp1 dependencies.  I.e. it is possible for
-// XlaLaunchOp to issue ReadVariableOp1 before ReadVariablepOp0 since it reads
-// all the resource variables when the cluster starts executing without any
-// particular ordering between them; same holds for the AssignVariableOp0 ->
-// AssignVariableOp1 edge.  The ReadVariableOp1 -> AssignVariableOp0 edge will
-// be respected by XlaLaunchOp though because all reads happen before all
-// writes.
+// we will lose the AssignVariablepOp1 -> ReadVariableOp0. The ReadVariableOp0
+// -> ReadVariableOp1 and AssignVariableOp0 -> AssignVariableOp1 edges will be
+// respected by XlaLaunchOp though because all reads happen before all writes
+// with that limited clustering..
 //
 //
 // NB!  The result computed by this analysis assumes that we don't auto-cluster

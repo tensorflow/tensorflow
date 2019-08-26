@@ -112,6 +112,16 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
   return {};
 }
 
+// Checks that a specific input can be quantized.
+bool IsQuantizedInput(const OperatorCodeT* op_code,
+                      const CustomOpMap& custom_op_map, int op_input_idx) {
+  const auto quantized_input_indices =
+      GetWeightInputIndices(op_code, custom_op_map);
+  return std::find(std::begin(quantized_input_indices),
+                   std::end(quantized_input_indices),
+                   op_input_idx) != std::end(quantized_input_indices);
+}
+
 // Returns true if the operator supports hybrid evaluation.
 bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
                           const CustomOpMap& custom_op_map) {
@@ -390,7 +400,9 @@ TfLiteStatus QuantizeWeightsInt8(flatbuffers::FlatBufferBuilder* builder,
           use_hybrid_evaluation &&
           IsHybridEvaluationOp(consumer_op, consumer_op_code, custom_op_map) &&
           CheckAllOpInputsQuantized(subgraph, consumer_op, consumer_op_code,
-                                    custom_op_map);
+                                    custom_op_map) &&
+          IsQuantizedInput(consumer_op_code, custom_op_map,
+                           consumer_op_info.op_input_idx);
       if (!eval_hybrid) {
         dequant_op_infos.push_back(consumer_op_info);
       }

@@ -31,8 +31,7 @@ class ShuffleAndRepeatSerializationTest(
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=5, seed=seed))
 
   def testCore(self):
-    self.run_core_tests(lambda: self._build_ds(10), lambda: self._build_ds(20),
-                        100)
+    self.run_core_tests(lambda: self._build_ds(10), 100)
 
 
 if __name__ == "__main__":

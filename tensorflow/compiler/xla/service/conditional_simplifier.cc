@@ -253,6 +253,31 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
   }
   return true;
 }
+
+// Replaces the roots of all branches with an empty tuple if the conditional op
+// has no users. Returns if anything is changed.
+bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
+  const Shape empty_tuple = ShapeUtil::MakeTupleShape({});
+  if (conditional_op->user_count() == 0 &&
+      conditional_op != conditional_op->parent()->root_instruction() &&
+      !ShapeUtil::Compatible(empty_tuple, conditional_op->shape())) {
+    for (int64 branch_id = 0; branch_id < conditional_op->branch_count();
+         ++branch_id) {
+      auto branch_computation =
+          conditional_op->GetModule()->AddEmbeddedComputation(
+              conditional_op->branch_computation(branch_id)->Clone());
+      conditional_op->set_branch_computation(branch_id, branch_computation);
+      auto new_empty_root =
+          branch_computation->AddInstruction(HloInstruction::CreateTuple({}));
+      branch_computation->set_root_instruction(new_empty_root,
+                                               /*accept_different_shape=*/true);
+    }
+    *conditional_op->mutable_shape() = empty_tuple;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
@@ -274,6 +299,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
 
   std::map<HloComputation*, std::set<int64>> changed_computations;
   for (HloInstruction* conditional_op : conditional_ops) {
+    changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
     TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
     if (!result) {
       TF_ASSIGN_OR_RETURN(result, TryRemoveUnusedConditionalOperands(

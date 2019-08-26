@@ -263,7 +263,7 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
                  &all_okay]() {
       if (EvaluateModelForShard(shard_id, image_label, model_labels, params_,
                                 &observer, params_.num_ranks) != kTfLiteOk) {
-        all_okay = all_okay && false;
+        all_okay = false;
       }
     };
     thread_pool.push_back(std::thread(func));
@@ -274,7 +274,7 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
     thread.join();
   }
 
-  return kTfLiteOk;
+  return all_okay ? kTfLiteOk : kTfLiteError;
 }
 
 }  // namespace metrics

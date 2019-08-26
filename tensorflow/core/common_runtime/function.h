@@ -63,6 +63,7 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* sesson_metadata,
     ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
@@ -259,6 +260,14 @@ struct InlineFunctionBodyOptions {
   // for available strategies.
   InlinedFunctionBodyPlacer::Config inlined_function_body_placer =
       InlinedFunctionBodyPlacer::Default();
+  // If true, frame names in the function body will be
+  // made unique in the resulting graph (e.g. by prepending a unique prefix).
+  // NOTE(mrry): Only set this option to false when there is a single function
+  // call in the graph (e.g. when making a remote function call via
+  // ClusterFunctionLibraryRuntime). This option is provided because the graph
+  // partitioner generates frame names that must remain unmodified across all
+  // partitions of a multi-device function.
+  bool uniquify_frame_names = true;
 
   // A human-readable debug string for this options.
   string DebugString() const;

@@ -286,15 +286,16 @@ XrtTensorHandle XrtTfContext::SendTensor(
     op_id = op->id;
   }
 
-  eager::SendTensorRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  request.set_op_id(op_id);
-  request.mutable_tensors()->AddAllocated(tensor_proto.release());
-  request.set_device_name(devices_.at(rpc_device_id).name());
-  auto response = std::make_shared<eager::SendTensorResponse>();
+  auto* send_tensor = request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(op_id);
+  send_tensor->mutable_tensors()->AddAllocated(tensor_proto.release());
+  send_tensor->set_device_name(devices_.at(rpc_device_id).name());
+  auto response = std::make_shared<eager::EnqueueResponse>();
   auto context_ptr = shared_from_this();
   absl::Notification done;
-  eager_client_->SendTensorAsync(
+  eager_client_->EnqueueAsync(
       &request, response.get(),
       [context_ptr, op_id, response, &done](Status status) {
         absl::MutexLock lock(&context_ptr->mu_);
@@ -440,6 +441,7 @@ XrtTensorHandle& XrtTensorHandle::operator=(XrtTensorHandle&& other) {
 void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_op_id(tensor_id_.first);
   proto->set_output_num(tensor_id_.second);
+  proto->set_device(context_->devices_.at(device_id_).name());
 }
 
 AttrValue MakeAttrValue(std::string s) {

@@ -388,6 +388,18 @@ public final class Interpreter implements AutoCloseable {
     wrapper.modifyGraphWithDelegate(delegate);
   }
 
+  /**
+   * Advanced: Resets all variable tensors to the default value.
+   *
+   * <p>If a variable tensor doesn't have an associated buffer, it will be reset to zero.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public void resetVariableTensors() {
+    checkNotClosed();
+    wrapper.resetVariableTensors();
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {

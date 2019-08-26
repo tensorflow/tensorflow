@@ -64,7 +64,9 @@ struct DecodeConstant : public FunctionPass<DecodeConstant> {
 
 }  // namespace
 
-FunctionPassBase *CreateDecodeConstantPass() { return new DecodeConstant(); }
+std::unique_ptr<FunctionPassBase> CreateDecodeConstantPass() {
+  return std::make_unique<DecodeConstant>();
+}
 
 static PassRegistration<DecodeConstant> pass(
     "tf-decode-constant", "Decode opaque constant into human-readable ones");

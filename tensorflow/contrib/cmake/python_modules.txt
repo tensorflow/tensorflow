@@ -172,16 +172,6 @@ tensorflow/contrib/fused_conv
 tensorflow/contrib/fused_conv/kernels
 tensorflow/contrib/fused_conv/python
 tensorflow/contrib/fused_conv/python/ops
-tensorflow/contrib/gan
-tensorflow/contrib/gan/python
-tensorflow/contrib/gan/python/estimator
-tensorflow/contrib/gan/python/estimator/python
-tensorflow/contrib/gan/python/eval
-tensorflow/contrib/gan/python/eval/python
-tensorflow/contrib/gan/python/features
-tensorflow/contrib/gan/python/features/python
-tensorflow/contrib/gan/python/losses
-tensorflow/contrib/gan/python/losses/python
 tensorflow/contrib/graph_editor
 tensorflow/contrib/graph_editor/examples
 tensorflow/contrib/grid_rnn

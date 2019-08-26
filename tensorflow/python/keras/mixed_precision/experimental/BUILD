@@ -60,6 +60,7 @@ py_test(
         ":policy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/keras",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
     ],
@@ -115,6 +116,7 @@ cuda_py_test(
         ":loss_scale_optimizer",
         ":test_util",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
@@ -143,5 +145,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    shard_count = 4,
+    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
     xla_enable_strict_auto_jit = True,
 )

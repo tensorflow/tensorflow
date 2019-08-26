@@ -62,6 +62,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
     ],
@@ -232,6 +233,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ragged_array_ops",
+        ":ragged_math_ops",
         ":ragged_tensor",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -741,6 +743,25 @@ py_test(
 )
 
 py_test(
+    name = "ragged_string_ops_test",
+    srcs = ["ragged_string_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged",
+        ":ragged_factory_ops",
+        ":ragged_string_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "ragged_constant_value_op_test",
     srcs = ["ragged_constant_value_op_test.py"],
     python_version = "PY2",
@@ -1030,5 +1051,34 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_dynamic_partition_op_test",
+    srcs = ["ragged_dynamic_partition_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "string_ngrams_op_test",
+    size = "small",
+    srcs = ["string_ngrams_op_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_string_ops",
+        "//tensorflow/python:client_testlib",
     ],
 )

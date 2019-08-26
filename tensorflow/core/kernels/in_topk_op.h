@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_IN_TOPK_OP_H_
 #define TENSORFLOW_CORE_KERNELS_IN_TOPK_OP_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"

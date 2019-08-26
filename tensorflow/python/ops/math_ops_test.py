@@ -699,5 +699,37 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
 
+
+class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
+
+  allowed_dtypes = [
+      dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
+      dtypes.complex128
+  ]
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBasic(self):
+    for dtype in self.allowed_dtypes:
+      x = constant_op.constant([1.0, 2.0, 0.0, 4.0], dtype=dtype)
+
+      y = math_ops.reciprocal_no_nan(x)
+
+      target = constant_op.constant([1.0, 0.5, 0.0, 0.25], dtype=dtype)
+
+      self.assertAllEqual(y, target)
+      self.assertEqual(y.dtype.base_dtype, target.dtype.base_dtype)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInverse(self):
+    for dtype in self.allowed_dtypes:
+      x = np.random.choice([0, 1, 2, 4, 5], size=(5, 5, 5))
+      x = constant_op.constant(x, dtype=dtype)
+
+      y = math_ops.reciprocal_no_nan(math_ops.reciprocal_no_nan(x))
+
+      self.assertAllClose(y, x)
+      self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
+
+
 if __name__ == "__main__":
   googletest.main()

@@ -164,3 +164,21 @@ py_test(
         "@com_google_pprof//:pprof_proto_py",
     ],
 )
+
+py_library(
+    name = "traceme",
+    srcs = ["traceme.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "scoped_annotation",
+    srcs = ["scoped_annotation.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
+)

@@ -74,6 +74,9 @@ library {
     }
     # The attribute "experimental_ints_on_device" and the return type INT32
     # ensure that kDeviceRetOp is used instead of kRetOp
+    # CHECK-LABEL: func @foo
+    # CHECK:    tf.experimental_ints_on_device = true
+    # CHECK:    return %{{.*}} tensor<i32>
     attr {
       key: "experimental_ints_on_device"
       value {
@@ -87,13 +90,3 @@ versions {
   min_consumer: 12
 }
 
-# CHECK:       func @main() {
-# CHECK-NEXT:    %0:2 = "_tf.PartitionedCall"() {Tin = [], Tout = ["tfdtype$DT_INT32"], config = "", config_proto = "", device = "", executor_type = "", f = @foo0, name = "PartitionedCall"} : () -> (tensor<*xi32>, !_tf.control)
-# CHECK-NEXT:    return
-# CHECK-NEXT:  }
-# CHECK:  func @foo0() -> tensor<i32>
-# CHECK-NEXT:    attributes  {tf.experimental_ints_on_device = true} {
-# CHECK-NEXT:    %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<5> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
-# CHECK-NEXT:    %1:2 = "_tf.Identity"(%0#0) {T = "tfdtype$DT_INT32", device = "", name = "Identity"} : (tensor<i32>) -> (tensor<i32>, !_tf.control)
-# CHECK-NEXT:    return %1#0 : tensor<i32>
-# CHECK-NEXT:  }

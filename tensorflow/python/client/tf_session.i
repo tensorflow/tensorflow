@@ -143,6 +143,14 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromUnsignedLongLong($1);
 }
 
+// Convert TF_OperationGetAttrType TF_DataType* out-argument to Python integer.
+%typemap(in, numinputs=0) TF_DataType *value (TF_DataType temp) {
+  $1 = &temp;
+}
+%typemap(argout) TF_DataType *value {
+  $result = PyInt_FromLong(*$1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;

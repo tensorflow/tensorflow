@@ -61,6 +61,9 @@ struct PyCall {
   // True if the call is associated with an EagerPyFunc.
   bool eager = false;
 
+  // True if the call is running under eager async mode.
+  bool eager_async = false;
+
   // Inputs and outputs of this function invocation.
   std::vector<Tensor> ins;
   std::vector<Tensor> out;
@@ -83,8 +86,8 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     const Tensor& t = call->ins[i];
     if (call->eager) {
       TensorHandle* handle;
-      TF_RETURN_IF_ERROR(
-          TensorHandle::CreateLocalHandle(t, device, ctx, &handle));
+      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+          t, ctx->CanonicalDevice(device), ctx, &handle));
       arg = EagerTensorFromHandle(new TFE_TensorHandle(handle));
       if (arg == nullptr) {
         Py_DECREF(lst);
@@ -173,12 +176,18 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
 
   // Prepare the argument.
   PyObject* args = nullptr;
+  TFE_Context* ctx = nullptr;
+  std::unique_ptr<EagerExecutor> new_executor = nullptr;
+  EagerExecutor* old_executor = nullptr;
   if (call->eager) {
     // See FuncRegistry._ctx.
-    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+    ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
     CHECK_NE(ctx, nullptr);
     TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
+    new_executor.reset(new EagerExecutor(call->eager_async));
+    old_executor = ctx->context->Executor();
+    ctx->context->SetExecutorForThread(new_executor.get());
   } else {
     TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));
   }
@@ -187,31 +196,38 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   // Invokes the trampoline.
   PyObject* result = PyEval_CallObject(trampoline, args);
   Py_DECREF(args);
+  Status s = Status::OK();
   if (result == nullptr) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
           PyErr_ExceptionMatches(PyExc_TypeError)) {
-        return errors::InvalidArgument(PyExceptionFetch());
+        s = errors::InvalidArgument(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
         *out_log_on_error = false;
-        return errors::OutOfRange(PyExceptionFetch());
+        s = errors::OutOfRange(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
-        return errors::ResourceExhausted(PyExceptionFetch());
+        s = errors::ResourceExhausted(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
-        return errors::Unimplemented(PyExceptionFetch());
+        s = errors::Unimplemented(PyExceptionFetch());
       } else {
         // TODO(ebrevdo): Check if exception is an OpError and use the
         // OpError.error_code property to map it back in the Status.
-        return errors::Unknown(PyExceptionFetch());
+        s = errors::Unknown(PyExceptionFetch());
       }
     } else {
-      return errors::Internal("Failed to run py callback ", call->token,
-                              ": see error log.");
+      s = errors::Internal("Failed to run py callback ", call->token,
+                           ": see error log.");
     }
   }
 
+  if (new_executor != nullptr) {
+    s.Update(new_executor->WaitForAllPendingNodes());
+    ctx->context->SetExecutorForThread(old_executor);
+  }
+
+  TF_RETURN_IF_ERROR(s);
+
   // Process the return values and convert them to TF Tensors.
-  Status s = Status::OK();
   if (PyList_Check(result)) {
     // `result` is a Python list; if this operation is an `EagerPyFunc`, then
     // every item in the list must be an `EagerTensor`; otherwise, every element
@@ -282,6 +298,9 @@ class PyFuncOp : public OpKernel {
   explicit PyFuncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("token", &token_));
     eager_ = type_string() == "EagerPyFunc";
+    if (eager_) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("is_async", &eager_async_));
+    }
   }
 
   bool IsExpensive() override { return true; }
@@ -299,6 +318,7 @@ class PyFuncOp : public OpKernel {
             "Unrecognized device class: ", ctx->device()->name()));
         return;
       }
+      call.eager_async = eager_async_;
     }
 
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -357,12 +377,27 @@ class PyFuncOp : public OpKernel {
   // i.e., if and only if the eager attribute is set.
   bool eager_;
 
+  bool eager_async_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PyFuncOp);
 };
 
 REGISTER_KERNEL_BUILDER(Name("PyFunc").Device(DEVICE_CPU), PyFuncOp);
 REGISTER_KERNEL_BUILDER(Name("PyFuncStateless").Device(DEVICE_CPU), PyFuncOp);
 REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_CPU), PyFuncOp);
-REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_GPU), PyFuncOp);
+
+DataType gpu_types[] = {
+    // No strings and int32s, no ref types and no resource/variant types.
+    DT_FLOAT,      DT_DOUBLE,   DT_UINT8,  DT_INT16,   DT_INT8,
+    DT_COMPLEX64,  DT_INT64,    DT_BOOL,   DT_QINT8,   DT_QUINT8,
+    DT_QINT32,     DT_BFLOAT16, DT_QINT16, DT_QUINT16, DT_UINT16,
+    DT_COMPLEX128, DT_HALF,     DT_UINT32, DT_UINT64,
+};
+
+REGISTER_KERNEL_BUILDER(Name("EagerPyFunc")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint("Tin", gpu_types)
+                            .TypeConstraint("Tout", gpu_types),
+                        PyFuncOp);
 
 }  // end namespace tensorflow

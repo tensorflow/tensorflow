@@ -18,7 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
@@ -104,12 +104,24 @@ static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
+// TODO(intel-tf): PR review feedback (penpornk)
+// Can we add eager_mode (or is_eager) as an op attribute instead?
+// This way we don't need to rename the op just to pass eager_mode
+// through template parameter.
+static const char* const kMklEagerOpPrefix = "_MklEager";
 
 // Get the name of Mkl op from original TensorFlow op
 // We prefix 'Mkl' to the original op to get Mkl op.
 inline string GetMklOpName(const string& name) {
   return string(kMklOpPrefix) + name;
 }
+
+// Get the name of Mkl Eager op from original TensorFlow op
+// We prefix 'MklEager' to the original op to get Mkl Eager op.
+inline string GetMklEagerOpName(const string& name) {
+  return string(kMklEagerOpPrefix) + name;
+}
+
 // Check whether opname with type T is registered as MKL operator
 // that can accept input tensors in MKL layout.
 //
@@ -165,7 +177,7 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   // Now we just construct a search string to match what we are looking for.
   string search_string = kMklNameChangeOpLabelPattern;
   search_string += string(";") + string(" T in [");
-  search_string += EnumName_DataType(T) + string("]");
+  search_string += DataType_Name(T) + string("]");
 
   return kernel.find(search_string) != string::npos;
 }
@@ -175,6 +187,11 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
 // rewrite that some operators go through.
 static inline bool IsMklOp(const string& op_name, DataType T) {
   return IsMklLayoutDependentOp(op_name, T) || IsMklNameChangeOp(op_name, T);
+}
+
+static inline bool IsMklOp(const Node* n) {
+  DataType T;
+  return GetNodeAttr(n->def(), "T", &T).ok() && IsMklOp(n->type_string(), T);
 }
 
 // Check whether opname with type T is registered as MKL-compliant and

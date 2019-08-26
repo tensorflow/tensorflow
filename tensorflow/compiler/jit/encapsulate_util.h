@@ -77,6 +77,11 @@ extern const char kXlaLiftedArgOutsideCompilationAttrName[];
 // name for the outside compilation Placeholder node.
 extern const char kXlaOutsideCompilationInputsAttrName[];
 
+// Attribute indicating that this is a Placeholder node for an _Arg node used in
+// outside compilation. We should not move this node out of XLA computation.
+// Attribute value will always be boolean value "true".
+extern const char kXlaIsPlaceholderForArg[];
+
 // Information for XLA computation.
 struct XlaClusterInfo {
   // Add an explicitly-defined default constructor for this class.

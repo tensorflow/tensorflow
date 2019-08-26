@@ -390,15 +390,21 @@ class Concatenation
   }
 };
 
-class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
+class DepthToSpace
+    : public BuiltinOperator<DepthToSpaceOperator,
+                             ::tflite::DepthToSpaceOptions,
+                             ::tflite::BuiltinOptions_DepthToSpaceOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Int("block_size", op.block_size);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateDepthToSpaceOptions(*builder, op.block_size);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
-    op->block_size = m["block_size"].AsInt64();
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->block_size = options.block_size();
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
@@ -496,6 +502,14 @@ class FullyConnected
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // 2 inputs (no bias) use case is supported starting from version 6.
+    if (op_signature.op->inputs.size() == 2) {
+      return 6;
+    }
+    // `keep_num_dims` is supported at verison 5.
+    if (fc_op.keep_num_dims) {
+      return 5;
+    }
     // Int8 fully fixed point kernel is at version 4.
     if (input_array.data_type == ArrayDataType::kInt8 &&
         weights_array.data_type == ArrayDataType::kInt8 &&
@@ -540,7 +554,11 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
   int GetVersion(const OperatorSignature& op_signature) const override {
     const string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
-    // If the op take int8 input, it is version 2.
+    // If the op takes bool input, it is version 3.
+    if (input_array.data_type == ArrayDataType::kBool) {
+      return 3;
+    }
+    // If the op takes int8 input, it is version 2.
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
     }
@@ -778,10 +796,23 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input_name = op_signature.op->inputs[0];
-    const Array& input_array = op_signature.model->GetArray(input_name);
+    const string& input1_name = op_signature.op->inputs[0];
+    const string& input2_name = op_signature.op->inputs[1];
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& input1_array = op_signature.model->GetArray(input1_name);
+    const Array& input2_array = op_signature.model->GetArray(input2_name);
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    const auto& input1_quant = input1_array.quantization_params;
+    const auto& input2_quant = input2_array.quantization_params;
+    const auto& output_quant = output_array.quantization_params;
+    // Version 3 supports have a rescale value greater than or equal to 1.
+    if (input1_quant && input2_quant && output_quant &&
+        (input1_quant->scale * input2_quant->scale / output_quant->scale) >=
+            1.0) {
+      return 3;
+    }
     // Version 2 supports signed int8 input types.
-    if (input_array.data_type == ArrayDataType::kInt8) {
+    if (input1_array.data_type == ArrayDataType::kInt8) {
       return 2;
     }
     return 1;
@@ -952,7 +983,11 @@ class Transpose
   int GetVersion(const OperatorSignature& op_signature) const override {
     const string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
-    // If the op take int8 input, it is version 2.
+    // If the op takes bool input, it is version 3.
+    if (input_array.data_type == ArrayDataType::kBool) {
+      return 3;
+    }
+    // If the op takes int8 input, it is version 2.
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
     }
@@ -1645,6 +1680,11 @@ class SparseToDense
     const string& value_input_name = op_signature.op->inputs[2];
     const Array& value_input_array =
         op_signature.model->GetArray(value_input_name);
+    // Version 3 supports Int8 and Uint8 type.
+    if (value_input_array.data_type == ArrayDataType::kInt8 ||
+        value_input_array.data_type == ArrayDataType::kUint8) {
+      return 3;
+    }
     // Version 2 supports Int64 value type.
     if (value_input_array.data_type == ArrayDataType::kInt64) {
       return 2;
@@ -2228,6 +2268,11 @@ class Dequantize
   int GetVersion(const OperatorSignature& op_signature) const override {
     const string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 3 supports signed int16 input types.
+    if (input_array.data_type == ArrayDataType::kInt16 ||
+        input_array.data_type == ArrayDataType::kFloat16) {
+      return 3;
+    }
     // Version 2 supports signed int8 input types.
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
@@ -2439,6 +2484,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kSoftmax));
   ops.push_back(MakeUnique<SpaceToDepth>(
       ::tflite::BuiltinOperator_SPACE_TO_DEPTH, OperatorType::kSpaceToDepth));
+  ops.push_back(MakeUnique<DepthToSpace>(
+      ::tflite::BuiltinOperator_DEPTH_TO_SPACE, OperatorType::kDepthToSpace));
   ops.push_back(
       MakeUnique<Svdf>(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
   ops.push_back(MakeUnique<Transpose>(::tflite::BuiltinOperator_TRANSPOSE,
@@ -2528,8 +2575,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<SimpleOperator<MatrixSetDiagOperator>>(
       "MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag));
   // Custom Operators.
-  ops.push_back(
-      MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
   ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",

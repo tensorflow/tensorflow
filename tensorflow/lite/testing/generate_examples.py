@@ -35,6 +35,7 @@ import argparse
 import os
 import sys
 from tensorflow.lite.testing import generate_examples_lib
+from tensorflow.lite.testing import toco_convert
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -95,6 +96,7 @@ def main(unused_args):
   options.run_with_flex = FLAGS.run_with_flex
   options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
   options.make_forward_compat_test = FLAGS.make_forward_compat_test
+  options.tflite_convert_function = toco_convert.toco_convert
 
   generate_examples_lib.generate_examples(options)
 
@@ -104,5 +106,6 @@ if __name__ == "__main__":
 
   if unparsed:
     print("Usage: %s <path out> <zip file to generate>")
+    exit(1)
   else:
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

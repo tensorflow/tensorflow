@@ -123,10 +123,10 @@ if tf.__version__.startswith('1'):
       'tf.contrib.util': ['loader'],
   }
 else:
-  PRIVATE_MAP = {}
+  PRIVATE_MAP = {'tf': ['python', 'core', 'compiler', 'examples', 'tools']}
   DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
-    ## TensorFlow 2.0 Beta
+    ## TensorFlow 2.0 RC
 
     Caution:  This is a developer preview.  You will likely find some bugs,
     performance issues, and more, and we encourage you to tell us about them.
@@ -138,7 +138,7 @@ else:
     with:
 
     ```
-    pip install tensorflow==2.0.0-beta1
+    pip install tensorflow==2.0.0-rc0
     ```
     """
 
@@ -250,8 +250,13 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
+  if LooseVersion(tf.__version__) < LooseVersion('2'):
+    root_title = 'TensorFlow'
+  elif LooseVersion(tf.__version__) >= LooseVersion('2'):
+    root_title = 'TensorFlow 2.0'
+
   doc_generator = generate_lib.DocGenerator(
-      root_title="TensorFlow 2.0 Preview",
+      root_title=root_title,
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,

@@ -136,6 +136,7 @@ class Layout {
     Equal& MinorToMajorOnly() {
       ignore_tiles_ = true;
       ignore_element_size_ = true;
+      ignore_memory_space_ = true;
       return *this;
     }
 
@@ -223,10 +224,8 @@ class Layout {
   }
 
   void Clear() {
+    *this = Layout();
     format_ = INVALID_FORMAT;
-    minor_to_major_.clear();
-    max_sparse_elements_ = 0;
-    element_size_in_bits_ = 0;
   }
 
   template <typename H>

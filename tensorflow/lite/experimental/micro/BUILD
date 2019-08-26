@@ -13,6 +13,7 @@ cc_library(
     srcs = [
         "debug_log.cc",
         "debug_log_numbers.cc",
+        "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
         "micro_mutable_op_resolver.cc",
@@ -22,10 +23,16 @@ cc_library(
         "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
+        "micro_allocator.h",
         "micro_error_reporter.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",
         "simple_tensor_allocator.h",
+    ],
+    copts = [
+        "-Werror",
+        "-Wdouble-promotion",
+        "-Wsign-compare",
     ],
     deps = [
         "//tensorflow/lite/c:c_api_internal",

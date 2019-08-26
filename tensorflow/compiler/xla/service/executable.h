@@ -123,16 +123,10 @@ class Executable {
   // enabled.
   //
   // Returns a shaped buffer containing the result of the computation.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
-
-  // Same as ExecuteOnStream(), but this call is non-blocking and returns as
-  // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) = 0;
+      HloExecutionProfile* hlo_execution_profile);
 
   // Starts the given program executing on the given stream/executor.
   //
@@ -143,20 +137,31 @@ class Executable {
   //
   // If an input is donated to XLA but is not reused as output, it is returned
   // as an leftover buffer for the caller to release.
-  virtual StatusOr<ExecutionOutput> ExecuteOnStream(
+  //
+  // This call should be non-blocking and may return as soon as all of the
+  // operations are enqueued for launch on the stream. Note that some
+  // implementations may in fact block or may block in some circumstances (e.g.,
+  // when profiling); i.e., asynchronous is a "may" not a "must".
+  //
+  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
+  // enabled. Note that profiling is tricky to use correctly, as the profiling
+  // objects (when they exist) must out-live the task.
+  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile) = 0;
+
+  // Same as ExecuteAsyncOnStream(), but blocks waiting for the computation to
+  // complete.
+  StatusOr<ExecutionOutput> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
-      HloExecutionProfile* hlo_execution_profile) {
-    return Unimplemented(
-        "MaybeOwningDeviceMemory version of overload is not implemented ");
-  }
+      HloExecutionProfile* hlo_execution_profile);
 
   virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments) {
-    return Unimplemented(
-        "MaybeOwningDeviceMemory version of overload is not implemented ");
-  }
+      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+      HloExecutionProfile* hlo_execution_profile);
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
@@ -171,6 +176,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
+      ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
@@ -179,15 +185,12 @@ class Executable {
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
   StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
-      const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+      const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  // Returns the ExecutionProfile from executing on the device. This includes
-  // the number of cycles taken for the computation or the compilation time.
-  ExecutionProfile execution_profile() const {
-    tensorflow::mutex_lock lock(mutex_);
-    return execution_profile_;
-  }
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments);
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
@@ -219,30 +222,27 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Returns the size of the executable in bytes. Returns -1 by default if the
-  // method is not overridden to support this kind of query.
-  virtual int64 SizeInBytes();
+  // Returns the size of the executable in bytes. Returns -1 if this query is
+  // not supported by the executable.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
+  virtual int64 SizeOfGeneratedCodeInBytes();
 
   // Dumping helpers.
-  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
-    hlo_snapshot_ = std::move(hlo_snapshot);
+  void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
-  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
  protected:
-  mutable tensorflow::mutex mutex_;
-
-  // Execution profile data on the device.
-  ExecutionProfile execution_profile_ GUARDED_BY(mutex_);
-
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   const std::shared_ptr<HloModule> hlo_module_;
 
-  // HloSnapshot this was compiled from. Null if not dumping executions.
-  std::unique_ptr<HloSnapshot> hlo_snapshot_;
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  std::unique_ptr<HloProto const> hlo_proto_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

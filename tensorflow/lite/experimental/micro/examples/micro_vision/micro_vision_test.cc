@@ -28,7 +28,13 @@ limitations under the License.
 // Create an area of memory to use for input, output, and intermediate arrays.
 // TODO(rocky): This is too big for many platforms.  Need to implement a more
 // efficient memory manager for intermediate tensors.
+// TODO(petewarden): Temporarily reduce the size for Arduino builds, so we can
+// make sure the continuous-integration builds work.
+#ifdef ARDUINO
+constexpr int tensor_arena_size = 10 * 1024;
+#else   // ARDUINO
 const int tensor_arena_size = 300 * 1024;
+#endif  // ARDUINO
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN
@@ -51,12 +57,10 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // This pulls in all the operation implementations we need.
   tflite::ops::micro::AllOpsResolver resolver;
 
-  tflite::SimpleTensorAllocator tensor_allocator(tensor_arena,
-                                                 tensor_arena_size);
-
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, resolver, &tensor_allocator,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
+  interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
   TfLiteTensor* input = interpreter.input(0);
@@ -65,10 +69,9 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_NE(nullptr, input);
   TF_LITE_MICRO_EXPECT_EQ(4, input->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(96, input->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(96, input->dims->data[2]);
-  // TODO(rocky): This will be a single channel for monochrome inputs
-  TF_LITE_MICRO_EXPECT_EQ(3, input->dims->data[3]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumRows, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumCols, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumChannels, input->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy an image with a person into the memory area used for the input.
@@ -91,7 +94,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[2]);
-  TF_LITE_MICRO_EXPECT_EQ(3, output->dims->data[3]);
+  TF_LITE_MICRO_EXPECT_EQ(kCategoryCount, output->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, output->type);
 
   // Make sure that the expected "Person" score is higher than the other class.

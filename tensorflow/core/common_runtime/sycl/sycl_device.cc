@@ -16,9 +16,9 @@ limitations under the License.
 #if TENSORFLOW_USE_SYCL
 
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {

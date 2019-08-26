@@ -78,7 +78,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LogicalImpl(TfLiteContext* context, TfLiteNode* node,
-                         const std::function<bool(bool, bool)>& func) {
+                         bool (*func)(bool, bool)) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
@@ -86,28 +86,30 @@ TfLiteStatus LogicalImpl(TfLiteContext* context, TfLiteNode* node,
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (data->requires_broadcast) {
-    reference_ops::BroadcastLogical4DSlow(
+    reference_ops::BroadcastBinaryFunction4DSlow<bool, bool, bool>(
         GetTensorShape(input1), GetTensorData<bool>(input1),
         GetTensorShape(input2), GetTensorData<bool>(input2),
         GetTensorShape(output), GetTensorData<bool>(output), func);
   } else {
-    reference_ops::Logical(GetTensorShape(input1), GetTensorData<bool>(input1),
-                           GetTensorShape(input2), GetTensorData<bool>(input2),
-                           GetTensorShape(output), GetTensorData<bool>(output),
-                           func);
+    reference_ops::BinaryFunction<bool, bool, bool>(
+        GetTensorShape(input1), GetTensorData<bool>(input1),
+        GetTensorShape(input2), GetTensorData<bool>(input2),
+        GetTensorShape(output), GetTensorData<bool>(output), func);
   }
 
   return kTfLiteOk;
 }
 
+bool LogicalOr(bool x, bool y) { return x || y; }
+
 TfLiteStatus LogicalOrEval(TfLiteContext* context, TfLiteNode* node) {
-  const auto logical_or_func = std::logical_or<bool>();
-  return LogicalImpl(context, node, logical_or_func);
+  return LogicalImpl(context, node, LogicalOr);
 }
 
+bool LogicalAnd(bool x, bool y) { return x && y; }
+
 TfLiteStatus LogicalAndEval(TfLiteContext* context, TfLiteNode* node) {
-  const auto logical_and_func = std::logical_and<bool>();
-  return LogicalImpl(context, node, logical_and_func);
+  return LogicalImpl(context, node, LogicalAnd);
 }
 
 }  // namespace

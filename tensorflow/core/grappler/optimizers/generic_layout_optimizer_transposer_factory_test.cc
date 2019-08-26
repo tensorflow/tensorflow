@@ -59,17 +59,32 @@ TEST(TransposerFactoryTest, SanityCheck) {
   TransposerFactory factory;
   absl::flat_hash_set<Transposer*> transposers;
 
-  CheckSameTransposerForOps({"Conv2D", "FusedBatchNorm"}, &factory,
-                            &transposers);
+  CheckSameTransposerForOps(
+      {"Conv2D", "FusedBatchNorm", "DepthwiseConv2dNative"}, &factory,
+      &transposers);
+
+  CheckSameTransposerForOps({"AvgPoolGrad"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"BiasAddGrad"}, &factory, &transposers);
+
+  CheckSameTransposerForOps({"_FusedBatchNormEx"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"FusedBatchNormGrad", "FusedBatchNormGradV2"},
                             &factory, &transposers);
 
-  CheckSameTransposerForOps({"Conv2DBackpropFilter"}, &factory, &transposers);
+  CheckSameTransposerForOps(
+      {"Conv2DBackpropFilter", "DepthwiseConv2dNativeBackpropFilter"}, &factory,
+      &transposers);
 
-  CheckSameTransposerForOps({"MaxPoolGrad"}, &factory, &transposers);
+  CheckSameTransposerForOps(
+      {"Conv2DBackpropInput", "DepthwiseConv2dNativeBackpropInput"}, &factory,
+      &transposers);
+
+  CheckSameTransposerForOps({"MaxPoolGrad", "MaxPoolGradGrad"}, &factory,
+                            &transposers);
+
+  CheckSameTransposerForOps({"MaxPoolGradV2", "MaxPoolGradGradV2"}, &factory,
+                            &transposers);
 
   CheckSameTransposerForOps({"AddN"}, &factory, &transposers);
 
@@ -88,8 +103,6 @@ TEST(TransposerFactoryTest, SanityCheck) {
   CheckSameTransposerForOps({"Squeeze"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"MaxPoolV2"}, &factory, &transposers);
-
-  CheckSameTransposerForOps({"MaxPoolGradV2"}, &factory, &transposers);
 
   CheckSameTransposerForOps({"RealDiv", "Atan2", "Complex"}, &factory,
                             &transposers);

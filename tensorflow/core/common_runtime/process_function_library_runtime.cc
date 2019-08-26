@@ -66,7 +66,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
-    const CustomKernelCreator* custom_kernel_creator)
+    const CustomKernelCreator* custom_kernel_creator,
+    const SessionMetadata* session_metadata)
     : env_(env),
       device_mgr_(device_mgr),
       lib_def_(lib_def),
@@ -74,17 +75,18 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       flr_map_(new std::unordered_map<Device*,
                                       std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
-      parent_(parent) {
+      parent_(parent),
+      session_metadata_(session_metadata) {
   if (device_mgr == nullptr) {
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, this);
+        optimizer_options, custom_kernel_creator, session_metadata_, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     (*flr_map_)[d] = NewFunctionLibraryRuntime(
         device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, this);
+        optimizer_options, custom_kernel_creator, session_metadata_, this);
   }
 
   DeviceMgr const* all_devices = device_mgr_;
@@ -368,77 +370,91 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
 
   for (Node* node : ret_nodes) {
     if (output_devices.empty()) {
-      VLOG(3) << "Trying to determine device for node " << node->name();
+      DataType dtype;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
+
+      VLOG(3) << "Trying to determine device for node " << node->name()
+              << "[T=" << DataTypeString(dtype) << "]";
+
       // If output_devices are empty, the node producing retval
       // must have explicitly assigned device or a colocation constraint
       // to a node with explicitly assigned device.
       for (const auto& it : node->in_edges()) {
-        if (!it->IsControlEdge()) {
-          Node* src_node = it->src();
-          const string* src_device = AssignedOrRequestedDeviceName(*src_node);
-          string colocation_group = "";
+        if (it->IsControlEdge()) continue;
+
+        Node* src_node = it->src();
+        const string* src_device = AssignedOrRequestedDeviceName(*src_node);
+        string colocation_group = "";
+        GetColocationGroup(src_node, &colocation_group);
+        VLOG(3) << "Considering src: " << src_node->name()
+                << " src_device: " << *src_device
+                << " colo group: " << colocation_group;
+        while (src_device->empty() && colocation_group.empty() &&
+               src_node->IsIdentity()) {
+          // Only follows the real data input of Identity, not control edges.
+          Node* input_node;
+          TF_RETURN_IF_ERROR(src_node->input_node(0, &input_node));
+          src_node = input_node;
+
+          src_device = AssignedOrRequestedDeviceName(*src_node);
           GetColocationGroup(src_node, &colocation_group);
           VLOG(3) << "Considering src: " << src_node->name()
                   << " src_device: " << *src_device
                   << " colo group: " << colocation_group;
-          while (src_device->empty() && colocation_group.empty() &&
-                 src_node->IsIdentity()) {
-            // Only follows the real data input of Identity, not control edges.
-            Node* input_node;
-            TF_RETURN_IF_ERROR(src_node->input_node(0, &input_node));
-            src_node = input_node;
+        }
 
-            src_device = AssignedOrRequestedDeviceName(*src_node);
-            GetColocationGroup(src_node, &colocation_group);
-            VLOG(3) << "Considering src: " << src_node->name()
-                    << " src_device: " << *src_device
-                    << " colo group: " << colocation_group;
+        // If resource is produced by a function call node, we can't trust
+        // source node device assignment, because multi-device functions can
+        // return resource placed on multiple devices. In such case we leave
+        // retval device assignment empty, and rely on placer to infer correct
+        // assignment based on actual output device.
+        const bool can_use_src_node_device =
+            !(dtype == DT_RESOURCE && IsFunctionCall(*lib_def_, *src_node));
+
+        if (!colocation_group.empty()) {
+          AttrValue::ListValue colo_attr;
+          colo_attr.add_s(colocation_group);
+          std::vector<string> colo_slice = {colocation_group};
+          node->AddAttr(kColocationAttrName, colo_slice);
+        } else if (!src_device->empty() && can_use_src_node_device) {
+          // src_device can be a partially specified device. Find the
+          // matching device in the device_set.
+          DeviceNameUtils::ParsedName parsed;
+          if (!DeviceNameUtils::ParseFullName(*src_device, &parsed)) {
+            return errors::InvalidArgument(
+                "Failed to parse explicit device specification ", *src_device);
           }
-
-          if (!colocation_group.empty()) {
-            AttrValue::ListValue colo_attr;
-            colo_attr.add_s(colocation_group);
-            std::vector<string> colo_slice = {colocation_group};
-            node->AddAttr(kColocationAttrName, colo_slice);
-          } else if (!src_device->empty()) {
-            // src_device can be a partially specified device. Find the
-            // matching device in the device_set.
-            DeviceNameUtils::ParsedName parsed;
-            if (!DeviceNameUtils::ParseFullName(*src_device, &parsed)) {
-              return errors::InvalidArgument(
-                  "Failed to parse explicit device specification ",
-                  *src_device);
+          std::vector<Device*> matching_devices;
+          device_set.FindMatchingDevices(parsed, &matching_devices);
+          if (matching_devices.empty()) {
+            return errors::InvalidArgument(
+                "Unable to find any devices for spec ", *src_device);
+          } else if (matching_devices.size() != 1) {
+            // Convert a vector of devices to a string.
+            // Using absl::StrJoin did not work in Android builds.
+            string devices = "[";
+            for (Device* device : matching_devices) {
+              devices.append(device->name());
+              devices.append(", ");
             }
-            std::vector<Device*> matching_devices;
-            device_set.FindMatchingDevices(parsed, &matching_devices);
-            if (matching_devices.empty()) {
-              return errors::InvalidArgument(
-                  "Unable to find any devices for spec ", *src_device);
-            } else if (matching_devices.size() != 1) {
-              // Convert a vector of devices to a string.
-              // Using absl::StrJoin did not work in Android builds.
-              string devices = "[";
-              for (Device* device : matching_devices) {
-                devices.append(device->name());
-                devices.append(", ");
-              }
-              if (devices.size() > 2) {
-                devices.resize(devices.size() - 2);
-              }
-              devices.append("]");
-
-              return errors::InvalidArgument(
-                  "When FunctionLibraryRuntime::Options.output_devices are "
-                  "not specified for a multi-device function, the device "
-                  "specification on the output node must match exactly one "
-                  "device. Matched devices are ",
-                  devices);
+            if (devices.size() > 2) {
+              devices.resize(devices.size() - 2);
             }
-            VLOG(3) << "Setting output device to "
-                    << matching_devices[0]->name() << " for node "
-                    << node->DebugString();
-            node->set_assigned_device_name(matching_devices[0]->name());
+            devices.append("]");
+
+            return errors::InvalidArgument(
+                "When FunctionLibraryRuntime::Options.output_devices are "
+                "not specified for a multi-device function, the device "
+                "specification on the output node must match exactly one "
+                "device. Matched devices are ",
+                devices);
           }
+          VLOG(3) << "Setting output device to " << matching_devices[0]->name()
+                  << " for node " << SummarizeNode(*node);
+          node->set_assigned_device_name(matching_devices[0]->name());
+        } else if (!src_device->empty() && !can_use_src_node_device) {
+          VLOG(3) << "Did not set device for a resource output node "
+                  << SummarizeNode(*node);
         }
       }
     } else {
@@ -569,12 +585,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     int index = 0;
     VLOG(3) << "Requested input devices:";
     for (const string& device : options.input_devices) {
-      VLOG(3) << "    " << device << " for input at index " << index++;
+      VLOG(3) << "    [input " << index++ << "] " << device;
     }
     index = 0;
     VLOG(3) << "Requested output devices:";
     for (const string& device : options.output_devices) {
-      VLOG(3) << "    " << device << " for output at index " << index++;
+      VLOG(3) << "    [output " << index++ << "] " << device;
     }
   }
 
@@ -685,6 +701,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
     options.graph_collector->CollectOptimizedGraph(def);
   }
+
+  VLOG(2) << "Main function graph to be partitioned:";
+  VLOG(2) << DebugString(graph->ToGraphDefDebug());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
@@ -1273,7 +1292,8 @@ Status ProcessFunctionLibraryRuntime::Clone(
   }
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator);
+      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator,
+      session_metadata_);
   return Status::OK();
 }
 

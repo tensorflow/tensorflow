@@ -126,6 +126,60 @@ Status PropagateFromArgOp(
   return Status::OK();
 }
 
+Status UpdateResourceUsageFromFunctionBodyAnalysis(
+    const Node& call_node,
+    const absl::optional<absl::string_view>& caller_function_name,
+    const FunctionBody& fbody,
+    const absl::flat_hash_map<
+        ResourceUsageAnalysis::NodeInfo,
+        absl::flat_hash_set<ResourceUsageAnalysis::NodeInfo>>&
+        called_function_source_to_path,
+    absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
+        user_to_source,
+    absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,
+                        absl::flat_hash_set<ResourceUsageAnalysis::NodeInfo>>*
+        caller_source_to_path) {
+  std::unordered_map<std::string, Node*> node_name_index =
+      fbody.graph->BuildNodeNameIndex();
+  for (auto it : called_function_source_to_path) {
+    ResourceUsageAnalysis::NodeInfo src_node_info = it.first;
+
+    // If source is an _Arg, then the true source is actually corresponding
+    // edge that feeds into function call node with the same index.
+    if (src_node_info.op_ == kArgOp) {
+      const Node* arg_src = node_name_index[src_node_info.node_name_];
+      int index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(arg_src->attrs(), "index", &index));
+
+      const Edge* e;
+      // TODO(ycao): Allow overriding input_edge to _Arg index mapping. This is
+      // needed for cond function of while nodes.
+      TF_RETURN_IF_ERROR(call_node.input_edge(index, &e));
+      src_node_info = (*user_to_source)[e];
+    }
+
+    for (const auto& dst_node_info : it.second) {
+      // If user is an _Retval, then the true user is actually corresponding
+      // edge of that _Retval.
+      if (dst_node_info.op_ == kRetvalOp) {
+        const Node* ret_user = node_name_index[dst_node_info.node_name_];
+        int index;
+        TF_RETURN_IF_ERROR(GetNodeAttr(ret_user->attrs(), "index", &index));
+
+        absl::InlinedVector<const Edge*, 1> outs;
+        // TODO(ycao): Allow overriding _Retval index to call node output edge
+        // mapping. This is needed for cond function of while nodes.
+        TF_ASSIGN_OR_RETURN(outs, OutputEdgesByIndex(call_node, index));
+        for (const Edge* o : outs) (*user_to_source)[o] = src_node_info;
+      } else {
+        (*caller_source_to_path)[src_node_info].emplace(dst_node_info);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Status PropagateThroughCallOp(
     const Node& n, const absl::optional<std::string>& function_name,
     const int call_depth, FunctionLibraryRuntime* lib_runtime,
@@ -139,15 +193,16 @@ Status PropagateThroughCallOp(
         "Function call stack in given graph is too deep, last function ",
         "name is: ", function_name.value());
   }
-  // resource_arg_indices_for_call contains all indices of the input
+  // resource_arg_indices contains all indices of the input
   // arguments that carry Stack/TensorArray resource handles.
-  absl::flat_hash_set<int> resource_arg_indices_for_call;
+  absl::flat_hash_set<int> resource_arg_indices;
   for (const Edge* e : n.in_edges()) {
-    if (!user_to_source->contains(e)) continue;
-    resource_arg_indices_for_call.emplace(e->dst_input());
+    if (user_to_source->contains(e)) {
+      resource_arg_indices.emplace(e->dst_input());
+    }
   }
 
-  absl::string_view called_function_name = n.type_string();
+  // Instantiate associated function to get function body.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(InstantiateFunctionCall(n.def(), lib_runtime, &handle));
   auto release_handle_on_return = gtl::MakeCleanup(
@@ -159,48 +214,12 @@ Status PropagateThroughCallOp(
                       absl::flat_hash_set<ResourceUsageAnalysis::NodeInfo>>
       called_function_source_to_path;
   TF_RETURN_IF_ERROR(AnalyzeResourceUsage(
-      fbody->graph, absl::optional<std::string>(called_function_name),
-      call_depth + 1, resource_arg_indices_for_call, lib_runtime,
-      &called_function_source_to_path));
+      fbody->graph, n.type_string(), call_depth + 1, resource_arg_indices,
+      lib_runtime, &called_function_source_to_path));
 
-  std::unordered_map<std::string, Node*> node_name_index =
-      fbody->graph->BuildNodeNameIndex();
-
-  for (auto it : called_function_source_to_path) {
-    ResourceUsageAnalysis::NodeInfo src_node_info = it.first;
-
-    // If source is an _Arg, then the true source is actually corresponding
-    // edge that feeds into function call node with the same index.
-    if (src_node_info.op_ == kArgOp) {
-      const Node* arg_src = node_name_index[src_node_info.node_name_];
-      int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg_src->attrs(), "index", &index));
-
-      const Edge* e;
-      TF_RETURN_IF_ERROR(n.input_edge(index, &e));
-      const Node* true_src = e->src();
-      src_node_info.function_name_ = function_name;
-      src_node_info.node_name_ = true_src->name();
-      src_node_info.op_ = true_src->type_string();
-    }
-
-    for (const auto& dst_node_info : it.second) {
-      // If user is an _Retval, then the true user is actually corresponding
-      // edge of that _Retval.
-      if (dst_node_info.op_ == kRetvalOp) {
-        const Node* ret_user = node_name_index[dst_node_info.node_name_];
-        int index;
-        TF_RETURN_IF_ERROR(GetNodeAttr(ret_user->attrs(), "index", &index));
-
-        absl::InlinedVector<const Edge*, 1> outs;
-        TF_ASSIGN_OR_RETURN(outs, OutputEdgesByIndex(n, index));
-        for (const Edge* o : outs) (*user_to_source)[o] = src_node_info;
-      } else {
-        (*source_to_path)[src_node_info].emplace(dst_node_info);
-      }
-    }
-  }
-
+  TF_RETURN_IF_ERROR(UpdateResourceUsageFromFunctionBodyAnalysis(
+      n, function_name, *fbody, called_function_source_to_path, user_to_source,
+      source_to_path));
   return Status::OK();
 }
 
@@ -291,9 +310,8 @@ Status AnalyzeResourceUsage(
   }
 
   for (auto it : user_to_source) {
-    ResourceUsageAnalysis::NodeInfo dst_node_info(
-        function_name, it.first->dst()->name(), it.first->dst()->type_string());
-    (*source_to_path)[it.second].emplace(dst_node_info);
+    (*source_to_path)[it.second].emplace(function_name, it.first->dst()->name(),
+                                         it.first->dst()->type_string());
   }
 
   return Status::OK();

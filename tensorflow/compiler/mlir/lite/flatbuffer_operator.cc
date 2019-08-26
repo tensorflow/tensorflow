@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -33,6 +36,16 @@ static tflite::ActivationFunctionType ConvertTFL_AFAttrForOptionWriter(
       .Case("RELU6", tflite::ActivationFunctionType_RELU6)
       .Case("TANH", tflite::ActivationFunctionType_TANH)
       .Case("SIGN_BIT", tflite::ActivationFunctionType_SIGN_BIT);
+}
+
+static tflite::TensorType ConvertDerivedTFLiteTypeAttrForOptionWriter(
+    tflite::TensorType type, flatbuffers::FlatBufferBuilder* builder) {
+  if (type == tflite::TensorType_INT64) {
+    return tflite::TensorType_INT64;
+  } else if (type == tflite::TensorType_INT32) {
+    return tflite::TensorType_INT32;
+  }
+  llvm_unreachable("invalid type in conversion.");
 }
 
 static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
@@ -88,6 +101,11 @@ static int ConvertI32AttrForOptionWriter(
   return i.getSExtValue();
 }
 
+static int ConvertPositiveI32AttrForOptionWriter(
+    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
+  return ConvertI32AttrForOptionWriter(i, builder);
+}
+
 static flatbuffers::Offset<flatbuffers::Vector<int32_t>>
 ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
                                    flatbuffers::FlatBufferBuilder* builder) {
@@ -127,5 +145,66 @@ ConvertTFL_FullyConnectedOptionsWeightFormatAttrForOptionWriter(
             tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8);
 }
 
+static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return llvm::StringSwitch<tflite::LSTMKernelType>(str)
+      .Case("FULL", tflite::LSTMKernelType_FULL)
+      .Case("BASIC", tflite::LSTMKernelType_BASIC);
+}
+
+static mlir::Attribute BuildBoolAttr(bool value, mlir::Builder builder) {
+  return builder.getBoolAttr(value);
+}
+
+static mlir::Attribute BuildF32Attr(float value, mlir::Builder builder) {
+  return builder.getF32FloatAttr(value);
+}
+
+static mlir::Attribute BuildI32Attr(int32_t value, mlir::Builder builder) {
+  return builder.getI32IntegerAttr(value);
+}
+
+static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
+                                         mlir::Builder builder) {
+  std::vector<int64_t> typecast(value.begin(), value.end());
+  return builder.getI64ArrayAttr(typecast);
+}
+
+static mlir::Attribute BuildPositiveI32Attr(int32_t value,
+                                            mlir::Builder builder) {
+  return builder.getI32IntegerAttr(value);
+}
+
+static mlir::Attribute BuildTFL_AFAttr(tflite::ActivationFunctionType value,
+                                       mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameActivationFunctionType(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_FullyConnectedOptionsWeightFormatAttr(
+    tflite::FullyConnectedOptionsWeightsFormat value, mlir::Builder builder) {
+  const char* option_name =
+      tflite::EnumNameFullyConnectedOptionsWeightsFormat(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_LSTMKernelTypeAttr(tflite::LSTMKernelType value,
+                                                   mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameLSTMKernelType(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_MirrorPaddingAttr(tflite::MirrorPadMode value,
+                                                  mlir::Builder builder) {
+  const char* option_name = tflite::EnumNameMirrorPadMode(value);
+  return builder.getStringAttr(option_name);
+}
+
+static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,
+                                            mlir::Builder builder) {
+  const char* option_name = tflite::EnumNamePadding(value);
+  return builder.getStringAttr(option_name);
+}
+
 // Pull in FlatBuffer writers for TFLite generated using TableGen
-#include "tensorflow/compiler/mlir/lite/operator_writers.inc"
+#include "tensorflow/compiler/mlir/lite/operator_converters.inc"

@@ -140,7 +140,9 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = self._combiner.restore(self._restore_updates())
 
     if not isinstance(data, (dataset_ops.DatasetV2, np.ndarray)):
-      raise ValueError('adapt() requires a Dataset or a Numpy array as input.')
+      raise ValueError(
+          'adapt() requires a Dataset or a Numpy array as input, got {}'.format(
+              type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
       # Validate the datasets to try and ensure we haven't been passed one with

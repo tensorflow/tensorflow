@@ -79,7 +79,7 @@ func @LoopTest() {
 // CHECK-NEXT:       %{{[0-9]*}} = "tf.Add"(%[[IDENTITY]]#0, %[[CONST_ADD]]#0) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Add"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
 // CHECK-NEXT:       tf_executor.yield %{{[0-9]*}} : tensor<*xi32>
 // CHECK-NEXT:     }
-// CHECK-NEXT:     %[[CT:[0-9]*]] = tf_executor.ControlTrigger %2, %12#1, %9#1 {_tpu_replicate = "cluster", device = "", name = "gradients/while/mul_2_Da30D05wlPU_grad/SymbolicGradient/b_sync"}
+// CHECK-NEXT:     %[[CT:[0-9]*]] = tf_executor.ControlTrigger %[[NOOP]], %[[ADD]]#1, %[[EXIT]]#1 {_tpu_replicate = "cluster", device = "", name = "gradients/while/mul_2_Da30D05wlPU_grad/SymbolicGradient/b_sync"}
 // CHECK-NEXT:     tf_executor.NextIteration.Sink [%[[NEXTIT_SRC]]#1] %[[ADD]]#0, %[[CT]] : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", id = 0 : i64, name =  "while/NextIteration"}
 // CHECK-NEXT:     tf_executor.fetch
 // CHECK-NEXT:   }

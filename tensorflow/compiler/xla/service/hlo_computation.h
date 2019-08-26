@@ -135,6 +135,12 @@ class HloComputation {
   HloInstruction* AddEntryComputationParameter(
       std::unique_ptr<HloInstruction> instruction);
 
+  // Replaces an old parameter with a new parameter. Adds the new parameter
+  // instruction to the entry computation.
+  Status ReplaceEntryComputationParameter(
+      int64 param_no, HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> instruction);
+
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
@@ -147,8 +153,11 @@ class HloComputation {
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
   // removing an instruction. The instruction must have no users. Instruction is
-  // deallocated with this call.
-  Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
+  // deallocated with this call. If given, the cleanup routine is executed on a
+  // removed instruction before its deallocation.
+  Status RemoveInstructionAndUnusedOperands(
+      HloInstruction* instruction,
+      std::function<void(HloInstruction*)> cleanup = nullptr);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -279,7 +288,7 @@ class HloComputation {
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result with layout).
-  ProgramShape ComputeProgramShape() const;
+  ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
@@ -295,9 +304,18 @@ class HloComputation {
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 
+  // Replaces an old instruction with a newly created instruction, and adds the
+  // new instruction as an entry computation's parameter. Removes old
+  // instruction from computation. Updates uses and root instruction.
+  Status ReplaceWithNewEntryComputationParameter(
+      HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> new_instruction);
+
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
+  // If |new_instruction| doesn't have any sharding information it will
+  // recieve the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
@@ -494,6 +512,61 @@ class HloComputation {
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
 };
+
+template <typename HloInstructionPtr>
+Status HloComputation::Accept(
+    DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
+  // Visit unreachable roots. Beware that the visitor might delete the currently
+  // visited root, which would invalidate iterators if the unreachable roots
+  // weren't computed ahead of time.
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    VLOG(3) << "Traversing unreachable root: " << root->ToString();
+    // Call FinishVisit only at the end.
+    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+  }
+  // Visit the computation root instruction last.
+  return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
+}
+
+// Explicit instantiations.
+template Status HloComputation::Accept(DfsHloVisitor* visitor) const;
+template Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
+
+template <typename HloInstructionPtr>
+Status HloComputation::AcceptOrdered(
+    DfsHloVisitorBase<HloInstructionPtr>* visitor,
+    absl::Span<HloInstruction* const> order) const {
+  VLOG(3) << "Accepting visitor with order.";
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
+  }
+  TF_RET_CHECK(order.size() == instruction_count());
+  absl::flat_hash_set<const HloInstruction*> visited;
+  for (const HloInstruction* instruction : order) {
+    VLOG(3) << "Visiting ordered: " << instruction->ToString();
+    TF_RET_CHECK(instruction_iterators_.contains(instruction))
+        << "Instruction " << instruction->name() << " is not in computation "
+        << name();
+    TF_RET_CHECK(!visited.contains(instruction))
+        << "Instruction " << instruction->name()
+        << " appears more than once in order";
+    HloInstruction* mutable_instruction =
+        const_cast<HloInstruction*>(instruction);
+    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    visitor->SetVisited(*mutable_instruction);
+    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    visited.insert(instruction);
+  }
+  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
+  return Status::OK();
+}
+
+// Explicit instantiations.
+template Status HloComputation::AcceptOrdered(
+    DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
+template Status HloComputation::AcceptOrdered(
+    ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
 }  // namespace xla
 

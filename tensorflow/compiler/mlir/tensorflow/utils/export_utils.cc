@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
@@ -30,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -160,9 +160,34 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+// Updates NodeDef constructed out of an MLIR If op to map it to either
+// TensorFlow StatelessIf or If op depending on the additional attribute.
+void UpdateCompositeIfOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessIf";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
+// Updates NodeDef constructed out of an MLIR While op to map it to either
+// TensorFlow StatelessWhile or While op depending on the additional attribute.
+void UpdateCompositeWhileOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessWhile";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
 }  // anonymous namespace
 
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name,
     OpNameMappingFunc op_name_func) {
   auto node_def = absl::make_unique<NodeDef>();
@@ -184,7 +209,6 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   }
 
   // Add the node attributes.
-  absl::flat_hash_set<string> attrs_to_ignore;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
                         node_def->mutable_attr()),
@@ -194,12 +218,16 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
 
+  if (node_def->op() == "If") UpdateCompositeIfOp(node_def.get());
+  if (node_def->op() == "While") UpdateCompositeWhileOp(node_def.get());
+
   return node_def;
 }
 
-Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
-                         const absl::flat_hash_set<string>& attrs_to_ignore,
-                         AttrValueMap* values) {
+Status ConvertAttributes(
+    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
+    AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const mlir::NamedAttribute& named_attr : attrs) {
     auto name_strref = named_attr.first.str();

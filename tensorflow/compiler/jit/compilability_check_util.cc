@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
@@ -263,9 +265,15 @@ bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
 bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
   // b/135640736: MatrixInverse performance issues.
+  // https://github.com/tensorflow/tensorflow/pull/31012:
+  //    ResizeNearestNeighbor, ResizeBilinear, and ResizeBilinearGrad sometimes
+  //    create convolutions too large for CuDNN to handle.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
-         node.type_string() == "MatrixInverse";
+         node.type_string() == "MatrixInverse" ||
+         node.type_string() == "ResizeNearestNeighbor" ||
+         node.type_string() == "ResizeBilinear" ||
+         node.type_string() == "ResizeBilinearGrad";
 }
 
 bool RecursiveCompilabilityChecker::IsCompilableNode(
@@ -318,7 +326,7 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
-  if (node.type_string() == "While" &&
+  if (node.IsWhileNode() &&
       !IsCompilableWhile(node, lib_runtime, stack_trace, uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported while");
     return false;
@@ -394,6 +402,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_inaccurate_ops && OpIsInaccurate(node)) {
     absl::string_view uncompilable_reason =
         "operation with numerical accuracy issues";
+    BroadcastOptimizationRemark(XlaOptimizationRemark::INACCURATE_OPERATION,
+                                node.DebugString())
+        .IgnoreError();
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
@@ -402,6 +413,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
 
   if (!op_filter_.allow_slow_ops && OpIsSlow(node)) {
     absl::string_view uncompilable_reason = "slow operation";
+    BroadcastOptimizationRemark(XlaOptimizationRemark::SLOW_OPERATION,
+                                node.DebugString())
+        .IgnoreError();
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);

@@ -167,6 +167,7 @@ cc_library(
         ":operator_property",
         ":quantization_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",

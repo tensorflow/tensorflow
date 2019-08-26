@@ -63,28 +63,44 @@ int64 GlobalRandomValue() {
   return rng();
 }
 
-llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
-                                      int64 mantissa_bits,
-                                      llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
+                                             llvm::Value* x,
+                                             int64 dest_exponent_bits,
+                                             int64 dest_mantissa_bits,
+                                             llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+
+  if (!primitive_util::IsFloatingPointType(src_ty)) {
+    return Unimplemented(
+        "ReducePrecision cannot accept non-floating-point type %s.",
+        PrimitiveType_Name(src_ty));
+  }
+
   // Integer and float types for casting and constant generation.
   llvm::Type* float_type = x->getType();
-  llvm::IntegerType* int_type = b->getInt32Ty();
+  int64 nbits = float_type->getPrimitiveSizeInBits();
+  llvm::IntegerType* int_type = b->getIntNTy(nbits);
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
 
-  if (mantissa_bits < 23) {
+  if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
-    const uint32_t last_mantissa_bit_mask = 1u << (23 - mantissa_bits);
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
 
     // Compute rounding bias for round-to-nearest with ties to even.  This is
     // equal to a base value of 0111... plus one bit if the last remaining
     // mantissa bit is 1.
-    const uint32_t base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
     llvm::Value* x_last_mantissa_bit = b->CreateLShr(
         b->CreateAnd(x_as_int,
                      llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
-        (23 - mantissa_bits));
+        (src_mantissa_bits - dest_mantissa_bits));
     llvm::Value* x_rounding_bias =
         b->CreateAdd(x_last_mantissa_bit,
                      llvm::ConstantInt::get(int_type, base_rounding_bias));
@@ -93,16 +109,19 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // where adding the rounding bias overflows into the exponent bits is
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
-    const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
     x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
     x_as_int = b->CreateAnd(x_as_int,
                             llvm::ConstantInt::get(int_type, truncation_mask));
   }
 
-  if (exponent_bits < 8) {
-    // Masks for f32 values.
-    const uint32_t f32_sign_bit_mask = 1u << 31;
-    const uint32_t f32_exp_bits_mask = 0xffu << 23;
+  if (dest_exponent_bits < src_exponent_bits) {
+    APInt sign_bit_mask(nbits, 1);
+    sign_bit_mask <<= nbits - 1;
+
+    APInt exp_bits_mask(nbits, 1);
+    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                    << src_mantissa_bits;
 
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
@@ -116,28 +135,31 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
     // (2^7-1) - 2^(n-1)-1.
     //
     // Note that we have already checked that exponents_bits >= 1.
-    const uint32_t f32_exponent_bias = (1 << 7) - 1;
-    const uint32_t reduced_exponent_bias = (1 << (exponent_bits - 1)) - 1;
-    const uint32_t reduced_max_exponent =
-        f32_exponent_bias + reduced_exponent_bias;
-    const uint32_t reduced_min_exponent =
-        f32_exponent_bias - reduced_exponent_bias;
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
 
     // Do we overflow or underflow?
-    llvm::Value* x_exponent = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+    llvm::Value* x_exponent =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, exp_bits_mask));
     llvm::Value* x_overflows = b->CreateICmpUGT(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_max_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_max_exponent << src_mantissa_bits));
     llvm::Value* x_underflows = b->CreateICmpULE(
-        x_exponent,
-        llvm::ConstantInt::get(int_type, reduced_min_exponent << 23));
+        x_exponent, llvm::ConstantInt::get(
+                        int_type, reduced_min_exponent << src_mantissa_bits));
 
     // Compute appropriately-signed values of zero and infinity.
-    llvm::Value* x_signed_zero = b->CreateAnd(
-        x_as_int, llvm::ConstantInt::get(int_type, f32_sign_bit_mask));
+    llvm::Value* x_signed_zero =
+        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, sign_bit_mask));
     llvm::Value* x_signed_inf = b->CreateOr(
-        x_signed_zero, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+        x_signed_zero, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
     // Force to zero or infinity if overflow or underflow.  (Note that this
     // truncates all denormal values to zero, rather than rounding them.)
@@ -161,7 +183,7 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   if (!b->getFastMathFlags().noNaNs()) {
     llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (mantissa_bits > 0) {
+    if (dest_mantissa_bits > 0) {
       result = b->CreateSelect(x_is_nan, x, result);
     } else {
       result = b->CreateSelect(
@@ -171,11 +193,14 @@ llvm::Value* EmitReducePrecisionFloat(llvm::Value* x, int64 exponent_bits,
   return result;
 }
 
-llvm::Value* EmitF32ToBF16(llvm::Value* f32_value, llvm::IRBuilder<>* b) {
-  auto reduced_precision = EmitReducePrecisionFloat(
-      f32_value,
-      /*exponent_bits=*/primitive_util::kBFloat16ExponentBits,
-      /*mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b);
+StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
+                                     llvm::IRBuilder<>* b) {
+  TF_ASSIGN_OR_RETURN(
+      auto reduced_precision,
+      EmitReducePrecisionIR(
+          /*src_ty=*/F32, f32_value,
+          /*dest_exponent_bits=*/primitive_util::kBFloat16ExponentBits,
+          /*dest_mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -490,15 +515,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           : input_type;
   switch (op->opcode()) {
     case HloOpcode::kLog: {
-      // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
+      // log(a+bi) = log(abs(a+bi)) + i*atan2(b,a)
       auto a = EmitExtractReal(operand_value);
       auto b = EmitExtractImag(operand_value);
-      llvm::Type* llvm_ty = a->getType();
-      auto sum_sq = FAdd(FMul(a, a), FMul(b, b));
-      TF_ASSIGN_OR_RETURN(auto log_sum_sq, EmitLog(component_type, sum_sq));
-      TF_ASSIGN_OR_RETURN(auto angle, EmitAtan2(component_type, b, a));
-      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
-      return EmitComposeComplex(op, FMul(one_half, log_sum_sq), angle);
+      TF_ASSIGN_OR_RETURN(llvm::Value * angle, EmitAtan2(component_type, b, a));
+      TF_ASSIGN_OR_RETURN(llvm::Value * abs,
+                          EmitComplexAbs(component_type, operand_value));
+      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
+      return EmitComposeComplex(op, log_abs, angle);
     }
     case HloOpcode::kLog1p: {
       // log1p(a+bi) = .5*log((a+1)^2+b^2) + i*atan2(b, a + 1)
@@ -614,46 +638,135 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
              =(cos(b)^2(e^(2a)-e^(-2a)) + sin(b)^2(e^(2a)-e^(-2a)) +
                i*(cos(b)sin(b)(e^a+e^-a)^2 - cos(b)sin(b)(e^a-e^-a)^2)) /
               ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
+             =(e^(2a)-e^(-2a) +
+               i*[cos(b)sin(b)(e^(2a)+2+e^(-2a))-cos(b)sin(b)(e^(2a)-2+e^(2a)))]
+               / (cos(b)^2*(e^(2a)+2+e^(-2a)) + sin(b)^2*(e^(2a)-2+e^(2a))
+             =(e^(2a)-e^(-2a) +
+               i*cos(b)sin(b)*[e^(2a)+2+e^(-2a)-e^(2a)+2-e^(-2a)]) /
+               ([cos(b)^2 + sin(b)^2][e^(2a)+e^(-2a)])+2*[cos(b)^2 - sin(b)^2])
+             =(e^(2a)-e^(-2a) + i*cos(b)sin(b)*4) /
+              (e^(2a)+e^(-2a)+2*[cos(b)^2 - sin(b)^2])
+             =(e^(2a)-e^(-2a) + i*[sin(2b)/2]*4) /
+              (e^(2a)+e^(-2a)+2*[cos(2b)])
+             =(e^(2a)-e^(-2a) + i*2*sin(2b)) / (e^(2a) + e^(-2a) + 2*cos(2b))
       */
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      TF_ASSIGN_OR_RETURN(auto exp_a, EmitExp(component_type, a));
-      TF_ASSIGN_OR_RETURN(auto cos_b, EmitCos(component_type, b));
-      TF_ASSIGN_OR_RETURN(auto sin_b, EmitSin(component_type, b));
-      auto exp_neg_a = FDiv(llvm::ConstantFP::get(exp_a->getType(), 1), exp_a);
-      auto exp_2a_minus_exp_neg_2a =
-          FSub(FMul(exp_a, exp_a), FMul(exp_neg_a, exp_neg_a));
-      auto cos_b_sq = FMul(cos_b, cos_b);
-      auto sin_b_sq = FMul(sin_b, sin_b);
-      auto real_num = FAdd(FMul(cos_b_sq, exp_2a_minus_exp_neg_2a),
-                           FMul(sin_b_sq, exp_2a_minus_exp_neg_2a));
-      auto cos_b_sin_b = FMul(cos_b, sin_b);
-      auto exp_a_plus_exp_neg_a = FAdd(exp_a, exp_neg_a);
-      auto exp_a_plus_exp_neg_a_sq =
-          FMul(exp_a_plus_exp_neg_a, exp_a_plus_exp_neg_a);
-      auto exp_a_minus_exp_neg_a = FSub(exp_a, exp_neg_a);
-      auto exp_a_minus_exp_neg_a_sq =
-          FMul(exp_a_minus_exp_neg_a, exp_a_minus_exp_neg_a);
-      auto imag_num = FMul(
-          cos_b_sin_b, FSub(exp_a_plus_exp_neg_a_sq, exp_a_minus_exp_neg_a_sq));
-      auto denom = FAdd(FMul(cos_b_sq, exp_a_plus_exp_neg_a_sq),
-                        FMul(sin_b_sq, exp_a_minus_exp_neg_a_sq));
-      return EmitComposeComplex(op, FDiv(real_num, denom),
-                                FDiv(imag_num, denom));
+      llvm::Value* a = EmitExtractReal(operand_value);
+      llvm::Value* b = EmitExtractImag(operand_value);
+
+      llvm::Type* type = a->getType();
+
+      llvm::Value* neg_one = llvm::ConstantFP::get(type, -1.F);
+      llvm::Value* two_a = FAdd(a, a);
+      llvm::Value* neg_2a = FMul(neg_one, two_a);
+
+      // When we are calculating the real numerator, e^(2a)-e^(-2a), for small
+      // values of `a`, we will get a ULP of 2^-23 using the exp function. Using
+      // expm1 to calculate e^(2a)-e^(-2a) = [e^(2a)-1] - [e^(-2a)-1] allows our
+      // ULP to be arbitrarily small. For larger values of `a`, calculating the
+      // numerator as Exp(2a)-Exp(-2a) vs Expm1(2a)-Expm1(-2a) return virtually
+      // identical results.
+      TF_ASSIGN_OR_RETURN(llvm::Value * exp_2a_m1,
+                          EmitExpm1(component_type, two_a));
+      TF_ASSIGN_OR_RETURN(llvm::Value * exp_neg_2a_m1,
+                          EmitExpm1(component_type, neg_2a));
+      llvm::Value* real_numerator = FSub(exp_2a_m1, exp_neg_2a_m1);
+
+      // We can use the identity cos(2b)+1 = cos(b)^2-sin(b)^2+cos(b)^2+sin(b)^2
+      // = 2cos(b)^2. This gives us the ability to be more precise when the
+      // denominator is close to zero.
+      TF_ASSIGN_OR_RETURN(llvm::Value * cos_b, EmitCos(component_type, b));
+      llvm::Value* four = llvm::ConstantFP::get(type, 4.F);
+      llvm::Value* cos_b_sq = FMul(cos_b, cos_b);
+      llvm::Value* two_cos_2b_p2 = FMul(cos_b_sq, four);
+
+      // Similarly we can compute sin(2b) with the formula sin(2b) =
+      // 2*sin(b)*cos(b).
+      TF_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
+      llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
+
+      // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
+      // for small value of x. As a result, due to floating point precission
+      // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
+      // small values of x.
+      llvm::Value* a_sqr = FMul(a, a);
+      llvm::Value* use_approx_cutoff = llvm::ConstantFP::get(type, 1e-8);
+      llvm::Value* use_approx = FCmpOLT(a_sqr, use_approx_cutoff);
+
+      llvm::Value* exp_sum_m2 =
+          Select(use_approx, a_sqr, FAdd(exp_2a_m1, exp_neg_2a_m1));
+      llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
+
+      // As `a` grows toward +inf and -inf, the real numerator will grow towards
+      // +inf and -inf respectively, while the denominator will always grow
+      // towards +inf. The result is real_numerator/denom = NaN, when it should
+      // equal +1 and -1 respectively. Therefore, if our denominator is +inf,
+      // we just hardcode the limits for the real numbers.
+      llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+      llvm::Value* is_inf = FCmpOEQ(exp_sum_m2, inf);
+      llvm::Value* real_limit = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {neg_one, a}, {type}, b_);
+
+      llvm::Value* real =
+          Select(is_inf, real_limit, FDiv(real_numerator, denom));
+      llvm::Value* imag = FDiv(imag_numerator, denom);
+
+      // The complex tanh functions have a few corner cases:
+      // 1. (+0, +0) => (+0, +0)        - Handled normally
+      // 2. (x, +Inf) => (NaN, NaN)     - See below
+      // 3. (x, NaN) => (NaN, NaN)      - See below
+      // 4. (+inf, y) => (1, +0)        - Handled normally
+      // 5. (+Inf, +Inf) => (1, +/-0)   - See below
+      // 6. (+Inf, NaN) => (1, +/-0)    - See below
+      // 7. (NaN, +0) => (NaN, +0)      - See below
+      // 8. (NaN, y) => (NaN, NaN)      - Handled normally
+      // 9. (NaN, NaN) => (NaN, NaN)    - Handled normally
+      //
+      // For the cases that aren't handled normally:
+      // 2/3) Part of the calculation we do is that if exp(a) + exp(-a) = +inf,
+      //      then we return (+/-1, +/-0). However, this is only true if we
+      //      assume that a is infinity or b is finite. In the event that both a
+      //      is finite and b is either +/-Inf or NaN, then our normal
+      //      calculation would end up returing (+/-1, NaN), as opposed to (NaN,
+      //      NaN).
+      // 5/6) We always calculate the imagninary value as sin(2b)/denominator.
+      //      When the denominator is infinity, this assures us that the zero is
+      //      the correct sign. However if our imaginary input results in
+      //      sin(2b) = NaN, we calculate our imaginary result as NaN.
+      // 7)   In the event that a is NaN, the denominator will be NaN.
+      //      Therefore, the normal calculation gives (NaN, NaN) while we need
+      //      (NaN, +0).
+      if (!(b_->getFastMathFlags().noNaNs() &&
+            b_->getFastMathFlags().noInfs())) {
+        llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                          {a}, {type}, b_);
+        llvm::Value* zero = llvm::ConstantFP::get(type, 0.F);
+        llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+
+        llvm::Value* a_is_inf = FCmpOEQ(abs_a, inf);
+        llvm::Value* b_is_zero = FCmpOEQ(b, zero);
+
+        // imag_numerator = 2sin(2b), so sin(2b) is NaN if and only if
+        // imag_numerator is NaN.
+        llvm::Value* sin_2b_is_nan =
+            b_->CreateFCmpUNO(imag_numerator, imag_numerator);
+
+        llvm::Value* real_is_nan =
+            b_->CreateAnd(sin_2b_is_nan, b_->CreateNot(a_is_inf));
+        llvm::Value* imag_is_zero =
+            b_->CreateOr(b_is_zero, b_->CreateAnd(a_is_inf, sin_2b_is_nan));
+
+        real = Select(real_is_nan, nan, real);
+        imag = Select(imag_is_zero, zero, imag);
+      }
+
+      return EmitComposeComplex(op, real, imag);
     }
     case HloOpcode::kAbs: {
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {sum_sq},
-                                          {sum_sq->getType()}, b_);
+      return EmitComplexAbs(component_type, operand_value);
     }
     case HloOpcode::kSign: {  // Sign(c) = c / |c|
-      auto sum_sq = FAdd(
-          FMul(EmitExtractReal(operand_value), EmitExtractReal(operand_value)),
-          FMul(EmitExtractImag(operand_value), EmitExtractImag(operand_value)));
-      auto cplx_abs = llvm_ir::EmitCallToIntrinsic(
-          llvm::Intrinsic::sqrt, {sum_sq}, {sum_sq->getType()}, b_);
+      TF_ASSIGN_OR_RETURN(auto cplx_abs,
+                          EmitComplexAbs(component_type, operand_value));
       auto type = cplx_abs->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
       auto oeq = FCmpOEQ(cplx_abs, zero);
@@ -663,18 +776,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
                              FDiv(EmitExtractImag(operand_value), cplx_abs)));
     }
     case HloOpcode::kSqrt: {
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto c = llvm::ConstantFP::get(a->getType(), 0.5);
-      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
-      return EmitComplexPower(op, a, b, c, d);
+      return EmitComplexSqrt(op, component_type, operand_value);
     }
     case HloOpcode::kRsqrt: {
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      auto c = llvm::ConstantFP::get(a->getType(), -0.5);
-      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
-      return EmitComplexPower(op, a, b, c, d);
+      return EmitComplexRsqrt(op, component_type, operand_value);
     }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
@@ -760,6 +865,214 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return Unimplemented("binary floating point op '%s'",
                            HloOpcodeString(op->opcode()));
   }
+}
+
+// Using sqrt(a^2 + b^2) can cause overflow errors. Therefore we can use
+// sqrt(a^2 + b^2) = sqrt(a^2 * (1 + b^2/a^2))
+//                 = |a| * sqrt(1 + (b/a)^2)
+// With the assumption that |a| >= |b|.
+//
+// This method returns the min, max, and sqrt term for this calculation. This is
+// done to prevent potential overflow errors that can occur from multiplying the
+// max with the sqrt term. (i.e. when calculating the sqrt of the absolute
+// value, we can take the sqrt of the max and the sqrt term before multiplying
+// them together.) If return_sqrt is false, it returns 1 + (b/a)^2 instead of
+// sqrt(1 + (b/a)^2).
+StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+ElementalIrEmitter::EmitComplexAbsHelper(PrimitiveType prim_type,
+                                         llvm::Value* operand_value,
+                                         bool return_sqrt) {
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
+  llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
+  llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
+  llvm::Value* max = EmitFloatMax(abs_real, abs_imag);
+  llvm::Value* min = EmitFloatMin(abs_real, abs_imag);
+
+  llvm::Value* div = FDiv(min, max);
+  llvm::Value* div_sq = FMul(div, div);
+  llvm::Value* one = llvm::ConstantFP::get(max->getType(), 1);
+  llvm::Value* one_p_div_sq = FAdd(one, div_sq);
+  TF_ASSIGN_OR_RETURN(llvm::Value * sqrt, EmitSqrt(prim_type, one_p_div_sq));
+  return std::make_tuple(min, max, return_sqrt ? sqrt : one_p_div_sq);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* sqrt;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, sqrt),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+  llvm::Value* result = FMul(max, sqrt);
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return `min` instead of `result`.
+  return Select(FCmpUNO(result, result), min, result);
+}
+
+// Calculates ComplexAbs in the same way, except using:
+// sqrt(|a| * sqrt(1 + (b/a)^2)) = sqrt(|a|) * pow(1 + (b/a)^2, .25)
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrtComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* one_p_div_sq;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, one_p_div_sq),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/false));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sqrt_max, EmitSqrt(prim_type, max));
+  TF_ASSIGN_OR_RETURN(llvm::Value * pow,
+                      EmitPow(prim_type, one_p_div_sq,
+                              llvm::ConstantFP::get(max->getType(), .25)));
+  llvm::Value* result = FMul(sqrt_max, pow);
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return `min` instead of `result`.
+  return Select(FCmpUNO(result, result), min, result);
+}
+
+// Calculates ComplexAbs in the same way, except using:
+// rsqrt(|a| * sqrt(1 + (b/a)^2)) = rsqrt(|a|) * rsqrt(sqrt(1 + (b/a)^2))
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
+    PrimitiveType prim_type, llvm::Value* operand_value) {
+  llvm::Value* min;
+  llvm::Value* max;
+  llvm::Value* sqrt;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(min, max, sqrt),
+      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_max, EmitRsqrt(prim_type, max));
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_sqrt, EmitRsqrt(prim_type, sqrt));
+  llvm::Value* result = FMul(rsqrt_max, rsqrt_sqrt);
+  TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_min, EmitRsqrt(prim_type, min));
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
+  // In such cases, we return rsqrt(min) instead of `result`.
+  return Select(FCmpUNO(result, result), rsqrt_min, result);
+}
+
+// Using our EmitComplexPower formula, but setting c=0.5 and d=0, we get:
+//   e^[ln(r)*c - t*d] * [cos(ln(r)*d + t*c) + i*sin(ln(r)*d + t*c)]
+// = e^[ln(r)*0.5] * [cos(t*0.5) + i*sin(t*0.5)]
+// = r^0.5 * [cos(t/2) + i*sin(t/2)]
+// = sqrt(r) * [cos(t/2) + i*sin(t/2)]
+// where r = |a+bi| and t = atan2(b,a)
+// TODO(bixia): See doc for implementation without atan2.
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexSqrt(
+    const HloInstruction* op, PrimitiveType prim_type,
+    llvm::Value* operand_value) {
+  llvm::Type* type = static_cast<llvm::StructType*>(operand_value->getType())
+                         ->getElementType(0);
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * r,
+                      EmitSqrtComplexAbs(prim_type, operand_value));
+
+  llvm::Value* a = EmitExtractReal(operand_value);
+  llvm::Value* b = EmitExtractImag(operand_value);
+  TF_ASSIGN_OR_RETURN(llvm::Value * t, EmitAtan2(prim_type, b, a));
+
+  llvm::Value* c = llvm::ConstantFP::get(type, 0.5);
+  llvm::Value* angle = FMul(t, c);
+  TF_ASSIGN_OR_RETURN(llvm::Value * cos, EmitCos(prim_type, angle));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sin, EmitSin(prim_type, angle));
+
+  llvm::Value* real_part;
+  llvm::Value* imag_part;
+
+  llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {b}, {b->getType()}, b_);
+
+    real_part = Select(Or(FCmpOEQ(abs_b, inf), FCmpOEQ(a, inf)), inf,
+                       Select(And(FCmpOEQ(a, neg_inf), FCmpONE(abs_b, inf)),
+                              zero, FMul(r, cos)));
+
+    llvm::Value* b_signed_inf = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {inf, b}, {b->getType()}, b_);
+    imag_part =
+        Select(Or(FCmpOEQ(abs_b, inf), FCmpOEQ(a, neg_inf)), b_signed_inf,
+               Select(FCmpUNO(r, r), nan,
+                      Select(FCmpOEQ(sin, zero), sin, FMul(r, sin))));
+  } else {
+    real_part = FMul(r, cos);
+    imag_part = Select(FCmpOEQ(sin, zero), sin, FMul(r, sin));
+  }
+
+  return Select(FCmpOEQ(r, zero), EmitComposeComplex(op, zero, zero),
+                EmitComposeComplex(op, real_part, imag_part));
+}
+
+// Similar to Sqrt, we can use our EmitComplexPower formula, but set
+// c=-0.5 and d=0. We get:
+//   e^[ln(r)*c - t*d] * [cos(ln(r)*d + t*c) + i*sin(ln(r)*d + t*c)]
+// = e^[ln(r)*-0.5] * [cos(t*-0.5) + i*sin(t*-0.5)]
+// = r^(-0.5) * [cos(-t/2) + i*sin(-t/2)]
+// = rsqrt(r) * [cos(-t/2) + i*sin(-t/2)]
+// where r = |a+bi| and t = atan2(b,a).
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
+    const HloInstruction* op, PrimitiveType prim_type,
+    llvm::Value* operand_value) {
+  llvm::Type* type = static_cast<llvm::StructType*>(operand_value->getType())
+                         ->getElementType(0);
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * r,
+                      EmitRsqrtComplexAbs(prim_type, operand_value));
+
+  llvm::Value* a = EmitExtractReal(operand_value);
+  llvm::Value* b = EmitExtractImag(operand_value);
+  TF_ASSIGN_OR_RETURN(llvm::Value * t, EmitAtan2(prim_type, b, a));
+
+  llvm::Value* c = llvm::ConstantFP::get(type, -0.5);
+  llvm::Value* angle = FMul(t, c);
+  TF_ASSIGN_OR_RETURN(llvm::Value * cos, EmitCos(prim_type, angle));
+  TF_ASSIGN_OR_RETURN(llvm::Value * sin, EmitSin(prim_type, angle));
+
+  llvm::Value* real_part = FMul(r, cos);
+  llvm::Value* imag_part = FMul(r, sin);
+
+  if (!(b_->getFastMathFlags().noNaNs() && b_->getFastMathFlags().noInfs())) {
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* neg_one = llvm::ConstantFP::get(type, -1);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+    // llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+    llvm::Value* a_signed_zero = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {zero, a}, {a->getType()}, b_);
+    llvm::Value* b_signed_zero = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::copysign, {zero, b}, {b->getType()}, b_);
+    llvm::Value* neg_b_signed_zero = FMul(b_signed_zero, neg_one);
+
+    llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {a}, {a->getType()}, b_);
+    llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {b}, {b->getType()}, b_);
+
+    llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+    real_part = Select(
+        is_zero_zero, inf,
+        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)), FCmpOEQ(abs_a, inf)),
+               a_signed_zero, FMul(r, cos)));
+    imag_part = Select(
+        is_zero_zero, nan,
+        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)), FCmpOEQ(abs_a, inf)),
+               neg_b_signed_zero, FMul(r, sin)));
+  } else {
+    llvm::Value* zero = llvm::ConstantFP::get(type, 0);
+    llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
+    llvm::Value* nan = llvm::ConstantFP::getNaN(type);
+
+    llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+    real_part = Select(is_zero_zero, inf, FMul(r, cos));
+    imag_part = Select(is_zero_zero, nan, FMul(r, sin));
+  }
+
+  return EmitComposeComplex(op, real_part, imag_part);
 }
 
 // (a+bi)^(c+di) =
@@ -1009,7 +1322,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
   return Select(x_is_small, for_small_x, for_large_x);
 }
 
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType,
                                                     llvm::Value* value) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {value},
                                       {value->getType()}, b_);
@@ -1051,10 +1364,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_large_x = FSub(exp_x, one);
   // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
   // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
-  auto x_squared = FAdd(x, x);
+  // We use the second degree approximation of exp(x)-1 = x + x^2/2.
+  auto x_squared = FMul(x, x);
   auto x_squared_over_two = FMul(x_squared, half);
   auto for_small_x = FAdd(x, x_squared_over_two);
-  const auto kExponentIsSmallThreshold = 1e-5;
+  // At this point, the relative errors due to floating point precision loss of
+  // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
+  // equal, with a value of approximetely 2^-16.
+  const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small =
@@ -1082,11 +1399,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
     const HloInstruction* hlo, llvm::Value* x) {
-  if (hlo->operand(0)->shape().element_type() != F32) {
-    return Unimplemented("reduce-precision only implemented for F32");
-  }
-  return EmitReducePrecisionFloat(x, /*exponent_bits=*/hlo->exponent_bits(),
-                                  /*mantissa_bits=*/hlo->mantissa_bits(), b_);
+  return EmitReducePrecisionIR(
+      /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
+      /*dest_exponent_bits=*/hlo->exponent_bits(),
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
@@ -1391,7 +1707,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     source_index_phis[operand_id] =
         PHI(source_index.GetType(), operand_usage_count[operand_id]);
     std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
-    operand_multi_index[concat_dim] = source_index_phis[operand_id];
+    operand_multi_index[concat_dim] =
+        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
@@ -1405,25 +1722,24 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
-  std::vector<llvm::Value*> source_multi_index = source_index.multidim();
+  int64 concat_dim_size = 0;
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    auto concat_dim_size = source_index.GetConstantWithIndexType(
-        operand->shape().dimensions(concat_dim));
     int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(source_multi_index[concat_dim],
-                                               b_->GetInsertBlock());
-    CondBr(ICmpULT(source_multi_index[concat_dim], concat_dim_size),
+    source_index_phis[operand_id]->addIncoming(
+        source_index.GetConstantWithIndexType(concat_dim_size),
+        b_->GetInsertBlock());
+    concat_dim_size += operand->shape().dimensions(concat_dim);
+    CondBr(ICmpULT(source_index[concat_dim],
+                   source_index.GetConstantWithIndexType(concat_dim_size)),
            emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
     b_->SetInsertPoint(false_block);
-    source_multi_index[concat_dim] =
-        Sub(source_multi_index[concat_dim], concat_dim_size);
   }
 
   Unreachable();
@@ -1973,7 +2289,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == BF16) {
-            iota_result = EmitF32ToBF16(float_val, b_);
+            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val, b_));
           } else {
             iota_result = float_val;
           }

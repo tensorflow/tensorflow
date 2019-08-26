@@ -38,7 +38,7 @@ float Convert(const string& in) {
 void Evaluate(const Tensor& input_data, Tensor output_data, int32 start,
               int32 end) {
   auto out_data = output_data.unaligned_flat<float>();
-  const auto in_data = input_data.unaligned_flat<string>();
+  const auto in_data = input_data.unaligned_flat<tstring>();
 
   for (int32 i = start; i < end; ++i) {
     out_data(i) = Convert(in_data(i));

@@ -1779,30 +1779,19 @@ class HloConstantScalarImpl {
       return true;
     }
 
-    // Check that literal == static_cast<LitearlTy>(val) and
-    // val == static_cast<ValTy>(literal).  This is sufficient to ensure that
-    // the two constant scalars are actually "equal".
-    auto val_literal = LiteralUtil::CreateR0(*val_);
-    auto literal_r0_or = const_inst->literal().Reshape({});
-    auto val_as_literal_ty_or =
-        val_literal.Convert(const_inst->shape().element_type());
-    if (!literal_r0_or.ok() || !val_as_literal_ty_or.ok()) {
-      EXPLAIN << "could not construct relevant Literals (how did this happen?)";
+    auto const_inst_scalar_or = const_inst->literal().Reshape({});
+    if (!const_inst_scalar_or.ok()) {
+      EXPLAIN << "could not convert matched literal to effective scalar";
       return false;
     }
-    auto literal_r0 = std::move(literal_r0_or).ValueOrDie();
-    auto val_as_literal_ty = std::move(val_as_literal_ty_or).ValueOrDie();
-    auto literal_r0_as_val_ty_or =
-        literal_r0.Convert(val_literal.shape().element_type());
-    bool rv = literal_r0_as_val_ty_or.ok() &&  //
-              literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
-              literal_r0 == val_as_literal_ty;
-    if (!rv) {
+    Literal const_inst_scalar = std::move(const_inst_scalar_or).ValueOrDie();
+    if (!const_inst_scalar.IsEqualAt({}, *val_)) {
       EXPLAIN << "HloInstruction's constant value "
-              << literal_r0.ToStringWithoutShape()
+              << const_inst_scalar.ToStringWithoutShape()
               << " did not match expected value " << *val_;
+      return false;
     }
-    return rv;
+    return true;
   }
 
   absl::optional<ScalarTy> val_;

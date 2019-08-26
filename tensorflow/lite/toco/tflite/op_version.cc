@@ -15,13 +15,33 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/op_version.h"
 
 #include <cstring>
+#include <vector>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 namespace tflite {
+
+bool CompareVersion(const string& v1, const string& v2) {
+  const std::vector<string>& vec1 = absl::StrSplit(v1, '.');
+  const std::vector<string>& vec2 = absl::StrSplit(v2, '.');
+  int i = 0;
+  while (i < vec1.size() && i < vec2.size()) {
+    int v1_val, v2_val;
+    if (absl::SimpleAtoi(vec1[i], &v1_val) &&
+        absl::SimpleAtoi(vec2[i], &v2_val)) {
+      if (v1_val != v2_val) return v1_val < v2_val;
+    }
+    ++i;
+  }
+  // If there are remaining items in v2 not being compared, then v1 should
+  // precede v2.
+  return i < vec2.size();
+}
 
 string GetMinimumRuntimeVersionForModel(const Model& model) {
   // Use this as the placeholder string if a particular op is not yet included
@@ -54,15 +74,18 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kCast, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 2}, "1.14.0"},
-          {{OperatorType::kDepthToSpace, 1}, "1.5.0"},
+          {{OperatorType::kDepthToSpace, 1}, kPendingReleaseOpVersion},
           {{OperatorType::kFakeQuant, 1}, "1.5.0"},
           {{OperatorType::kFakeQuant, 2}, "1.10.0"},
           {{OperatorType::kFullyConnected, 1}, "1.5.0"},
           {{OperatorType::kFullyConnected, 2}, "1.10.0"},
           {{OperatorType::kFullyConnected, 3}, "1.14.0"},
           {{OperatorType::kFullyConnected, 4}, "1.14.0"},
+          {{OperatorType::kFullyConnected, 5}, "1.14.0"},
+          {{OperatorType::kFullyConnected, 6}, kPendingReleaseOpVersion},
           {{OperatorType::kGather, 1}, "1.6.0"},
           {{OperatorType::kGather, 2}, "1.14.0"},
+          {{OperatorType::kGather, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kGatherNd, 1}, "1.14.0"},
           {{OperatorType::kSvdf, 1}, "1.5.0"},
           {{OperatorType::kSvdf, 2}, "1.14.0"},
@@ -78,6 +101,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kMinimum, 2}, "1.14.0"},
           {{OperatorType::kMul, 1}, "1.5.0"},
           {{OperatorType::kMul, 2}, "1.14.0"},
+          {{OperatorType::kMul, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kPad, 1}, "1.5.0"},
           {{OperatorType::kPad, 2}, "1.14.0"},
           {{OperatorType::kTile, 1}, "1.10.1"},
@@ -90,6 +114,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSpaceToDepth, 2}, "1.14.0"},
           {{OperatorType::kTranspose, 1}, "1.6.0"},
           {{OperatorType::kTranspose, 2}, "1.14.0"},
+          {{OperatorType::kTranspose, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kLstmCell, 1}, "1.7.0"},
           {{OperatorType::kLstmCell, 2}, "1.10.0"},
           {{OperatorType::kLstmCell, 3}, "1.14.0"},
@@ -129,6 +154,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kTransposeConv, 1}, "1.9.0"},
           {{OperatorType::kSparseToDense, 1}, "1.9.0"},
           {{OperatorType::kSparseToDense, 2}, "1.14.0"},
+          {{OperatorType::kSparseToDense, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kExpandDims, 1}, "1.10.0"},
           {{OperatorType::kPack, 1}, "1.11.0"},
           {{OperatorType::kPack, 2}, "1.14.0"},
@@ -153,6 +179,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kWhere, 1}, "1.14.0"},
           {{OperatorType::kDequantize, 1}, "1.13.1"},
           {{OperatorType::kDequantize, 2}, "1.14.0"},
+          {{OperatorType::kDequantize, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kReverseSequence, 1}, "1.14.0"},
           {{OperatorType::kEqual, 1}, "1.14.0"},
           {{OperatorType::kEqual, 2}, "1.14.0"},
@@ -178,6 +205,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
   op_signature.model = &model;
   string model_min_version;
   for (const auto& op : model.operators) {
+    if (op_types_map.find(op->type) == op_types_map.end()) continue;
     op_signature.op = op.get();
     const int version = op_types_map.at(op->type)->GetVersion(op_signature);
     std::pair<OperatorType, int> version_key = {op->type, version};
@@ -187,7 +215,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
       // doesn't have a minimum runtime version associated, continue.
       continue;
     }
-    if (strcmp(model_min_version.c_str(), it->second.c_str()) < 0) {
+    if (CompareVersion(model_min_version, it->second)) {
       // Current min model runtime version should be bumped if we see a higher
       // op version.
       model_min_version = it->second;

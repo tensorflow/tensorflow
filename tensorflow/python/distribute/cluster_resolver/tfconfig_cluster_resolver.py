@@ -50,7 +50,12 @@ def _get_value_in_tfconfig(key, default=None):
 
 @tf_export('distribute.cluster_resolver.TFConfigClusterResolver')
 class TFConfigClusterResolver(ClusterResolver):
-  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar."""
+  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar.
+
+  This is an implementation of cluster resolvers when using TF_CONFIG to set
+  information about the cluster. The cluster spec returned will be
+  initialized from the TF_CONFIG environment variable.
+  """
 
   def __init__(self,
                task_type=None,

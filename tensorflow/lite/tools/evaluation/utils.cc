@@ -23,8 +23,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-
 namespace tflite {
 namespace evaluation {
 
@@ -75,12 +73,25 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   return kTfLiteOk;
 }
 
+// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return Interpreter::TfLiteDelegatePtr(
       NnApiDelegate(),
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options) {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
 #else
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)
@@ -97,8 +108,9 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options;
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
+  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
+  options.metadata =
+      model ? TfLiteGpuDelegateGetModelMetadata(model->GetModel()) : nullptr;
   options.compile_options.precision_loss_allowed = 1;
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;
