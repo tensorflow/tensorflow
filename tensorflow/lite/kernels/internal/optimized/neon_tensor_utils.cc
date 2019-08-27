@@ -103,6 +103,60 @@ inline int64_t AccumulateNeonLane64(const int64x2_t lane) {
 #endif
 }
 
+// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
+// neon_tensor_utils.cc.
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  const int left_shift = shift > 0 ? shift : 0;
+  const int right_shift = shift > 0 ? 0 : -shift;
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
+  int32x4x4_t result;
+  result.val[0] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[1] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[2] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[3] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  return result;
+}
+
+inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
+    int32x4x2_t input_val, int32 quantized_multiplier, int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  const int left_shift = shift > 0 ? shift : 0;
+  const int right_shift = shift > 0 ? 0 : -shift;
+  const int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
+  int32x4x2_t result;
+  result.val[0] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  result.val[1] =
+      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
+                              quantized_multiplier),
+                          right_shift);
+  return result;
+}
+
 }  // namespace
 
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
@@ -512,10 +566,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   const int32_t output_min = std::numeric_limits<int16_t>::min();
   const int32_t output_max = std::numeric_limits<int16_t>::max();
 
-  const int32_t left_shift_one = shift > 0 ? 1 << shift : 1;
-  const int32_t right_shift = shift > 0 ? 0 : -shift;
-
-  const int32x4_t left_shift_one_dup = vdupq_n_s32(left_shift_one);
   const int32x4_t output_zp_dup = vdupq_n_s32(output_zp);
   const int32x4_t max_val_dup = vdupq_n_s32(output_max);
   const int32x4_t min_val_dup = vdupq_n_s32(output_min);
@@ -530,20 +580,20 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int16x8_t output_val = vld1q_s16(output + i);
     const int32x4_t first_half = vmovl_s16(vget_low_s16(output_val));
     const int32x4_t second_half = vmovl_s16(vget_high_s16(output_val));
-    int32x4_t temp_val_1 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[0], left_shift_one_dup), multiplier),
-        right_shift);
-    int32x4_t temp_val_2 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[1], left_shift_one_dup), multiplier),
-        right_shift);
-    temp_val_1 = vaddq_s32(vaddq_s32(temp_val_1, first_half), output_zp_dup);
-    temp_val_2 = vaddq_s32(vaddq_s32(temp_val_2, second_half), output_zp_dup);
-    temp_val_1 = vmaxq_s32(vminq_s32(temp_val_1, max_val_dup), min_val_dup);
-    temp_val_2 = vmaxq_s32(vminq_s32(temp_val_2, max_val_dup), min_val_dup);
+
+    int32x4x2_t temp_val =
+        MultiplyByQuantizedMultiplier2Rows(scratch_val, multiplier, shift);
+
+    temp_val.val[0] =
+        vaddq_s32(vaddq_s32(temp_val.val[0], first_half), output_zp_dup);
+    temp_val.val[1] =
+        vaddq_s32(vaddq_s32(temp_val.val[1], second_half), output_zp_dup);
+    temp_val.val[0] =
+        vmaxq_s32(vminq_s32(temp_val.val[0], max_val_dup), min_val_dup);
+    temp_val.val[1] =
+        vmaxq_s32(vminq_s32(temp_val.val[1], max_val_dup), min_val_dup);
     const int16x8_t result =
-        vcombine_s16(vqmovn_s32(temp_val_1), vqmovn_s32(temp_val_2));
+        vcombine_s16(vqmovn_s32(temp_val.val[0]), vqmovn_s32(temp_val.val[1]));
     vst1q_s16(output + i, result);
   }
   for (; i < total_size; ++i) {
@@ -574,10 +624,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   const int32_t output_min = std::numeric_limits<int8_t>::min();
   const int32_t output_max = std::numeric_limits<int8_t>::max();
 
-  const int32_t left_shift_one = shift > 0 ? 1 << shift : 1;
-  const int32_t right_shift = shift > 0 ? 0 : -shift;
-
-  const int32x4_t left_shift_one_dup = vdupq_n_s32(left_shift_one);
   const int32x4_t output_zp_dup = vdupq_n_s32(output_zp);
   const int32x4_t max_val_dup = vdupq_n_s32(output_max);
   const int32x4_t min_val_dup = vdupq_n_s32(output_min);
@@ -600,37 +646,31 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int32x4_t output_val_3 = vmovl_s16(vget_low_s16(second_half));
     const int32x4_t output_val_4 = vmovl_s16(vget_high_s16(second_half));
 
-    int32x4_t temp_val_1 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[0], left_shift_one_dup), multiplier),
-        right_shift);
-    int32x4_t temp_val_2 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[1], left_shift_one_dup), multiplier),
-        right_shift);
-    int32x4_t temp_val_3 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[2], left_shift_one_dup), multiplier),
-        right_shift);
-    int32x4_t temp_val_4 = RoundingDivideByPOT(
-        SaturatingRoundingDoublingHighMul(
-            vmulq_s32(scratch_val.val[3], left_shift_one_dup), multiplier),
-        right_shift);
+    int32x4x4_t temp_val =
+        MultiplyByQuantizedMultiplier4Rows(scratch_val, multiplier, shift);
 
-    temp_val_1 = vaddq_s32(vaddq_s32(temp_val_1, output_val_1), output_zp_dup);
-    temp_val_2 = vaddq_s32(vaddq_s32(temp_val_2, output_val_2), output_zp_dup);
-    temp_val_3 = vaddq_s32(vaddq_s32(temp_val_3, output_val_3), output_zp_dup);
-    temp_val_4 = vaddq_s32(vaddq_s32(temp_val_4, output_val_4), output_zp_dup);
+    temp_val.val[0] =
+        vaddq_s32(vaddq_s32(temp_val.val[0], output_val_1), output_zp_dup);
+    temp_val.val[1] =
+        vaddq_s32(vaddq_s32(temp_val.val[1], output_val_2), output_zp_dup);
+    temp_val.val[2] =
+        vaddq_s32(vaddq_s32(temp_val.val[2], output_val_3), output_zp_dup);
+    temp_val.val[3] =
+        vaddq_s32(vaddq_s32(temp_val.val[3], output_val_4), output_zp_dup);
 
-    temp_val_1 = vmaxq_s32(vminq_s32(temp_val_1, max_val_dup), min_val_dup);
-    temp_val_2 = vmaxq_s32(vminq_s32(temp_val_2, max_val_dup), min_val_dup);
-    temp_val_3 = vmaxq_s32(vminq_s32(temp_val_3, max_val_dup), min_val_dup);
-    temp_val_4 = vmaxq_s32(vminq_s32(temp_val_4, max_val_dup), min_val_dup);
+    temp_val.val[0] =
+        vmaxq_s32(vminq_s32(temp_val.val[0], max_val_dup), min_val_dup);
+    temp_val.val[1] =
+        vmaxq_s32(vminq_s32(temp_val.val[1], max_val_dup), min_val_dup);
+    temp_val.val[2] =
+        vmaxq_s32(vminq_s32(temp_val.val[2], max_val_dup), min_val_dup);
+    temp_val.val[3] =
+        vmaxq_s32(vminq_s32(temp_val.val[3], max_val_dup), min_val_dup);
 
     const int16x8_t result_1 =
-        vcombine_s16(vqmovn_s32(temp_val_1), vqmovn_s32(temp_val_2));
+        vcombine_s16(vqmovn_s32(temp_val.val[0]), vqmovn_s32(temp_val.val[1]));
     const int16x8_t result_2 =
-        vcombine_s16(vqmovn_s32(temp_val_3), vqmovn_s32(temp_val_4));
+        vcombine_s16(vqmovn_s32(temp_val.val[2]), vqmovn_s32(temp_val.val[3]));
     const int8x16_t result =
         vcombine_s8(vqmovn_s16(result_1), vqmovn_s16(result_2));
     vst1q_s8(output + i, result);
@@ -799,39 +839,6 @@ inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
 
   result.val[0] = vaddq_s64(vmovl_s32(vget_low_s32(acc)), mul_0);
   result.val[1] = vaddq_s64(vmovl_s32(vget_high_s32(acc)), mul_1);
-  return result;
-}
-
-// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
-// neon_tensor_utils.cc.
-inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int shift) {
-  using gemmlowp::RoundingDivideByPOT;
-  using gemmlowp::SaturatingRoundingDoublingHighMul;
-  int left_shift = shift > 0 ? shift : 0;
-  int right_shift = shift > 0 ? 0 : -shift;
-  int32x4_t left_shifted_one_dup = vdupq_n_s32(1 << left_shift);
-  int32x4x4_t result;
-  result.val[0] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[0], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[1] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[1], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[2] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[2], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
-  result.val[3] =
-      RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
-                              vmulq_s32(input_val.val[3], left_shifted_one_dup),
-                              quantized_multiplier),
-                          right_shift);
   return result;
 }
 
