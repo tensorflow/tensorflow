@@ -468,6 +468,13 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     }
     typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
     break;
+  case spirv::Decoration::Block:
+    if (words.size() != 2) {
+      return emitError(unknownLoc, "OpDecoration with ")
+             << decorationName << "needs a single target <id>";
+    }
+    // Block decoration does not affect spv.struct type.
+    break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
   }
