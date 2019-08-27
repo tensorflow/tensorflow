@@ -40,9 +40,9 @@ class CSVDatasetOp : public DatasetOpKernel {
         ctx, filenames_tensor->dims() <= 1,
         errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
-    string compression_type;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
-                                                    &compression_type));
+    tstring compression_type;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "compression_type",
+                                                     &compression_type));
 
     OpInputList record_defaults_list;
     OP_REQUIRES_OK(ctx,
@@ -68,9 +68,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, buffer_size > 0,
                 errors::InvalidArgument("buffer_size should be positive"));
 
-    string delim;
+    tstring delim;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "field_delim", &delim));
+                   ParseScalarArgument<tstring>(ctx, "field_delim", &delim));
     OP_REQUIRES(ctx, delim.size() == 1,
                 errors::InvalidArgument("field_delim should be only 1 char"));
 
@@ -80,9 +80,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     bool use_quote_delim;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "use_quote_delim",
                                                   &use_quote_delim));
-    string na_value;
+    tstring na_value;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "na_value", &na_value));
+                   ParseScalarArgument<tstring>(ctx, "na_value", &na_value));
 
     std::vector<Tensor> record_defaults;
     record_defaults.reserve(record_defaults_list.size());
@@ -199,7 +199,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           b->AddScalar(options_.input_buffer_size, &buffer_size));
       TF_RETURN_IF_ERROR(b->AddScalar(header_, &header));
 
-      string delim_string(1, delim_);
+      tstring delim_string(1, delim_);
       TF_RETURN_IF_ERROR(b->AddScalar(delim_string, &delim));
       TF_RETURN_IF_ERROR(b->AddScalar(use_quote_delim_, &use_quote_delim));
       TF_RETURN_IF_ERROR(b->AddScalar(na_value_, &na_value));
@@ -847,9 +847,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     const std::vector<int64> select_cols_;
     const bool use_quote_delim_;
     const char delim_;
-    const string na_value_;
+    const tstring na_value_;
     const bool use_compression_;
-    const string compression_type_;
+    const tstring compression_type_;
     const io::ZlibCompressionOptions options_;
   };  // class Dataset
 

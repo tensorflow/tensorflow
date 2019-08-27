@@ -78,6 +78,8 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
+  tstring(size_t n, char c) : str_(n, c) {}
+
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::string_view>::value,
                                     T>::type* = nullptr>

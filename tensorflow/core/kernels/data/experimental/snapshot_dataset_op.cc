@@ -333,7 +333,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string path;
+    tstring path;
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
@@ -473,7 +473,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
-        hash_dir_ = absl::StrCat(dataset()->dir_, "/", dataset()->graph_hash_);
+        // TODO(dero): remove NOLINT after USE_TSTRING is enabled.
+        hash_dir_ = absl::StrCat(StringPiece(dataset()->dir_), "/",  // NOLINT
+                                 dataset()->graph_hash_);
         return Status::OK();
       }
 
@@ -1116,7 +1118,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string dir_;
+    const tstring dir_;
     const string graph_hash_;
 
     const string reader_path_prefix_;
