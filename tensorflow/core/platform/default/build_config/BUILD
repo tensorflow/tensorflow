@@ -36,7 +36,9 @@ tf_cuda_library(
     name = "stream_executor",
     cuda_deps = [
         "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
         "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
     ],
     deps = [
         "//tensorflow/stream_executor",

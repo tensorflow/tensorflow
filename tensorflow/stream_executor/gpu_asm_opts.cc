@@ -38,27 +38,15 @@ limitations under the License.
 
 namespace stream_executor {
 
-#if TENSORFLOW_USE_ROCM
+#if !GOOGLE_CUDA || defined(PLATFORM_WINDOWS)
 
-port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
-                                                 const char* ptx_contents,
-                                                 GpuAsmOpts options) {
-  return port::InternalError(
-      "Invoking gpu asm compilation not supported on ROCm");
-}
-
-port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
-    int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
-  return CompileGpuAsm(device_ordinal, ptx, compilation_options);
-}
-
-#elif defined(PLATFORM_WINDOWS)
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options) {
   // TODO(b/134675935): Subprocess invocation not supported on Windows.
   return port::InternalError(
-      "Invoking gpu asm compilation not supported on Windows");
+      "Invoking gpu asm compilation is supported on Cuda non-windows "
+      "platformat only");
 }
 
 port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
@@ -66,7 +54,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
   return CompileGpuAsm(device_ordinal, ptx, compilation_options);
 }
 
-#elif GOOGLE_CUDA
+#else
 
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
