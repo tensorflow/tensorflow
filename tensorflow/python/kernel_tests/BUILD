@@ -3275,6 +3275,7 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+        "nomac",  # http://b/139946976
         "notap",  # http://b/31080670
     ],
     xla_enable_strict_auto_jit = True,
