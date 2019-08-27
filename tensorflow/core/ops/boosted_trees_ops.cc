@@ -302,7 +302,7 @@ REGISTER_OP("BoostedTreesAggregateStats")
       DimensionHandle stats_dim;
       TF_RETURN_IF_ERROR(c->Add(logits_dim, hessian_dim, &stats_dim));
       c->set_output(
-          0, c->MakeShape({max_splits, num_buckets, feature_dim, stats_dim}));
+          0, c->MakeShape({max_splits, feature_dim, num_buckets, stats_dim}));
       return Status::OK();
     });
 
