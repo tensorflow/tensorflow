@@ -113,6 +113,17 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertTrue(adapter.has_partial_batch())
     self.assertEqual(adapter.partial_batch_size(), 2)
 
+  def test_epochs(self):
+    num_epochs = 3
+    adapter = self.adapter_cls(
+        self.numpy_input, self.numpy_target, batch_size=5, epochs=num_epochs)
+    ds_iter = iter(adapter.get_dataset())
+    num_batches_per_epoch = self.numpy_input.shape[0] // 5
+    for _ in range(num_batches_per_epoch * num_epochs):
+      next(ds_iter)
+    with self.assertRaises(StopIteration):
+      next(ds_iter)
+
   @test_util.run_in_graph_and_eager_modes
   def test_training_numpy(self):
     if not context.executing_eagerly():
