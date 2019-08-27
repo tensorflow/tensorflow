@@ -343,7 +343,6 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
       return false;
     }
   } else if (!HasXLAKernel(node)) {
-    LOG(ERROR) << "unsupported op node : " << node.DebugString();
     absl::string_view uncompilable_reason = "unsupported op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
