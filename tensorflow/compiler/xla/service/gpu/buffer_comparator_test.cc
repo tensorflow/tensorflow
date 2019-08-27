@@ -184,6 +184,7 @@ TEST_F(BufferComparatorTest, TestNumbers) {
   EXPECT_TRUE(CompareEqualFloatBuffers<int8>({9}, {10}));
   EXPECT_TRUE(CompareEqualFloatBuffers<int8>({90}, {100}));
   EXPECT_TRUE(CompareEqualFloatBuffers<int8>({100}, {90}));
+  EXPECT_FALSE(CompareEqualFloatBuffers<int8>({-128}, {127}));
 }
 
 TEST_F(BufferComparatorTest, TestMultiple) {
