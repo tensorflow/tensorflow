@@ -1,6 +1,82 @@
 # Release 1.15.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Major Features and Improvements
+
+## Breaking Changes
+
+## Bug Fixes and Other Changes
+
+* Promoting `unbatch` from experimental to core API.
+* Adds `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()`.
+* EagerTensor now support buffer interface for tensors.
+* This change bumps the version number of the FullyConnected Op to 5.
+* tensorflow : crash when pointer become nullptr.
+* `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
+* Add support for defaulting the value of `cycle_length` argument of `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
+* parallel_for: Add converter for `MatrixDiag`.
+* Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
+* Add `narrow_range` attribute to `QuantizeAndDequantizeV2` and V3.
+* `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
+* Added new op: `tf.strings.unsorted_segment_join`.
+* `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. A SavedModel code is only applicable to `tf.keras`.
+* Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow)
+* Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
+* Add HW acceleration support for topK_v2
+* Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
+* Add new `TypeSpec` classes
+* CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0
+* Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
+* Expose Head as public API.
+* AutoGraph is now applied automatically to user functions passed to APIs of `tf.data` and `tf.distribute`. If AutoGraph is disabled in the the calling code, it will also be disabled in the user functions.
+* Update docstring for gather to properly describe the non-empty batch_dims case.
+* Added `tf.sparse.from_dense` utility function.
+* Add `GATHER` support to NN API delegate
+* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIs.
+* Improved ragged tensor support in `TensorFlowTestCase`.
+* Makes the a-normal form transformation in Pyct configurable as to which nodes are converted to variables and which are not.
+* `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
+* `ResizeInputTensor` now works for all delegates
+* Start of open development of TF, TFLite, XLA MLIR dialects.
+* Add `EXPAND_DIMS` support to NN API delegate TEST:  expand_dims_test
+* `tf.cond` emits a StatelessIf op if the branch functions are stateless and do not touch any resources.
+* Add support of local soft device placement for eager op.
+* Pass partial_pivoting to the `_TridiagonalSolveGrad`.
+* Add HW acceleration support for `LogSoftMax`.
+* Added a function nested_value_rowids for ragged tensors.
+* fixed a bug in histogram_op.cc.
+* Add guard to avoid acceleration of L2 Normalization with input rank != 4
+* Added evaluation script for COCO minival
+* Add delegate support for QUANTIZE
+* tflite object detection script has a debug mode
+* Add `tf.math.cumulative_logsumexp operation`.
+* Add `tf.ragged.stack`.
+* Add delegate support for `QUANTIZED_16BIT_LSTM`.
+* Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
+* `tf.while_loop` emits a StatelessWhile op if the cond and body functions are stateless and do not touch any resources.
+* Refactors code in Quant8 LSTM support to reduce TFLite binary size.
+* Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
+* Fix memory allocation problem when calling `AddNewInputConstantTensor`.
+* Delegate application failure leaves interpreter in valid state.
+* Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
+* `tf.cond`, `tf.while` and if and while in AutoGraph now accept a nonscalar predicate if has a single element. This does not affec non-V2 control flow.
+* Enables v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
+* Add check for correct memory alignment to `MemoryAllocation::MemoryAllocation()`.
+* Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
+* Added support for `FusedBatchNormV3` in converter.
+* A ragged to dense op for directly calculating tensors.
+* Converts hardswish subgraphs into atomic ops.
+* The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
+* Raise error if `batch_size` argument is used when input is dataset/generator/keras sequence.
+* The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
+* Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the session.run(). When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to session.run(), an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
+* The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
+* Fix accidental quadratic graph construction cost in graph-mode `tf.gradients()`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+a6802739, Aaron Ma, Abdullah Selek, Abolfazl Shahbazi, Ag Ramesh, Albert Z. Guo, Albin Joy, Alex Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Amit Srivastava, amoitra, Andrew Lihonosov, Andrii Prymostka, Anuj Rawat, Astropeak, Ayush Agrawal, Bairen Yi, Bas Aarts, Bastian Eichenberger, Ben Barsdell, Benjamin Peterson, bhack, Bharat Raghunathan, Bhavani Subramanian, Bryan Cutler, candy.dc, Cao Zongyan, Captain-Pool, Casper Da Costa-Luis, Chen Guoyin, Cheng Chang, chengchingwen, Chong Yan, Choong Yin Thong, Christopher Yeh, Clayne Robison, Coady, Patrick, Dan Ganea, David Norman, Denis Khalikov, Deven Desai, Diego Caballero, Duncan Dean, Duncan Riach, Dwight J Lyle, Eamon Ito-Fisher, eashtian3, EFanZh, ejot, Elroy Ashtian Jr, Eric Schweitz, Fangjun Kuang, Fei Hu, fo40225, formath, Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel, gehring, George Grzegorz Pawelczak, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein, Gurpreet Singh, Gustavo Lima Chaves, haison, Haraldur TóMas HallgríMsson, HarikrishnanBalagopal, HåKon Sandsmark, I-Hong, Ilham Firdausi Putra, Imran Salam, Jason Zaman, Jason Zavaglia, jayhpark530, jefby, Jeff Daily, Jeffrey Poznanovic, Jekyll Lai, Jeroen BéDorf, Jerry Shih, jerryyin, jiakai, JiangXIAO, Joe Bowser, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese, Joon, Josh Beal, Julian Niedermeier, Jun Wan, Junqin Zhang, Junyuan Xie, Justin Tunis, Kaixi Hou, Karl Lessard, Karthik Muthuraman, Kbhute-Ibm, khanhlvg, Koock Yoon, kstuedem, Kyuwon Kim, Lakshay Tokas, leike666666, leonard951, Leslie-Fang, Leslie-Fang-Intel, Li, Guizi, Lukas Folle, Lukas Geiger, Mahmoud Abuzaina, Manraj Singh Grover, Margaret Maynard-Reid, Mark Ryan, Matt Conley, Matthew Bentham, Matthew Denton, mbhuiyan, mdfaijul, Mei Jie, merturl, MichaelKonobeev, Michal W. Tarnowski, minds, mpppk, musikisomorphie, Nagy Mostafa, Nayana Thorat, Neil, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, ocjosen, olramde, Pariksheet Pinjari, Patrick J. Lopresti, Patrik Gustavsson, per1234, PeterLee, Phan Van Nguyen Duc, Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben Morais, richardbrks, robert, RonLek, Ryan Jiang, saishruthi, Saket Khandelwal, Saleem Abdulrasool, Sami Kama, Sana-Damani, Sergii Khomenko, Severen Redwood, Shubham Goyal, Sigrid Keydana, Siju Samuel, sleighsoft, smilu97, Son Tran, Srini511, srinivasan.narayanamoorthy, Sumesh Udayakumaran, Sungmann Cho, Tae-Hwan Jung, Taehoon Lee, Takeshi Watanabe, TengLu, terryky, TheMindVirus, ThisIsIsaac, Till Hoffmann, Timothy Liu, Tomer Gafner, Tongxuan Liu, Trent Lo, Trevor Morris, Uday Bondhugula, Vasileios Lioutas, vbvg2008, Vishnuvardhan Janapati, Vivek Suryamurthy, Wei Wang, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui, Xinan Jiang, Xinping Wang, Yann-Yy, Yasir Modak, Yong Tang, Yongfeng Gu, Yuchen Ying, Yuxin Wu, zyeric, 王振华 (Zhenhua Wang)
 
 # Release 1.14.0
 
