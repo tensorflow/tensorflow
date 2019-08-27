@@ -79,7 +79,7 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   HloComputation* parent = dot->parent();
 
   HloInstruction* zero_float = parent->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<half>((half)0.0)));
   zero_float->set_metadata(dot->metadata());
 
   HloInstruction* lpad = parent->AddInstruction(

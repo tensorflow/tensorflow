@@ -57,11 +57,11 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
               op::Dot(AllOf(op::Shape("f16[2048, 1024]"),
                             op::Pad(AllOf(op::Shape("f16[2048, 1024]"),
                                           op::Parameter()),
-                                    AllOf(op::Shape("f32[]"), op::Constant()))),
+                                    AllOf(op::Shape("f16[]"), op::Constant()))),
                       AllOf(op::Shape("f16[1024, 33712]"),
                             op::Pad(AllOf(op::Shape("f16[1024, 33708]"),
                                           op::Parameter()),
-                                    AllOf(op::Shape("f32[]"), op::Constant()))),
+                                    AllOf(op::Shape("f16[]"), op::Constant()))),
                       /*lhs_contracting_dim=*/1,
                       /*rhs_contracting_dim=*/0)))));
 }
@@ -112,13 +112,13 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
                                                           "f16[1024, 33712]"),
                                                       op::Pad()),
                                                 1, 0)))),
-                                  AllOf(op::Shape("f32[]"), op::Constant()))))),
+                                  AllOf(op::Shape("f16[]"), op::Constant()))))),
                   AllOf(op::Shape("f16[33712, 8]"),
                         AllOf(op::Shape("f16[33712, 8]"),
                               op::Pad(
                                   AllOf(op::Shape("f16[33708, 1]"),
                                         op::Parameter()),
-                                  AllOf(op::Shape("f32[]"), op::Constant())))),
+                                  AllOf(op::Shape("f16[]"), op::Constant())))),
                   /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0)))));
 
   auto* dot2 = root->operand(0)->operand(0)->operand(0)->operand(0);
@@ -127,10 +127,10 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
       AllOf(op::Dot(
           AllOf(op::Shape("f16[2048, 1024]"),
                 op::Pad(AllOf(op::Shape("f16[2048, 1024]"), op::Parameter()),
-                        AllOf(op::Shape("f32[]"), op::Constant()))),
+                        AllOf(op::Shape("f16[]"), op::Constant()))),
           AllOf(op::Shape("f16[1024, 33712]"),
                 op::Pad(AllOf(op::Shape("f16[1024, 33708]"), op::Parameter()),
-                        AllOf(op::Shape("f32[]"), op::Constant()))),
+                        AllOf(op::Shape("f16[]"), op::Constant()))),
           /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0)));
 }
 
