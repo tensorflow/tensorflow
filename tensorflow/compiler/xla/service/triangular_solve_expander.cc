@@ -282,7 +282,8 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       // can be solved for X[i] as X[i] = inv(L[i, i]) @ B[i] - L[i, :i] @ X[:i]
 
       // Decide whether we go from first block to last or vice versa
-      auto j = (left_side ^ lower ^ transpose_a) ? num_blocks - 1 - i : i;
+      bool backward = left_side ^ lower ^ transpose_a;
+      auto j = backward ? num_blocks - 1 - i : i;
 
       // Get the size of the inverse blocks (the last one might be smaller)
       int64 block = (n % block_size != 0 && j + 1 == num_blocks)
@@ -310,7 +311,15 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       } else {
         // This matrix multiply get rid of a lot of multiplying with zero
         // (namely, X[i * block_size:] = 0), L[i, :i] @ X[:i]
-        end = {k, std::min(i * block_size, n)};
+        if (backward) {
+          start = {j * block_size,
+                   std::max(0LL, (num_blocks - i) * block_size)};
+          end = {k, n};
+        } else {
+          start = {j * block_size, 0};
+          end = {k, std::min(i * block_size, n)};
+        }
+
         if (!left_side) {
           std::swap(end[0], end[1]);
         }
@@ -343,7 +352,11 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       if (i == 0) {
         x = x_update;
       } else {
-        x = ConcatInDim(builder, {x, x_update}, block_dim);
+        if (backward) {
+          x = ConcatInDim(builder, {x_update, x}, block_dim);
+        } else {
+          x = ConcatInDim(builder, {x, x_update}, block_dim);
+        }
       }
     }
 
