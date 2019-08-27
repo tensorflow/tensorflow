@@ -21,6 +21,20 @@ toolchain(
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 
+toolchain(
+    name = "toolchain-linux-ppc",
+    exec_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:ppc",
+    ],
+    target_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:ppc",
+    ],
+    toolchain = ":cc-compiler-ppc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
 cc_toolchain_suite(
     name = "toolchain",
     toolchains = {
@@ -32,10 +46,12 @@ cc_toolchain_suite(
         "aarch64": ":cc-compiler-local",
         "k8": ":cc-compiler-local",
         "piii": ":cc-compiler-local",
-        "ppc": ":cc-compiler-local",
+        "ppc": ":cc-compiler-ppc",
         "darwin": ":cc-compiler-darwin",
     },
 )
+
+
 
 cc_toolchain(
     name = "cc-compiler-local",
@@ -150,6 +166,47 @@ cc_toolchain_config(
     msvc_link_path = "msvc_not_used",
     msvc_ml_path = "msvc_not_used",
 )
+
+cc_toolchain(
+    name = "cc-compiler-ppc",
+    all_files = ":crosstool_wrapper_driver_is_not_gcc",
+    compiler_files = ":empty",
+    dwp_files = ":empty",
+    linker_files = ":crosstool_wrapper_driver_is_not_gcc",
+    objcopy_files = ":empty",
+    strip_files = ":empty",
+    # To support linker flags that need to go to the start of command line
+    # we need the toolchain to support parameter files. Parameter files are
+    # last on the command line and contain all shared libraries to link, so all
+    # regular options will be left of them.
+    supports_param_files = 1,
+    toolchain_config = ":cc-compiler-ppc-config",
+    toolchain_identifier = "local_linux",
+)
+
+cc_toolchain_config(
+    name = "cc-compiler-ppc-config",
+    builtin_include_directories = [
+        "/dt7/usr/include/c++/7",
+        "/dt7/usr/include/c++/7/powerpc64le-unknown-linux-gnu",
+        "/dt7/usr/include/c++/7/backward",
+        "/dt7/usr/lib/gcc/powerpc64le-unknown-linux-gnu/7/include",
+        "/dt7/usr/lib/gcc/powerpc64le-unknown-linux-gnu/7/include-fixed",
+        "/dt7/usr/include",
+        "/usr/local/cuda-10.0/targets/ppc64le-linux/include",
+        "/usr/local/cuda-10.0/include",
+        "/usr/local/cuda-10.0/extras/CUPTI/include",
+        "/usr/include",
+    ],
+    cpu = "local",
+    extra_no_canonical_prefixes_flags = ["-fno-canonical-system-headers"],
+    host_compiler_path = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
+    host_compiler_prefix = "/usr/bin",
+    host_compiler_warnings = [],
+    host_unfiltered_compile_flags = [],
+    linker_bin_path = "/usr/bin",
+)
+
 
 filegroup(
     name = "empty",
