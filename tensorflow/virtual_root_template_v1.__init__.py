@@ -104,4 +104,10 @@ if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):
   _sys.modules[__name__] = _deprecation.DeprecationWrapper(
       _sys.modules[__name__], "")
 
+# These should not be visible in the main tf module.
+del core
+del python
+del compiler
+del tools
+del examples
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)
