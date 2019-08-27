@@ -543,6 +543,8 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   }
 
   for (auto &b : op) {
+    // TODO(antiagainst): support basic blocks and control flow properly.
+    encodeInstructionInto(functions, spirv::Opcode::OpLabel, {getNextID()});
     for (auto &op : b) {
       if (failed(processOperation(&op))) {
         return failure();

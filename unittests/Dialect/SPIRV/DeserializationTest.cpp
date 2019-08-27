@@ -111,11 +111,9 @@ protected:
     return id;
   }
 
-  uint32_t addFunctionEnd() {
-    auto id = nextID++;
-    addInstruction(spirv::Opcode::OpFunctionEnd, {id});
-    return id;
-  }
+  void addFunctionEnd() { addInstruction(spirv::Opcode::OpFunctionEnd, {}); }
+
+  void addReturn() { addInstruction(spirv::Opcode::OpReturn, {}); }
 
 protected:
   SmallVector<uint32_t, 5> binary;
@@ -200,4 +198,30 @@ TEST_F(DeserializationTest, FunctionMissingParameterFailure) {
 
   ASSERT_EQ(llvm::None, deserialize());
   expectDiagnostic("expected OpFunctionParameter instruction");
+}
+
+TEST_F(DeserializationTest, FunctionMissingLabelForFirstBlockFailure) {
+  addHeader();
+  auto voidType = addVoidType();
+  auto fnType = addFunctionType(voidType, {});
+  addFunction(voidType, fnType);
+  // Missing OpLabel
+  addReturn();
+  addFunctionEnd();
+
+  ASSERT_EQ(llvm::None, deserialize());
+  expectDiagnostic("a basic block must start with OpLabel");
+}
+
+TEST_F(DeserializationTest, FunctionMalformedLabelFailure) {
+  addHeader();
+  auto voidType = addVoidType();
+  auto fnType = addFunctionType(voidType, {});
+  addFunction(voidType, fnType);
+  addInstruction(spirv::Opcode::OpLabel, {}); // Malformed OpLabel
+  addReturn();
+  addFunctionEnd();
+
+  ASSERT_EQ(llvm::None, deserialize());
+  expectDiagnostic("OpLabel should only have result <id>");
 }

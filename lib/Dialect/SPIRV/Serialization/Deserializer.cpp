@@ -1,3 +1,4 @@
+//===- Deserializer.cpp - MLIR SPIR-V Deserialization ---------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -41,6 +42,11 @@ static inline StringRef decodeStringLiteral(ArrayRef<uint32_t> words,
   StringRef str(reinterpret_cast<const char *>(words.data() + wordIndex));
   wordIndex += str.size() / 4 + 1;
   return str;
+}
+
+// Extracts the opcode from the given first word of a SPIR-V instruction.
+static inline spirv::Opcode extractOpcode(uint32_t word) {
+  return static_cast<spirv::Opcode>(word & 0xffff);
 }
 
 namespace {
@@ -177,6 +183,13 @@ private:
   LogicalResult processConstantNull(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
+  // Control flow
+  //===--------------------------------------------------------------------===//
+
+  /// Processes a SPIR-V OpLabel instruction with the given `operands`.
+  LogicalResult processLabel(ArrayRef<uint32_t> operands);
+
+  //===--------------------------------------------------------------------===//
   // Instruction
   //===--------------------------------------------------------------------===//
 
@@ -194,6 +207,9 @@ private:
   LogicalResult
   sliceInstruction(spirv::Opcode &opcode, ArrayRef<uint32_t> &operands,
                    Optional<spirv::Opcode> expectedOpcode = llvm::None);
+
+  /// Returns the next instruction's opcode if exists.
+  Optional<spirv::Opcode> peekOpcode();
 
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
@@ -581,9 +597,17 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     }
   }
 
-  // Create a new builder for building the body
+  // Create a new builder for building the body.
   OpBuilder funcBody(funcOp.getBody());
   std::swap(funcBody, opBuilder);
+
+  // Make sure the first basic block, if exists, starts with an OpLabel
+  // instruction.
+  if (auto nextOpcode = peekOpcode()) {
+    if (*nextOpcode != spirv::Opcode::OpFunctionEnd &&
+        *nextOpcode != spirv::Opcode::OpLabel)
+      return emitError(unknownLoc, "a basic block must start with OpLabel");
+  }
 
   spirv::Opcode opcode = spirv::Opcode::OpNop;
   ArrayRef<uint32_t> instOperands;
@@ -597,9 +621,12 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   if (opcode != spirv::Opcode::OpFunctionEnd) {
     return failure();
   }
+
+  // Process OpFunctionEnd.
   if (!instOperands.empty()) {
     return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
   }
+
   std::swap(funcBody, opBuilder);
   return success();
 }
@@ -1125,6 +1152,18 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// Control flow
+//===----------------------------------------------------------------------===//
+
+LogicalResult Deserializer::processLabel(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 1) {
+    return emitError(unknownLoc, "OpLabel should only have result <id>");
+  }
+  // TODO(antiagainst): support basic blocks and control flow properly.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//
 
@@ -1173,10 +1212,16 @@ Deserializer::sliceInstruction(spirv::Opcode &opcode,
   if (nextOffset > binarySize)
     return emitError(unknownLoc, "insufficient words for the last instruction");
 
-  opcode = static_cast<spirv::Opcode>(binary[curOffset] & 0xffff);
+  opcode = extractOpcode(binary[curOffset]);
   operands = binary.slice(curOffset + 1, wordCount - 1);
   curOffset = nextOffset;
   return success();
+}
+
+Optional<spirv::Opcode> Deserializer::peekOpcode() {
+  if (curOffset >= binary.size())
+    return llvm::None;
+  return extractOpcode(binary[curOffset]);
 }
 
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
@@ -1237,6 +1282,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processMemberDecoration(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
+  case spirv::Opcode::OpLabel:
+    return processLabel(operands);
   default:
     break;
   }
