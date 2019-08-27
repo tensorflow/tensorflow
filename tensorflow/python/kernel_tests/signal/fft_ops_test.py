@@ -607,14 +607,17 @@ class FFTShiftTest(test.TestCase):
 
 
   @test_util.run_deprecated_v1
-  def testNoneAxes(self):
+  def testPlaceholder(self):
       x = array_ops.placeholder(shape=[None, None, None], dtype='float32')
       axes_to_test = [None, 1, [1, 2]]
       for axes in axes_to_test:
         y_fftshift = fft_ops.fftshift(x, axes=axes)
         y_ifftshift = fft_ops.ifftshift(x, axes=axes)
         with self.session() as sess:
-            sess.run([y_fftshift, y_ifftshift], feed_dict={x: np.zeros((16, 256, 256))})
+            x_np = np.random.rand(16, 256, 256)
+            y_fftshift_res, y_ifftshift_res = sess.run([y_fftshift, y_ifftshift], feed_dict={x: x_np})
+            self.assertAllEqual(y_fftshift_res, np.fft.fftshift(x_np))
+            self.assertAllEqual(y_ifftshift_res, np.fft.ifftshift(x_np))
 
 if __name__ == "__main__":
   test.main()
