@@ -45298,6 +45298,13 @@ op {
     name: "T"
     type: "type"
   }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TPUReplicatedOutput"
