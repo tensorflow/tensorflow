@@ -273,6 +273,7 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
+    # TODO(bfontain): Remove Google specific code from this class.
     if self._is_google_environment():
       self._environment = 'google'
       self.rpc_layer = None
