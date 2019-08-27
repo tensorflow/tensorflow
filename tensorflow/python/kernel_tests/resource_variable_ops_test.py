@@ -298,6 +298,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(g[1], [[0., 0.], [0., 0.]])
 
+  @test_util.run_deprecated_v1
+  def testUnconnectedGradientZeros(self):
+    b = resource_variable_ops.ResourceVariable(initial_value=[[3., 4.]])
+    c = constant_op.constant(0.)
+    g = gradients_impl.gradients(c, [b], unconnected_gradients="zero")[0]
+    self.assertAllEqual(g.shape.as_list(), [1, 2])
+
   @test_util.run_in_graph_and_eager_modes
   def testGradientGatherNdIndexedSlices(self):
     v = resource_variable_ops.ResourceVariable(
