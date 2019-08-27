@@ -56,7 +56,7 @@ public:
                            ArrayRef<Type> resultTypes,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
@@ -65,7 +65,7 @@ public:
                            ArrayRef<Type> resultTypes,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
@@ -526,7 +526,7 @@ public:
 private:
   Operation(Location location, OperationName name, unsigned numResults,
             unsigned numSuccessors, unsigned numRegions,
-            const NamedAttributeList &attributes, MLIRContext *context);
+            const NamedAttributeList &attributes);
 
   // Operations are deleted through the destroy() member because they are
   // allocated with malloc.

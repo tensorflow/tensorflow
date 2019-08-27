@@ -265,7 +265,7 @@ Operation *ArgConverter::convertArgument(BlockArgument *origArg,
 /// given input and result types.
 Operation *ArgConverter::createCast(ArrayRef<Value *> inputs, Type outputType) {
   return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
-                           llvm::None, 0, false, outputType.getContext());
+                           llvm::None, 0, false);
 }
 
 //===----------------------------------------------------------------------===//
