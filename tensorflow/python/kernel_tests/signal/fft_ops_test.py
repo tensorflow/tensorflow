@@ -616,8 +616,8 @@ class FFTShiftTest(test.TestCase):
         with self.session() as sess:
             x_np = np.random.rand(16, 256, 256)
             y_fftshift_res, y_ifftshift_res = sess.run([y_fftshift, y_ifftshift], feed_dict={x: x_np})
-            self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np))
-            self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np))
+            self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
+            self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
 
 if __name__ == "__main__":
   test.main()
