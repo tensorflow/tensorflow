@@ -1065,6 +1065,40 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   }
 }
 
+class QuantizeUnpackTest : public QuantizeModelTest {
+protected:
+    QuantizeUnpackTest() {
+      input_model_ = ReadModel(internal::kModelWithUnpack);
+      readonly_model_ = input_model_->GetModel();
+      readonly_model_->UnPackTo(&model_);
+    }
+};
+
+TEST_F(QuantizeUnpackTest, VerifyUnpack) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+
+  // The model should only have one input and 2 outputs.
+  EXPECT_EQ(subgraph->inputs.size(), 1);
+  EXPECT_EQ(subgraph->outputs.size(), 2);
+
+  // Ensure quantization parameters before and after unpack,
+  // are preserved after quantization for all outputs of
+  // unpack (which would be tensors[1] and tensors[0].
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0],
+          subgraph->tensors[1]->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0],
+          subgraph->tensors[2]->quantization->scale[0]);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0],
+          subgraph->tensors[2]->quantization->zero_point[0]);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0],
+          subgraph->tensors[2]->quantization->zero_point[0]);
+
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite
