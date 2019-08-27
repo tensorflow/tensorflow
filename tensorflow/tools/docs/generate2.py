@@ -234,6 +234,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
+  try:
+    doc_controls.do_not_generate_docs(tf.compat.v2.compat.v1)
+  except AttributeError:
+    pass
+
   base_dir = path.normpath(path.join(tf.__file__, "../.."))
 
   base_dirs = (
