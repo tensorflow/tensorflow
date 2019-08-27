@@ -109,8 +109,9 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let printer = [{ *p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
-    Type stringType = OpaqueType::get(Identifier::get("foo", result->context),
-                                      "string", result->context);
+    Type stringType = OpaqueType::get(Identifier::get("foo",
+                                      result->getContext()), "string",
+                                      result->getContext());
     return parser->parseAttribute(attr, stringType, "attr", result->attributes);
   }];
 }

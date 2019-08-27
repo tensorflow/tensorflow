@@ -29,7 +29,7 @@ Operation *createOp(MLIRContext *context, bool resizableOperands,
                     ArrayRef<Type> resultTypes = llvm::None) {
   return Operation::create(
       UnknownLoc::get(context), OperationName("foo.bar", context), operands,
-      resultTypes, llvm::None, llvm::None, 0, resizableOperands, context);
+      resultTypes, llvm::None, llvm::None, 0, resizableOperands);
 }
 
 TEST(OperandStorageTest, NonResizable) {
