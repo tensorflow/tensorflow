@@ -179,7 +179,8 @@ class Model(network.Network):
           (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
-    return super(Model, self).load_weights(filepath, by_name, skip_mismatch=skip_mismatch)
+    return super(Model, self).load_weights(filepath, by_name,
+                                           skip_mismatch=skip_mismatch)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,

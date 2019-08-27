@@ -1366,7 +1366,8 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(f, self.layers, skip_mismatch)
+        saving.load_weights_from_hdf5_group_by_name(f, self.layers,
+                                                    skip_mismatch)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
 
