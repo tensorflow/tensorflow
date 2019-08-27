@@ -47,6 +47,10 @@ class Reduction(object):
   * `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
      weights. DEPRECATED.
   * `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`. DEPRECATED.
+  
+  More details about the above values are described in [this tutorial]
+  (https://www.tensorflow.org/beta/tutorials/distribute/training_loops#define_the_loss_function).
+  
   """
 
   NONE = "none"
