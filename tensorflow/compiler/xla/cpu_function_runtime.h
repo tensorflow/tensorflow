@@ -138,17 +138,6 @@ class BufferInfo {
 // Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
 constexpr size_t kAlign = 64;
 
-// When declaring variables that will be passed to an XLA compiled function as
-// input via set_arg_data(), be it a regular input or a resource variable in the
-// graph, the C++ variables must be aligned.
-//
-// Example usage:
-//   XLA_ALIGN std::array<float, 4> arg_x;
-//   XLA_ALIGN float arg_y;
-//   xla_instance.set_arg_data(0, arg_x.date());
-//   xla_instance.set_arg_data(0, &arg_y);
-#define XLA_ALIGN alignas(kAlign)
-
 // AlignedBufferBytes returns the sum of the size of each buffer in
 // `buffer_infos`, skipping constants, on-stack buffers and, if
 // allocate_entry_params is false, entry parameters.  There are `n` entries in
