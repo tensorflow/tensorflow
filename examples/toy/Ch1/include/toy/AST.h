@@ -33,10 +33,9 @@
 
 namespace toy {
 
-/// A variable
+/// A variable type with shape information.
 struct VarType {
-  enum { TY_FLOAT, TY_INT } elt_ty;
-  std::vector<int> shape;
+  std::vector<int64_t> shape;
 };
 
 /// Base class for all expression nodes.

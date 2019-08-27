@@ -33,10 +33,9 @@
 
 namespace toy {
 
-/// A variable
+/// A variable type with shape information.
 struct VarType {
-  enum { TY_FLOAT, TY_INT } elt_ty;
-  std::vector<int> shape;
+  std::vector<int64_t> shape;
 };
 
 /// Base class for all expression nodes.
@@ -50,9 +49,7 @@ public:
     Expr_Var,
     Expr_BinOp,
     Expr_Call,
-    Expr_Print, // builtin
-    Expr_If,
-    Expr_For,
+    Expr_Print,
   };
 
   ExprAST(ExprASTKind kind, Location location)
@@ -85,7 +82,7 @@ public:
   static bool classof(const ExprAST *C) { return C->getKind() == Expr_Num; }
 };
 
-///
+/// Expression class for a literal value.
 class LiteralExprAST : public ExprAST {
   std::vector<std::unique_ptr<ExprAST>> values;
   std::vector<int64_t> dims;
@@ -116,7 +113,7 @@ public:
   static bool classof(const ExprAST *C) { return C->getKind() == Expr_Var; }
 };
 
-///
+/// Expression class for defining a variable.
 class VarDeclExprAST : public ExprAST {
   std::string name;
   VarType type;
@@ -136,7 +133,7 @@ public:
   static bool classof(const ExprAST *C) { return C->getKind() == Expr_VarDecl; }
 };
 
-///
+/// Expression class for a return operator.
 class ReturnExprAST : public ExprAST {
   llvm::Optional<std::unique_ptr<ExprAST>> expr;
 

@@ -76,32 +76,36 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
 
 int dumpMLIR() {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
-  if (inputType == InputType::MLIR ||
-      llvm::StringRef(inputFilename).endswith(".mlir")) {
-    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
-        llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
-    if (std::error_code EC = fileOrErr.getError()) {
-      llvm::errs() << "Could not open input file: " << EC.message() << "\n";
-      return -1;
-    }
-    llvm::SourceMgr sourceMgr;
-    sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
-    module = mlir::parseSourceFile(sourceMgr, &context);
-    if (!module) {
-      llvm::errs() << "Error can't load file " << inputFilename << "\n";
-      return 3;
-    }
-    if (failed(mlir::verify(*module))) {
-      llvm::errs() << "Error verifying MLIR module\n";
-      return 4;
-    }
-  } else {
+
+  // Handle '.toy' input to the compiler.
+  if (inputType != InputType::MLIR &&
+      !llvm::StringRef(inputFilename).endswith(".mlir")) {
     auto moduleAST = parseInputFile(inputFilename);
-    module = mlirGen(context, *moduleAST);
+    mlir::OwningModuleRef module = mlirGen(context, *moduleAST);
+    if (!module)
+      return 1;
+
+    module->dump();
+    return 0;
   }
-  if (!module)
-    return 1;
+
+  // Otherwise, the input is '.mlir'.
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
+      llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
+  if (std::error_code EC = fileOrErr.getError()) {
+    llvm::errs() << "Could not open input file: " << EC.message() << "\n";
+    return -1;
+  }
+
+  // Parse the input mlir.
+  llvm::SourceMgr sourceMgr;
+  sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc());
+  mlir::OwningModuleRef module = mlir::parseSourceFile(sourceMgr, &context);
+  if (!module) {
+    llvm::errs() << "Error can't load file " << inputFilename << "\n";
+    return 3;
+  }
+
   module->dump();
   return 0;
 }
