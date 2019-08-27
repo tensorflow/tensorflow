@@ -87,9 +87,10 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_EXPAND_DIMS:
-      property.inputs = {{0, {}}, {1, {}}};
+      // We skip input 1 as it is not real valued (it's the index of axis) and
+      // hence does not need to be quantized.
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
       property.version = 1;
       break;
     case BuiltinOperator_FULLY_CONNECTED: {
