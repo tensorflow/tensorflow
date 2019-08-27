@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -78,7 +79,18 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  if (compile_with_xla_) {
+#if defined(IS_MOBILE_PLATFORM)
+    return errors::Unimplemented(
+        "Compile with XLA is not available on mobile devices.");
+#else   // !IS_MOBILE_PLATFORM
+    std::unique_ptr<OpKernel> kernel;
+    TF_RETURN_IF_ERROR(CreateXlaKernel(flr_, ndef, &kernel));
+    k = kernel.release();
+#endif  // !IS_MOBILE_PLATFORM
+  } else {
+    TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  }
   kernel_.reset(k);
   return Status::OK();
 }
