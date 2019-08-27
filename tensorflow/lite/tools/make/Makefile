@@ -99,20 +99,7 @@ $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
-tensorflow/lite/experimental/ruy/allocator.cc \
-tensorflow/lite/experimental/ruy/block_map.cc \
-tensorflow/lite/experimental/ruy/blocking_counter.cc \
-tensorflow/lite/experimental/ruy/context.cc \
-tensorflow/lite/experimental/ruy/detect_arm.cc \
-tensorflow/lite/experimental/ruy/kernel_arm32.cc \
-tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack_arm.cc \
-tensorflow/lite/experimental/ruy/pmu.cc \
-tensorflow/lite/experimental/ruy/thread_pool.cc \
-tensorflow/lite/experimental/ruy/trace.cc \
-tensorflow/lite/experimental/ruy/trmul.cc \
-tensorflow/lite/experimental/ruy/tune.cc \
-tensorflow/lite/experimental/ruy/wait.cc
+$(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -129,6 +116,9 @@ CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
