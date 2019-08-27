@@ -116,7 +116,7 @@ private:
 class LLVMOpLowering : public ConversionPattern {
 public:
   LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
-                 LLVMTypeConverter &lowering);
+                 LLVMTypeConverter &lowering, PatternBenefit benefit = 1);
 
 protected:
   // Back-reference to the lowering class, used to call type and function

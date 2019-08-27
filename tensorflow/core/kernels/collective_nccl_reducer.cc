@@ -54,22 +54,31 @@ void NcclReducer::Run(StatusCallback done) {
     // Create an on-device scalar value from group_size_.
     // TODO(ayushd, tucker): avoid this copy by either reusing across
     // invocations or providing the scalar to the kernel in host memory.
-    Tensor group_size_val(col_ctx_->output->dtype(), TensorShape({}));
+    Tensor group_size_val;
     switch (col_ctx_->output->dtype()) {
+      case DT_HALF:
+        group_size_val =
+            Tensor(static_cast<Eigen::half>(col_params_->group.group_size));
+        break;
       case DT_FLOAT:
-        group_size_val.scalar<float>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<float>(col_params_->group.group_size));
         break;
       case DT_DOUBLE:
-        group_size_val.scalar<double>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<double>(col_params_->group.group_size));
         break;
       case DT_INT32:
-        group_size_val.scalar<int32>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<int32>(col_params_->group.group_size));
         break;
       case DT_INT64:
-        group_size_val.scalar<int64>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<int64>(col_params_->group.group_size));
         break;
       default:
-        done(errors::Internal("Unsupported type ", col_ctx_->output->dtype()));
+        done(errors::Internal("Unsupported type ",
+                              DataTypeString(col_ctx_->output->dtype())));
         return;
     }
     group_size = Tensor(

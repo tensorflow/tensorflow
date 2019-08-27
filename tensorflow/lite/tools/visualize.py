@@ -114,27 +114,26 @@ text {
 
 _D3_HTML_TEMPLATE = """
   <script>
-    // Build graph data
-    var graph = %s;
-
-    var svg = d3.select("#subgraph%d")
-    var width = svg.attr("width");
-    var height = svg.attr("height");
-    // Make the graph scrollable.
-    svg = svg.call(d3.zoom().on("zoom", function() {
-      svg.attr("transform", d3.event.transform);
-    })).append("g");
-
-
-    var color = d3.scaleOrdinal(d3.schemeDark2);
-
-    var simulation = d3.forceSimulation()
-        .force("link", d3.forceLink().id(function(d) {return d.id;}))
-        .force("charge", d3.forceManyBody())
-        .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
-
-
     function buildGraph() {
+      // Build graph data
+      var graph = %s;
+
+      var svg = d3.select("#subgraph%d")
+      var width = svg.attr("width");
+      var height = svg.attr("height");
+      // Make the graph scrollable.
+      svg = svg.call(d3.zoom().on("zoom", function() {
+        svg.attr("transform", d3.event.transform);
+      })).append("g");
+
+
+      var color = d3.scaleOrdinal(d3.schemeDark2);
+
+      var simulation = d3.forceSimulation()
+          .force("link", d3.forceLink().id(function(d) {return d.id;}))
+          .force("charge", d3.forceManyBody())
+          .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
+
       var edge = svg.append("g").attr("class", "edges").selectAll("line")
         .data(graph.edges).enter().append("path").attr("stroke","black").attr("fill","none")
 

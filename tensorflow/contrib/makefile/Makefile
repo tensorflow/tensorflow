@@ -74,7 +74,7 @@ HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
-HOST_CXXFLAGS := --std=c++11
+HOST_CXXFLAGS := --std=c++14
 HOST_LDOPTS :=
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
@@ -185,7 +185,7 @@ ifneq ($(TARGET),ANDROID)
   OPTFLAGS += -march=native
 endif
 
-CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
+CXXFLAGS := --std=c++14 -DIS_SLIM_BUILD -fno-exceptions -DNDEBUG $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
@@ -416,7 +416,7 @@ $(MARCH_OPTION) \
 
 	ifeq ($(BUILD_FOR_TEGRA),1)
 		NVCC := $(JETPACK)/cuda/bin/nvcc
-		NVCCFLAGS := -x=cu -D__CUDACC__ -DNVCC -DANDROID_TEGRA -ccbin $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++ --std c++11 --expt-relaxed-constexpr -m64 -gencode arch=compute_53,\"code=sm_53\" -gencode arch=compute_62,\"code=sm_62\" -DEIGEN_AVOID_STL_ARRAY -DTENSORFLOW_USE_EIGEN_THREADPOOL -DLANG_CXX11 -DEIGEN_HAS_C99_MATH -DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=5.3
+		NVCCFLAGS := -x=cu -D__CUDACC__ -DNVCC -DANDROID_TEGRA -ccbin $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++ --std c++14 --expt-relaxed-constexpr -m64 -gencode arch=compute_53,\"code=sm_53\" -gencode arch=compute_62,\"code=sm_62\" -DEIGEN_AVOID_STL_ARRAY -DTENSORFLOW_USE_EIGEN_THREADPOOL -DLANG_CXX14 -DEIGEN_HAS_C99_MATH -DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=5.3
 		CXXFLAGS4NVCC =\
 -DIS_SLIM_BUILD \
 -DANDROID_TEGRA \
@@ -433,7 +433,7 @@ $(MARCH_OPTION) \
 -DANDROID_TEGRA \
 -DEIGEN_AVOID_STL_ARRAY \
 -DEIGEN_HAS_C99_MATH \
--DLANG_CXX11 -DTENSORFLOW_USE_EIGEN_THREADPOOL -DTF_EXTRA_CUDA_CAPABILITIES=5.3
+-DLANG_CXX14 -DTENSORFLOW_USE_EIGEN_THREADPOOL -DTF_EXTRA_CUDA_CAPABILITIES=5.3
 
 		INCLUDES += \
 -Itensorflow/core/kernels \
@@ -655,8 +655,7 @@ $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
 tensorflow/core/profiler/internal/profiler_interface.cc \
 tensorflow/core/profiler/internal/traceme_recorder.cc \
-tensorflow/core/profiler/lib/profiler_session.cc \
-tensorflow/core/profiler/lib/traceme.cc \
+$(wildcard tensorflow/core/profiler/lib/*.cc) \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -860,7 +859,7 @@ $(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(DEPDIR)$*)
-	$(CXX) $(patsubst --std=c++11,--std=c99, $(CXXFLAGS)) -x c $(DEPFLAGS) \
+	$(CXX) $(patsubst --std=c++14,--std=c99, $(CXXFLAGS)) -x c $(DEPFLAGS) \
 $(INCLUDES) -c $< -o $@
 	@mv -f $(DEPDIR)/$*.Td $(DEPDIR)/$*.d
 

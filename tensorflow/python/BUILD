@@ -20,6 +20,7 @@ visibility = [
 ]
 
 load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -99,6 +100,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":_pywrap_utils",
         ":array_ops",
         ":audio_ops_gen",
         ":bitwise_ops",
@@ -377,6 +379,22 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_utils",
+    srcs = ["util/util_wrapper.cc"],
+    hdrs = ["util/util.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    module_name = "_pywrap_utils",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "cpp_python_util",
     srcs = ["util/util.cc"],
@@ -598,7 +616,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -686,6 +703,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_utils",
         ":common_shapes",
         ":composite_tensor",
         ":convert_to_constants",
@@ -914,6 +932,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:execution_callbacks",
         "@six_archive//:six",
     ],
 )
@@ -955,6 +974,30 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "op_callbacks",
+    srcs = ["framework/op_callbacks.py"],
+    srcs_version = "PY2AND3",
+)
+
+cuda_py_test(
+    name = "op_callbacks_test",
+    srcs = ["framework/op_callbacks_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_test_lib",
+        ":script_ops",
+        ":sparse_ops",
+        ":sparse_tensor",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:execute",
+        "//tensorflow/python/eager:execution_callbacks",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -3174,6 +3217,36 @@ cuda_py_test(
 )
 
 py_library(
+    name = "loss_scaling_gradient_tape",
+    srcs = ["training/experimental/loss_scaling_gradient_tape.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":loss_scale",
+        ":unconnected_gradients",
+        ":util",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+py_test(
+    name = "loss_scaling_gradient_tape_test",
+    size = "medium",
+    srcs = ["training/experimental/loss_scaling_gradient_tape_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":loss_scale",
+        ":loss_scaling_gradient_tape",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
     name = "math_grad",
     srcs = ["ops/math_grad.py"],
     srcs_version = "PY2AND3",
@@ -3735,6 +3808,7 @@ py_library(
         ":linalg_ops",
         ":logging_ops",
         ":lookup_ops",
+        ":loss_scaling_gradient_tape",
         ":manip_grad",
         ":manip_ops",
         ":math_grad",
@@ -4930,7 +5004,6 @@ tf_py_wrap_cc(
         "util/tfprof.i",
         "util/traceme.i",
         "util/transform_graph.i",
-        "util/util.i",
         "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -4999,14 +5072,20 @@ tf_py_wrap_cc(
 # the dynamic libraries of custom ops can find it at runtime.
 genrule(
     name = "pywrap_tensorflow_filtered_def_file",
-    srcs = ["//tensorflow:tensorflow_def_file"],
+    srcs = [
+        "//tensorflow:tensorflow_def_file",
+        "//tensorflow/tools/def_file_filter:symbols_pybind",
+        ":cpp_python_util",
+    ],
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
         "//tensorflow:windows": """
               $(location @local_config_def_file_filter//:def_file_filter) \\
               --input $(location //tensorflow:tensorflow_def_file) \\
               --output $@ \\
-              --target _pywrap_tensorflow_internal.pyd
+              --target _pywrap_tensorflow_internal.pyd \\
+              --lib_paths $(execpath :cpp_python_util) \\
+              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind)
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
@@ -6828,6 +6907,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
+        "//third_party/car/deep_nets/tensorflow:__subpackages__",
     ],
     deps = [
         ":framework_for_generated_wrappers",

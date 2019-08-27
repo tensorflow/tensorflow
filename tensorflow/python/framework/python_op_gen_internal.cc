@@ -26,11 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -379,7 +377,7 @@ string ShapeToPython(const TensorShapeProto& shape) {
 }
 
 string TensorToPython(const TensorProto& proto) {
-  return ProtoShortDebugString(proto);
+  return proto.ShortDebugString();
 }
 
 string AttrListToPython(const AttrValue& value,
@@ -472,6 +470,12 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
   const int last_index = str.size() - 1;
   for (int i = 0; i <= last_index; ++i) {
     const char c = str[i];
+    // Convert namespace separators ('>' characters) to joiners
+    if (c == '>') {
+      result->push_back(joiner);
+      continue;
+    }
+
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
     if (isupper(c) && (i > 0)) {

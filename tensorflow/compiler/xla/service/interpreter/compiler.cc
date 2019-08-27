@@ -126,15 +126,6 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
   return std::move(executable);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>>
-InterpreterCompiler::RunBackendOnModuleGroup(
-    std::unique_ptr<HloModuleGroup> module_group,
-    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  return Unimplemented(
-      "Module group compilation is not supported on Interpreter.");
-}
-
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_exec,

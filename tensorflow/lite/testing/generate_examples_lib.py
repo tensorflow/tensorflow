@@ -832,12 +832,21 @@ def make_identity_tests(options):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1], [3, 3]],
-      "op_to_use": ["identity", "identity_n", "snapshot"],
+      "op_to_use": [
+          "identity", "identity_n", "snapshot", "identity_n_with_2_inputs"
+      ],
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
-        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    input_tensors = []
+    input_count = (2 if parameters["op_to_use"] == "identity_n_with_2_inputs"
+                   else 1)
+    input_tensors = [
+        tf.placeholder(
+            dtype=tf.float32, name="input", shape=parameters["input_shape"])
+        for _ in range(input_count)
+    ]
+
     # We add the Multiply before Identity just as a walk-around to make the test
     # pass when input_shape is scalar.
     # During graph transformation, TOCO will replace the Identity op with
@@ -845,21 +854,24 @@ def make_identity_tests(options):
     # between missing shape and scalar shape. As a result, when input has scalar
     # shape, this conversion still fails.
     # TODO(b/129197312), remove the walk-around code once the bug is fixed.
-    input_doubled = input_tensor * 2.0
+    inputs_doubled = [input_tensor * 2.0 for input_tensor in input_tensors]
     if parameters["op_to_use"] == "identity":
-      identity_output = tf.identity(input_doubled)
-    elif parameters["op_to_use"] == "identity_n":
-      # Testing `IdentityN` with a single tensor.
-      identity_output = tf.identity_n([input_doubled])[0]
+      identity_outputs = [tf.identity(inputs_doubled[0])]
     elif parameters["op_to_use"] == "snapshot":
-      identity_output = array_ops.snapshot(input_doubled)
-    return [input_tensor], [identity_output]
+      identity_outputs = [array_ops.snapshot(inputs_doubled[0])]
+    elif parameters["op_to_use"] in ("identity_n", "identity_n_with_2_inputs"):
+      identity_outputs = tf.identity_n(inputs_doubled)
+    return input_tensors, identity_outputs
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(
-        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    input_values = [
+        create_tensor_data(
+            np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+        for _ in range(len(inputs))
+    ]
+
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 

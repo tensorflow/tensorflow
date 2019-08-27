@@ -23,9 +23,9 @@
 #include "mlir/Target/NVVMIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
@@ -55,7 +55,7 @@ protected:
   LogicalResult convertOperation(Operation &opInst,
                                  llvm::IRBuilder<> &builder) override {
 
-#include "mlir/LLVMIR/NVVMConversions.inc"
+#include "mlir/Dialect/LLVMIR/NVVMConversions.inc"
 
     return LLVM::ModuleTranslation::convertOperation(opInst, builder);
   }

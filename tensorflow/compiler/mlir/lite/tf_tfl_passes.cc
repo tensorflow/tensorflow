@@ -39,16 +39,16 @@ bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
   return false;
 }
 
-void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
-                                bool emit_quant_adaptor_ops,
-                                bool lower_tensor_list_ops,
-                                mlir::PassManager *pass_manager) {
+void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
+                                mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   // Ophint extraction will happen after island extraction pass.
   pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
+  // Convert composite op pass will happen after ophint extraction pass.
+  pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
 
-  if (lower_tensor_list_ops) {
+  if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
     // ops are constant folded into variant types.
     // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
@@ -66,19 +66,19 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
-  if (emit_builtin_tflite_ops) {
+  if (pass_config.emit_builtin_tflite_ops) {
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (run_quantize) {
+    if (pass_config.run_quantize) {
       pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
           /*quantize_sign=*/false));
       pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-      pass_manager->addPass(
-          mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+      pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
+          pass_config.emit_quant_adaptor_ops));
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::createCSEPass());

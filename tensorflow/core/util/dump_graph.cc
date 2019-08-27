@@ -90,18 +90,24 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
         << "variable or function argument.";
     return "(TF_DUMP_GRAPH_PREFIX not specified)";
   }
-  Status status = env->RecursivelyCreateDir(dir);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to create " << dir << " for dumping " << proto_type
-                 << ": " << status;
-    return "(unavailable)";
-  }
-  string filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
-  status = WriteToFile(filepath, proto);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath
-                 << " : " << status;
-    return "(unavailable)";
+  string filepath = "NULL";
+  if (std::strncmp(dir, "-", 2) == 0) {
+    LOG(INFO) << proto.DebugString();
+    filepath = "LOG(INFO)";
+  } else {
+    Status status = env->RecursivelyCreateDir(dir);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to create " << dir << " for dumping "
+                   << proto_type << ": " << status;
+      return "(unavailable)";
+    }
+    filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
+    status = WriteToFile(filepath, proto);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to dump " << proto_type
+                   << " to file: " << filepath << " : " << status;
+      return "(unavailable)";
+    }
   }
   LOG(INFO) << "Dumped " << proto_type << " to " << filepath;
   return filepath;

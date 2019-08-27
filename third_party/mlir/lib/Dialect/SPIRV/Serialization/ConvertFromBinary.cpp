@@ -22,29 +22,16 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/Serialization.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Translation.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBuffer.h"
 
 using namespace mlir;
-
-// Adds a one-block function named as `spirv_module` to `module` and returns the
-// block. The created block will be terminated by `std.return`.
-Block *createOneBlockFunction(Builder builder, ModuleOp module) {
-  auto fnType = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
-  auto fn = FuncOp::create(builder.getUnknownLoc(), "spirv_module", fnType);
-  module.push_back(fn);
-
-  auto *block = fn.addEntryBlock();
-  OpBuilder(block).create<ReturnOp>(builder.getUnknownLoc());
-
-  return block;
-}
 
 // Deserializes the SPIR-V binary module stored in the file named as
 // `inputFilename` and returns a module containing the SPIR-V module.
@@ -75,15 +62,9 @@ OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
   if (!spirvModule)
     return {};
 
-  // TODO(antiagainst): due to the restriction of the current translation
-  // infrastructure, we must return a MLIR module here. So we are wrapping the
-  // converted SPIR-V ModuleOp inside a MLIR module. This should be changed to
-  // return the SPIR-V ModuleOp directly after module and function are migrated
-  // to be general ops.
   OwningModuleRef module(ModuleOp::create(
       FileLineColLoc::get(inputFilename, /*line=*/0, /*column=*/0, context)));
-  Block *block = createOneBlockFunction(builder, module.get());
-  block->push_front(spirvModule->getOperation());
+  module->getBody()->push_front(spirvModule->getOperation());
 
   return module;
 }

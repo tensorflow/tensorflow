@@ -34,6 +34,18 @@ class TensorObjectConverter {
                          const TensorObject& output) = 0;
 };
 
+class TensorObjectConverterBuilder {
+ public:
+  virtual ~TensorObjectConverterBuilder() = default;
+
+  virtual bool IsSupported(const TensorObjectDef& input,
+                           const TensorObjectDef& output) = 0;
+
+  virtual Status MakeConverter(
+      const TensorObjectDef& input, const TensorObjectDef& output,
+      std::unique_ptr<TensorObjectConverter>* converter) = 0;
+};
+
 }  // namespace gpu
 }  // namespace tflite
 

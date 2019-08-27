@@ -5154,6 +5154,8 @@ inline void Requantize(const input_type* input_data, int32_t size,
 
 #ifdef USE_NEON
 
+// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
+// neon_tensor_utils.cc.
 inline void MultiplyByQuantizedMultiplier4Rows(
     const int32x4_t input_val_1, const int32x4_t input_val_2,
     const int32x4_t input_val_3, const int32x4_t input_val_4,

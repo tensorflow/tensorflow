@@ -85,8 +85,10 @@ enum class Path : std::uint8_t {
 #if RUY_PLATFORM(X86)
   // x86 architectures.
   //
+  // Optimized for AVX2.
+  kAvx2 = 0x4,
   // Optimized for AVX-512.
-  kAvx512 = 0x4,
+  kAvx512 = 0x8,
 #endif
 };
 
@@ -125,7 +127,7 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 // TODO(b/138433137): kAllPaths should always contain kAvx512 regardless of
 // whether AVX-512 is enabled in the translation unit #including this header.
 constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx512;
+    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif
@@ -135,7 +137,7 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #elif RUY_PLATFORM(X86)
 constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx512;
+    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif

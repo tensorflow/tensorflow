@@ -36,7 +36,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [":friends"],
     deps = [
-        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -46,6 +45,7 @@ py_library(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//third_party/py/numpy",
     ],
 )
@@ -1209,7 +1209,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1235,7 +1235,7 @@ cuda_py_test(
     srcs = ["dense_layer_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1417,6 +1417,7 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",

@@ -86,6 +86,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       // Comparisons have no quantizable outputs.
       property.version = 2;
       break;
+    case BuiltinOperator_EXPAND_DIMS:
+      property.inputs = {{0, {}}, {1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
+      break;
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;

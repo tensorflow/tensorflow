@@ -24,6 +24,7 @@ import sys
 
 import six
 
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -844,8 +845,7 @@ class GradientTape(object):
       ValueError: if it encounters something that is not a tensor.
     """
     for t in nest.flatten(tensor):
-      if not (pywrap_tensorflow.IsTensor(t) or
-              pywrap_tensorflow.IsVariable(t)):
+      if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
         raise ValueError("Passed in object of type {}, not tf.Tensor".format(
             type(t)))
       if not t.dtype.is_floating:
@@ -940,7 +940,8 @@ class GradientTape(object):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:
-      target: Tensor (or list of tensors) to be differentiated.
+      target: a list or nested structure of Tensors or Variables to be
+        differentiated.
       sources: a list or nested structure of Tensors or Variables. `target`
         will be differentiated against elements in `sources`.
       output_gradients: a list of gradients, one for each element of

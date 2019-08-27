@@ -20,14 +20,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
@@ -63,35 +64,25 @@ private:
     auto module = orig.getParentOfType<ModuleOp>();
     assert(module && "function must belong to a module");
 
-    // Create a global at the top of the module.
-    OpBuilder moduleBuilder(module.getBody(), module.getBody()->begin());
-    auto type = LLVM::LLVMType::getArrayTy(
-        LLVM::LLVMType::getInt8Ty(llvmDialect), blob.getValue().size());
-    nameBuffer.append(kCubinStorageSuffix);
-    auto cubinGlobalString = moduleBuilder.create<LLVM::GlobalOp>(
-        loc, type, /*isConstant=*/true, StringRef(nameBuffer), blob);
-
     // Insert the getter function just after the original function.
+    OpBuilder moduleBuilder(module.getBody(), module.getBody()->begin());
     moduleBuilder.setInsertionPoint(orig.getOperation()->getNextNode());
     auto getterType = moduleBuilder.getFunctionType(
         llvm::None, LLVM::LLVMType::getInt8PtrTy(llvmDialect));
-    // Drop the storage suffix before appending the getter suffix.
-    nameBuffer.resize(orig.getName().size());
     nameBuffer.append(kCubinGetterSuffix);
     auto result = moduleBuilder.create<FuncOp>(
         loc, StringRef(nameBuffer), getterType, ArrayRef<NamedAttribute>());
     Block *entryBlock = result.addEntryBlock();
 
+    // Drop the getter suffix before appending the storage suffix.
+    nameBuffer.resize(orig.getName().size());
+    nameBuffer.append(kCubinStorageSuffix);
+
     // Obtain the address of the first character of the global string containing
-    // the cubin and return from the getter (addressof will return [? x i8]*).
+    // the cubin and return from the getter.
     OpBuilder builder(entryBlock);
-    Value *cubinGlobalStringPtr =
-        builder.create<LLVM::AddressOfOp>(loc, cubinGlobalString);
-    Value *cst0 = builder.create<LLVM::ConstantOp>(
-        loc, getIndexType(), builder.getIntegerAttr(builder.getIndexType(), 0));
-    Value *startPtr = builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMType::getInt8PtrTy(llvmDialect), cubinGlobalStringPtr,
-        ArrayRef<Value *>({cst0, cst0}));
+    Value *startPtr = LLVM::createGlobalString(
+        loc, builder, StringRef(nameBuffer), blob.getValue(), llvmDialect);
     builder.create<LLVM::ReturnOp>(loc, startPtr);
 
     // Store the name of the getter on the function for easier lookup.

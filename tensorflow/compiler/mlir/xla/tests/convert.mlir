@@ -5,9 +5,8 @@
 // CHECK-LABEL: func @same_type
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @same_type(%arg: tensor<f32>) -> tensor<f32> {
-  // CHECK-NEXT: [[RES:%.+]] = "xla_hlo.convert"([[ARG]]) : (tensor<f32>) -> tensor<f32>
   %0 = "xla_hlo.convert"(%arg) : (tensor<f32>) -> tensor<f32>
-  // CHECK-NEXT: return [[RES]]
+  // CHECK-NEXT: return [[ARG]]
   return %0 : tensor<f32>
 }
 

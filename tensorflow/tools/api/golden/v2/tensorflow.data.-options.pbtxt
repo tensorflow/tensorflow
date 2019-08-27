@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "experimental_allow_stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_deterministic"
     mtype: "<type \'property\'>"
   }
@@ -17,10 +21,6 @@ tf_class {
   }
   member {
     name: "experimental_slack"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "experimental_stateful_whitelist"
     mtype: "<type \'property\'>"
   }
   member {

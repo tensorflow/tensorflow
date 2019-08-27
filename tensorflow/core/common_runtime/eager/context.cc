@@ -351,7 +351,8 @@ void EagerContext::StartStep() {
   if (step_container_ == nullptr) {
     step_container_.reset(
         new ScopedStepContainer(0, [this](const string& name) {
-          for (Device* device : devices_) {
+          auto local_devices = local_device_mgr()->ListDevices();
+          for (Device* device : local_devices) {
             device->resource_manager()->Cleanup(name).IgnoreError();
           }
         }));

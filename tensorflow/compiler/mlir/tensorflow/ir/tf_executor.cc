@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -36,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -995,6 +995,9 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
     // Map graph results to inner ops results of single island.
     llvm::SmallVector<Value *, 8> new_rets;
     for (Value *operand : fetch_op.fetches()) {
+      // Control results should not be propagated out.
+      if (operand->getType().isa<ControlType>()) break;
+
       if (operand->getDefiningOp() != island_op) {
         // Operand is not from island, simply propagate it out.
         new_rets.push_back(operand);

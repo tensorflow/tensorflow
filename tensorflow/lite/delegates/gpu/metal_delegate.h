@@ -18,7 +18,11 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-struct TfLiteDelegate;
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+typedef struct TfLiteDelegate TfLiteDelegate;
 
 typedef enum {
   // waitUntilCompleted
@@ -59,5 +63,9 @@ void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
 bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
                                            int tensor_index,
                                            id<MTLBuffer> metal_buffer);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_

@@ -143,11 +143,15 @@ class tstring {
 
   char& operator[](size_t i) { return str_[i]; }
 
+  void clear() noexcept { str_.clear(); }
+
   void resize(size_t new_size) { str_.resize(new_size); }
 
   void resize_uninitialized(size_t new_size) {
     ResizeUninitialized<decltype(str_)>::Resize(str_, new_size);
   }
+
+  void reserve(size_t n) { str_.reserve(n); }
 
   tstring& assign(const char* str, size_t len) {
     str_.assign(str, len);
@@ -157,6 +161,24 @@ class tstring {
 
   tstring& assign(const char* str) {
     str_.assign(str);
+
+    return *this;
+  }
+
+  tstring& append(const tstring& str) {
+    str_.append(str);
+
+    return *this;
+  }
+
+  tstring& append(const char* str, size_t len) {
+    str_.append(str, len);
+
+    return *this;
+  }
+
+  tstring& append(const char* str) {
+    str_.append(str);
 
     return *this;
   }

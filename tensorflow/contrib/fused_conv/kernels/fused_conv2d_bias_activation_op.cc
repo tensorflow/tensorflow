@@ -229,13 +229,17 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
         // (1) Scale and add bias.
         // NOTE(ezhulenev): We do not use Eigen expressions for this loop,
         // because it seems that packet FMA produces slightly different results,
-        // and we are targeting bit-by-bit equality with Nvidia implementation.
+        // and we are targeting close equality with Nvidia implementation.
+        // We could use std::fmaf, but it can be ~50x slower, on machines
+        // without fma instruction.
         for (int idx = 0; idx < num_rows; ++idx) {
-          conv_output_ptr[idx] =
-              std::fmaf(conv_output_ptr[idx], conv_input_scale, bias_ptr[idx]);
+          conv_output_ptr[idx] = static_cast<double>(conv_output_ptr[idx]) *
+                                     static_cast<double>(conv_input_scale) +
+                                 static_cast<double>(bias_ptr[idx]);
           if (side_input_scale != 0.0f) {
-            conv_output_ptr[idx] = std::fmaf(
-                side_input_ptr[idx], side_input_scale, conv_output_ptr[idx]);
+            conv_output_ptr[idx] = static_cast<double>(side_input_ptr[idx]) *
+                                       static_cast<double>(side_input_scale) +
+                                   static_cast<double>(conv_output_ptr[idx]);
           }
         }
 
