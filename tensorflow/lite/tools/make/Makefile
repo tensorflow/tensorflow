@@ -104,9 +104,15 @@ tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
 tensorflow/lite/experimental/ruy/context.cc \
 tensorflow/lite/experimental/ruy/detect_arm.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx2.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx512.cc \
 tensorflow/lite/experimental/ruy/kernel_arm32.cc \
 tensorflow/lite/experimental/ruy/kernel_arm64.cc \
+tensorflow/lite/experimental/ruy/kernel_avx2.cc \
+tensorflow/lite/experimental/ruy/kernel_avx512.cc \
 tensorflow/lite/experimental/ruy/pack_arm.cc \
+tensorflow/lite/experimental/ruy/pack_avx2.cc \
+tensorflow/lite/experimental/ruy/pack_avx512.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
 tensorflow/lite/experimental/ruy/trace.cc \
