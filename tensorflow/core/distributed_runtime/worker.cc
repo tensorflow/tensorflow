@@ -36,7 +36,8 @@ Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
 }
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
-                            GetStatusResponse* response, StatusCallback done) {
+                            GetStatusResponse* response, bool fail_fast,
+                            StatusCallback done) {
   DeviceMgr* dm = env_->device_mgr;
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
