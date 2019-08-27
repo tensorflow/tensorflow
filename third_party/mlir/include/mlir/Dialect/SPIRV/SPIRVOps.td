@@ -113,6 +113,9 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
   let results = (outs
     SPV_AnyPtr:$component_ptr
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState *state,
+                              Value *basePtr, ArrayRef<Value *> indices}]>];
 }
 
 // -----
