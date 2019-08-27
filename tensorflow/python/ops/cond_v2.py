@@ -25,7 +25,6 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
@@ -256,11 +255,7 @@ def _build_cond(pred,
     false_stateful_ops = [
         op for op in false_graph.get_operations() if op._is_stateful
     ]
-    # TODO(srbs): Remove this after July 22, 2019. This is required to abide by
-    # 3-week forward compat window of new TF python op generating code with
-    # stale runtime binaries.
-    if (true_stateful_ops or false_stateful_ops or
-        not compat.forward_compatible(2019, 7, 22)):
+    if (true_stateful_ops or false_stateful_ops):
       op_fn = gen_functional_ops._if
     else:
       op_fn = gen_functional_ops.stateless_if

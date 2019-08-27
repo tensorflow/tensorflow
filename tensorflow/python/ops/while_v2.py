@@ -24,7 +24,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -277,11 +276,7 @@ def while_loop(cond,
       body_stateful_ops = [
           op for op in body_graph.get_operations() if op._is_stateful
       ]
-      # TODO(yanhuasun): Remove this after Aug 23, 2019. This is required to
-      # abide by 3-week forward compat window of new TF python op generating
-      # code with stale runtime binaries.
-      if (cond_stateful_ops or body_stateful_ops or
-          not compat.forward_compatible(2019, 8, 23)):
+      if (cond_stateful_ops or body_stateful_ops):
         op_fn = gen_functional_ops._while
       else:
         op_fn = gen_functional_ops.stateless_while
