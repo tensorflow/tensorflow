@@ -245,6 +245,10 @@ void AllocatePMatrix(Allocator* allocator, PMatrix* packed) {
 }
 
 int GetThreadCount(Context* context, int rows, int cols, int depth) {
+#if RUY_PLATFORM(EMSCRIPTEN)
+  // b/139927184, std::thread constructor raises exception
+  return 1;
+#endif
   // Empirically determined rule for reasonable number of
   // threads to use. This is proportional to the number of arithmetic ops
   // in this Mul (product of the 3 sizes).

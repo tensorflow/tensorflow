@@ -148,11 +148,11 @@ class KinesisDatasetOp : public DatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::string stream = "";
-    OP_REQUIRES_OK(
-        ctx, data::ParseScalarArgument<std::string>(ctx, "stream", &stream));
+    OP_REQUIRES_OK(ctx,
+                   data::ParseScalarArgument<tstring>(ctx, "stream", &stream));
     std::string shard = "";
-    OP_REQUIRES_OK(
-        ctx, data::ParseScalarArgument<std::string>(ctx, "shard", &shard));
+    OP_REQUIRES_OK(ctx,
+                   data::ParseScalarArgument<tstring>(ctx, "shard", &shard));
     bool read_indefinitely = true;
     OP_REQUIRES_OK(ctx, data::ParseScalarArgument<bool>(
                             ctx, "read_indefinitely", &read_indefinitely));

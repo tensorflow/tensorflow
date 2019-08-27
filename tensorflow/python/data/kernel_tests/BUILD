@@ -290,7 +290,6 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
-        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",

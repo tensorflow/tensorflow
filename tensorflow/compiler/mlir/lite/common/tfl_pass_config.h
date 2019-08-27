@@ -17,27 +17,34 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_COMMON_TFL_PASS_CONFIG_H_
 
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
 namespace TFL {
 
-// A config that controls which passes get run as part TFLite translation.
+// A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
+  PassConfig()
+      : emit_builtin_tflite_ops(true),
+        run_quantize(false),
+        emit_quant_adaptor_ops(false),
+        lower_tensor_list_ops(false),
+        trim_functions_whitelist({}) {}
+
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
   bool emit_builtin_tflite_ops;
+  // If run_quantize is true, quantization passes will be added.
+  bool run_quantize;
   // If `emit_quant_adaptor_ops` is true, Quantize and
-  // Dequantize ops are added to the inputs and outputs of the quantized model.
+  // Dequantize ops are added as part of running quantization passes.
   bool emit_quant_adaptor_ops;
   // If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
   // TF ops before legalization to TF Lite dialect.
   bool lower_tensor_list_ops;
-  // If run_quantize is true, quantization passes will be added.
-  bool run_quantize;
-  // The whitelist of functions that would be preserved after trimming. If not
-  // specified/empty, this pass is a no-op.
+  // The whitelist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_whitelist;
 };
 

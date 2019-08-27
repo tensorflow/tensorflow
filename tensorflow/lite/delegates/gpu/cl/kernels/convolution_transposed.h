@@ -82,7 +82,7 @@ class ConvolutionTransposed : public GPUOperation {
   int dst_channels_;
 
   CLKernel kernel_;
-  int3 work_group_size_ = int3(16, 8, 1);
+  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

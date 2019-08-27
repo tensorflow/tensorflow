@@ -103,16 +103,16 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     int result_stride);
 
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int16_t* output);
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output);
 
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
+    const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int8_t* output);
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output);
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,

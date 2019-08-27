@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import inspect
-import linecache
 import threading
 
 import six
@@ -170,8 +169,8 @@ def convert_stack(stack, include_func_start_lineno=False):
   """Converts a stack extracted using extract_stack() to a traceback stack.
 
   Args:
-    stack: A list of n 5-tuples,
-      (filename, lineno, name, frame_globals, func_start_lineno).
+    stack: A sequence of StackFrame objects,
+      (filename, lineno, name, globals, func_start_lineno).
     include_func_start_lineno: True if function start line number should be
       included as the 5th entry in return tuples.
 
@@ -185,15 +184,11 @@ def convert_stack(stack, include_func_start_lineno=False):
     for frame in stack:
       filename = frame.filename
       lineno = frame.lineno
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame.globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
+      name = frame.name
+      line = frame.line
       if include_func_start_lineno:
-        yield (filename, lineno, frame.name, line, frame.func_start_lineno)
+        yield (filename, lineno, name, line, frame.func_start_lineno)
       else:
-        yield (filename, lineno, frame.name, line)
+        yield (filename, lineno, name, line)
 
   return tuple(_tuple_generator())

@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
@@ -332,10 +333,7 @@ class Sequential(training.Model):
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
-      layer_configs.append({
-          'class_name': layer.__class__.__name__,
-          'config': layer.get_config()
-      })
+      layer_configs.append(generic_utils.serialize_keras_object(layer))
     # When constructed using an `InputLayer` the first non-input layer may not
     # have the shape information to reconstruct `Sequential` as a graph network.
     if (self._is_graph_network and layer_configs and

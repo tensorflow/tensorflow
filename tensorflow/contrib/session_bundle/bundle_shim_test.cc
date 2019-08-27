@@ -47,11 +47,11 @@ void ValidateHalfPlusTwo(const SavedModelBundle& saved_model_bundle,
                          const string& input_tensor_name,
                          const string& output_tensor_name) {
   // Validate the half plus two behavior.
-  std::vector<string> serialized_examples;
+  std::vector<tstring> serialized_examples;
   for (float x : {0, 1, 2, 3}) {
     serialized_examples.push_back(MakeSerializedExample(x));
   }
-  Tensor input = test::AsTensor<string>(serialized_examples, TensorShape({4}));
+  Tensor input = test::AsTensor<tstring>(serialized_examples, TensorShape({4}));
 
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(saved_model_bundle.session->Run(

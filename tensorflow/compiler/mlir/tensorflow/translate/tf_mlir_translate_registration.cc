@@ -52,6 +52,16 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
+static OwningModuleRef SavedModelToMlirTranslateFunction(
+    llvm::StringRef input_filename, MLIRContext* context) {
+  std::unordered_set<std::string> tags = absl::StrSplit(saved_model_tags, ',');
+  return tensorflow::SavedModelToMlirImport(StringRefToView(input_filename),
+                                            tags, debug_info_file, context);
+}
+
+static TranslateToMLIRRegistration SavedModelToMlirTranslate(
+    "savedmodel-to-mlir", SavedModelToMlirTranslateFunction);
+
 static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(

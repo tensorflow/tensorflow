@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -77,6 +77,11 @@ StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S16, int16)
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S32, int32)
     DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S64, int64)
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U8, uint8)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U16, uint16)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U32, uint32)
+    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U64, uint64)
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ",
@@ -174,18 +179,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kIota: {
       return func_builder
-          ->create<mlir::XLA::IotaOp>(
+          ->create<mlir::xla_hlo::IotaOp>(
               loc, result_type,
               func_builder->getI64IntegerAttr(
                   static_cast<HloIotaInstruction*>(instruction)
                       ->iota_dimension()))
           .getOperation();
     }
-#define MakeAndReturn(mlir_op)                                                 \
-  {                                                                            \
-    mlir::Operation* new_operation = func_builder->create<mlir::XLA::mlir_op>( \
-        loc, result_type, operands, attributes);                               \
-    return new_operation;                                                      \
+#define MakeAndReturn(mlir_op)                                              \
+  {                                                                         \
+    mlir::Operation* new_operation =                                        \
+        func_builder->create<mlir::xla_hlo::mlir_op>(loc, result_type,      \
+                                                     operands, attributes); \
+    return new_operation;                                                   \
   }
     case HloOpcode::kBroadcast: {
       // Note that the HLO broadcast is more powerful than the XLA broadcast op.
@@ -237,7 +243,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // TODO(b/132057942): Change to explicitly passing an integer instead of
       // call getI64IntegerAttr here.
       return func_builder
-          ->create<mlir::XLA::GatherOp>(
+          ->create<mlir::xla_hlo::GatherOp>(
               loc, result_type, operands[0], operands[1],
               func_builder->getI64IntegerAttr(
                   gather_dimensions.index_vector_dim()),
@@ -247,7 +253,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder
-          ->create<mlir::XLA::DynamicUpdateSliceOp>(
+          ->create<mlir::xla_hlo::DynamicUpdateSliceOp>(
               loc, result_type, operands[0], operands[1],
               llvm::ArrayRef<Value*>(operands.begin() + 2, operands.end()))
           .getOperation();
@@ -268,15 +274,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       }
 
       return func_builder
-          ->create<mlir::XLA::PadOp>(loc, result_type, operands[0], operands[1],
-                                     Convert(edge_padding_low),
-                                     Convert(edge_padding_high),
-                                     Convert(interior_padding))
+          ->create<mlir::xla_hlo::PadOp>(loc, result_type, operands[0],
+                                         operands[1], Convert(edge_padding_low),
+                                         Convert(edge_padding_high),
+                                         Convert(interior_padding))
           .getOperation();
     }
     case HloOpcode::kSlice: {
       return func_builder
-          ->create<mlir::XLA::SliceOp>(
+          ->create<mlir::xla_hlo::SliceOp>(
               loc, result_type, operands[0],
               ConvertDimensions(instruction->slice_starts()),
               ConvertDimensions(instruction->slice_limits()))
@@ -286,7 +292,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // TODO(b/132057942): Support taking an uint64_t instead of an IntegerAttr
       // for concatenate dimension.
       return func_builder
-          ->create<mlir::XLA::ConcatenateOp>(
+          ->create<mlir::xla_hlo::ConcatenateOp>(
               loc, result_type, operands,
               builder_->getI64IntegerAttr(instruction->concatenate_dimension()))
           .getOperation();
@@ -297,7 +303,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // TODO(b/132057942): Make more convenient constructors, e.g. pass
       // mlir function pointer instead of a function attr.
       return func_builder
-          ->create<mlir::XLA::ReduceOp>(
+          ->create<mlir::xla_hlo::ReduceOp>(
               loc, result_type, operands,
               func_builder->getSymbolRefAttr(reduction),
               ConvertDimensions(instruction->dimensions()))
@@ -305,7 +311,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     }
     case HloOpcode::kReverse: {
       return func_builder
-          ->create<mlir::XLA::ReverseOp>(
+          ->create<mlir::xla_hlo::ReverseOp>(
               loc, result_type, operands[0],
               ConvertDimensions(instruction->dimensions()))
           .getOperation();
@@ -324,7 +330,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       auto cond_attr = func_builder->getSymbolRefAttr(cond);
       auto body_attr = func_builder->getSymbolRefAttr(body);
 
-      Operation* op = func_builder->create<mlir::XLA::WhileOp>(
+      Operation* op = func_builder->create<mlir::xla_hlo::WhileOp>(
           loc, types, operands, cond_attr, body_attr);
       return op;
     }
@@ -352,6 +358,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
+      NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
@@ -432,6 +439,15 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
     case PrimitiveType::S32:
       return builder_->getTensorType(array, builder_->getIntegerType(32));
     case PrimitiveType::S64:
+      return builder_->getTensorType(array, builder_->getIntegerType(64));
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    case PrimitiveType::U8:
+      return builder_->getTensorType(array, builder_->getIntegerType(8));
+    case PrimitiveType::U16:
+      return builder_->getTensorType(array, builder_->getIntegerType(16));
+    case PrimitiveType::U32:
+      return builder_->getTensorType(array, builder_->getIntegerType(32));
+    case PrimitiveType::U64:
       return builder_->getTensorType(array, builder_->getIntegerType(64));
     default:
       return tensorflow::errors::Internal(

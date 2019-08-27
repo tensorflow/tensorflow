@@ -38,10 +38,10 @@ class KafkaDatasetOp : public DatasetOpKernel {
 
     std::string servers = "";
     OP_REQUIRES_OK(
-        ctx, data::ParseScalarArgument<std::string>(ctx, "servers", &servers));
+        ctx, data::ParseScalarArgument<tstring>(ctx, "servers", &servers));
     std::string group = "";
-    OP_REQUIRES_OK(
-        ctx, data::ParseScalarArgument<std::string>(ctx, "group", &group));
+    OP_REQUIRES_OK(ctx,
+                   data::ParseScalarArgument<tstring>(ctx, "group", &group));
     bool eof = false;
     OP_REQUIRES_OK(ctx, data::ParseScalarArgument<bool>(ctx, "eof", &eof));
     int64 timeout = -1;

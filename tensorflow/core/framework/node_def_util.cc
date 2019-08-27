@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -339,7 +339,7 @@ DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
 DEFINE_GET_ATTR(
     Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ",
-                                     ProtoShortDebugString(v),
+                                     v.ShortDebugString(),
                                      " that can't be converted to a Tensor");
     })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
@@ -483,7 +483,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
       }
     } else {
       return errors::InvalidArgument("Missing type or type_attr field in ",
-                                     ProtoShortDebugString(arg_def));
+                                     arg_def.ShortDebugString());
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
@@ -501,7 +501,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     sig->push_back(arg_def.type());
   } else {
     return errors::InvalidArgument("No type fields in ",
-                                   ProtoShortDebugString(arg_def));
+                                   arg_def.ShortDebugString());
   }
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
@@ -743,11 +743,21 @@ namespace {
 using ::tensorflow::strings::Scanner;
 
 bool IsValidOpName(StringPiece sp) {
-  return Scanner(sp)
-      .One(Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+  Scanner scanner(sp);
+  scanner.One(Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scanner.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scanner.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another piece, starting with a '>'
+    scanner.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 bool IsValidDataInputName(StringPiece sp) {

@@ -80,8 +80,8 @@ def OuterProductOp :
 
     An optional extra 2-D vector argument may be specified in which case the
     operation returns the sum of the outer product and the extra vector. When
-    lowered to the LLVMIR dialect, this form emits `llvm.fmuladd`, which can
-    lower to actual `fma` instructions in LLVM.
+    lowered to the LLVMIR dialect, this form emits `llvm.intr.fmuladd`, which
+    can lower to actual `fma` instructions in LLVM.
 
     Examples
 

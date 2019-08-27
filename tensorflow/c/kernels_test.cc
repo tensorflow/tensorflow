@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
-#include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

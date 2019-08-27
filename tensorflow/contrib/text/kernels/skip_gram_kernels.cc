@@ -128,7 +128,7 @@ class SkipGramGenerateCandidatesOp : public OpKernel {
                               .TypeConstraint<type>("T"),    \
                           SkipGramGenerateCandidatesOp<type>)
 
-REGISTER_KERNEL(string);
+REGISTER_KERNEL(tstring);
 REGISTER_KERNEL(int64);
 REGISTER_KERNEL(int32);
 REGISTER_KERNEL(int16);

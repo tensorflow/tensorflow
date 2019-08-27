@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/collective_nccl_broadcaster.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -80,4 +80,4 @@ REGISTER_COLLECTIVE(NcclBroadcast, NcclBroadcaster);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

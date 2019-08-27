@@ -326,27 +326,6 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
-class AccumulateNTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testFloat(self):
-    np.random.seed(12345)
-    x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
-    tf_x = ops.convert_n_to_tensor(x)
-    with self.session(use_gpu=True):
-      self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
-      self.assertAllClose(x[0] * 5, math_ops.accumulate_n([tf_x[0]] * 5).eval())
-
-  @test_util.run_deprecated_v1
-  def testInt(self):
-    np.random.seed(54321)
-    x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
-    tf_x = ops.convert_n_to_tensor(x)
-    with self.session(use_gpu=True):
-      self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
-      self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
-
-
 class AddNTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1

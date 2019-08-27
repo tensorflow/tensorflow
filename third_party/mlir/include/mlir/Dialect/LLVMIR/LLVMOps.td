@@ -164,6 +164,13 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
   let llvmBuilder = [{
     $res = builder.CreateICmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, ICmpPredicate predicate, Value *lhs, "
+    "Value *rhs", [{
+      LLVMDialect *dialect = &lhs->getType().cast<LLVMType>().getDialect();
+      build(b, result, LLVMType::getInt1Ty(dialect),
+            b->getI64IntegerAttr(static_cast<int64_t>(predicate)), lhs, rhs);
+    }]>];
   let parser = [{ return parseCmpOp<ICmpPredicate>(parser, result); }];
   let printer = [{ printICmpOp(p, *this); }];
 }
@@ -293,6 +300,9 @@ def LLVM_SExtOp : LLVM_CastOp<"sext", "CreateSExt">;
 def LLVM_ZExtOp : LLVM_CastOp<"zext", "CreateZExt">;
 def LLVM_TruncOp : LLVM_CastOp<"trunc", "CreateTrunc">;
 def LLVM_SIToFPOp : LLVM_CastOp<"sitofp", "CreateSIToFP">;
+def LLVM_FPToSIOp : LLVM_CastOp<"fptosi", "CreateFPToSI">;
+def LLVM_FPExtOp : LLVM_CastOp<"fpext", "CreateFPExt">;
+def LLVM_FPTruncOp : LLVM_CastOp<"fptrunc", "CreateFPTrunc">;
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
@@ -386,6 +396,11 @@ def LLVM_SelectOp
                  LLVM_Type:$falseValue)>,
       LLVM_Builder<
           "$res = builder.CreateSelect($condition, $trueValue, $falseValue);"> {
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *condition, Value *lhs, "
+    "Value *rhs", [{
+      build(b, result, lhs->getType(), condition, lhs, rhs);
+    }]>];
   let parser = [{ return parseSelectOp(parser, result); }];
   let printer = [{ printSelectOp(p, *this); }];
 }
@@ -535,9 +550,10 @@ def LLVM_ConstantOp
 
 // Operations that correspond to LLVM intrinsics. With MLIR operation set being
 // extendable, there is no reason to introduce a hard boundary between "core"
-// operations and intrinsics.
+// operations and intrinsics. However, we systematically prefix them with
+// "intr." to avoid potential name clashes.
 
-def LLVM_fmuladd : LLVM_Op<"fmuladd", [NoSideEffect]>,
+def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
                    Arguments<(ins LLVM_Type:$a, LLVM_Type:$b, LLVM_Type:$c)>,
                    Results<(outs LLVM_Type:$res)> {
   let llvmBuilder = [{
@@ -548,6 +564,5 @@ def LLVM_fmuladd : LLVM_Op<"fmuladd", [NoSideEffect]>,
     $res = builder.CreateCall(fn, {$a, $b, $c});
   }];
 }
-
 
 #endif // LLVMIR_OPS

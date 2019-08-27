@@ -51,7 +51,10 @@ std::string GetReshapeCode(
   c += "  int src_y = p / plane_xz.x;\n";
   c += "  int src_x = (p % plane_xz.x) / src_size.w;\n";
   c += "  int src_z = (p % plane_xz.x) % src_size.w;\n";
-  c += "  FLT4 result =" + src_tensor.Read3D("src_x", "src_y", "src_z") + ";\n";
+  c += "  FLT4 result =" +
+       src_tensor.Read3D("src_x", "src_y", "src_z",
+                         TextureAddressMode::DONT_CARE) +
+       ";\n";
   c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", "Z");
   c += PostProcess(linked_operations, "result", "Z", "dst_adr");
   c += "  " + dst_tensor.Write3D("result", "dst_adr");

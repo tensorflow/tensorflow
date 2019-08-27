@@ -123,10 +123,10 @@ if tf.__version__.startswith('1'):
       'tf.contrib.util': ['loader'],
   }
 else:
-  PRIVATE_MAP = {}
+  PRIVATE_MAP = {'tf': ['python', 'core', 'compiler', 'examples', 'tools']}
   DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
-    ## TensorFlow 2.0 Beta
+    ## TensorFlow 2.0 RC
 
     Caution:  This is a developer preview.  You will likely find some bugs,
     performance issues, and more, and we encourage you to tell us about them.
@@ -138,7 +138,7 @@ else:
     with:
 
     ```
-    pip install tensorflow==2.0.0-beta1
+    pip install tensorflow==2.0.0-rc0
     ```
     """
 
@@ -234,11 +234,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
-  base_dir = path.dirname(tf.__file__)
+  base_dir = path.normpath(path.join(tf.__file__, "../.."))
 
   base_dirs = (
-      base_dir,
-      # External packages base directories,
+      path.join(base_dir, "tensorflow_core"),
+      # External packages base directories
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )

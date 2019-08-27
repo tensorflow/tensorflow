@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/MlirOptMain.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -57,7 +58,7 @@ static llvm::cl::opt<bool> verify_passes(
 static std::vector<const mlir::PassRegistryEntry *> *pass_list;
 
 int main(int argc, char **argv) {
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
 
   // Register any pass manager command line options.
   mlir::registerPassManagerCLOptions();
@@ -68,10 +69,6 @@ int main(int argc, char **argv) {
   ::pass_list = &pass_list;
   llvm::cl::ParseCommandLineOptions(argc, argv,
                                     "TF MLIR modular optimizer driver\n");
-
-  // TODO(jpienaar): Enable command line parsing for both sides.
-  int fake_argc = 1;
-  tensorflow::port::InitMain(argv[0], &fake_argc, &argv);
 
   // Set up the input file.
   std::string error_message;

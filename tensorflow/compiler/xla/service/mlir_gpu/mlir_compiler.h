@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 
 namespace xla {
-namespace mlir {
+namespace mlir_gpu {
 
 // A Compiler implementation that converts XLAs IR to a matching MLIR dialect,
 // performs all lowering on the MLIR IR and finally converts MLIR to LLVMIR for
@@ -60,7 +60,7 @@ class MlirCompiler : public Compiler {
   int64 pointer_size_;
 };
 
-}  // namespace mlir
+}  // namespace mlir_gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_

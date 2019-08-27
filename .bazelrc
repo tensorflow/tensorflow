@@ -112,6 +112,10 @@ build --spawn_strategy=standalone
 build --strategy=Genrule=standalone
 build -c opt
 
+# By default, build TF in C++ 14 mode.
+build --cxxopt=-std=c++14
+build --host_cxxopt=-std=c++14
+
 # Make Bazel print out all options from rc files.
 build --announce_rc
 

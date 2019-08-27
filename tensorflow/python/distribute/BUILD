@@ -697,6 +697,7 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
     ],
 )
@@ -877,7 +878,9 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/139815303): enable after this is fixed.
         "no_rocm",
+        "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
         ":mirrored_strategy",
@@ -1151,10 +1154,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
+    shard_count = 3,
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = False,  # TODO(b/139490543): Re-enable.
     deps = [
         "//tensorflow/python:keras_lib",
         "//tensorflow/python:platform_test",

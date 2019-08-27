@@ -43,17 +43,21 @@ using OpNameMappingFunc = std::function<StatusOr<std::string>(llvm::StringRef)>;
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted into. `op_name_func`
-// is to map the op name of `inst` to its op name in TensorFlow.
+// is to map the op name of `inst` to its op name in TensorFlow. "name" and
+// "device" attributes are ignored by default. Use attrs_to_ignore to specify
+// any other attributes that should be ignored.
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name,
     OpNameMappingFunc op_name_func);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to
 // specify any other attributes that should be ignored.
-Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
-                         const absl::flat_hash_set<string>& attrs_to_ignore,
-                         AttrValueMap* values);
+Status ConvertAttributes(
+    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
+    AttrValueMap* values);
 
 // Sets type attribute with the given name. If the attribute already exists with
 // a different value, returns an error.

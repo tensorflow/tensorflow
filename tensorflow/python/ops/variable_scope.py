@@ -899,10 +899,14 @@ class _VariableStore(object):
         if tf_inspect.isclass(initializer):
           initializer = initializer()
         if shape is not None and shape.is_fully_defined():
-          init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-              shape.as_list(),
-              dtype=dtype,
-              partition_info=partition_info)
+          if "partition_info" in tf_inspect.getargspec(initializer).args:
+            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+                shape.as_list(),
+                dtype=dtype,
+                partition_info=partition_info)
+          else:
+            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+                shape.as_list(), dtype=dtype)
           variable_dtype = dtype.base_dtype
         elif len(tf_inspect.getargspec(initializer).args) == len(
             tf_inspect.getargspec(initializer).defaults or []):
@@ -2588,41 +2592,42 @@ def variable_creator_scope_v1(variable_creator):
   custom creators when they do create variables.
 
   The valid keyword arguments in kwds are:
-      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+
+   * initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+   * trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
         `trainable` defaults to `True`, unless `synchronization` is
         set to `ON_READ`, in which case it defaults to `False`.
-      collections: List of graph collections keys. The new variable is added to
+   * collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
-      validate_shape: If `False`, allows the variable to be initialized with a
+   * validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
-      caching_device: Optional device string describing where the Variable
+   * caching_device: Optional device string describing where the Variable
         should be cached for reading.  Defaults to the Variable's device.
         If not `None`, caches on another device.  Typical use is to cache
         on the device where the Ops using the Variable reside, to deduplicate
         copying through `Switch` and other conditional statements.
-      name: Optional name for the variable. Defaults to `'Variable'` and gets
+   * name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
-      dtype: If set, initial_value will be converted to the given type.
+   * dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
-      constraint: A constraint function to be applied to the variable after
+   * constraint: A constraint function to be applied to the variable after
         updates by some algorithms.
-      use_resource: if True, a ResourceVariable is always created.
-      synchronization: Indicates when a distributed a variable will be
+   * use_resource: if True, a ResourceVariable is always created.
+   * synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize.
-      aggregation: Indicates how a distributed variable will be aggregated.
+   * aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
 
@@ -2663,35 +2668,36 @@ def variable_creator_scope(variable_creator):
   custom creators when they do create variables.
 
   The valid keyword arguments in kwds are:
-      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+
+   * initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, GradientTapes automatically watch
+   * trainable: If `True`, the default, GradientTapes automatically watch
         uses of this Variable.
-      validate_shape: If `False`, allows the variable to be initialized with a
+   * validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
-      caching_device: Optional device string describing where the Variable
+   * caching_device: Optional device string describing where the Variable
         should be cached for reading.  Defaults to the Variable's device.
         If not `None`, caches on another device.  Typical use is to cache
         on the device where the Ops using the Variable reside, to deduplicate
         copying through `Switch` and other conditional statements.
-      name: Optional name for the variable. Defaults to `'Variable'` and gets
+   * name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
-      constraint: A constraint function to be applied to the variable after
+   * constraint: A constraint function to be applied to the variable after
         updates by some algorithms.
-      synchronization: Indicates when a distributed a variable will be
+   * synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize.
-      aggregation: Indicates how a distributed variable will be aggregated.
+   * aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
 

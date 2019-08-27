@@ -88,6 +88,7 @@ tensorflow/lite/c/c_api_internal.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
+tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
@@ -96,43 +97,51 @@ MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
 LICENSE \
-tensorflow/lite/c/c_api_internal.h \
+tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/c/c_api_internal.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
-tensorflow/lite/kernels/kernel_util.h \
-tensorflow/lite/kernels/op_macros.h \
-tensorflow/lite/kernels/padding.h \
+tensorflow/lite/core/api/tensor_utils.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
+tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/kernels/internal/reference/add.h \
 tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
-tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
+tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
+tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
-tensorflow/lite/kernels/internal/reference/arg_min_max.h \
-tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
+tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
-tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/kernels/kernel_util.h \
+tensorflow/lite/kernels/op_macros.h \
+tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/version.h \
-tensorflow/core/public/version.h
+tensorflow/lite/string.h \
+tensorflow/lite/string_util.h \
+tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \

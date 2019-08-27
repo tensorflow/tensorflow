@@ -159,9 +159,16 @@ Status XlaKernelCreator::CreateKernel(FunctionLibraryRuntime* flr,
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
-  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-      uncompilable_node_info;
-  if (!IsCompilable(flr, node_def, &uncompilable_node_info)) {
+  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
+  if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
+    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+        uncompilable_node_info;
+    for (const auto& it : uncompilable_nodes_map) {
+      for (const auto& info : it.second.second) {
+        uncompilable_node_info.emplace_back(info);
+      }
+    }
+
     string message = absl::StrCat(
         "Function invoked by the following node is not compilable: ",
         node_def.ShortDebugString(), ".\n");

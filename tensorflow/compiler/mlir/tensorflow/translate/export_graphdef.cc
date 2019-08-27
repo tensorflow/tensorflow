@@ -300,13 +300,17 @@ Status Exporter::AddInstructionNode(mlir::Operation* inst) {
     // check is too conservative given we could use a OpDef.
     if (auto abstract_op = inst->getAbstractOperation()) {
       if (&abstract_op->dialect == tf_dialect_) {
-        TF_ASSIGN_OR_RETURN(node_def, ConvertTFDialectOpToNodeDef(inst, name));
+        TF_ASSIGN_OR_RETURN(
+            node_def, ConvertTFDialectOpToNodeDef(
+                          inst, name, /*ignore_unregistered_attrs=*/false));
       }
     }
     // Convert TF control flow dialect ops.
     if (!node_def) {
-      TF_ASSIGN_OR_RETURN(node_def,
-                          GetOperationNodeDef(inst, name.c_str(), getTFOpName));
+      absl::flat_hash_set<absl::string_view> attrs_to_ignore;
+      TF_ASSIGN_OR_RETURN(
+          node_def, GetOperationNodeDef(attrs_to_ignore, inst, name.c_str(),
+                                        getTFOpName));
     }
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
@@ -562,7 +566,8 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
 
   // Ignore the gradient and is_stateful attribute on the function as they have
   // been handled above.
-  absl::flat_hash_set<string> attrs_to_ignore = {grad_string, stateful_string};
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
+      grad_string.data(), stateful_string.data()};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(

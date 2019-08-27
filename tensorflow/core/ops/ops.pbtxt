@@ -5934,6 +5934,13 @@ op {
     type: "int"
     has_minimum: true
   }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
   is_stateful: true
 }
 op {
@@ -10171,6 +10178,13 @@ op {
       }
     }
     has_minimum: true
+  }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -45283,6 +45297,13 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

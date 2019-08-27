@@ -19,11 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-include "mlir/Dialect/Linalg/IR/LinalgBase.td"
-
 #ifdef LINALG_OPS
 #else
 #define LINALG_OPS
+
+include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -90,7 +91,10 @@ def BufferAllocOp :
       }]>,
     OpBuilder<
       "Builder *b, OperationState *result, BufferType bufferType, Value *size",
-      [{ build(b, result, bufferType, size, 0); }]>
+      [{
+        result->addOperands(size);
+        result->addTypes(bufferType);
+      }]>
   ];
   let extraClassDeclaration = [{
     static StringRef getAlignmentAttrName() { return "alignment"; }
@@ -242,18 +246,14 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
     base view. This allows defining a subregion within the underlying buffer to
     operate on only a subset of the buffer.
 
-    A "linalg.slice" op takes a base view and a variadic number of indexings and
-    produces a linalg.view of the same elemental type as the buffer. An indexing
-    is either:
+    A "linalg.slice" op takes a view and a variadic number of indexings and
+    produces a linalg.view of the same elemental type. An indexing is either:
       1. a linalg.range, in which case it does not reduce the rank of the parent
          view.
       2. an index, in which case it reduces the rank of the parent view by one.
 
-    The parent view must be a base view (i.e. either a function argument or has
-    been produced by a linalg.view op). In other words, chains of
-    linalg.slice operations cannot be constructed in the IR. This defines away
-    problems related to keeping track of which dimensions of the base view have
-    been rank-reduced.
+    If an indexing extends past the size of the view, the slice operation
+    automatically truncates it to be within the bounds.
 
     Examples:
 
@@ -328,13 +328,19 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Results<(outs View)> {
   let summary = "subview operation";
   let description = [{
-    The "linalg.subview" operation takes a linalg.view, a list of indices and
+    The "linalg.subview" op produces a linalg.view which is a subview of a given
+    base view. This allows defining a subregion within the underlying buffer.
+
+    The "linalg.subview" operation takes a base view, a list of indices and
     returns a new linalg.view of the same type that is contained within the
-    operand view.
-    This operation is equivalent to a non-rank-reducing slice operation. The
-    main difference is the operands are all of type `index` and no intermediate
-    linalg.range operations are required. A "linalg.subview" is thus a
-    specialized linalg.slice with a higher level of abstraction.
+    view. This operation is equivalent to a non-rank-reducing slice operation.
+    The main difference is the operands are all of type `index` and no
+    intermediate linalg.range operations are required. A "linalg.subview" is
+    thus a specialized linalg.slice with a higher level of abstraction.
+
+    Similary to linalg.slice, if a range extends past the size of the base view,
+    the slice operation automatically truncates it to be within the bounds of
+    the view.
 
     Example:
 
@@ -390,6 +396,37 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         result->addOperands({r.min, r.max, r.step});
       result->types.push_back(view->getType());
     }
+  }];
+}
+
+def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
+    Arguments<(ins View:$view, AffineMapAttr:$permutation)>,
+    Results<(outs View)> {
+  let summary = "transpose operation produces a new view (metadata-only)";
+  let description = [{
+    The "linalg.transpose" op produces a linalg.view whose sizes and strides are
+    a permutation of the original. This is a pure metadata transformation.
+
+    Example:
+
+       %1 = linalg.transpose %0 (i, j) -> (j, i) : !linalg.view<?x?xf32>
+  }];
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *view, "
+    "AffineMapAttr permutation, ArrayRef<NamedAttribute> attrs = {}">];
+
+  let verifier = [{
+    if (!permutation().isPermutation())
+      return emitOpError("expected a permutation map");
+    if (permutation().getNumDims() != getViewType().getRank())
+      return emitOpError("expected a permutation map of same rank as the view");
+    return success();
+  }];
+
+  let extraClassDeclaration = [{
+    static StringRef getPermutationAttrName() { return "permutation"; }
+    ViewType getViewType() { return view()->getType().cast<ViewType>(); }
   }];
 }
 

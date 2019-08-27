@@ -1215,8 +1215,9 @@ XlaOp XlaBuilder::ConvGeneralDilated(
           rhs_shape.dimensions(dimension_numbers.kernel_spatial_dimensions(i));
     }
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   lhs_dilation, rhs_dilation));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            lhs_dilation, rhs_dilation));
 
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferConvolveShape(
@@ -1235,60 +1236,6 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
   });
-}
-
-StatusOr<Window> XlaBuilder::MakeWindow(
-    absl::Span<const int64> window_dimensions,
-    absl::Span<const int64> window_strides,
-    absl::Span<const std::pair<int64, int64>> padding,
-    absl::Span<const int64> lhs_dilation,
-    absl::Span<const int64> rhs_dilation) const {
-  const auto verify_size = [&](const size_t x, const char* x_name) {
-    if (x == 0 || x == window_dimensions.size()) {
-      return Status::OK();
-    } else {
-      return InvalidArgument(
-          "%s", absl::StrCat(
-                    "Window has different number of window dimensions than of ",
-                    x_name,
-                    "\nNumber of window dimensions: ", window_dimensions.size(),
-                    "\nNumber of ", x_name, ": ", x, "\n"));
-    }
-  };
-  TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
-  TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
-  TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
-  TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
-
-  Window window;
-  for (size_t i = 0; i < window_dimensions.size(); i++) {
-    auto dim = window.add_dimensions();
-    dim->set_size(window_dimensions[i]);
-    if (!window_strides.empty()) {
-      dim->set_stride(window_strides[i]);
-    } else {
-      dim->set_stride(1);
-    }
-    if (!padding.empty()) {
-      dim->set_padding_low(padding[i].first);
-      dim->set_padding_high(padding[i].second);
-    } else {
-      dim->set_padding_low(0);
-      dim->set_padding_high(0);
-    }
-    if (!lhs_dilation.empty()) {
-      dim->set_base_dilation(lhs_dilation[i]);
-    } else {
-      dim->set_base_dilation(1);
-    }
-    if (!rhs_dilation.empty()) {
-      dim->set_window_dilation(rhs_dilation[i]);
-    } else {
-      dim->set_window_dilation(1);
-    }
-    dim->set_window_reversal(false);
-  }
-  return window;
 }
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
@@ -1750,9 +1697,11 @@ XlaOp XlaBuilder::While(const XlaComputation& condition,
 
 XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
                          const GatherDimensionNumbers& dimension_numbers,
-                         absl::Span<const int64> slice_sizes) {
+                         absl::Span<const int64> slice_sizes,
+                         bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_indices_are_sorted(indices_are_sorted);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
@@ -1775,9 +1724,11 @@ XlaOp XlaBuilder::Gather(const XlaOp& input, const XlaOp& start_indices,
 XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                           const XlaOp& updates,
                           const XlaComputation& update_computation,
-                          const ScatterDimensionNumbers& dimension_numbers) {
+                          const ScatterDimensionNumbers& dimension_numbers,
+                          bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_indices_are_sorted(indices_are_sorted);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
@@ -1963,9 +1914,10 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/base_dilations,
-                                   /*rhs_dilation=*/window_dilations));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/base_dilations,
+                            /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferReduceWindowShape(
                                          operand_shape, init_shape,
                                          instr.window(), to_apply_shape));
@@ -2210,8 +2162,9 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
                         scatter.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSelectAndScatterShape(
                             operand_shape, select_shape, instr.window(),
@@ -3372,16 +3325,18 @@ XlaOp ReducePrecision(const XlaOp operand, const int exponent_bits,
 
 XlaOp Gather(const XlaOp input, const XlaOp start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             absl::Span<const int64> slice_sizes) {
+             absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
   return input.builder()->Gather(input, start_indices, dimension_numbers,
-                                 slice_sizes);
+                                 slice_sizes, indices_are_sorted);
 }
 
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
               const XlaOp updates, const XlaComputation& update_computation,
-              const ScatterDimensionNumbers& dimension_numbers) {
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted) {
   return input.builder()->Scatter(input, scatter_indices, updates,
-                                  update_computation, dimension_numbers);
+                                  update_computation, dimension_numbers,
+                                  indices_are_sorted);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {

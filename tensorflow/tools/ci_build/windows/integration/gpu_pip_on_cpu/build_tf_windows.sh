@@ -159,13 +159,31 @@ fi
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
-
 ###########################
 # Run pip tests without GPU
 ###########################
+# Wipe out CUDA related envs
+export CUDA_TOOLKIT_PATH=""
+export CUDNN_INSTALL_PATH=""
+
 # Setting up environment for CPU tests
 export TF_NEED_CUDA=0
 yes "" | ./configure
+
+# Remove cuda libraries from PATH
+echo ${PATH}
+NEW_PATH=""
+echo "Removing NVIDIA GPU Computing Toolkit related directories from PATH..."
+for DIR in ${PATH//:/ } ; do
+  if [[ ${DIR} == *"CUDA"* ]]; then
+    echo "Skipping ${DIR}"
+  else
+    NEW_PATH="${NEW_PATH}:${DIR}"
+  fi
+done
+export PATH=${NEW_PATH}
+echo ${PATH}
+
 
 # NUMBER_OF_PROCESSORS is predefined on Windows
 N_JOBS="${NUMBER_OF_PROCESSORS}"
@@ -184,4 +202,5 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
   --output_filter=^$ \
-  ${TEST_TARGET}
+  -- ${TEST_TARGET} \
+  -//${PY_TEST_DIR}/tensorflow/python:virtual_gpu_test

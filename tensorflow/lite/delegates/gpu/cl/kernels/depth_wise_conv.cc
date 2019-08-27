@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 
@@ -32,21 +34,22 @@ bool IsSpecializedCase(int channel_multiplier) {
 }
 
 std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
-                        int channel_multiplier) {
+                        int channel_multiplier,
+                        TextureAddressMode address_mode) {
   std::string c;
   if (channel_multiplier == 1) {
-    c +=
-        "      FLT4 src_final =" + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
+    c += "      FLT4 src_final =" +
+         src_tensor.Read3D("x_c", "y_c", "Z", address_mode) + ";\n";
   } else if (channel_multiplier == 2) {
     c += "      int z_layer = Z / 2;\n";
-    c +=
-        "      FLT4 src =" + src_tensor.Read3D("x_c", "y_c", "z_layer") + ";\n";
+    c += "      FLT4 src =" +
+         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      FLT2 t0 = Z % 2 == 0 ? src.xy : src.zw;\n";
     c += "      FLT4 src_final = (FLT4)(t0.x, t0.x, t0.y, t0.y);\n";
   } else if (channel_multiplier == 4) {
     c += "      int z_layer = Z / 4;\n";
-    c +=
-        "      FLT4 src =" + src_tensor.Read3D("x_c", "y_c", "z_layer") + ";\n";
+    c += "      FLT4 src =" +
+         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      FLT t0 = src.x;\n";
     c += "      int reminder = Z % 4;\n";
     c += "      if (reminder == 1) t0 = src.y;\n";
@@ -55,8 +58,8 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
     c += "      FLT4 src_final = (FLT4)(t0, t0, t0, t0);\n";
   } else {
     c += "      int z_layer = Z / channel_multiplier;\n";
-    c +=
-        "      FLT4 src =" + src_tensor.Read3D("x_c", "y_c", "z_layer") + ";\n";
+    c += "      FLT4 src =" +
+         src_tensor.Read3D("x_c", "y_c", "z_layer", address_mode) + ";\n";
     c += "      int z_offset = (Z % channel_multiplier) * 4;\n";
     c += "      FLT4 src_final;\n";
     c += "      FLT temp_arr[4] = {src.x, src.y, src.z, src.w};\n";
@@ -73,7 +76,8 @@ std::string GenerateDepthWiseConvolutionCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     const LinearStorage& biases, int channel_multiplier,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
+    const std::vector<ElementwiseOperation*>& linked_operations,
+    const CLDevice& device) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
@@ -111,29 +115,36 @@ std::string GenerateDepthWiseConvolutionCode(
   } else {
     c += "  int fx_c = 0;\n";
   }
-  c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
-  c += "    int y_c = y_offseted + ky * dilation.y;\n";
+
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+    c += "    int y_c = y_offseted + ky * dilation.y;\n";
     c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
-  }
-  c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  c += "      int x_c = x_offseted + kx * dilation.x;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+    c += "      int x_c = x_offseted + kx * dilation.x;\n";
     c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
     c += "      if (!outside_x && !outside_y) {\n";
-    c += GetSrcValue(src_tensor, channel_multiplier);
     c += "        FLT4 f = filters[fx_c];\n";
+    c += GetSrcValue(src_tensor, channel_multiplier,
+                     TextureAddressMode::DONT_CARE);
     c += "        r += TO_ACCUM_TYPE(src_final * f);\n";
     c += "      };\n";
     c += "      fx_c++;\n";
-  } else {
-    c += GetSrcValue(src_tensor, channel_multiplier);
-    c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z)); "
-         "fx_c++;\n";
+    c += "    }\n";
+    c += "  }\n";
+  } else {  // Texture types with ZERO clamping
+    c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
+    c += "    int y_c = y_offseted + ky * dilation.y;\n";
+    c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
+    c += "      int x_c = x_offseted + kx * dilation.x;\n";
+    const auto access_mode = GetFastestZeroMode(device);
+    c += GetSrcValue(src_tensor, channel_multiplier, access_mode);
+    c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
+    c += "      fx_c++;\n";
     c += "      r += TO_ACCUM_TYPE(src_final * f);\n";
+    c += "    }\n";
+    c += "  }\n";
   }
-  c += "    }\n";
-  c += "  }\n";
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  FLT4 res0 = TO_FLT4(r) + bias_val;\n";
   c += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
@@ -192,7 +203,8 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
 Status DepthWiseConvolution::Compile(const CreationContext& creation_context) {
   const auto code = GenerateDepthWiseConvolutionCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, channel_multiplier_, linked_operations_);
+      definition_.precision, biases_, channel_multiplier_, linked_operations_,
+      *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

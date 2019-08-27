@@ -117,6 +117,8 @@ Status CTCLossCalculator<T>::CalculateLoss(
     bool ctc_merge_repeated, bool ignore_longer_outputs_than_inputs,
     VectorOut* loss, std::vector<MatrixOut>* gradients,
     DeviceBase::CpuWorkerThreads* workers) const {
+  using Eigen::numext::log;
+
   auto num_time_steps = inputs.size();
 
   if (loss == nullptr) {
@@ -228,7 +230,7 @@ Status CTCLossCalculator<T>::CalculateLoss(
 
       // The loss is computed as the log(p(z|x)) between the target and
       // prediction. Do lazy evaluation of log_prob here.
-      T log_p_z_x = kLogZero<T>::val;
+      T log_p_z_x = kLogZero<T>();
       for (int u = 0; u < l_prime.size(); ++u) {
         // (GravesTh) Eq 7.26, sum over all paths for t = 0.
         log_p_z_x = LogSumExp(log_p_z_x, log_alpha_b(u, 0) + log_beta_b(u, 0));
@@ -371,9 +373,11 @@ template <typename TT>
 void CTCLossCalculator<TT>::CalculateForwardVariables(
     const std::vector<int>& l_prime, const Matrix& y, bool ctc_merge_repeated,
     Matrix* log_alpha) const {
+  using Eigen::numext::log;
+
   // Number of cols is the number of time steps = number of cols in target
   // after the output delay.
-  log_alpha->setConstant(kLogZero<TT>::val);
+  log_alpha->setConstant(kLogZero<TT>());
 
   int U = l_prime.size();
   int T = log_alpha->cols();
@@ -394,7 +398,7 @@ void CTCLossCalculator<TT>::CalculateForwardVariables(
          ++u) {
       // Begin (GravesTh) Eq 7.9
       // Add in the u, t - 1 term.
-      auto sum_log_alpha = kLogZero<TT>::val;
+      auto sum_log_alpha = kLogZero<TT>();
       if (ctc_merge_repeated || l_prime[u] == blank_index_) {
         sum_log_alpha = log_alpha->coeff(u, t - 1);
       }
@@ -430,7 +434,9 @@ void CTCLossCalculator<TT>::CalculateBackwardVariables(
   // Matrix log_beta =
   //    Matrix::Constant(l_prime.size(), y.cols() - output_delay_,
   // kLogZero);
-  log_beta->setConstant(kLogZero<TT>::val);
+  using Eigen::numext::log;
+
+  log_beta->setConstant(kLogZero<TT>());
   int T = log_beta->cols();
   int U = l_prime.size();
   CHECK_EQ(U, log_beta->rows());
@@ -489,7 +495,7 @@ void CTCLossCalculator<TT>::CalculateGradient(const std::vector<int>& l_prime,
 
   // It is possible that no valid path is found if the activations for the
   // targets are zero.
-  if (log_p_z_x == kLogZero<TT>::val) {
+  if (log_p_z_x == kLogZero<TT>()) {
     LOG(WARNING) << "No valid path found.";
     dy_b = y;
     return;
@@ -501,7 +507,7 @@ void CTCLossCalculator<TT>::CalculateGradient(const std::vector<int>& l_prime,
 
   for (int t = 0; t < T - output_delay_; ++t) {
     Array prob_sum(L);
-    prob_sum.setConstant(kLogZero<TT>::val);
+    prob_sum.setConstant(kLogZero<TT>());
 
     for (int u = 0; u < U; ++u) {
       int l = l_prime[u];

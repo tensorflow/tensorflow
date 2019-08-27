@@ -209,6 +209,7 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    EagerContext* eager_context,
+                                   EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
@@ -224,8 +225,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         ". Make sure the operation or function is "
         "registered in the binary running in this process.");
   }
-  op.reset(
-      new tensorflow::EagerOperation(eager_context, name, is_function, types));
+  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
+                                          types, eager_executor));
 
   TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
@@ -268,7 +269,7 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 }
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
-                                 EnqueueResponse* response) {
+                                 EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat("EagerService:Enqueue:", request->DebugString());
@@ -278,23 +279,35 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
-  auto executor = context->Context()->Executor();
+  EagerExecutor* executor =
+      stream_id == kInvalidStreamId
+          ? context->Context()->Executor()
+          : context->Context()->RemoteMgr()->GetOrCreateExecutorForStream(
+                stream_id);
+  Status s;
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      TF_RETURN_IF_ERROR(
-          ExecuteOp(item.operation(), context->Context(), queue_response));
+      s = ExecuteOp(item.operation(), context->Context(), executor,
+                    queue_response);
     } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
           item.handle_to_decref());
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
-      TF_RETURN_IF_ERROR(
-          executor->Async()
+      s = executor->Async()
               ? context->Context()->Executor()->Add(std::move(node))
-              : node->Run());
+              : node->Run();
     } else {
-      TF_RETURN_IF_ERROR(SendTensor(item.send_tensor(), context->Context()));
+      s = SendTensor(item.send_tensor(), context->Context());
+    }
+
+    if (!s.ok()) {
+      if (stream_id != kInvalidStreamId) {
+        // TODO(b/138847548): Cleanup the executor when StreamCall is deleted.
+        context->Context()->RemoteMgr()->DeleteExecutorForStream(stream_id);
+      }
+      return s;
     }
   }
 

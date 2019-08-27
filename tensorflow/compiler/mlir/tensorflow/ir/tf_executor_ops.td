@@ -121,12 +121,12 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCanonicalizer = 1;
-
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     FetchOp GetFetch();
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
@@ -207,6 +207,10 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
   }];
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TfExecutor_YieldOp : TfExecutor_Op<"yield",

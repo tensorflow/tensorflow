@@ -289,13 +289,13 @@ func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30
 // CHECK: return %2
 }
 
-func @identity(tensor<10xi32>) -> tensor<10xi32> {
-^bb0(%arg0: tensor<10xi32>):
+func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>) {
   %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<10xi32>
-  return %0: tensor<10xi32>
+  %1:2 = "tf.IdentityN"(%arg1,%arg2) : (tensor<20xi32>, tensor<30xi32>) -> (tensor<20xi32>, tensor<30xi32>)
+  return %0, %1#0, %1#1: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>
 
 // CHECK-LABEL: identity
-// CHECK: return %arg0
+// CHECK: return %arg0, %arg1, %arg2
 }
 
 

@@ -182,7 +182,6 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, Device* op_device,
                         ctx->MirrorTensors(), &result_handle);
   activity.Stop();
   if (!status.ok()) {
-    if (result_handle != nullptr) result_handle->Unref();
     return errors::Internal("Failed copying input tensor from ",
                             handle_device->name(), " to ",
                             expected_input_device->name(), " in order to run ",

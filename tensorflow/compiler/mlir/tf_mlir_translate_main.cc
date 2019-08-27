@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/TranslateClParser.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/platform/init_main.h"
 
 // NOLINTNEXTLINE
@@ -30,17 +31,13 @@ static llvm::cl::opt<std::string> output_filename(
     llvm::cl::init("-"));
 
 int main(int argc, char** argv) {
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
 
   // Add flags for all the registered translations.
   llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"),
                             llvm::cl::Required);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
-
-  // TODO(jpienaar): Enable command line parsing for both sides.
-  int fake_argc = 1;
-  tensorflow::port::InitMain(argv[0], &fake_argc, &argv);
 
   mlir::MLIRContext context;
   return failed(

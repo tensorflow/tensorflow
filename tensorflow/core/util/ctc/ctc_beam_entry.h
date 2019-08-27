@@ -44,13 +44,11 @@ struct EmptyBeamState {};
 template <typename T>
 struct BeamProbability {
   BeamProbability()
-      : total(kLogZero<T>::val),
-        blank(kLogZero<T>::val),
-        label(kLogZero<T>::val) {}
+      : total(kLogZero<T>()), blank(kLogZero<T>()), label(kLogZero<T>()) {}
   void Reset() {
-    total = kLogZero<T>::val;
-    blank = kLogZero<T>::val;
-    label = kLogZero<T>::val;
+    total = kLogZero<T>();
+    blank = kLogZero<T>();
+    label = kLogZero<T>();
   }
   T total;
   T blank;
@@ -65,7 +63,7 @@ struct BeamEntry {
   // BeamRoot<CTCBeamState>::AddEntry() serves as the factory method.
   friend BeamEntry<T, CTCBeamState>* BeamRoot<T, CTCBeamState>::AddEntry(
       BeamEntry<T, CTCBeamState>* p, int l);
-  inline bool Active() const { return newp.total != kLogZero<T>::val; }
+  inline bool Active() const { return newp.total != kLogZero<T>(); }
   // Return the child at the given index, or construct a new one in-place if
   // none was found.
   BeamEntry<T, CTCBeamState>& GetChild(int ind) {

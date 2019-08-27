@@ -153,6 +153,10 @@ struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
 };
 #elif RUY_PLATFORM(X86)
 template <>
+struct PackedTypeImpl<Path::kAvx2, std::uint8_t> {
+  using Type = std::int8_t;
+};
+template <>
 struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
   using Type = std::int8_t;
 };
@@ -212,7 +216,8 @@ RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
 #endif
 #elif RUY_PLATFORM(X86)
-RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx512)
+RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx2)
+RUY_INHERIT_PACK(Path::kAvx2, Path::kAvx512)
 #endif
 
 // Main entry point for packing.

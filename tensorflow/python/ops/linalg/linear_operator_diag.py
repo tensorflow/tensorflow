@@ -167,13 +167,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
   def _check_diag(self, diag):
     """Static check of diag."""
-    if diag.get_shape().ndims is not None and diag.get_shape().ndims < 1:
+    if diag.shape.ndims is not None and diag.shape.ndims < 1:
       raise ValueError("Argument diag must have at least 1 dimension.  "
                        "Found: %s" % diag)
 
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
-    d_shape = self._diag.get_shape()
+    d_shape = self._diag.shape
     return d_shape.concatenate(d_shape[-1:])
 
   def _shape_tensor(self):

@@ -54,6 +54,13 @@ static ParseResult parseIsolatedRegionOp(OpAsmParser *parser,
                              /*enableNameShadowing=*/true);
 }
 
+static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
+  *p << "test.isolated_region ";
+  p->printOperand(op.getOperand());
+  p->shadowRegionArgs(op.region(), op.getOperand());
+  p->printRegion(op.region(), /*printEntryBlockArgs=*/false);
+}
+
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
@@ -75,10 +82,11 @@ static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
-  using OpRewritePattern<TestOpWithRegion>::OpRewritePattern;
+struct TestRemoveOpWithInnerOps
+    : public OpRewritePattern<TestOpWithRegionPattern> {
+  using OpRewritePattern<TestOpWithRegionPattern>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TestOpWithRegion op,
+  PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
@@ -86,9 +94,13 @@ struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
 };
 } // end anonymous namespace
 
-void TestOpWithRegion::getCanonicalizationPatterns(
+void TestOpWithRegionPattern::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TestRemoveOpWithInnerOps>(context);
+}
+
+OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
+  return operand();
 }
 
 // Static initialization for Test dialect registration.

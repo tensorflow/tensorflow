@@ -19,8 +19,14 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -29,10 +35,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -173,6 +175,48 @@ static ArrayAttr positionAttr(Builder &builder, ArrayRef<int> position) {
   return builder.getArrayAttr(attrs);
 }
 
+namespace {
+/// Factor out the common information for all view conversions:
+///   1. common types in (standard and LLVM dialects)
+///   2. `pos` method
+///   3. op of the FuncOp alloca'ed value and descriptor.
+class BaseViewConversionHelper {
+public:
+  BaseViewConversionHelper(Operation *op, ViewType viewType,
+                           ConversionPatternRewriter &rewriter,
+                           LLVMTypeConverter &lowering)
+      : indexType(rewriter.getIndexType()), viewType(viewType),
+        elementTy(getPtrToElementType(viewType, lowering)),
+        int64Ty(
+            lowering.convertType(rewriter.getIntegerType(64)).cast<LLVMType>()),
+        viewDescriptorPtrTy(
+            convertLinalgType(viewType, lowering).cast<LLVMType>()),
+        rewriter(rewriter) {
+
+    OpBuilder::InsertionGuard insertGuard(rewriter);
+    rewriter.setInsertionPointToStart(
+        &op->getParentOfType<FuncOp>().getBlocks().front());
+
+    edsc::ScopedContext context(rewriter, op->getLoc());
+    one = constant(int64Ty, IntegerAttr::get(indexType, 1));
+    // Alloca with proper alignment.
+    allocatedDesc = llvm_alloca(viewDescriptorPtrTy, one, /*alignment=*/8);
+    // Load the alloca'ed descriptor.
+    desc = llvm_load(allocatedDesc);
+  }
+
+  ArrayAttr pos(ArrayRef<int> values) const {
+    return positionAttr(rewriter, values);
+  };
+
+  IndexType indexType;
+  ViewType viewType;
+  LLVMType elementTy, int64Ty, viewDescriptorPtrTy;
+  ConversionPatternRewriter &rewriter;
+  Value *one, *allocatedDesc, *desc;
+};
+} // namespace
+
 // BufferAllocOp creates a new `!linalg.buffer` value.
 class BufferAllocOpConversion : public LLVMOpLowering {
 public:
@@ -222,8 +266,7 @@ public:
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *one = nullptr, *align = nullptr;
     if (allocOp.alignment().hasValue()) {
-      one = constant(int64Ty,
-                     rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+      one = constant(int64Ty, IntegerAttr::get(indexType, 1));
       align =
           constant(int64Ty, rewriter.getIntegerAttr(
                                 rewriter.getIndexType(),
@@ -415,7 +458,8 @@ public:
 ///   1. A function entry `alloca` operation to allocate a ViewDescriptor.
 ///   2. A load of the ViewDescriptor from the pointer allocated in 1.
 ///   3. Updates to the ViewDescriptor to introduce the data ptr, offset, size
-///      and stride corresponding to the
+///      and stride corresponding to the region of memory within the bounds of
+///      the parent view.
 ///   4. A store of the resulting ViewDescriptor to the alloca'ed pointer.
 /// The linalg.slice op is replaced by the alloca'ed pointer.
 class SliceOpConversion : public LLVMOpLowering {
@@ -446,6 +490,8 @@ public:
     auto ib = rewriter.getInsertionBlock();
     rewriter.setInsertionPointToStart(
         &op->getParentOfType<FuncOp>().getBlocks().front());
+    Value *zero =
+        constant(int64Ty, rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
     Value *one =
         constant(int64Ty, rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
     // Alloca with proper alignment.
@@ -470,12 +516,10 @@ public:
     Value *baseOffset = extractvalue(int64Ty, baseDesc, pos(kOffsetPosInView));
     for (int i = 0, e = viewType.getRank(); i < e; ++i) {
       Value *indexing = adaptor.indexings()[i];
-      Value *min =
-          sliceOp.indexing(i)->getType().isa<RangeType>()
-              ? static_cast<Value *>(extractvalue(int64Ty, indexing, pos(0)))
-              : indexing;
-      Value *product = mul(min, strides[i]);
-      baseOffset = add(baseOffset, product);
+      Value *min = indexing;
+      if (sliceOp.indexing(i)->getType().isa<RangeType>())
+        min = extractvalue(int64Ty, indexing, pos(0));
+      baseOffset = add(baseOffset, mul(min, strides[i]));
     }
     desc = insertvalue(desc, baseOffset, pos(kOffsetPosInView));
 
@@ -485,13 +529,21 @@ public:
     for (auto en : llvm::enumerate(sliceOp.indexings())) {
       Value *indexing = en.value();
       if (indexing->getType().isa<RangeType>()) {
-        int i = en.index();
-        Value *rangeDescriptor = adaptor.indexings()[i];
+        int rank = en.index();
+        Value *rangeDescriptor = adaptor.indexings()[rank];
         Value *min = extractvalue(int64Ty, rangeDescriptor, pos(0));
         Value *max = extractvalue(int64Ty, rangeDescriptor, pos(1));
         Value *step = extractvalue(int64Ty, rangeDescriptor, pos(2));
+        Value *baseSize =
+            extractvalue(int64Ty, baseDesc, pos({kSizePosInView, rank}));
+        // Bound upper by base view upper bound.
+        max = llvm_select(llvm_icmp(ICmpPredicate::slt, max, baseSize), max,
+                          baseSize);
         Value *size = sub(max, min);
-        Value *stride = mul(strides[i], step);
+        // Bound lower by zero.
+        size =
+            llvm_select(llvm_icmp(ICmpPredicate::slt, size, zero), zero, size);
+        Value *stride = mul(strides[rank], step);
         desc = insertvalue(desc, size, pos({kSizePosInView, numNewDims}));
         desc = insertvalue(desc, stride, pos({kStridePosInView, numNewDims}));
         ++numNewDims;
@@ -517,6 +569,71 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
     Value *ptr = obtainDataPtr(op, adaptor.view(), adaptor.indices(), rewriter);
     llvm_store(adaptor.value(), ptr);
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
+  }
+};
+
+/// Conversion pattern that transforms a linalg.transpose op into:
+///   1. A function entry `alloca` operation to allocate a ViewDescriptor.
+///   2. A load of the ViewDescriptor from the pointer allocated in 1.
+///   3. Updates to the ViewDescriptor to introduce the data ptr, offset, size
+///      and stride. Size and stride are permutations of the original values.
+///   4. A store of the resulting ViewDescriptor to the alloca'ed pointer.
+/// The linalg.transpose op is replaced by the alloca'ed pointer.
+class TransposeOpConversion : public LLVMOpLowering {
+public:
+  explicit TransposeOpConversion(MLIRContext *context,
+                                 LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(TransposeOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Initialize the common boilerplate and alloca at the top of the FuncOp.
+    TransposeOpOperandAdaptor adaptor(operands);
+    auto tranposeOp = cast<TransposeOp>(op);
+    BaseViewConversionHelper helper(op, tranposeOp.getViewType(), rewriter,
+                                    lowering);
+    IndexType indexType = helper.indexType;
+    ViewType viewType = helper.viewType;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
+             viewDescriptorPtrTy = helper.viewDescriptorPtrTy;
+    Value *allocatedDesc = helper.allocatedDesc, *desc = helper.desc;
+
+    edsc::ScopedContext context(rewriter, op->getLoc());
+    // Load the descriptor of the view constructed by the helper.
+    Value *baseDesc = llvm_load(adaptor.view());
+
+    // Copy the base pointer from the old descriptor to the new one.
+    ArrayAttr ptrPos = helper.pos(kPtrPosInView);
+    desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
+
+    // Copy the offset pointer from the old descriptor to the new one.
+    ArrayAttr offPos = helper.pos(kOffsetPosInView);
+    desc = insertvalue(desc, extractvalue(int64Ty, baseDesc, offPos), offPos);
+
+    if (tranposeOp.permutation().isIdentity()) {
+      // No permutation, just store back in alloca'ed region.
+      llvm_store(desc, allocatedDesc);
+      return rewriter.replaceOp(op, allocatedDesc), matchSuccess();
+    }
+
+    // Iterate over the dimensions and apply size/stride permutation.
+    for (auto en : llvm::enumerate(tranposeOp.permutation().getResults())) {
+      int sourcePos = en.index();
+      int targetPos = en.value().cast<AffineDimExpr>().getPosition();
+      Value *size = extractvalue(int64Ty, baseDesc,
+                                 helper.pos({kSizePosInView, sourcePos}));
+      desc = insertvalue(desc, size, helper.pos({kSizePosInView, targetPos}));
+      Value *stride = extractvalue(int64Ty, baseDesc,
+                                   helper.pos({kStridePosInView, sourcePos}));
+      desc =
+          insertvalue(desc, stride, helper.pos({kStridePosInView, targetPos}));
+    }
+
+    // Store back in alloca'ed region.
+    llvm_store(desc, allocatedDesc);
+    rewriter.replaceOp(op, allocatedDesc);
     return matchSuccess();
   }
 };
@@ -602,29 +719,6 @@ public:
   }
 };
 
-// Create a function definition which takes as argument pointers to the input
-// types and returns pointers to the output types.
-static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
-  auto implFnName = (libFn.getName().str() + "_impl");
-  auto module = libFn.getParentOfType<ModuleOp>();
-  if (auto f = module.lookupSymbol<FuncOp>(implFnName)) {
-    return f;
-  }
-  SmallVector<Type, 4> fnArgTypes;
-  for (auto t : libFn.getType().getInputs()) {
-    assert(t && t.isa<LLVMType>() &&
-           "Expected LLVM Type for argument while generating library Call "
-           "Implementation Definition");
-    fnArgTypes.push_back(t.cast<LLVMType>().getPointerTo());
-  }
-  auto implFnType = FunctionType::get(fnArgTypes, {}, libFn.getContext());
-
-  // Insert the implementation function definition.
-  auto implFnDefn = FuncOp::create(libFn.getLoc(), implFnName, implFnType);
-  module.push_back(implFnDefn);
-  return implFnDefn;
-}
-
 // Get function definition for the LinalgOp. If it doesn't exist, insert a
 // definition.
 template <typename LinalgOp>
@@ -684,7 +778,6 @@ public:
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
     if (!f)
       return matchFailure();
@@ -697,18 +790,81 @@ public:
   }
 };
 
+/// Conversion pattern specialization for CopyOp. This kicks in when both input
+/// and output permutations are left unspecified or are the identity.
+template <> class LinalgOpConversion<CopyOp> : public LLVMOpLowering {
+public:
+  explicit LinalgOpConversion(MLIRContext *context,
+                              LinalgTypeConverter &lowering_)
+      : LLVMOpLowering(CopyOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto copyOp = cast<CopyOp>(op);
+    auto inputPerm = copyOp.inputPermutation();
+    if (inputPerm.hasValue() && !inputPerm->isIdentity())
+      return matchFailure();
+    auto outputPerm = copyOp.outputPermutation();
+    if (outputPerm.hasValue() && !outputPerm->isIdentity())
+      return matchFailure();
+
+    auto f = getLLVMLibraryCallDeclaration<CopyOp>(op, lowering, rewriter);
+    if (!f)
+      return matchFailure();
+
+    auto fAttr = rewriter.getSymbolRefAttr(f);
+    auto named = rewriter.getNamedAttr("callee", fAttr);
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
+                                              ArrayRef<NamedAttribute>{named});
+    return matchSuccess();
+  }
+};
+
+/// A non-conversion rewrite pattern kicks in to convert CopyOp with
+/// permutations into a sequence of TransposeOp and permutation-free CopyOp.
+/// This interplays together with TransposeOpConversion and
+/// LinalgConversion<CopyOp> to create a path to the LLVM dialect.
+class CopyTransposeConversion : public OpRewritePattern<CopyOp> {
+public:
+  using OpRewritePattern<CopyOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(CopyOp op,
+                                     PatternRewriter &rewriter) const override {
+    Value *in = op.input(), *out = op.output();
+
+    // If either inputPerm or outputPerm are non-identities, insert transposes.
+    auto inputPerm = op.inputPermutation();
+    if (inputPerm.hasValue() && !inputPerm->isIdentity())
+      in = rewriter.create<linalg::TransposeOp>(op.getLoc(), in,
+                                                AffineMapAttr::get(*inputPerm));
+    auto outputPerm = op.outputPermutation();
+    if (outputPerm.hasValue() && !outputPerm->isIdentity())
+      out = rewriter.create<linalg::TransposeOp>(
+          op.getLoc(), out, AffineMapAttr::get(*outputPerm));
+
+    // If nothing was transposed, fail and let the conversion kick in.
+    if (in == op.input() && out == op.output())
+      return matchFailure();
+
+    rewriter.replaceOpWithNewOp<CopyOp>(op, in, out);
+    return matchSuccess();
+  }
+};
+
 /// Populate the given list with patterns that convert from Linalg to LLVM.
 static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  patterns
-      .insert<BufferAllocOpConversion, BufferDeallocOpConversion,
-              BufferSizeOpConversion, DimOpConversion,
-              LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
-              LinalgOpConversion<MatmulOp>, LoadOpConversion, RangeOpConversion,
-              SliceOpConversion, StoreOpConversion, ViewOpConversion>(
-          ctx, converter);
+  patterns.insert<CopyTransposeConversion>(ctx);
+  patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+                  BufferSizeOpConversion, DimOpConversion,
+                  LinalgOpConversion<CopyOp>, LinalgOpConversion<DotOp>,
+                  LinalgOpConversion<FillOp>, LinalgOpConversion<MatmulOp>,
+                  LoadOpConversion, RangeOpConversion, SliceOpConversion,
+                  StoreOpConversion, TransposeOpConversion, ViewOpConversion>(
+      ctx, converter);
 }
 
 namespace {
@@ -726,16 +882,8 @@ static void lowerLinalgSubViewOps(FuncOp &f) {
     ScopedContext scope(b, op.getLoc());
     auto *view = op.getView();
     SmallVector<Value *, 8> ranges;
-    for (auto en : llvm::enumerate(op.getRanges())) {
-      using edsc::op::operator<;
-      using linalg::intrinsics::dim;
-      unsigned rank = en.index();
-      auto sliceRange = en.value();
-      auto size = dim(view, rank);
-      ValueHandle ub(sliceRange.max);
-      auto max = edsc::intrinsics::select(size < ub, size, ub);
-      ranges.push_back(range(sliceRange.min, max, sliceRange.step));
-    }
+    for (auto sliceRange : op.getRanges())
+      ranges.push_back(range(sliceRange.min, sliceRange.max, sliceRange.step));
     op.replaceAllUsesWith(slice(view, ranges));
     op.erase();
   });

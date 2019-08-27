@@ -20,12 +20,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"

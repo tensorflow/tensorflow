@@ -151,6 +151,22 @@ tensorflow::ImportNumpy();
   $result = PyInt_FromLong(*$1);
 }
 
+// Convert TF_OperationGetAttrBool unsigned char* out-argument to Python bool.
+%typemap(in, numinputs=0) unsigned char *value (unsigned char temp) {
+  $1 = &temp;
+}
+%typemap(argout) unsigned char *value {
+  $result = PyBool_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrInt int64_t* out-argument to Python bool.
+%typemap(in, numinputs=0) int64_t *value (int64_t temp) {
+  $1 = &temp;
+}
+%typemap(argout) int64_t *value {
+  $result = PyLong_FromLongLong(*$1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;

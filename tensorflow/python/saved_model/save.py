@@ -868,12 +868,12 @@ def save(obj, export_dir, signatures=None):
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   path = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(export_dir),
+      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   object_graph_proto = _serialize_object_graph(
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-  file_io.write_string_to_file(path, saved_model.SerializeToString())
+  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.

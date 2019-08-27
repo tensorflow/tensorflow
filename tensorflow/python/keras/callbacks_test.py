@@ -49,6 +49,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -300,6 +301,21 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(training_dataset, epochs=2, validation_data=val_dataset)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_validation_split(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = np.ones((100, 3))
+    y = np.zeros((100, 2))
+    expected_log = (
+        r'(?s).*1/2.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:'
+        r'.*2/2.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
@@ -906,6 +922,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       assert (
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+
+      cbks = [
+          keras.callbacks.LearningRateScheduler(
+              lambda epoch, _: learning_rate_schedule.CosineDecay(0.01, 2)
+              (epoch))
+      ]
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+
+      cosine_decay_np = 0.5 * (1 + np.cos(np.pi * (1 / 2)))
+      decayed_learning_rate = 0.01 * cosine_decay_np
+
+      assert (float(keras.backend.get_value(model.optimizer.lr)) -
+              decayed_learning_rate) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
     with self.cached_session():

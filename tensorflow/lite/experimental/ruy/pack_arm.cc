@@ -223,7 +223,7 @@ void CheckOffsetsInPackParams8bit(const Params&) {
 
 // Packing code for out-of-order ARMv7 CPUs like the Krait 400 or A9.
 // No attempt made at making this code efficient on in-order cores yet.
-void Pack8bitNeonOutOfOrderLHS(const PackParams8bit& params) {
+void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
   CheckOffsetsInPackParams8bit(params);
   gemmlowp::ScopedProfilingLabel label(
       "Pack (kNeon, optimized for out-of-order cores)");
@@ -258,11 +258,11 @@ void Pack8bitNeonOutOfOrderLHS(const PackParams8bit& params) {
           "1:\n"
           "add r1, r1, #16\n"
           /* Load q0 */
-          "vld1.32 {d0, d1}, [%[src_ptr0]]\n"
+          "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
           "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
 
           /* Load q1 */
-          "vld1.32 {d2, d3}, [%[src_ptr1]]\n"
+          "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
           "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
 
           "veor.8 q4, q0, q11\n"
@@ -281,10 +281,10 @@ void Pack8bitNeonOutOfOrderLHS(const PackParams8bit& params) {
           "vpadal.s16 q13, q9\n"
 
           // Now do the same for src_ptr2 and src_ptr3.
-          "vld1.32 {d0, d1}, [%[src_ptr2]]\n"
+          "vld1.8 {d0, d1}, [%[src_ptr2]]\n"
           "add %[src_ptr2], %[src_ptr2], %[src_inc2]\n"
 
-          "vld1.32 {d2, d3}, [%[src_ptr3]]\n"
+          "vld1.8 {d2, d3}, [%[src_ptr3]]\n"
           "add %[src_ptr3], %[src_ptr3], %[src_inc3]\n"
 
           "veor.8 q4, q0, q11\n"
@@ -445,7 +445,7 @@ void Pack8bitNeonOutOfOrderLHS(const PackParams8bit& params) {
 // No attempt made at making this code efficient on in-order cores yet.
 // This version differs from the above in that we only handle two columns
 // at a time.
-void Pack8bitNeonOutOfOrderRHS(const PackParams8bit& params) {
+void Pack8bitNeonOutOfOrder2Cols(const PackParams8bit& params) {
   CheckOffsetsInPackParams8bit(params);
   gemmlowp::ScopedProfilingLabel label(
       "Pack (kNeon, optimized for out-of-order cores)");
@@ -474,11 +474,11 @@ void Pack8bitNeonOutOfOrderRHS(const PackParams8bit& params) {
           "1:\n"
           "add r1, r1, #16\n"
           /* Load q0 */
-          "vld1.32 {d0, d1}, [%[src_ptr0]]\n"
+          "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
           "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
 
           /* Load q1 */
-          "vld1.32 {d2, d3}, [%[src_ptr1]]\n"
+          "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
           "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
 
           "veor.8 q4, q0, q11\n"

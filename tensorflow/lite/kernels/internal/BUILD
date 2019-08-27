@@ -384,6 +384,7 @@ cc_library(
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
+        "reference/non_max_suppression.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
@@ -537,7 +538,7 @@ cc_library(
         ":round",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/ruy:detect_dotprod",
+        "//tensorflow/lite/experimental/ruy:detect_arm",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
@@ -905,6 +906,16 @@ cc_test(
     srcs = ["batch_to_space_nd_test.cc"],
     deps = [
         ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "non_max_suppression_test",
+    srcs = ["non_max_suppression_test.cc"],
+    deps = [
+        ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

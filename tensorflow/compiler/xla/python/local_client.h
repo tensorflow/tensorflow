@@ -132,6 +132,7 @@ class PyLocalClient {
     return id_to_device_;
   }
   int host_id() const { return host_id_; }
+  const std::string& platform_name() const { return platform_name_; }
 
   int local_device_count() const { return device_states_.size(); }
   DeviceState& device_state(int device_ordinal) const {
@@ -201,6 +202,7 @@ class PyLocalBuffer {
 
   const Shape& on_host_shape() const { return on_host_shape_; }
   int device_ordinal() const { return device_ordinal_; }
+  const std::string& platform_name() const { return client_->platform_name(); }
 
   // Returns the buffer's value as a tuple DAG of Python arrays. If the value
   // has previously been prefetched to the host, then returns the prefetched

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_LSTM_EVAL_H_
 #define TENSORFLOW_LITE_KERNELS_LSTM_EVAL_H_
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -64,6 +66,25 @@ struct QuantizedLstmParameter {
   int32_t quantized_cell_clip;
   int32_t quantized_proj_clip;
   std::vector<int32_t> inv_large_value;
+
+  // The fields are used for pre-computing zero_point * weight.
+  // We cannot use temporary tensors since temporary tensors are not alllocated
+  // yet until end of prepare.
+
+  // Forget gate.
+  std::unique_ptr<int32_t[]> input_to_forget_weight_x_input_zp;
+  std::unique_ptr<int32_t[]> recurrent_to_forget_weight_x_activation_zp;
+  // Modulation gate.
+  std::unique_ptr<int32_t[]> input_to_cell_weight_x_input_zp;
+  std::unique_ptr<int32_t[]> recurrent_to_cell_weight_x_activation_zp;
+  // Output gate.
+  std::unique_ptr<int32_t[]> input_to_output_weight_x_input_zp;
+  std::unique_ptr<int32_t[]> recurrent_to_output_weight_x_activation_zp;
+  // Input gate.
+  std::unique_ptr<int32_t[]> input_to_input_weight_x_input_zp;
+  std::unique_ptr<int32_t[]> recurrent_to_input_weight_x_activation_zp;
+  // Projection.
+  std::unique_ptr<int32_t[]> projection_bias_accu;
 };
 
 TfLiteStatus EvalFloat(
@@ -150,7 +171,8 @@ TfLiteStatus EvalQuantized(
     const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4);
+    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
+    TfLiteTensor* scratch5);
 
 }  // namespace lstm_eval
 }  // namespace builtin
