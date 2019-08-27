@@ -1072,6 +1072,23 @@ py_test(
 )
 
 py_test(
+    name = "ragged_merge_dims_op_test",
+    srcs = ["ragged_merge_dims_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "string_ngrams_op_test",
     size = "small",
     srcs = ["string_ngrams_op_test.py"],
