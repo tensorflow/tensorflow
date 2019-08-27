@@ -23,7 +23,12 @@ import six
 from tensorflow.python.feature_column import feature_column_v2 as fc_lib
 from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util.lazy_loader import LazyLoader
 
+# Prevent circular dependencies with Keras serialization.
+generic_utils = LazyLoader(
+    'generic_utils', globals(),
+    'tensorflow.python.keras.utils')
 
 _FEATURE_COLUMNS = [
     fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
@@ -76,9 +81,6 @@ def serialize_feature_column(fc):
   Raises:
     ValueError if called with input that is not string or FeatureColumn.
   """
-  # Import here to avoid circular imports.
-  from tensorflow.python.keras.utils import generic_utils  # pylint: disable=g-import-not-at-top
-
   if isinstance(fc, six.string_types):
     return fc
   elif isinstance(fc, fc_lib.FeatureColumn):
@@ -113,9 +115,6 @@ def deserialize_feature_column(config,
   Returns:
     A FeatureColumn corresponding to the input `config`.
   """
-  # Import here to avoid circular imports.
-  from tensorflow.python.keras.utils import generic_utils  # pylint: disable=g-import-not-at-top
-
   if isinstance(config, six.string_types):
     return config
   # A dict from class_name to class for all FeatureColumns in this module.
