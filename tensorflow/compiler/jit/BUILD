@@ -846,6 +846,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
