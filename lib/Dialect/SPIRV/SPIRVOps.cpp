@@ -316,7 +316,7 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
 
 static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
                               Location baseLoc) {
-  if (!indices.size()) {
+  if (indices.empty()) {
     emitError(baseLoc, "'spv.AccessChain' op expected at least "
                        "one index ");
     return nullptr;
@@ -370,6 +370,13 @@ static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
     resultType = cType.getElementType(index);
   }
   return spirv::PointerType::get(resultType, resultStorageClass);
+}
+
+void spirv::AccessChainOp::build(Builder *builder, OperationState *state,
+                                 Value *basePtr, ArrayRef<Value *> indices) {
+  auto type = getElementPtrType(basePtr->getType(), indices, state->location);
+  assert(type && "Unable to deduce return type based on basePtr and indices");
+  build(builder, state, type, basePtr, indices);
 }
 
 static ParseResult parseAccessChainOp(OpAsmParser *parser,
