@@ -965,11 +965,6 @@ inline void LstmStepQuantized(
   // case not peephole: cell_to_forget_weight should be nullptr
   //                    cell_to_output_weight should be nullptr
   //                    cifg: cell_to_input_weight should be nullptr
-  // case not layer_norm_lstm: layer_norm_forget_weight should be nullptr
-  //                           layer_nrom_cell_weight should be nullptr
-  //                           layer_norm_output_weight should be nullptr
-  //                           cifg: layer_norm_input_weight should be nullptr
-  // case not use_projection: proj_weight should be nullptr
 
   // Set scratch to 0.
   memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
@@ -989,10 +984,12 @@ inline void LstmStepQuantized(
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_1_ptr);
 
-  tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
-                               forget_bias_ptr, layer_norm_forget_scale_a,
-                               layer_norm_forget_scale_b, inv_large_value[1],
-                               n_batch, n_cell, scratch_1_ptr);
+  if (layer_norm_forget_weight_ptr != nullptr) {
+    tensor_utils::ApplyLayerNorm(scratch_1_ptr, layer_norm_forget_weight_ptr,
+                                 forget_bias_ptr, layer_norm_forget_scale_a,
+                                 layer_norm_forget_scale_b, inv_large_value[1],
+                                 n_batch, n_cell, scratch_1_ptr);
+  }
 
   tensor_utils::ApplySigmoid(scratch_1_ptr, n_batch, n_cell, scratch_1_ptr);
 
@@ -1008,10 +1005,12 @@ inline void LstmStepQuantized(
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_2_ptr);
 
-  tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
-                               cell_bias_ptr, layer_norm_cell_scale_a,
-                               layer_norm_cell_scale_b, inv_large_value[2],
-                               n_batch, n_cell, scratch_2_ptr);
+  if (layer_norm_cell_weight_ptr != nullptr) {
+    tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
+                                 cell_bias_ptr, layer_norm_cell_scale_a,
+                                 layer_norm_cell_scale_b, inv_large_value[2],
+                                 n_batch, n_cell, scratch_2_ptr);
+  }
 
   tensor_utils::ApplyTanh3(scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
 
@@ -1027,10 +1026,12 @@ inline void LstmStepQuantized(
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_3_ptr);
 
-  tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
-                               output_bias_ptr, layer_norm_output_scale_a,
-                               layer_norm_output_scale_b, inv_large_value[3],
-                               n_batch, n_cell, scratch_3_ptr);
+  if (layer_norm_output_weight_ptr != nullptr) {
+    tensor_utils::ApplyLayerNorm(scratch_3_ptr, layer_norm_output_weight_ptr,
+                                 output_bias_ptr, layer_norm_output_scale_a,
+                                 layer_norm_output_scale_b, inv_large_value[3],
+                                 n_batch, n_cell, scratch_3_ptr);
+  }
 
   tensor_utils::ApplySigmoid(scratch_3_ptr, n_batch, n_cell, scratch_3_ptr);
 
@@ -1046,10 +1047,12 @@ inline void LstmStepQuantized(
       effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_0_ptr);
 
-  tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
-                               input_bias_ptr, layer_norm_input_scale_a,
-                               layer_norm_input_scale_b, inv_large_value[0],
-                               n_batch, n_cell, scratch_0_ptr);
+  if (layer_norm_input_weight_ptr != nullptr) {
+    tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
+                                 input_bias_ptr, layer_norm_input_scale_a,
+                                 layer_norm_input_scale_b, inv_large_value[0],
+                                 n_batch, n_cell, scratch_0_ptr);
+  }
 
   tensor_utils::ApplySigmoid(scratch_0_ptr, n_batch, n_cell, scratch_0_ptr);
 
@@ -1073,11 +1076,13 @@ inline void LstmStepQuantized(
                          scratch_4_ptr);
 
   // Projection.
-  memset(output_ptr, 0, n_batch * n_output * sizeof(int8_t));
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      scratch_4_ptr, projection_bias_accu, proj_weight_ptr,
-      effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell, n_output,
-      activation_zp, scratch_5_ptr, output_ptr);
+  if (proj_weight_ptr != nullptr) {
+    memset(output_ptr, 0, n_batch * n_output * sizeof(int8_t));
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        scratch_4_ptr, projection_bias_accu, proj_weight_ptr,
+        effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
+        n_output, activation_zp, scratch_5_ptr, output_ptr);
+  }
 
   if (quantized_proj_clip > 0) {
     tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
