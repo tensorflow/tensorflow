@@ -674,6 +674,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->set_sharding(sharding);
   }
 
+  if (proto.has_frontend_attributes()) {
+    instruction->set_frontend_attributes(proto.frontend_attributes());
+  }
+
   return std::move(instruction);
 }
 
@@ -1194,6 +1198,7 @@ HloInstruction::CreateBroadcastSequence(
     if (operand->has_sharding()) {
       broadcast->set_sharding(operand->sharding());
     }
+    broadcast->set_frontend_attributes(operand->frontend_attributes());
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -1219,6 +1224,7 @@ HloInstruction::CreateBroadcastSequence(
   if (operand->has_sharding()) {
     reshaped_operand->set_sharding(operand->sharding());
   }
+  reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
   // Broadcast 'reshape' up to the larger size.
   auto broadcast = HloInstruction::CreateBroadcast(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
@@ -1226,6 +1232,7 @@ HloInstruction::CreateBroadcastSequence(
   if (operand->has_sharding()) {
     broadcast->set_sharding(operand->sharding());
   }
+  broadcast->set_frontend_attributes(operand->frontend_attributes());
   return broadcast;
 }
 
@@ -1296,6 +1303,7 @@ void HloInstruction::SetupDerivedInstruction(
     derived_instruction->clear_sharding();
   }
   derived_instruction->set_metadata(metadata_);
+  derived_instruction->set_frontend_attributes(frontend_attributes_);
 }
 
 bool HloInstruction::HasSideEffectNoRecurse() const {
@@ -2483,6 +2491,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
+  if (!frontend_attributes_.map().empty()) {
+    extra.push_back(StrCat("frontend_attributes=",
+                           FrontendAttributesToString(frontend_attributes_)));
+  }
   if (!outer_dimension_partitions_.empty()) {
     extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
                                     StrJoin(outer_dimension_partitions_, ",")));
@@ -2542,6 +2554,8 @@ HloInstructionProto HloInstruction::ToProto() const {
       proto.mutable_outer_dimension_partitions()->Add(idx);
     }
   }
+
+  *proto.mutable_frontend_attributes() = frontend_attributes_;
 
   return proto;
 }
@@ -3195,6 +3209,15 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     return HloInstruction::FusionKind::kCustom;
   }
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
+}
+
+string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes) {
+  std::vector<std::pair<string, string>> sorted_attributes(
+      frontend_attributes.map().begin(), frontend_attributes.map().end());
+  absl::c_sort(sorted_attributes);
+  return absl::StrFormat(
+      "{%s}", absl::StrJoin(sorted_attributes, ",", absl::PairFormatter("=")));
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {

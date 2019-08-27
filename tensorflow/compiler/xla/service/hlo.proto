@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 68
+// Next ID: 69
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -234,6 +234,9 @@ message HloInstructionProto {
   // Specifies if the gather/scatter indices are guaranteed to be sorted by the
   // caller.
   bool indices_are_sorted = 67;
+
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 68;
 }
 
 // Serialization of HloComputation.
