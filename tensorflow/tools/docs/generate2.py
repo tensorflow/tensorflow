@@ -123,7 +123,13 @@ if tf.__version__.startswith('1'):
       'tf.contrib.util': ['loader'],
   }
 else:
-  PRIVATE_MAP = {'tf': ['python', 'core', 'compiler', 'examples', 'tools']}
+  PRIVATE_MAP = {
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
+  }
   DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
     ## TensorFlow 2.0 RC
@@ -231,11 +237,6 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
 
   try:
     doc_controls.do_not_generate_docs(tf.flags)
-  except AttributeError:
-    pass
-
-  try:
-    doc_controls.do_not_generate_docs(tf.compat.v2.compat.v1)
   except AttributeError:
     pass
 
