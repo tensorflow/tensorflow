@@ -3214,7 +3214,11 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return Status::OK();
   }
 
-  TF_ASSIGN_OR_RETURN(replaced, TryToReorderSliceAndReshape(slice));
+  // Do not try to reorder slices and reshapes after layout assignment as it may
+  // be invalid.
+  if (!options_.is_layout_sensitive()) {
+    TF_ASSIGN_OR_RETURN(replaced, TryToReorderSliceAndReshape(slice));
+  }
   if (replaced) {
     return Status::OK();
   }
