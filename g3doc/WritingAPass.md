@@ -119,12 +119,12 @@ analyses are not passes but free standing classes that are computed lazily
 on-demand and cached to avoid unnecessary recomputation. An analysis in MLIR
 must adhere to the following:
 
-*   Provide a valid constructor for a given IR unit.
-*   Must not modify the given IR unit.
+*   Provide a valid constructor taking an `Operation*`.
+*   Must not modify the given operation.
 
 Each of the base Pass classes provide utilities for querying and preserving
-analyses for the current IR being processed. Using the example passes defined
-above, let's see some examples:
+analyses for the current operation being processed. Using the example passes
+defined above, let's see some examples:
 
 ### Querying Analyses
 
@@ -140,16 +140,10 @@ above, let's see some examples:
     *   `getCachedFunctionAnalysis<>`
 
 ```c++
-/// An interesting function analysis.
-struct MyFunctionAnalysis {
-  // Compute this analysis with the provided function.
-  MyFunctionAnalysis(FuncOp function);
-};
-
-/// An interesting module analysis.
-struct MyModuleAnalysis {
-  // Compute this analysis with the provided module.
-  MyModuleAnalysis(ModuleOp module);
+/// An interesting analysis.
+struct MyAnalysis {
+  // Compute this analysis with the provided operation.
+  MyFunctionAnalysis(Operation *op);
 };
 
 void MyFunctionPass::runOnFunction() {
