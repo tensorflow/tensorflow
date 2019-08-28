@@ -92,6 +92,7 @@ cc_library(
     ]) + if_android([
         "//tensorflow/core:android_tensorflow_lib",
     ]),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -105,6 +106,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         # mobile not supported yet
     ]),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -123,6 +125,7 @@ cc_library(
         "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
     ]),
+    alwayslink = 1,
 )
 
 tf_cc_test(

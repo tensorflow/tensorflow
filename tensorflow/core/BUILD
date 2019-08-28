@@ -780,6 +780,7 @@ cc_library(
         ":lib_proto_parsing",
         ":protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # DEPRECATED: use platform:stringpiece instead.
@@ -2504,6 +2505,7 @@ cc_library(
                "@com_google_protobuf//:protobuf",
            ] + tf_protos_all_impl() + tf_protos_grappler_impl() +
            tf_additional_numa_deps(),
+    alwayslink = 1,
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.

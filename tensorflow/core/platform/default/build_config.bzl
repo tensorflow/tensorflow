@@ -180,6 +180,7 @@ def cc_proto_library(
         # An empty cc_library to make rule dependency consistent.
         native.cc_library(
             name = name,
+            alwayslink = 1,
             **kargs
         )
         return
@@ -228,12 +229,14 @@ def cc_proto_library(
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
     native.cc_library(
         name = header_only_name,
         deps = ["@com_google_protobuf//:protobuf_headers"] + if_static([impl_name]),
         hdrs = gen_hdrs,
+        alwayslink = 1,
         **kargs
     )
 
@@ -343,7 +346,7 @@ def tf_proto_library_cc(
     if not srcs:
         # This is a collection of sub-libraries. Build header-only and impl
         # libraries containing all the sources.
-        proto_gen(
+        proto_gen(y
             name = cc_name + "_genproto",
             protoc = "@com_google_protobuf//:protoc",
             visibility = ["//visibility:public"],
@@ -354,10 +357,12 @@ def tf_proto_library_cc(
             deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_static([name + "_cc_impl"]),
             testonly = testonly,
             visibility = visibility,
+            alwayslink = 1,
         )
         native.cc_library(
             name = cc_name + "_impl",
             deps = [s + "_impl" for s in cc_deps] + ["@com_google_protobuf//:cc_wkt_protos"],
+            alwayslink = 1,
         )
 
         return

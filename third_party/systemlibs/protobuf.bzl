@@ -226,6 +226,7 @@ def cc_proto_library(
         # An empty cc_library to make rule dependency consistent.
         native.cc_library(
             name = name,
+            alwayslink = 1,
             **kargs
         )
         return
@@ -262,6 +263,7 @@ def cc_proto_library(
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
 
