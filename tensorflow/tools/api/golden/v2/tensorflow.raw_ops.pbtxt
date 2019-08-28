@@ -2642,11 +2642,11 @@ tf_module {
   }
   member_method {
     name: "QuantizeAndDequantizeV2"
-    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'None\'], "
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeAndDequantizeV3"
-    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'num_bits\', \'signed_input\', \'range_given\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\', \'None\'], "
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'num_bits\', \'signed_input\', \'range_given\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeDownAndShrinkRange"

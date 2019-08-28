@@ -26609,6 +26609,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
@@ -26663,6 +26670,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
