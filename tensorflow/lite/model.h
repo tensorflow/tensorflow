@@ -139,6 +139,10 @@ class FlatBufferModel {
   // version encodes the minimum required interpreter version to run the
   // flatbuffer model. If the minimum version can't be determined, an empty
   // string will be returned.
+  // Note that the returned minimum version is a lower-bound but not a strict
+  // lower-bound; ops in the graph may not have an associated runtime version,
+  // in which case the actual required runtime might be greater than the
+  // reported minimum.
   string GetMinimumRuntime() const;
 
   /// Returns true if the model identifier is correct (otherwise false and
