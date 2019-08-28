@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
   uint64 start = env->NowMicros();
   uint64 records = 0;
   uint64 offset = 0;
-  string record;
+  tstring record;
   while (true) {
     std::unique_ptr<Event> event = std::unique_ptr<Event>(new Event);
     Status s = reader.ReadRecord(&offset, &record);

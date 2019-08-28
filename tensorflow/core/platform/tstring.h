@@ -163,6 +163,8 @@ class tstring {
 
   const char* data() const { return str_.data(); }
 
+  char back() const { return str_.back(); }
+
   const char& operator[](size_t i) const { return str_[i]; }
 
   char* data() { return &str_[0]; }
@@ -205,6 +207,15 @@ class tstring {
 
   tstring& append(const char* str) {
     str_.append(str);
+
+    return *this;
+  }
+
+  void swap(tstring& str) { str_.swap(str.str_); }
+
+  tstring& insert(size_t pos, const tstring& str, size_t subpos,
+                  size_t sublen) {
+    str_.insert(pos, str.str_, subpos, sublen);
 
     return *this;
   }

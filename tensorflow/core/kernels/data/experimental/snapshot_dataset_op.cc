@@ -162,11 +162,11 @@ class SnapshotReader {
     }
   }
 
-  Status ReadRecord(string* record) {
+  Status ReadRecord(tstring* record) {
     profiler::TraceMe activity(
         absl::StrCat(kClassName, kSeparator, kReadString),
         profiler::TraceMeLevel::kInfo);
-    string header;
+    tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
     return input_stream_->ReadNBytes(length, record);
@@ -176,14 +176,14 @@ class SnapshotReader {
   Status ReadRecord(absl::Cord* record) {
     profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kReadCord),
                                profiler::TraceMeLevel::kInfo);
-    string header;
+    tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
 
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
-      string tmp_str;
+      tstring tmp_str;
       Status s = input_stream_->ReadNBytes(length, &tmp_str);
       record->Append(tmp_str);
       return s;
@@ -224,7 +224,7 @@ Status ReadMetadataFile(const string& hash_dir,
   std::unique_ptr<RandomAccessFile> file;
   TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
-  string record_bytes;
+  tstring record_bytes;
   auto reader = absl::make_unique<SnapshotReader>(file.get());
   TF_CHECK_OK(reader->ReadRecord(&record_bytes));
 

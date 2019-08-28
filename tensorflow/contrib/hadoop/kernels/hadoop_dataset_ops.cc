@@ -31,12 +31,13 @@ class SequenceFileReader {
             new io::BufferedInputStream(file, kSequenceFileBufferSize)) {}
 
   Status ReadHeader() {
-    string version;
+    tstring version;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(4, &version));
-    if (version.substr(0, 3) != "SEQ" || version[3] != 6) {
+    StringPiece version_view(version);
+    if (version_view.substr(0, 3) != "SEQ" || version[3] != 6) {
       return errors::InvalidArgument(
           "sequence file header must starts with `SEQ6`, received \"",
-          version.substr(0, 3), static_cast<int>(version[3]), "\"");
+          version_view.substr(0, 3), static_cast<int>(version[3]), "\"");
     }
     TF_RETURN_IF_ERROR(ReadString(&key_class_name_));
     TF_RETURN_IF_ERROR(ReadString(&value_class_name_));
@@ -50,7 +51,7 @@ class SequenceFileReader {
                                    "' is currently not supported");
     }
 
-    string buffer;
+    tstring buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(2, &buffer));
     compression_ = buffer[0];
     block_compression_ = buffer[1];
@@ -84,12 +85,12 @@ class SequenceFileReader {
     return Status::OK();
   }
 
-  Status ReadRecord(string* key, string* value) {
+  Status ReadRecord(tstring* key, tstring* value) {
     uint32 length = 0;
     TF_RETURN_IF_ERROR(ReadUInt32(&length));
     if (length == static_cast<uint32>(-1)) {
       // Sync marker.
-      string sync_marker;
+      tstring sync_marker;
       TF_RETURN_IF_ERROR(
           input_stream_->ReadNBytes(kSyncMarkerSize, &sync_marker));
       if (sync_marker != sync_marker_) {
@@ -114,7 +115,7 @@ class SequenceFileReader {
     return Status::OK();
   }
 
-  Status ReadString(string* value) {
+  Status ReadString(tstring* value) {
     int64 length = 0;
     TF_RETURN_IF_ERROR(ReadVInt(&length));
     if (value == nullptr) {
@@ -124,7 +125,7 @@ class SequenceFileReader {
   }
 
   Status ReadUInt32(uint32* value) {
-    string buffer;
+    tstring buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(4, &buffer));
     *value = ((static_cast<uint32>(buffer[0]) << 24) |
               static_cast<uint32>(buffer[1]) << 16) |
@@ -134,7 +135,7 @@ class SequenceFileReader {
   }
 
   Status ReadVInt(int64* value) {
-    string buffer;
+    tstring buffer;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(1, &buffer));
     if (buffer[0] >= -112) {
       *value = static_cast<int64>(buffer[0]);
@@ -167,12 +168,12 @@ class SequenceFileReader {
 
  private:
   std::unique_ptr<io::InputStreamInterface> input_stream_;
-  string key_class_name_;
-  string value_class_name_;
-  string sync_marker_;
+  tstring key_class_name_;
+  tstring value_class_name_;
+  tstring sync_marker_;
   bool compression_;
   bool block_compression_;
-  string compression_codec_class_name_;
+  tstring compression_codec_class_name_;
   TF_DISALLOW_COPY_AND_ASSIGN(SequenceFileReader);
 };
 class SequenceFileDatasetOp : public DatasetOpKernel {
@@ -258,7 +259,7 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            string key, value;
+            tstring key, value;
             Status status = reader_->ReadRecord(&key, &value);
             if (!errors::IsOutOfRange(status)) {
               TF_RETURN_IF_ERROR(status);

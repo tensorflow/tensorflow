@@ -419,7 +419,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
                                size_t* start, bool include)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        string temp_buffer;
+        tstring temp_buffer;
 
         buffer_.swap(temp_buffer);
         if (include && pos_ > *start) {
@@ -622,7 +622,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
       }
 
-      Status FillBuffer(string* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status FillBuffer(tstring* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         result->clear();
         ++num_buffer_reads_;
         Status s = input_stream_->ReadNBytes(
@@ -827,7 +827,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       mutex mu_;
-      string buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
+      tstring buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
       size_t pos_ GUARDED_BY(
           mu_);  // Index into the buffer must be maintained between iters
       size_t num_buffer_reads_ GUARDED_BY(mu_);

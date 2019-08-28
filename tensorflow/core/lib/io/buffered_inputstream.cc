@@ -85,7 +85,7 @@ Status BufferedInputStream::ReadLineHelper(string* result, bool include_eol) {
   return s;
 }
 
-Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
+Status BufferedInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
