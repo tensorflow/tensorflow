@@ -812,6 +812,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation
 )
 
 cuda_py_test(

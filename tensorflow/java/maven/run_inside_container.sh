@@ -120,6 +120,11 @@ download_libtensorflow_jni_gpu() {
   curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-gpu-linux-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C linux-x86_64
   curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-gpu-windows-x86_64-${TF_VERSION}.zip" -o /tmp/windows.zip
 
+  FRAMEWORK_SO="$(readlink -f linux-x86_64/libtensorflow_framework.so)"
+  rm linux-x86_64/libtensorflow_framework.so
+  rm "linux-x86_64/libtensorflow_framework.so.${MAJOR_VERSION}"
+  mv "${FRAMEWORK_SO}" "linux-x86_64/libtensorflow_framework.so.${MAJOR_VERSION}"
+
   unzip /tmp/windows.zip -d windows-x86_64
   rm -f /tmp/windows.zip
 

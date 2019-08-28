@@ -208,13 +208,13 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
                                     nullptr, RunId());
+  service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options,
-                                         /*profile=*/profile, arguments));
+      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }
@@ -244,11 +244,11 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
                                     nullptr, RunId());
+  service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options,
-                                         /*profile=*/profile, arguments));
+      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
 }

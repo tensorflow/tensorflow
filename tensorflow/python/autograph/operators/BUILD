@@ -37,6 +37,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:list_ops",
@@ -46,6 +47,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 

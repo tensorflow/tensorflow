@@ -8,12 +8,12 @@ load(
     "tfe_xla_copts",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_device_tracer_test_flags",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -156,6 +156,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_experimental",
         ":c_api_internal",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",

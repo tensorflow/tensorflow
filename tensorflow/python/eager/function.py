@@ -32,6 +32,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -76,10 +77,46 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
-CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions", "colocation_stack",
-    "in_cross_replica_context"
-])
+class CacheKey(
+    collections.namedtuple("CacheKey", [
+        "input_signature", "parent_graph", "device_functions",
+        "colocation_stack", "in_cross_replica_context"
+    ])):
+  """Named tuple used to key the function cache."""
+
+  def __hash__(self):
+    """Provide a hash even if the input signature objects aren't hashable."""
+    return hash(self._fields_safe)
+
+  @property
+  def _fields_safe(self):
+    """Hash & equality-safe version of all the namedtuple fields."""
+    return (self._hash_fix(self.input_signature), self.parent_graph,
+            self.device_functions, self.colocation_stack,
+            self.in_cross_replica_context)
+
+  def _hash_fix(self, elem):
+    """Ensure elem is hashable even if a Variable is nested in it."""
+    # Descend into tuples
+    if isinstance(elem, tuple):
+      return tuple(self._hash_fix(i) for i in elem)
+
+    if isinstance(elem, set):
+      return {self._hash_fix(i) for i in elem}
+
+    # If the element is not hashable, assume it is a weakref to a variable and
+    # return the dtype & shape. Else, simply return the element
+    try:
+      hash(elem)
+    except TypeError:
+      v = elem()
+      return (v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype))
+
+    return elem
+
+  def __eq__(self, other):
+    return self._fields_safe == other._fields_safe  # pylint: disable=protected-access
+
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -1125,6 +1162,11 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
+    # Copy saveable status of function's graph to current FuncGraph.
+    default_graph = ops.get_default_graph()
+    if default_graph.building_function and not self._func_graph.saveable:
+      default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
+
     if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
@@ -1375,8 +1417,8 @@ class ConcreteFunction(object):
     return ret
 
 
-pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
-pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1657,7 +1699,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
                                             flat_input_signature)):
-    if not pywrap_tensorflow.IsTensor(value):
+    if not _pywrap_utils.IsTensor(value):
       try:
         flatten_inputs[index] = ops.convert_to_tensor(
             value, dtype_hint=spec.dtype)

@@ -33,7 +33,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
 from tensorflow.python.ops import control_flow_ops
+# copybara:strip_end
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -943,36 +946,48 @@ def convolution_internal(
     padding="VALID",
     data_format=None,
     dilations=None,
-    name=None):
+    name=None,
+    call_from_convolution=True):
   """Internal function which performs rank agnostic convolution."""
-  with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShape) and \
+  if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
-      n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
-      n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
-      n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(filters.shape) - 2
+  elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
-      n = len(filters.shape) - 2
-    else:
-      raise ValueError("rank of input or filter must be known")
+    n = len(filters.shape) - 2
+  else:
+    raise ValueError("rank of input or filter must be known")
 
-    if not 1 <= n <= 3:
-      raise ValueError(
-          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+  if not 1 <= n <= 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
 
-    if data_format is None:
-      channel_index = n + 1
-    else:
-      channel_index = 1 if data_format.startswith("NC") else n + 1
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
 
-    strides = _get_sequence(strides, n, channel_index, "strides")
-    dilations = _get_sequence(dilations, n, channel_index, "dilations")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+  dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
+  # copybara:strip_begin
+  # TODO(b/138808492): Remove code inside copybara
+  # to make TPU code and CPU code consistent.
+  scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
+  if not call_from_convolution and _enclosing_tpu_context() is not None:
+    scope = scopes[n]
+  else:
+    scope = "convolution"
+  # copybara:strip_end
+  # copybara:insert scope = "convolution"
+
+  with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
     # copybara:strip_begin
@@ -1113,7 +1128,8 @@ class Convolution(object):
           padding=self.padding,
           data_format=self.data_format,
           dilations=self.dilation_rate,
-          name=self.name)
+          name=self.name,
+          call_from_convolution=False)
     else:
       return self.conv_op(inp, filter)
     # copybara:strip_end

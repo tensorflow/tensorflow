@@ -60,6 +60,21 @@ class CalibratorTest(test_util.TensorFlowTestCase):
                                                        constants.FLOAT, True)
     self.assertIsNotNone(quantized_model)
 
+  def test_calibration_with_quantization_single_op(self):
+    model_path = resource_loader.get_path_to_datafile(
+        'test_data/mobilenet_like_model.bin')
+    float_model = open(model_path, 'rb').read()
+    quantizer = _calibrator.Calibrator(float_model)
+
+    # Input generator for the model.
+    def input_gen():
+      for _ in range(10):
+        yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
+
+    quantized_model = quantizer.calibrate_and_quantize_single(
+        input_gen, constants.FLOAT, constants.FLOAT, True, 'conv2d_8/BiasAdd')
+    self.assertIsNotNone(quantized_model)
+
   def test_calibration_with_quantization_multiple_inputs(self):
     # Load multi add model from test data.
     # This model has 4 inputs of size (1, 8, 8, 3).

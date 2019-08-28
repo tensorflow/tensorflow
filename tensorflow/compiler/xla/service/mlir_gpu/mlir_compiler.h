@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 
 namespace xla {
-namespace mlir {
+namespace mlir_gpu {
 
 // A Compiler implementation that converts XLAs IR to a matching MLIR dialect,
 // performs all lowering on the MLIR IR and finally converts MLIR to LLVMIR for
@@ -37,16 +37,6 @@ class MlirCompiler : public Compiler {
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group,
-      absl::Span<se::StreamExecutor* const> executors,
-      se::DeviceMemoryAllocator* device_allocator) override;
-
-  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -70,7 +60,7 @@ class MlirCompiler : public Compiler {
   int64 pointer_size_;
 };
 
-}  // namespace mlir
+}  // namespace mlir_gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_

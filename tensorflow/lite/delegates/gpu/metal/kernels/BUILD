@@ -142,6 +142,19 @@ ios_unit_test(
 )
 
 cc_library(
+    name = "custom_registry",
+    srcs = ["custom_registry.cc"],
+    hdrs = ["custom_registry.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+    ],
+)
+
+cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
     hdrs = ["depthwise_conv.h"],

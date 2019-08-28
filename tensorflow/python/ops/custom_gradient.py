@@ -223,14 +223,17 @@ def _graph_mode_decorator(f, *args, **kwargs):
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
   current_var_scope = variable_scope.get_variable_scope()
-  before_vars = set(current_var_scope.global_variables() +
-                    current_var_scope.local_variables())
+  before_vars = set(
+      [v.experimental_ref() for v in current_var_scope.global_variables() +
+       current_var_scope.local_variables()])
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args)
-  after_vars = set(current_var_scope.global_variables() +
-                   current_var_scope.local_variables())
+  after_vars = set(
+      [v.experimental_ref() for v in current_var_scope.global_variables() +
+       current_var_scope.local_variables()])
   new_vars = after_vars - before_vars
-  for v in new_vars:
+  new_vars_list = [v.deref() for v in new_vars]
+  for v in new_vars_list:
     if not resource_variable_ops.is_resource_variable(v):
       raise TypeError(
           "All variables used by a function wrapped with @custom_gradient must "
@@ -238,10 +241,15 @@ def _graph_mode_decorator(f, *args, **kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables_in_tape = frozenset(tape.watched_variables()) - frozenset(args)
-  variables_in_subgraph = frozenset(get_dependent_variables(
-      input_ops=args, output_ops=result))
-  variables = list(variables_in_subgraph.union(variables_in_tape))
+  variables_in_tape = frozenset([
+      v.experimental_ref() for v in tape.watched_variables()
+  ]) - frozenset(v.experimental_ref() for v in args)
+  variables_in_subgraph = frozenset([
+      v.experimental_ref()
+      for v in get_dependent_variables(input_ops=args, output_ops=result)
+  ])
+  variables = list(
+      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
@@ -311,7 +319,11 @@ def _eager_mode_decorator(f, *args, **kwargs):
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables = [v for v in set(tape.watched_variables()) if v not in all_inputs]
+  variables = [
+      v.deref()  # pylint: disable=g-complex-comprehension
+      for v in set(v.experimental_ref() for v in tape.watched_variables())
+      if all(v.deref() is not i for i in all_inputs)
+  ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
       not grad_argspec.varkw):

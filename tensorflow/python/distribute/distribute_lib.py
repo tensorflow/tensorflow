@@ -99,6 +99,7 @@ import copy
 import enum  # pylint: disable=g-bad-import-order
 import threading
 import weakref
+
 import six
 
 from tensorflow.python.autograph.core import ag_ctx
@@ -411,13 +412,16 @@ class InputContext(object):
 # pylint: disable=line-too-long
 @tf_export("distribute.Strategy", v1=[])
 class Strategy(object):
-  """A list of devices with a state & compute distribution policy.
+  """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy)
   for overview and examples.
 
   In short:
 
+  * To use it with Keras `compile`/`fit`,
+    [please
+    read](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * You may pass descendant of `tf.distribute.Strategy` to
     `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
     should distribute its computation. See
@@ -426,11 +430,10 @@ class Strategy(object):
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
     means the strategy is put in control of things like variable placement.)
-  * If using Keras `compile`/`fit`,
-    [that is it](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * If you are writing a custom training loop, you will need to call a few more
     methods,
-    [see the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
+    [see the
+    guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
 
       * Start by either creating a `tf.data.Dataset` normally or using
         `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
@@ -485,7 +488,8 @@ class Strategy(object):
   accumulate metrics across steps in a given epoch.
 
   See the
-  [custom training loop tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
+  [custom training loop
+  tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
   for a more detailed example.
 
   Note: `tf.distribute.Strategy` currently does not support TensorFlow's
@@ -726,14 +730,17 @@ class Strategy(object):
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
     when `fn` is executed on a particular replica, it will be executed with the
-    component of those "per-replica" values that corresponds to that replica.
+    component of those "per-replica" values that correspond to that replica.
 
     `fn` may call `tf.distribute.get_replica_context()` to access members such
     as `all_reduce`.
 
-    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
-    used, and whether eager execution is enabled, `fn` may be called one or more
-    times (once for each replica).
+    All arguments in `args` or `kwargs` should either be nest of tensors or
+    per-replica objects containing tensors or composite tensors.
+
+    IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
+    whether eager execution is enabled, `fn` may be called one or more times (
+    once for each replica).
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -835,7 +842,12 @@ class Strategy(object):
           return numer, dim
       elif axis < 0:
         axis = axis + array_ops.rank(v)
-      denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      if v.shape.rank == 1:
+        # TODO(b/139422050): Currently tf.shape is not supported in TPU dynamic
+        # padder, use tf.size instead to workaround if the rank is 1.
+        denom = array_ops.size(v, out_type=dtypes.int64)
+      else:
+        denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -872,7 +884,7 @@ class Strategy(object):
   def experimental_local_results(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
-    Note: This only returns values on the workers initiated by this client.
+    Note: This only returns values on the worker initiated by this client.
     When using a `tf.distribute.Strategy` like
     `tf.distribute.experimental.MultiWorkerMirroredStrategy`, each worker
     will be its own client, and this function will only return values
@@ -1441,7 +1453,7 @@ class StrategyExtendedV2(object):
         all-reduction, pass `value` to `destinations`.
 
     Returns:
-      A value mirrored to `destinations`.
+      A tensor or value mirrored to `destinations`.
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
@@ -1629,6 +1641,23 @@ class StrategyExtendedV2(object):
 
   def _update_config_proto(self, config_proto):
     return copy.deepcopy(config_proto)
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings.
+
+    Multi-worker training refers to the setup where the training is
+    distributed across multiple workers, as opposed to the case where
+    only a local process performs the training. This function is
+    used by higher-level apis such as Keras' `model.fit()` to infer
+    for example whether or not a distribute coordinator should be run,
+    and thus TensorFlow servers should be started for communication
+    with other servers in the cluster, or whether or not saving/restoring
+    checkpoints is relevant for preemption fault tolerance.
+
+    Subclasses should override this to provide whether the strategy is
+    currently in multi-worker setup.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
 
 @tf_export(v1=["distribute.StrategyExtended"])  # pylint: disable=missing-docstring
@@ -2170,6 +2199,11 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # Default strategy doesn't indicate multi-worker training.
+    return False
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.

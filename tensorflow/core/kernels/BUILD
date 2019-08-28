@@ -20,16 +20,15 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load(
@@ -139,6 +138,7 @@ tf_kernel_library(
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
         "strided_slice_op_inst_7.cc",
+        "strided_slice_op_inst_8.cc",
     ],
     hdrs = [
         "slice_op.h",
@@ -195,6 +195,17 @@ tf_cc_test(
     ],
 )
 
+# virtual targets since nested select statements not possible
+tf_kernel_library(
+    name = "virtual_nccl",
+    deps = if_cuda(["@local_config_nccl//:nccl"]),
+)
+
+tf_kernel_library(
+    name = "virtual_rccl",
+    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
+)
+
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
@@ -202,6 +213,8 @@ tf_kernel_library(
         "collective_nccl.cc",
         "collective_nccl_broadcaster.h",
         "collective_nccl_broadcaster.cc",
+        "collective_nccl_gatherer.h",
+        "collective_nccl_gatherer.cc",
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
@@ -212,7 +225,8 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
-        "@local_config_nccl//:nccl",
+        ":virtual_nccl",
+        ":virtual_rccl",
         "//tensorflow/core/nccl:nccl_lib",
     ]),
 )
@@ -381,11 +395,14 @@ cc_library(
 
 tf_kernel_library(
     name = "nccl_kernels",
-    srcs = if_cuda([
+    srcs = if_cuda_or_rocm([
         "nccl_ops.cc",
     ]),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rccl",
+    ]) + if_cuda_or_rocm([
         "//tensorflow/core/nccl:nccl_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
@@ -501,15 +518,18 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ]),
 )
 
 tf_cc_test(
@@ -817,7 +837,6 @@ cc_library(
         "eigen_backward_spatial_convolutions.h",
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
-        "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
         "eigen_volume_patch.h",
     ],
@@ -838,7 +857,6 @@ cc_library(
         "eigen_backward_spatial_convolutions.h",
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
-        "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
         "eigen_volume_patch.h",
     ],
@@ -917,7 +935,6 @@ ARRAY_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
@@ -1336,6 +1353,7 @@ cc_library(
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
         ":ragged_tensor_to_sparse_kernel",
+        ":ragged_tensor_to_tensor_op",
         ":ragged_tensor_to_variant_op",
     ],
 )
@@ -1388,6 +1406,35 @@ tf_kernel_library(
     srcs = ["ragged_tensor_to_sparse_kernel.cc"],
     deps = [
         "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_tensor_op_test",
+    size = "small",
+    srcs = ["ragged_tensor_to_tensor_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_tensor_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_to_tensor_op",
+    srcs = ["ragged_tensor_to_tensor_op.cc"],
+    deps = [
+        ":broadcast_to_op",
+        ":list_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:ragged_to_dense_util",
     ],
 )
 
@@ -1888,7 +1935,10 @@ tf_kernel_library(
 # Unlike gather_functor library, this does not include the CUDA code and deps.
 cc_library(
     name = "gather_functor_hdr",
-    hdrs = ["gather_functor.h"],
+    hdrs = [
+        "gather_functor.h",
+        "gather_functor_batched.h",
+    ],
 )
 
 tf_kernel_library(
@@ -2394,7 +2444,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -2931,7 +2980,6 @@ tf_cc_tests(
         "eigen_attention_test.cc",
         "eigen_backward_spatial_convolutions_test.cc",
         "eigen_pooling_test.cc",
-        "eigen_softmax_test.cc",
         "eigen_spatial_convolutions_test.cc",
     ],
     deps = [
@@ -3101,6 +3149,7 @@ tf_cuda_cc_test(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -3298,16 +3347,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-    ] + if_static(
-        [
-            "@local_config_cuda//cuda:cusolver",
-            "@local_config_cuda//cuda:cublas",
-        ],
-        [
-            "//tensorflow/stream_executor/cuda:cusolver_stub",
-            "//tensorflow/stream_executor/cuda:cublas_stub",
-        ],
-    ),
+        "//tensorflow/stream_executor/cuda:cublas_lib",
+        "//tensorflow/stream_executor/cuda:cusolver_lib",
+    ],
 )
 
 tf_kernel_library(
@@ -3317,10 +3359,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + if_static(
-        ["@local_config_cuda//cuda:cusparse"],
-        ["//tensorflow/stream_executor/cuda:cusparse_stub"],
-    ),
+        "//tensorflow/stream_executor/cuda:cusparse_lib",
+    ],
 )
 
 LINALG_DEPS = [
@@ -3757,10 +3797,7 @@ tf_kernel_library(
     ],
     hdrs = ["matmul_op.h"],
     defines = select({
-        ":xsmm": [
-            "TENSORFLOW_USE_LIBXSMM",
-            "EIGEN_USE_LIBXSMM",
-        ],
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
         "//conditions:default": [],
     }),
     deps = MATH_DEPS + [
@@ -4183,12 +4220,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     defines = select({
-        ":xsmm_convolutions": [
-            "TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":xsmm": ["EIGEN_USE_LIBXSMM"],
+        ":xsmm_convolutions": ["TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS"],
         "//conditions:default": [],
     }) + select({
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
@@ -4368,7 +4400,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lrn_op",
     prefix = "lrn_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]),
 )
 
 tf_kernel_library(
@@ -4708,7 +4740,6 @@ cc_library(
 PARSING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
 ]
 
@@ -5974,7 +6005,6 @@ filegroup(
         "eigen_convolution_helpers.h",
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
-        "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
         "eigen_volume_patch.h",
@@ -6043,6 +6073,7 @@ filegroup(
         "function_ops.cc",
         "function_ops.h",
         "gather_functor.h",
+        "gather_functor_batched.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
         "gather_nd_op_cpu_impl.h",
@@ -6092,6 +6123,7 @@ filegroup(
         "slice_op_cpu_impl_5.cc",
         "slice_op_cpu_impl_6.cc",
         "slice_op_cpu_impl_7.cc",
+        "slice_op_cpu_impl_8.cc",
         "softmax_op.cc",
         "softmax_op_functor.h",
         "split_lib.h",
@@ -6109,6 +6141,7 @@ filegroup(
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
         "strided_slice_op_inst_7.cc",
+        "strided_slice_op_inst_8.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
@@ -6467,7 +6500,10 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = ["//tensorflow/c/kernels:android_all_op_kernels"] + glob(
+    srcs = [
+        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/core/kernels/data:dataset_ops_srcs",
+    ] + glob(
         [
             "*.cc",
             "*.h",
@@ -6519,7 +6555,6 @@ filegroup(
             "debug_ops.*",
             "mutex_ops.*",
             "batch_kernels.*",
-            "regex_full_match_op.cc",
             "regex_replace_op.cc",
             "string_lower_op.cc",  # Requires ICU for unicode.
             "string_upper_op.cc",  # Requires ICU for unicode.
@@ -7986,7 +8021,7 @@ cc_library(
     name = "kernel_platform_strings",
     srcs = ["kernel_platform_strings.h"],
     deps = [
-        "//tensorflow/core:platform_strings",
+        "//tensorflow/core/platform:platform_strings",
     ],
     alwayslink = 1,
 )

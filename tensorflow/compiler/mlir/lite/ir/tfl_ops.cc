@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -26,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -89,76 +91,18 @@ Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
                            calculate(lhs.getValue(), rhs.getValue()));
 }
 
-// TODO: We have multiple functions to handle different attriubte kinds in the
-// following. Consider add methods to ElementsAttr to unify these functions.
-
-// Performs const folding `calculate` with broadcast behavior on the two
-// attributes `operand1` and `operand2` and returns the result if possible.
-// This function assumes that both operands are `AttrElementT` attributes.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpSplatSplat(Type result_type, Attribute operand1,
-                                      Attribute operand2,
-                                      const CalculationT &calculate) {
-  auto type = result_type.cast<ShapedType>();
-  auto elem_type = type.getElementType();
-
-  auto element_result = ConstFoldBinaryOpScalarScalar<AttrElementT>(
-      elem_type, operand1, operand2, calculate);
-  if (!element_result) return {};
-
-  return DenseElementsAttr::get(type, element_result);
-}
-
 /// Performs const folding `calculate` with broadcast behavior on the two
 /// attributes `operand1` and `operand2` and returns the result if possible.
-/// This function assumes the first operand is a DenseElementsAttr and the
-/// second one is a SplatElementsAttr, and both are verified to have value
+/// This function assumes the both operands are verified to have value
 /// attributes of broadcastable types.
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
               llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
-                                      Attribute operand2,
+Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
+                                      DenseElementsAttr rhs,
                                       const CalculationT &calculate) {
-  auto lhs = operand1.cast<DenseElementsAttr>();
-
-  // TODO: Support broadcast behavior
-  if (lhs.getType() != result_type || operand2.getType() != result_type)
-    return {};
-
-  auto rhs = operand2.cast<SplatElementsAttr>().getSplatValue();
   auto type = result_type.cast<ShapedType>();
-
-  SmallVector<ElementValueT, 16> new_values;
-  new_values.reserve(lhs.rawSize());
-
-  // Add the splat value to each of the values in the dense elements
-  // attribute.
-  auto rhs_val = rhs.cast<AttrElementT>().getValue();
-  for (auto old_val : lhs.getValues<ElementValueT>()) {
-    new_values.push_back(calculate(old_val, rhs_val));
-  }
-
-  return DenseElementsAttr::get(type, new_values);
-}
-
-/// Performs const folding `calculate` with broadcast behavior on the two
-/// attributes `operand1` and `operand2` and returns the result if possible.
-/// This function assumes the both operands are DenseElementsAttr and verified
-/// to have value attributes of broadcastable types.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpDenseDense(Type result_type, Attribute operand1,
-                                      Attribute operand2,
-                                      const CalculationT &calculate) {
-  auto lhs = operand1.cast<DenseElementsAttr>();
-  auto rhs = operand2.cast<DenseElementsAttr>();
 
   if (lhs.getType() != rhs.getType()) {
     // We only support the case that one of the operand's dimensions are
@@ -166,23 +110,49 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, Attribute operand1,
     // TODO: support the general broadcast behavior.
     auto lhs_shape = lhs.getType().getShape();
     auto rhs_shape = rhs.getType().getShape();
-    if (!IsTrailingDimensions(lhs_shape, rhs_shape) &&
-        !IsTrailingDimensions(rhs_shape, lhs_shape))
+    if (IsTrailingDimensions(lhs_shape, rhs_shape)) {
+      if (!type.hasStaticShape()) type = rhs.getType();
+    } else if (IsTrailingDimensions(rhs_shape, lhs_shape)) {
+      if (!type.hasStaticShape()) type = lhs.getType();
+    } else {
       return {};
+    }
+  } else if (!type.hasStaticShape()) {
+    type = lhs.getType();
+  }
+
+  const bool rhs_is_splat = rhs.isSplat();
+  const bool lhs_is_splat = lhs.isSplat();
+
+  // If both of them are splat, compute and return.
+  if (lhs_is_splat && rhs_is_splat) {
+    auto element_result = AttrElementT::get(
+        type.getElementType(), calculate(lhs.getSplatValue<ElementValueT>(),
+                                         rhs.getSplatValue<ElementValueT>()));
+    if (!element_result) return {};
+
+    return DenseElementsAttr::get(type, element_result);
   }
 
   auto lhs_num_elements = lhs.getType().getNumElements();
   auto rhs_num_elements = rhs.getType().getNumElements();
-
-  auto type = result_type.cast<ShapedType>();
-  auto num_elements = type.getNumElements();
+  auto num_elements = std::max(lhs_num_elements, rhs_num_elements);
 
   // We assume the arguments have broadcast-compatible types. Make sure again.
   assert(std::max(lhs_num_elements, rhs_num_elements) == num_elements);
   assert(num_elements % std::min(lhs_num_elements, rhs_num_elements) == 0);
 
-  SmallVector<ElementValueT, 16> lhs_old_values(lhs.getValues<ElementValueT>());
-  SmallVector<ElementValueT, 16> rhs_old_values(rhs.getValues<ElementValueT>());
+  SmallVector<ElementValueT, 16> lhs_old_values;
+  SmallVector<ElementValueT, 16> rhs_old_values;
+  if (lhs_is_splat)
+    lhs_old_values.push_back(lhs.getSplatValue<ElementValueT>());
+  else
+    lhs_old_values = llvm::to_vector<16>(lhs.getValues<ElementValueT>());
+  if (rhs_is_splat)
+    rhs_old_values.push_back(rhs.getSplatValue<ElementValueT>());
+  else
+    rhs_old_values = llvm::to_vector<16>(rhs.getValues<ElementValueT>());
+
   SmallVector<ElementValueT, 16> new_values;
   new_values.reserve(num_elements);
 
@@ -200,8 +170,8 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, Attribute operand1,
     // operand with more elements, since the result has the same number of
     // elements, we are only going over its elements once. The modulo operation
     // also works for that.
-    int lhs_index = i % lhs_num_elements;
-    int rhs_index = i % rhs_num_elements;
+    int lhs_index = lhs_is_splat ? 0 : (i % lhs_num_elements);
+    int rhs_index = rhs_is_splat ? 0 : (i % rhs_num_elements);
 
     new_values.push_back(
         calculate(lhs_old_values[lhs_index], rhs_old_values[rhs_index]));
@@ -226,30 +196,11 @@ Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
     if (operand2.dyn_cast_or_null<AttrElementT>())
       return ConstFoldBinaryOpScalarScalar<AttrElementT>(result_type, operand1,
                                                          operand2, calculate);
-  } else if (auto lhs = operand1.dyn_cast_or_null<SplatElementsAttr>()) {
-    // Splat op splat case
-    if (auto rhs = operand2.dyn_cast_or_null<SplatElementsAttr>())
-      return ConstFoldBinaryOpSplatSplat<AttrElementT>(
-          result_type, lhs.getSplatValue(), rhs.getSplatValue(), calculate);
-
-    // Splat op dense case
-    if (auto rhs = operand2.dyn_cast_or_null<DenseElementsAttr>()) {
-      if (is_commutative) {
-        // Swap the two constant values to fall into the following case
-        return ConstFoldBinaryOpDenseSplat<AttrElementT>(result_type, operand2,
-                                                         operand1, calculate);
-      }
-    }
-  } else if (auto lhs = operand1.dyn_cast_or_null<DenseElementsAttr>()) {
-    // Dense op splat case
-    if (auto rhs = operand2.dyn_cast_or_null<SplatElementsAttr>())
-      return ConstFoldBinaryOpDenseSplat<AttrElementT>(result_type, operand1,
-                                                       operand2, calculate);
-
-    // Dense op dense case
-    if (auto rhs = operand2.dyn_cast_or_null<DenseElementsAttr>())
-      return ConstFoldBinaryOpDenseDense<AttrElementT>(result_type, operand1,
-                                                       operand2, calculate);
+  } else if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
+             operand2.dyn_cast_or_null<DenseElementsAttr>()) {
+    return ConstFoldBinaryOpDenseDense<AttrElementT>(
+        result_type, operand1.cast<DenseElementsAttr>(),
+        operand2.cast<DenseElementsAttr>(), calculate);
   }
 
   // TODO: support other attribute kinds
@@ -451,6 +402,23 @@ static LogicalResult Verify(PackOp op) {
   if (op.getOperation()->getNumOperands() != op.values_count())
     return op.emitOpError("input count should match 'values_count' attribute");
 
+  Value *operand0 = op.getOperand(0);
+  auto input_type = operand0->getType().cast<ShapedType>();
+
+  // Check axis bounds.
+  int64_t axis_value = op.axis().getSExtValue();
+  if (abs(axis_value) > input_type.getRank())
+    return op.emitOpError("op attribute 'axis' is out of bounds, got ")
+           << axis_value;
+
+  // Make sure all inputs have the same shape and element type.
+  // TODO(rahulsp): Simplify once b/135032064 is fixed.
+  for (Value *operand : op.getOperands()) {
+    auto other_type = operand->getType().cast<ShapedType>();
+    if (input_type != other_type)
+      return op.emitOpError("operands should be of the same type");
+  }
+
   return success();
 }
 
@@ -506,7 +474,75 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.push_back(llvm::make_unique<RemoveAdjacentReshape>(context));
+  results.insert<RemoveAdjacentReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SliceOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto begin_type = op.begin()->getType().cast<ShapedType>();
+  auto size_type = op.size()->getType().cast<ShapedType>();
+  if (input_type.hasStaticShape() && begin_type.hasStaticShape() &&
+      size_type.hasStaticShape()) {
+    if (input_type.getRank() != begin_type.getNumElements()) {
+      return op.emitError(
+          "begin tensor elements size is not equal to input tensor rank");
+    }
+
+    if (input_type.getRank() != size_type.getNumElements()) {
+      return op.emitError(
+          "size tensor elements size is not equal to input tensor rank");
+    }
+  }
+
+  DenseIntElementsAttr begin;
+  if (matchPattern(op.begin(), m_Constant(&begin))) {
+    int axis = 0;
+    for (auto begin_i : llvm::enumerate(begin)) {
+      if (begin_i.value().getSExtValue() < 0) {
+        return op.emitError(
+            llvm::formatv("begin[{0}] cannot be negative", axis));
+      }
+      axis++;
+    }
+  }
+
+  DenseIntElementsAttr size;
+  if (matchPattern(op.size(), m_Constant(&size))) {
+    int axis = 0;
+    for (auto size_i : llvm::enumerate(size)) {
+      if (size_i.value().getSExtValue() < -1) {
+        return op.emitError(
+            llvm::formatv("size[{0}] cannot be negative other than -1", axis));
+      }
+      axis++;
+    }
+  }
+
+  if (begin && size && input_type.hasStaticShape()) {
+    const int input_rank = begin.getNumElements();
+    for (uint64_t i = 0; i < input_rank; i++) {
+      int begin_i =
+          begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int size_i =
+          size.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int dim_i = input_type.getShape()[i];
+      if (begin_i >= dim_i) {
+        return op.emitOpError(llvm::formatv(
+            "begin[{0}] cannot exceed dimension length: {1}", i, dim_i));
+      }
+      if (size_i >= 0 && begin_i + size_i > dim_i) {
+        return op.emitError(llvm::formatv(
+            "begin[{0}] + size[{0}] cannot exceed dimension length: {1}", i,
+            dim_i));
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -534,7 +570,7 @@ static void BuildTopKOp(Builder *builder, OperationState *result, Value *input,
   if (matchPattern(k, m_Constant(&cst)))
     // These casts should all be valid due to how Tensor constants are stored.
     // TODO(jpienaar): This should use a helper function.
-    const_k = cst.getValue({}).cast<IntegerAttr>().getValue().getSExtValue();
+    const_k = cst.getValue<IntegerAttr>({}).getValue().getSExtValue();
 
   auto val_type = input->getType().cast<TensorType>();
   // If value is unranked, then so is results.
@@ -591,7 +627,7 @@ struct DropFakeQuant : public RewritePattern {
 
 void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.push_back(llvm::make_unique<DropFakeQuant>(context));
+  results.insert<DropFakeQuant>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -606,6 +642,65 @@ static LogicalResult Verify(UnpackOp op) {
 
   if (op.getOperation()->getNumResults() != op.num())
     return op.emitOpError("output count should match 'num' attribute");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+// Extracts and returns the signed integer constant in a 0-rank integer tensor
+// if 'value' is a constant.
+static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
+  ElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr))) return {};
+
+  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  return int_attr.getValue().getSExtValue();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  int64_t num_splits = op.num_splits().getSExtValue();
+  if (op.getOperation()->getNumResults() != num_splits)
+    return op.emitOpError("output count should match 'num_splits' attribute");
+
+  // If 'split_dim' is not a constant, there are no other checks.
+  llvm::Optional<int64_t> split_dim_opt =
+      ExtractConstantIntFromTensor(op.split_dim());
+  if (!split_dim_opt) return success();
+
+  // If 'input' is not a ranked tensor, there are no other checks.
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t split_dim = split_dim_opt.getValue();
+  const int64_t rank = input_type.getRank();
+  if (split_dim < 0) split_dim += rank;
+  if (split_dim < 0 || split_dim >= rank)
+    return op.emitOpError("'split_dim' should be in [-rank, rank)");
+
+  // If the 'split_dim' dimension of the 'input' tensor has a dynamic size,
+  // there are no other checks.
+  const int64_t dim_size = input_type.getDimSize(split_dim);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  if (dim_size % num_splits != 0)
+    return op.emitOpError("'num_splits' should evenly divide 'split_dim' axis");
+
+  // Creates sliced tensor type.
+  auto slice_shape = input_type.getShape().vec();
+  slice_shape[split_dim] = dim_size / num_splits;
+  RankedTensorType slice_type =
+      RankedTensorType::get(slice_shape, input_type.getElementType());
+
+  // Verifies result tensor types.
+  for (int64_t i = 0; i < num_splits; ++i) {
+    Value *result = op.getResult(i);
+    auto result_type = result->getType().dyn_cast<RankedTensorType>();
+    if (!result_type || result_type != slice_type)
+      return op.emitOpError() << "output #" << i << " should be " << slice_type;
+  }
 
   return success();
 }
@@ -652,6 +747,18 @@ static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
   }
   return op.emitError(
       "UnidirectionalSequenceRNNOp expected to have one stateful operand");
+}
+
+//===----------------------------------------------------------------------===//
+// SvdfOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SVDFOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 1 && operands[0] == 4) {
+    return success();
+  }
+  return op.emitError("SvdfOp expected to have one stateful operand");
 }
 
 //===----------------------------------------------------------------------===//
@@ -770,9 +877,22 @@ OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1);
+  auto result_type = getType().cast<ShapedType>();
   if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
     auto rank = static_cast<int32_t>(elements_attr.getType().getRank());
-    return DenseElementsAttr::get(getType().cast<ShapedType>(), {rank});
+    return DenseElementsAttr::get(result_type, {rank});
+  }
+
+  // Also fold if `input` has a known rank.
+  auto input_type = input()->getType().cast<ShapedType>();
+  // Do not fold if rank is zero because the TFLite converter doesn't
+  // distinguish between unranked input and scalar input due to b/138865275.
+  // TODO(b/138865275): Remove `input_type.getRank() != 0` in the following
+  // predicate and fold the op when rank is zero.
+  if (input_type.hasRank() && input_type.getRank() != 0) {
+    auto rank = static_cast<int32_t>(input_type.getRank());
+    return DenseElementsAttr::get(result_type, {rank});
   }
 
   return nullptr;
@@ -845,17 +965,17 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
     if (elem_type.isa<IntegerType>()) {
-      auto start_attr = start_tensor.getValue({}).cast<IntegerAttr>();
-      auto limit_attr = limit_tensor.getValue({}).cast<IntegerAttr>();
-      auto delta_attr = delta_tensor.getValue({}).cast<IntegerAttr>();
+      auto start_attr = start_tensor.getValue<IntegerAttr>({});
+      auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
+      auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
       const int num_elements = GetLengthOfRange(
           start_attr.getInt(), limit_attr.getInt(), delta_attr.getInt());
       return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                    delta_attr);
     } else if (elem_type.isa<FloatType>()) {
-      auto start_attr = start_tensor.getValue({}).cast<FloatAttr>();
-      auto limit_attr = limit_tensor.getValue({}).cast<FloatAttr>();
-      auto delta_attr = delta_tensor.getValue({}).cast<FloatAttr>();
+      auto start_attr = start_tensor.getValue<FloatAttr>({});
+      auto limit_attr = limit_tensor.getValue<FloatAttr>({});
+      auto delta_attr = delta_tensor.getValue<FloatAttr>({});
       const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
                                                 limit_attr.getValueAsDouble(),
                                                 delta_attr.getValueAsDouble());
@@ -923,9 +1043,8 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   SmallVector<int32_t, 4> perm;
   SmallVector<int64_t, 4> output_shape;
   for (int i = 0; i < num_dimensions; ++i) {
-    perm.push_back(perm_tensor.getValue({static_cast<uint64_t>(i)})
-                       .cast<IntegerAttr>()
-                       .getInt());
+    perm.push_back(
+        perm_tensor.getValue<IntegerAttr>({static_cast<uint64_t>(i)}).getInt());
     output_shape.push_back(input_shape[perm[i]]);
 
     // Check that the derived output shape matches the static shape.

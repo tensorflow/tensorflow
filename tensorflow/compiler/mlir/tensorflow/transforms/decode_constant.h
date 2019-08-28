@@ -23,7 +23,7 @@ namespace TF {
 // Creates a pass to decode and reset opaque values in constant ops into
 // readable values.
 // Note that this pass assumes RaiseTFControlFlow pass has already been run.
-FunctionPassBase *CreateDecodeConstantPass();
+std::unique_ptr<FunctionPassBase> CreateDecodeConstantPass();
 }  // namespace TF
 }  // namespace mlir
 

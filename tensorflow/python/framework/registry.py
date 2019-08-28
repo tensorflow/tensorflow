@@ -54,11 +54,11 @@ class Registry(object):
     if not name:
       name = candidate.__name__
     if name in self._registry:
-      (filename, line_number, function_name, _, _) = (
-          self._registry[name][_LOCATION_TAG])
-      raise KeyError("Registering two %s with name '%s'! "
-                     "(Previous registration was in %s %s:%d)" %
-                     (self._name, name, function_name, filename, line_number))
+      frame = self._registry[name][_LOCATION_TAG]
+      raise KeyError(
+          "Registering two %s with name '%s'! "
+          "(Previous registration was in %s %s:%d)" %
+          (self._name, name, frame.name, frame.filename, frame.lineno))
 
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]

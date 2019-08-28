@@ -183,17 +183,23 @@ void HeapReadyManager::DrainWaitingQueue() {
   waiting_queue_.clear();
 }
 
+bool FirstReadyCmp(
+    const std::unordered_map<const NodeDef*, NodeState>* node_map,
+    const NodeDef* a, const NodeDef* b) {
+  if (node_map->at(a).time_ready == node_map->at(b).time_ready) {
+    // Use Node name as tie-breaker for deterministic node scheduling.
+    return a->name().compare(b->name()) > 0;
+  } else {
+    // Note: we need a node with minimum time_ready, not maximum; hence, using
+    // a > b for comparison function.
+    return node_map->at(a).time_ready > node_map->at(b).time_ready;
+  }
+}
+
 std::function<bool(const NodeDef*, const NodeDef*)>
 FirstReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
-      // Use Node name as tie-breaker for deterministic node scheduling.
-      return a->name().compare(b->name()) > 0;
-    } else {
-      // Note: we need a node with minimum time_ready, not maximum; hence, using
-      // a > b for comparison function.
-      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
-    }
+    return FirstReadyCmp(node_map_, a, b);
   };
   return greater;
 }
@@ -201,22 +207,27 @@ FirstReadyManager::Greater() {
 std::function<bool(const NodeDef*, const NodeDef*)>
 PriorityReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    return node_priority_.at(a->name()) > node_priority_.at(b->name());
+    auto pri_a = node_priority_.at(a->name());
+    auto pri_b = node_priority_.at(b->name());
+    if (pri_a == pri_b) {
+      // Fallback to default (FirstReady) behaviour.
+      return FirstReadyCmp(node_map_, a, b);
+    }
+    return pri_a > pri_b;
   };
   return greater;
 }
 
+void PriorityReadyManager::AddNode(const NodeDef* node) {
+  if (node_priority_.count(node->name()) == 0) {
+    VLOG(3) << "Priority of node " << node->name() << " not found.";
+    node_priority_[node->name()] = 0;
+  }
+  HeapReadyManager::AddNode(node);
+}
+
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
-  // Checks each node has a unique priority.
-  std::unordered_set<int> priorities;
-  for (const auto& it : node_priority_) {
-    if (priorities.find(it.second) != priorities.end()) {
-      return errors::InvalidArgument("Non-unique priority found");
-    }
-    priorities.insert(it.second);
-  }
-
   node_priority_ = node_priority;
   return Status::OK();
 }

@@ -2568,7 +2568,7 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
 
   int parallel_iters;
   bool found_parallel_iters =
-      GetNodeAttrSimple(node->attrs(), "parallel_iterations", &parallel_iters);
+      TryGetNodeAttr(node->attrs(), "parallel_iterations", &parallel_iters);
   DCHECK(found_parallel_iters)
       << "Could not find \"parallel_iterations\" attr in node " << node->name();
   FrameState* temp = new FrameState(impl_, parallel_iters);

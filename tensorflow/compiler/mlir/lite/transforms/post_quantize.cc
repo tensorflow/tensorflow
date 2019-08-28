@@ -18,8 +18,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Pass.
@@ -125,8 +125,9 @@ void PostQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-FunctionPassBase* CreatePostQuantizePass(bool emit_quant_adaptor_ops) {
-  return new PostQuantizePass(emit_quant_adaptor_ops);
+std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
+    bool emit_quant_adaptor_ops) {
+  return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }
 
 static PassRegistration<PostQuantizePass> pass(

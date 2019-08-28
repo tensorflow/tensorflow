@@ -1550,7 +1550,7 @@ inline void SparseMatMul<TL, TR>::Compute(
   // Note buffer needs enough space to hold at most a KR * NR matrix since that
   // is the block size per iteration.
   const int buffer_num_rows =
-      std::min(KR, right_dim0) * (std::min(NR, right_dim1) + N - 1) / N;
+      std::min(KR, right_dim0) * ((std::min(NR, right_dim1) + N - 1) / N);
   MatrixR buffer(buffer_num_rows, N);
   std::vector<ConstMatrixMapR*> right_slices;
 

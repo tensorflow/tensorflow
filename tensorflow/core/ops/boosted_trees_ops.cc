@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -301,7 +302,7 @@ REGISTER_OP("BoostedTreesAggregateStats")
       DimensionHandle stats_dim;
       TF_RETURN_IF_ERROR(c->Add(logits_dim, hessian_dim, &stats_dim));
       c->set_output(
-          0, c->MakeShape({max_splits, num_buckets, feature_dim, stats_dim}));
+          0, c->MakeShape({max_splits, feature_dim, num_buckets, stats_dim}));
       return Status::OK();
     });
 
@@ -378,10 +379,13 @@ REGISTER_OP("BoostedTreesPredict")
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
       shape_inference::ShapeHandle unused_input;
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 1), 1, &feature_shape));
-        // Check that the shapes of all bucketized features are the same.
-        TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
+        TF_RETURN_IF_ERROR(
+            c->WithRankAtMost(c->input(i + 1), 2, &feature_shape));
+        // Check that all bucketized features have the same batch size.
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1), 0),
+                                    c->Dim(c->input(i + 1), 0), &batch_size));
       }
 
       int logits_dimension;
@@ -405,10 +409,13 @@ REGISTER_OP("BoostedTreesExampleDebugOutputs")
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
       shape_inference::ShapeHandle unused_input;
+      shape_inference::DimensionHandle batch_dim = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 1), 1, &feature_shape));
-        // Check that the shapes of all bucketized features are the same.
-        TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
+        TF_RETURN_IF_ERROR(
+            c->WithRankAtMost(c->input(i + 1), 2, &feature_shape));
+        // Check that all bucketized features have the same batch size.
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1), 0),
+                                    c->Dim(c->input(i + 1), 0), &batch_dim));
       }
 
       // Multi-class will be supported by modifying the proto.
@@ -446,14 +453,19 @@ REGISTER_OP("BoostedTreesTrainingPredict")
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
 
       shape_inference::ShapeHandle unused_input;
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(3), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 3), 1, &feature_shape));
+        TF_RETURN_IF_ERROR(
+            c->WithRankAtMost(c->input(i + 3), 2, &feature_shape));
         TF_RETURN_IF_ERROR(
             c->Merge(c->input(i + 3), feature_shape, &unused_input));
       }
-      // all inputs/outputs except logits should have same shape.
-      TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(2), feature_shape, &unused_input));
+      shape_inference::ShapeHandle tree_ids_shape;
+      shape_inference::ShapeHandle node_ids_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &tree_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &node_ids_shape));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(tree_ids_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
 
       int logits_dimension;
       TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
@@ -517,6 +529,75 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
             c->WithRank(c->input(i + num_features * 4 + 2), 2, &shape_handle));
         TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
                                     shape_rank_2, &shape_handle));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesUpdateEnsembleV2")
+    .Input("tree_ensemble_handle: resource")
+    .Input("feature_ids: int32")
+    .Input("dimension_ids: num_features * int32")
+    .Input("node_ids: num_features * int32")
+    .Input("gains: num_features * float")
+    .Input("thresholds: num_features * int32")
+    .Input("left_node_contribs: num_features * float")
+    .Input("right_node_contribs: num_features * float")
+    .Input("split_types: num_features * string")
+    .Input("max_depth: int32")
+    .Input("learning_rate: float")
+    .Input("pruning_mode: int32")
+    .Attr("num_features: int >= 0")  // Inferred.
+    .Attr("logits_dimension: int = 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle shape_handle;
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+
+      // Feature_ids, should be one for each feature.
+      shape_inference::ShapeHandle feature_ids_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &feature_ids_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->input(1), c->Vector(num_features), &shape_handle));
+
+      int logits_dimension;
+      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      for (int i = 0; i < num_features; ++i) {
+        // Dimension ids.
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 2), 1, &shape_handle));
+
+        // Node ids.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features + 2), 1, &shape_handle));
+        auto shape_rank_1 = c->MakeShape({c->Dim(shape_handle, 0)});
+        auto shape_rank_2 =
+            c->MakeShape({c->Dim(shape_handle, 0), logits_dimension});
+
+        // Gains.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 2 + 2), 1, &shape_handle));
+        // TODO(nponomareva): replace this with input("name",vector of shapes).
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 2 + 2),
+                                    shape_rank_1, &shape_handle));
+        // Thresholds.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 3 + 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 3 + 2),
+                                    shape_rank_1, &shape_handle));
+        // Left and right node contribs.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 4 + 2), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
+                                    shape_rank_2, &shape_handle));
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 5 + 2), 2, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 5 + 2),
+                                    shape_rank_2, &shape_handle));
+
+        // Split types.
+        TF_RETURN_IF_ERROR(
+            c->WithRank(c->input(i + num_features * 6 + 2), 1, &shape_handle));
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 6 + 2),
+                                    shape_rank_1, &shape_handle));
       }
       return Status::OK();
     });

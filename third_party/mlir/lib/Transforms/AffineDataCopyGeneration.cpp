@@ -28,12 +28,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/MapVector.h"
@@ -92,17 +92,25 @@ struct AffineDataCopyGeneration
       unsigned slowMemorySpace = 0,
       unsigned fastMemorySpace = clFastMemorySpace, unsigned tagMemorySpace = 0,
       int minDmaTransferSize = 1024,
-      uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max())
+      uint64_t fastMemCapacityBytes =
+          (clFastMemoryCapacity.getNumOccurrences() > 0
+               ? clFastMemoryCapacity * 1024 // cl-provided size is in KiB
+               : std::numeric_limits<uint64_t>::max()),
+      bool generateDma = clDma,
+      bool skipNonUnitStrideLoops = clSkipNonUnitStrideLoop)
       : slowMemorySpace(slowMemorySpace), fastMemorySpace(fastMemorySpace),
         tagMemorySpace(tagMemorySpace), minDmaTransferSize(minDmaTransferSize),
-        fastMemCapacityBytes(fastMemCapacityBytes) {}
+        fastMemCapacityBytes(fastMemCapacityBytes), generateDma(generateDma),
+        skipNonUnitStrideLoops(skipNonUnitStrideLoops) {}
 
   explicit AffineDataCopyGeneration(const AffineDataCopyGeneration &other)
       : slowMemorySpace(other.slowMemorySpace),
         fastMemorySpace(other.fastMemorySpace),
         tagMemorySpace(other.tagMemorySpace),
         minDmaTransferSize(other.minDmaTransferSize),
-        fastMemCapacityBytes(other.fastMemCapacityBytes) {}
+        fastMemCapacityBytes(other.fastMemCapacityBytes),
+        generateDma(other.generateDma),
+        skipNonUnitStrideLoops(other.skipNonUnitStrideLoops) {}
 
   void runOnFunction() override;
   LogicalResult runOnBlock(Block *block);
@@ -138,6 +146,12 @@ struct AffineDataCopyGeneration
   // Capacity of the faster memory space.
   uint64_t fastMemCapacityBytes;
 
+  // If set, generate DMA operations instead of read/write.
+  bool generateDma;
+
+  // If set, ignore loops with steps other than 1.
+  bool skipNonUnitStrideLoops;
+
   // Constant zero index to avoid too many duplicates.
   Value *zeroIndex = nullptr;
 };
@@ -148,12 +162,12 @@ struct AffineDataCopyGeneration
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-FunctionPassBase *mlir::createAffineDataCopyGenerationPass(
+std::unique_ptr<FunctionPassBase> mlir::createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
     int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
-  return new AffineDataCopyGeneration(slowMemorySpace, fastMemorySpace,
-                                      tagMemorySpace, minDmaTransferSize,
-                                      fastMemCapacityBytes);
+  return std::make_unique<AffineDataCopyGeneration>(
+      slowMemorySpace, fastMemorySpace, tagMemorySpace, minDmaTransferSize,
+      fastMemCapacityBytes);
 }
 
 // Info comprising stride and number of elements transferred every stride.
@@ -235,7 +249,7 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
 
 static InFlightDiagnostic LLVM_ATTRIBUTE_UNUSED
 emitRemarkForBlock(Block &block) {
-  return block.getContainingOp()->emitRemark();
+  return block.getParentOp()->emitRemark();
 }
 
 /// Generates a point-wise copy from/to `memref' to/from `fastMemRef' and
@@ -464,7 +478,7 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
   auto bufAffineMap = b.getMultiDimIdentityMap(bufIndices.size());
   fullyComposeAffineMapAndOperands(&bufAffineMap, &bufIndices);
 
-  if (!clDma) {
+  if (!generateDma) {
     auto copyNest = generatePointWiseCopy(loc, memref, fastMemRef, memIndices,
                                           fastBufferShape,
                                           /*isCopyOut=*/region.isWrite(), b);
@@ -519,7 +533,7 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
     auto bufDeallocOp = epilogue.create<DeallocOp>(loc, fastMemRef);
     // When generating pointwise copies, `nEnd' has to be set to deallocOp on
     // the fast buffer (since it marks the new end insertion point).
-    if (!clDma && *nEnd == end)
+    if (!generateDma && *nEnd == end)
       *nEnd = Block::iterator(bufDeallocOp.getOperation());
   }
 
@@ -606,9 +620,9 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
       // until we find a depth at which footprint fits in fast mem capacity. If
       // the footprint can't be calculated, we assume for now it fits. Recurse
       // inside if footprint for 'forOp' exceeds capacity, or when
-      // clSkipNonUnitStrideLoop is set and the step size is not one.
-      bool recurseInner = clSkipNonUnitStrideLoop ? forOp.getStep() != 1
-                                                  : exceedsCapacity(forOp);
+      // skipNonUnitStrideLoops is set and the step size is not one.
+      bool recurseInner = skipNonUnitStrideLoops ? forOp.getStep() != 1
+                                                 : exceedsCapacity(forOp);
       if (recurseInner) {
         // We'll recurse and do the copies at an inner level for 'forInst'.
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
@@ -729,7 +743,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(region->compute(opInst, copyDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
@@ -858,7 +872,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
   if (totalCopyBuffersSizeInBytes > fastMemCapacityBytes) {
     StringRef str = "Total size of all copy buffers' for this block "
                     "exceeds fast memory capacity\n";
-    block->getContainingOp()->emitError(str);
+    block->getParentOp()->emitError(str);
   }
 
   return totalCopyBuffersSizeInBytes;
@@ -868,11 +882,6 @@ void AffineDataCopyGeneration::runOnFunction() {
   FuncOp f = getFunction();
   OpBuilder topBuilder(f.getBody());
   zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
-
-  // Override default is a command line option is provided.
-  if (clFastMemoryCapacity.getNumOccurrences() > 0) {
-    fastMemCapacityBytes = clFastMemoryCapacity * 1024;
-  }
 
   for (auto &block : f)
     runOnBlock(&block);

@@ -1317,7 +1317,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttrSimple(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
+      TryGetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

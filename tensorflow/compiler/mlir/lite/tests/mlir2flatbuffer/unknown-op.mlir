@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[1]} -eq 0
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - 2>&1 | FileCheck %s; test ${PIPESTATUS[0]} -ne 0
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xi32>):

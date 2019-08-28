@@ -207,6 +207,111 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(np.array(x), np.ones((3, 4)))
     self.assertEqual(len(x), 3)
 
+  def testRef(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x1.experimental_ref())
+    self.assertEqual(x2.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(y.experimental_ref(), y.experimental_ref())
+    self.assertEqual(z.experimental_ref(), z.experimental_ref())
+    self.assertEqual(w.experimental_ref(), w.experimental_ref())
+
+    self.assertNotEqual(x1.experimental_ref(), y.experimental_ref())
+    self.assertNotEqual(x1.experimental_ref(), z.experimental_ref())
+    self.assertNotEqual(x1.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(y.experimental_ref(), z.experimental_ref())
+    self.assertNotEqual(y.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(z.experimental_ref(), w.experimental_ref())
+
+  def testRefDeref(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertIs(x1, x1.experimental_ref().deref())
+    self.assertIs(x2, x2.experimental_ref().deref())
+    self.assertIs(x1, x2.experimental_ref().deref())
+    self.assertIs(x2, x1.experimental_ref().deref())
+    self.assertIs(y, y.experimental_ref().deref())
+    self.assertIs(z, z.experimental_ref().deref())
+
+    self.assertIsNot(x1, y.experimental_ref().deref())
+    self.assertIsNot(x1, z.experimental_ref().deref())
+    self.assertIsNot(x1, w.experimental_ref().deref())
+    self.assertIsNot(y, z.experimental_ref().deref())
+    self.assertIsNot(y, w.experimental_ref().deref())
+    self.assertIsNot(z, w.experimental_ref().deref())
+
+  def testRefInSet(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+
+    tensor_set = {
+        x1.experimental_ref(),
+        x2.experimental_ref(),
+        y.experimental_ref(),
+        z.experimental_ref(),
+        w.experimental_ref(),
+    }
+
+    self.assertEqual(len(tensor_set), 4)
+    self.assertIn(x1.experimental_ref(), tensor_set)
+    self.assertIn(x2.experimental_ref(), tensor_set)
+    self.assertIn(y.experimental_ref(), tensor_set)
+    self.assertIn(z.experimental_ref(), tensor_set)
+    self.assertIn(w.experimental_ref(), tensor_set)
+
+  def testRefInDict(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+
+    tensor_dict = {
+        x1.experimental_ref(): "x1",
+        y.experimental_ref(): "y",
+        z.experimental_ref(): "z",
+        w.experimental_ref(): "w",
+    }
+
+    self.assertEqual(len(tensor_dict), 4)
+
+    # Overwriting x1
+    tensor_dict[x2.experimental_ref()] = "x2"
+    self.assertEqual(len(tensor_dict), 4)
+
+    self.assertEqual(tensor_dict[x1.experimental_ref()], "x2")
+    self.assertEqual(tensor_dict[x2.experimental_ref()], "x2")
+    self.assertEqual(tensor_dict[y.experimental_ref()], "y")
+    self.assertEqual(tensor_dict[z.experimental_ref()], "z")
+    self.assertEqual(tensor_dict[w.experimental_ref()], "w")
+
+  def testTensorRefStrong(self):
+    x = constant_op.constant(1.)
+    x_ref = x.experimental_ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
+
+  def testVariableRefStrong(self):
+    x = variables.Variable(1.)
+    x_ref = x.experimental_ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
@@ -386,13 +491,6 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("None", "bar")
     self.assertProtoEquals("op: 'None' name: 'bar'", nodedef)
 
-  def testArgs(self):
-    nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
-                           nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
-
 
 def _apply_op(g, *args, **kwargs):
   op = g.create_op(*args, **kwargs)
@@ -470,12 +568,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op:'Foo2' name:'myop3'
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
-
-  def testDeviceFromNodeDef(self):
-    op = ops.Operation(
-        ops._NodeDef("None", "myop", device="/job:goo/device:GPU:0"),
-        ops.Graph(), [], [])
-    self.assertEqual("/job:goo/device:GPU:0", op.device)
 
   def testDeviceObject(self):
     op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
@@ -600,6 +692,13 @@ class OperationTest(test_util.TensorFlowTestCase):
       # Forcing an invalid dtype should fail with a type error.
       values = [1.23]
       ops.convert_to_tensor(values, dtype=dtypes.int64)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToLongLongTensorType(self):
+    tensor = ops.convert_to_tensor(
+        # Get a numpy array of dtype NPY_LONGLONG
+        np.prod(constant_op.constant([1])._shape_tuple()))
+    self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):

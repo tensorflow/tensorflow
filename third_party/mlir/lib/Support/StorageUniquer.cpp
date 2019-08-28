@@ -17,6 +17,7 @@
 
 #include "mlir/Support/StorageUniquer.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/RWMutex.h"
 
@@ -166,7 +167,7 @@ struct StorageUniquerImpl {
   StorageTypeSet storageTypes;
 
   // Unique types with just the kind.
-  DenseMap<unsigned, BaseStorage *> simpleTypes;
+  llvm::DenseMap<unsigned, BaseStorage *> simpleTypes;
 
   // Allocator to use when constructing derived type instances.
   StorageUniquer::StorageAllocator allocator;

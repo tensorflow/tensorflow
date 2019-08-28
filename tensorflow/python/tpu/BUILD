@@ -8,7 +8,7 @@ load(
     "tf_py_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -203,6 +203,7 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/tpu:tensor_tracer_proto_py",
         "//tensorflow/python/tpu/profiler",
+        "@six_archive//:six",
     ],
 )
 

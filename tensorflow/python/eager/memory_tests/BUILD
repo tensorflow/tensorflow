@@ -32,7 +32,8 @@ cuda_py_test(
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/140065350): Re-enable
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(

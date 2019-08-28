@@ -314,6 +314,14 @@ func @rank() -> tensor<1xi32> {
   return %0 : tensor<1xi32>
 }
 
+// CHECK-LABEL: @rank_input_known_rank
+func @rank_input_known_rank(%arg0 : tensor<2x1xi32>) -> tensor<1xi32> {
+  // CHECK: [[cst:%.*]] = constant dense<2> : tensor<1xi32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.rank"(%arg0) : (tensor<2x1xi32>) -> tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+
 // CHECK-LABEL: @reshape
 func @reshape() -> tensor<1x2xi32> {
   %cst = constant dense<[1, 2]> : tensor<2xi32>
@@ -446,4 +454,28 @@ func @transpose_3d() -> tensor<4x2x3xi32> {
   // CHECK: return [[cst]]
   %0 = "tfl.transpose"(%cst, %cst_perm) : (tensor<2x3x4xi32>, tensor<3xi32>) -> tensor<4x2x3xi32>
   return %0 : tensor<4x2x3xi32>
+}
+
+// CHECK-LABEL: @ConstantFoldBinaryOpDynamicOutput
+func @ConstantFoldBinaryOpDynamicOutput() -> tensor<?xi32> {
+  %cst = constant dense<10> : tensor<i32>
+  %cst_0 = "tfl.pseudo_const"() {value = dense<[5, 10]> : tensor<2xi32>} : () -> tensor<?xi32>
+  %87 = "tfl.sub"(%cst_0, %cst) {fused_activation_function = "NONE"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  return %87 : tensor<?xi32>
+
+  // CHECK: [[cst:%.*]] = "tfl.pseudo_const"() {value = dense<[-5, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK: return [[cst]]
+}
+
+// CHECK-LABEL: @add_dense_dense_int_same_shape_dynamic
+func @add_dense_dense_int_same_shape_dynamic() -> tensor<?xi32> {
+  %0 = constant dense<[15, 23, -44, -2]> : tensor<4xi32>
+  %1 = constant dense<[-10, -1, 42, 100]> : tensor<4xi32>
+
+  %2 = "tfl.add"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<?xi32>
+
+  return %2 : tensor<?xi32>
+
+  // CHECK: [[cst:%.*]] = "tfl.pseudo_const"() {value = dense<[5, 22, -2, 98]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: return [[cst]]
 }

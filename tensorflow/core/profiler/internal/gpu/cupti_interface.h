@@ -53,6 +53,9 @@ class CuptiInterface {
                                                    uint32_t stream_id,
                                                    size_t* dropped) = 0;
 
+  virtual CUptiResult ActivityConfigureUnifiedMemoryCounter(
+      CUpti_ActivityUnifiedMemoryCounterConfig* config, uint32_t count) = 0;
+
   virtual CUptiResult ActivityRegisterCallbacks(
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) = 0;

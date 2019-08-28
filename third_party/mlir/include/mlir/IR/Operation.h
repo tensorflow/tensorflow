@@ -56,7 +56,7 @@ public:
                            ArrayRef<Type> resultTypes,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
@@ -65,7 +65,7 @@ public:
                            ArrayRef<Type> resultTypes,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
@@ -116,10 +116,9 @@ public:
   /// Set the source location the operation was defined or derived from.
   void setLoc(Location loc) { location = loc; }
 
-  /// Returns the region to which the instruction belongs, which can be a
-  /// function body region or a region that belongs to another operation.
-  /// Returns nullptr if the instruction is unlinked.
-  Region *getContainingRegion() const;
+  /// Returns the region to which the instruction belongs. Returns nullptr if
+  /// the instruction is unlinked.
+  Region *getParentRegion();
 
   /// Returns the closest surrounding operation that contains this operation
   /// or nullptr if this is a top-level operation.
@@ -136,6 +135,25 @@ public:
 
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);
+
+  /// Replace all uses of results of this operation with the provided 'values'.
+  template <typename ValuesT,
+            typename = decltype(std::declval<ValuesT>().begin())>
+  void replaceAllUsesWith(ValuesT &&values) {
+    assert(std::distance(values.begin(), values.end()) == getNumResults() &&
+           "expected 'values' to correspond 1-1 with the number of results");
+
+    auto valueIt = values.begin();
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(*(valueIt++));
+  }
+
+  /// Replace all uses of results of this operation with results of 'op'.
+  void replaceAllUsesWith(Operation *op) {
+    assert(getNumResults() == op->getNumResults());
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(op->getResult(i));
+  }
 
   /// Destroys this operation and its subclass data.
   void destroy();
@@ -508,7 +526,7 @@ public:
 private:
   Operation(Location location, OperationName name, unsigned numResults,
             unsigned numSuccessors, unsigned numRegions,
-            const NamedAttributeList &attributes, MLIRContext *context);
+            const NamedAttributeList &attributes);
 
   // Operations are deleted through the destroy() member because they are
   // allocated with malloc.

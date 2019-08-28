@@ -109,6 +109,7 @@ tf_py_test(
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
+    tags = ["no_pip"],
 )
 
 tf_py_test(
@@ -127,5 +128,8 @@ tf_py_test(
         "--learning_rate=0.00",
     ],
     main = "mnist_with_summaries.py",
-    tags = ["notsan"],  # http://b/29184009
+    tags = [
+        "no_pip",
+        "notsan",  # http://b/29184009
+    ],
 )

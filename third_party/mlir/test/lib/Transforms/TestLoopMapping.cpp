@@ -51,7 +51,7 @@ public:
 
     func.walk<loop::ForOp>([&processorIds, &numProcessors](loop::ForOp op) {
       // Ignore nested loops.
-      if (op.getContainingRegion()->getParentOfType<loop::ForOp>())
+      if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;
       mapLoopToProcessorIds(op, processorIds, numProcessors);
     });
@@ -62,4 +62,4 @@ public:
 static PassRegistration<TestLoopMappingPass>
     reg("test-mapping-to-processing-elements",
         "test mapping a single loop on a virtual processor grid",
-        [] { return new TestLoopMappingPass(); });
+        [] { return std::make_unique<TestLoopMappingPass>(); });

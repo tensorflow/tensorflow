@@ -191,7 +191,7 @@ class Network(base_layer.Layer):
     # self.updates
 
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'experimental_autocast'})
+                                           'autocast'})
 
     # Object to store all thread local layer properties.
     self._thread_local = threading.local()
@@ -230,12 +230,10 @@ class Network(base_layer.Layer):
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
 
-    # Both graph and subclassed networks have a dtype policy. The policy is
-    # currently ignored for a graph network, as graph networks disable
-    # autocasting (making the policy's compute dtype meaningless) and graph
-    # networks have no variables (making the policy's variable_dtype
-    # meaningless). For subclassed networks, the dtype policy acts as it does
-    # for any ordinary layer.
+    # Both graph and subclassed networks have a dtype policy. For graph
+    # networks, the policy's compute and variable dtypes are ignored, but other
+    # fields, like the loss scale, are used by Models. For subclassed networks,
+    # the compute and variable dtypes are used as like any ordinary layer.
     self._set_dtype_policy(kwargs.get('dtype', None))
 
     # All layers in order of horizontal graph traversal.
@@ -377,7 +375,7 @@ class Network(base_layer.Layer):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
     self._init_call_fn_args()
-    self._autocast = kwargs.get('experimental_autocast',
+    self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
     self.outputs = []
     self.inputs = []
@@ -828,6 +826,10 @@ class Network(base_layer.Layer):
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
+            if (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
+                any([kwargs['training'] is x
+                     for x in backend._GRAPH_LEARNING_PHASES.values()])):
+              kwargs['training'] = training  # Materialize placeholder.
 
           # Map Keras tensors in kwargs to their computed value.
           def _map_tensor_if_from_keras_layer(t):
@@ -880,9 +882,6 @@ class Network(base_layer.Layer):
           kept_nodes += 1
     layer_configs = []
     for layer in self.layers:  # From the earliest layers on.
-      layer_class_name = layer.__class__.__name__
-      layer_config = layer.get_config()
-
       filtered_inbound_nodes = []
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
@@ -918,12 +917,10 @@ class Network(base_layer.Layer):
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
 
-      layer_configs.append({
-          'name': layer.name,
-          'class_name': layer_class_name,
-          'config': layer_config,
-          'inbound_nodes': filtered_inbound_nodes,
-      })
+      layer_config = generic_utils.serialize_keras_object(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
     config['layers'] = layer_configs
 
     # Gather info about inputs and outputs.
@@ -1121,7 +1118,8 @@ class Network(base_layer.Layer):
            filepath,
            overwrite=True,
            include_optimizer=True,
-           save_format=None):
+           save_format=None,
+           signatures=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1147,6 +1145,9 @@ class Network(base_layer.Layer):
           to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
           will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
           disabled (use `tf.keras.experimental.export_saved_model` instead).
+      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
+        format only. Please see the `signatures` argument in
+        `tf.saved_model.save` for details.
 
     Example:
 
@@ -1161,7 +1162,8 @@ class Network(base_layer.Layer):
     model = load_model('my_model.h5')
     ```
     """
-    saving.save_model(self, filepath, overwrite, include_optimizer, save_format)
+    saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
+                      signatures)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1542,7 +1544,7 @@ class Network(base_layer.Layer):
     def _get_min_depth(node):
       """Gets the minimum depth at which node can be computed."""
       min_depth = 0
-      for layer, node_id, _, _ in node.iterate_inbound():
+      for layer, node_id, _, _ in node.iterate_inbound(include_arguments=True):
         inbound_node = layer._inbound_nodes[node_id]
         if inbound_node in node_to_depth:
           min_depth = min(min_depth, node_to_depth[inbound_node])
@@ -1715,7 +1717,8 @@ def _map_graph_network(inputs, outputs):
     nodes_in_progress.add(node)
 
     # Propagate to all previous tensors connected to this node.
-    for layer, node_index, tensor_index, tensor in node.iterate_inbound():
+    for layer, node_index, tensor_index, tensor in node.iterate_inbound(
+        include_arguments=True):
       build_map(tensor, finished_nodes, nodes_in_progress, layer, node_index,
                 tensor_index)
 

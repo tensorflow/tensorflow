@@ -16,14 +16,31 @@ limitations under the License.
 
 #include <utility>
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/env.h"
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+using se::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+using se::rocm::ScopedActivateExecutorContext;
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+#endif
 
 #define NCCL_RETURN_IF_ERROR(...)                               \
   do {                                                          \
@@ -40,8 +57,6 @@ namespace tensorflow {
       return errors::Internal(cudaGetErrorString(cuda_status)); \
     }                                                           \
   } while (0)
-
-using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
@@ -405,6 +420,8 @@ void NcclManager::SignalMultiNodeReady(const string& collective_key) {
       if (CheckReady(collective_key, collective)) {
         to_run = collective;
       }
+      VLOG(2) << "SignalMultiNodeReady collective " << collective_key
+              << " to_run " << to_run;
     }
   }
 
@@ -483,7 +500,18 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
           collective->participants.size(),
           " with one more participant being added");
     }
+    if (collective->status.ok() && collective->root_rank >= 0 &&
+        context.source_rank >= 0 &&
+        collective->root_rank != context.source_rank) {
+      collective->status = errors::Internal(
+          "Collective ", collective->collective_key, " already has root_rank ",
+          collective->root_rank, " but new participant has root_rank ",
+          context.source_rank);
+    }
 
+    if (context.source_rank >= 0) {
+      collective->root_rank = context.source_rank;
+    }
     collective->participants.emplace_back(std::move(participant));
     ++collective->available_participants;
 
@@ -511,19 +539,12 @@ bool NcclManager::CheckReady(const string& collective_key,
 void NcclManager::RunCollective(Collective* collective) {
   static mutex collective_mu(LINKER_INITIALIZED);
 
-  Status s = collective->status;
-  if (s.ok()) {
-    s = GetCommunicator(collective, &collective->communicator);
-  }
-  if (!s.ok()) {
-    for (int i = 0; i < collective->num_local_devices; ++i) {
-      collective->participants[i]->done_callback(s);
-    }
-    collective->Unref();
-    return;
+  Status status = collective->status;
+  if (status.ok()) {
+    status = GetCommunicator(collective, &collective->communicator);
   }
 
-  for (int i = 0; i < collective->num_local_devices; ++i) {
+  for (int i = 0; status.ok() && i < collective->num_local_devices; ++i) {
     Participant* p = collective->participants[i].get();
     NcclStream* nccl_stream = collective->communicator->members[i].nccl_stream;
     CHECK(nccl_stream != nullptr);
@@ -533,16 +554,33 @@ void NcclManager::RunCollective(Collective* collective) {
       // Wait to ensure that the kernel that produces the data in the input
       // tensor has finished running before the nccl kernel runs on the
       // communication stream.
-      nccl_stream->stream->ThenWaitFor(p->tensor_stream);
+      nccl_stream->stream->ThenWaitFor(p->input_event.get());
     }
     if (p->root) {
-      CHECK_EQ(collective->root_rank, -1);
-      collective->root_rank = rank;
+      if (collective->root_rank == -1) {
+        collective->root_rank = rank;
+      } else if (collective->root_rank != rank) {
+        status = errors::Internal(
+            "Inconsistent root rank ", collective->root_rank, " and GPU id ",
+            p->gpu_device_id, " rank ", rank, " also marked as root.");
+      }
     }
+    VLOG(2) << "RunCollective rank " << rank << " global_rank "
+            << p->global_rank << " root_rank " << collective->root_rank;
   }
 
-  if (collective->type == kBroadcast) {
-    CHECK_NE(collective->root_rank, -1);
+  if (status.ok() && collective->type == kBroadcast &&
+      collective->root_rank < 0) {
+    status = errors::Internal("Root rank not indicated for collective ",
+                              collective->collective_key);
+  }
+
+  if (!status.ok()) {
+    for (int i = 0; i < collective->num_local_devices; ++i) {
+      collective->participants[i]->done_callback(status);
+    }
+    collective->Unref();
+    return;
   }
 
   {
@@ -686,4 +724,4 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
@@ -76,6 +77,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
@@ -101,6 +103,21 @@ def _disallow_undefs_into_loop(*values):
       # TODO(mdan): This should be checked at the place where return occurs.
       raise ValueError(
           'return statements are not supported within a TensorFlow loop.')
+
+
+def _shape_greater_than_or_equal(shape1, shape2):
+  """Check whether the shape2 is equal or more specific than shape1."""
+
+  # The following logic was mirrored from control_flow_ops.py's
+  # _ShapeLessThanOrEqual function.
+  if shape1.dims is None:
+    return True
+  if shape1.ndims != shape2.ndims:
+    return False
+  for dim1, dim2 in zip(shape1.dims, shape2.dims):
+    if dim1.value is not None and dim1.value != dim2.value:
+      return False
+  return True
 
 
 def _verify_tf_loop_vars(init_loop_vars,
@@ -166,12 +183,12 @@ def _verify_tf_loop_vars(init_loop_vars,
         init_shape = init_loop_var.shape
         first_iter_shape = first_iter_var.shape
         # TODO(b/135183013): Update needed once we support shape_invariants.
-        if ((init_shape.rank is None) != (first_iter_shape.rank is None) or
-            (tuple(init_shape.as_list()) != tuple(first_iter_shape.as_list()))):
+        if not _shape_greater_than_or_equal(init_shape, first_iter_shape):
           raise ValueError(
               '"{}" has shape {} before the loop, but shape {} after one'
               ' iteration. TensorFlow control flow requires it stays the'
-              ' same.'.format(name, init_shape, first_iter_shape))
+              ' same or be more specific.'.format(name, init_shape,
+                                                  first_iter_shape))
 
     nest.map_structure(
         functools.partial(_check_same_type, name), init_loop_var,
@@ -366,6 +383,12 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
           iterate_index < n, lambda: extra_test(*loop_vars), lambda: False)
     return iterate_index < n
 
+  opts = {}
+  # TODO(b/134181679): We do not always set maximum_iterations since that
+  # is significantly slower on GPU.
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = n
+
   results = _tf_while_stmt(
       while_cond,
       while_body,
@@ -374,7 +397,7 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
       (0,) + init_vars,
       None,
       None,
-      opts=dict(maximum_iterations=n),
+      opts=opts,
   )
 
   # Note: the iteration index is not returned by the while loop, however
@@ -407,21 +430,42 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars,
     return loop_vars
 
   def while_cond(iterate, *loop_vars):
-    main_test = math_ops.logical_or(
-        math_ops.logical_and(delta >= 0, iterate < limit),
-        math_ops.logical_and(delta < 0, iterate > limit))
+    """Cond function for `tf.while_loop`."""
+
+    def build_main_test():
+      """Main iteration condition."""
+      # Note(b/138857806): LogicalAnd is slow on GPU so we avoid adding it if
+      # `delta` is a compile time constant.
+      delta_const = tensor_util.constant_value(delta)
+      if delta_const is not None:
+        # Support single element arrays.
+        delta_const = np.asscalar(delta_const)
+        if delta_const >= 0:
+          return iterate < limit
+        else:
+          return iterate > limit
+      else:
+        return math_ops.logical_or(
+            math_ops.logical_and(delta >= 0, iterate < limit),
+            math_ops.logical_and(delta < 0, iterate > limit))
+
+    main_test = build_main_test()
     if extra_test is not None:
       return control_flow_ops.cond(
           main_test, lambda: extra_test(*loop_vars), lambda: False)
     return main_test
 
-  # This specific dtype is required by while_loop.
-  maximum_iterations = math_ops.cast(
-      misc.get_range_len(start, limit, delta), dtypes.int32)
-
   # The first loopvar corresponds to the iterate variable which is internal.
   if isinstance(basic_symbol_names, tuple):
     basic_symbol_names = (None,) + basic_symbol_names
+
+  opts = {}
+  # TODO(b/134181679): We do not always set maximum_iterations since that
+  # is significantly slower on GPU.
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    # This specific dtype is required by while_loop.
+    opts['maximum_iterations'] = math_ops.cast(
+        misc.get_range_len(start, limit, delta), dtypes.int32)
 
   results = _tf_while_stmt(
       while_cond,
@@ -431,7 +475,7 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars,
       (start,) + init_vars,
       basic_symbol_names,
       composite_symbol_names,
-      opts=dict(maximum_iterations=maximum_iterations),
+      opts=opts,
   )
 
   # Note: the iteration index is not returned by the while loop, however

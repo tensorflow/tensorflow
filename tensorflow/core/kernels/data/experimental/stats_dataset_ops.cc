@@ -42,7 +42,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     *output = new Dataset(ctx, input, std::move(tag));
   }
@@ -77,6 +77,10 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -142,7 +146,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string tag_;
+    const tstring tag_;
   };
 };
 
@@ -153,7 +157,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     *output = new Dataset(ctx, input, std::move(tag));
   }
@@ -188,6 +192,10 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -255,7 +263,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string tag_;
+    const tstring tag_;
   };
 };
 

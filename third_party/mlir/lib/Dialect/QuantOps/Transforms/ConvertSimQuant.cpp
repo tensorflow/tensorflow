@@ -97,15 +97,15 @@ void ConvertSimulatedQuantPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto *context = &getContext();
-  patterns.push_back(
-      llvm::make_unique<ConstFakeQuantRewrite>(context, &hadFailure));
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<ConstFakeQuantRewrite>(context, &hadFailure);
+  applyPatternsGreedily(func, patterns);
   if (hadFailure)
     signalPassFailure();
 }
 
-FunctionPassBase *mlir::quant::createConvertSimulatedQuantPass() {
-  return new ConvertSimulatedQuantPass();
+std::unique_ptr<FunctionPassBase>
+mlir::quant::createConvertSimulatedQuantPass() {
+  return std::make_unique<ConvertSimulatedQuantPass>();
 }
 
 static PassRegistration<ConvertSimulatedQuantPass>

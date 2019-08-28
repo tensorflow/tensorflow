@@ -103,6 +103,14 @@ struct BuildXlaOpsPassFlags {
   // clusters.  Useful for debugging.
   bool tf_xla_print_cluster_outputs;
 
+  // If true, insert CheckNumerics nodes for every floating point typed input to
+  // an XLA cluster.
+  bool tf_xla_check_cluster_input_numerics;
+
+  // If true, insert CheckNumerics nodes for every floating point typed output
+  // from an XLA cluster.
+  bool tf_xla_check_cluster_output_numerics;
+
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;

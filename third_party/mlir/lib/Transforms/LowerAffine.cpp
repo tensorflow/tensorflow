@@ -21,15 +21,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Transforms/LowerAffine.h"
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -507,10 +507,11 @@ public:
 
 void mlir::populateAffineToStdConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  RewriteListBuilder<AffineApplyLowering, AffineDmaStartLowering,
-                     AffineDmaWaitLowering, AffineLoadLowering,
-                     AffineStoreLowering, AffineForLowering, AffineIfLowering,
-                     AffineTerminatorLowering>::build(patterns, ctx);
+  patterns
+      .insert<AffineApplyLowering, AffineDmaStartLowering,
+              AffineDmaWaitLowering, AffineLoadLowering, AffineStoreLowering,
+              AffineForLowering, AffineIfLowering, AffineTerminatorLowering>(
+          ctx);
 }
 
 namespace {
@@ -520,8 +521,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
     populateAffineToStdConversionPatterns(patterns, &getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<loop::LoopOpsDialect, StandardOpsDialect>();
-    if (failed(
-            applyPartialConversion(getFunction(), target, std::move(patterns))))
+    if (failed(applyPartialConversion(getFunction(), target, patterns)))
       signalPassFailure();
   }
 };
@@ -529,8 +529,8 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
 
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
-FunctionPassBase *mlir::createLowerAffinePass() {
-  return new LowerAffinePass();
+std::unique_ptr<FunctionPassBase> mlir::createLowerAffinePass() {
+  return std::make_unique<LowerAffinePass>();
 }
 
 static PassRegistration<LowerAffinePass>

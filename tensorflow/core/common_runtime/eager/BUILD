@@ -3,6 +3,10 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     default_visibility = [
@@ -86,6 +90,7 @@ tf_cuda_library(
     deps = [
         ":attr_builder",
         ":context",
+        ":eager_executor",
         ":tensor_handle",
         "//tensorflow/core:framework",
     ],
@@ -190,6 +195,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/compiler/jit:xla_kernel_creator_util",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -266,7 +272,19 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }),
+    }) + if_mkl([":mkl_eager_op_rewrite"]),
+)
+
+cc_library(
+    name = "mkl_eager_op_rewrite",
+    srcs = ["mkl_eager_op_rewrite.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:mkl_graph_util",
+    ],
 )
 
 cc_library(

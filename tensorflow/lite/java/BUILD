@@ -196,6 +196,27 @@ java_test(
 )
 
 java_test(
+    name = "NnApiDelegateTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+        "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    javacopts = JAVACOPTS,
+    tags = ["no_mac"],
+    test_class = "org.tensorflow.lite.nnapi.NnApiDelegateTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test(
     name = "InterpreterFlexTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/InterpreterFlexTest.java"],
@@ -244,6 +265,7 @@ filegroup(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterMobileNetTest.java",
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
+        "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
     ],
     visibility = ["//visibility:public"],
 )

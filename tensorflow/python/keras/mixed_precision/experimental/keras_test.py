@@ -35,6 +35,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
@@ -242,6 +243,23 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
+  def test_layer_with_int_variable(self, strategy_fn):
+    class LayerWithIntVar(base_layer.Layer):
+
+      def build(self, _):
+        self.v = self.add_weight('v', dtype='int32', trainable=False)
+
+      def call(self, inputs):
+        # Only float variables should be autocasted. This will fail if self.v is
+        # autocasted to float32
+        return math_ops.cast(inputs, 'int32') + self.v
+
+    x = constant_op.constant([1.])
+    layer = LayerWithIntVar(dtype=policy.Policy('mixed_float16'))
+    self.assertEqual(layer(x).dtype, 'int32')
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
   def test_layer_with_non_autocast_variable(self, strategy_fn):
     x = constant_op.constant([1.], dtype=dtypes.float16)
     with strategy_fn().scope():
@@ -434,7 +452,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'infer',
           'strategy_fn': create_mirrored_strategy,
-          'policy_name': 'infer_with_float32_vars'
+          'policy_name': 'mixed_float16'
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
@@ -445,13 +463,15 @@ class KerasModelTest(keras_parameterized.TestCase):
                  strategy_fn,
                  use_operator=False,
                  use_regularizer=False,
-                 policy_name='float16_with_float32_vars',
+                 policy_name='mixed_float16',
                  experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn, check_model_type=True):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
-      with policy.policy_scope(policy_name):
+      # Pass loss_scale=None, as this test will fail if the DynamicLossScale
+      # skips applying gradients for a step
+      with policy.policy_scope(policy.Policy(policy_name, loss_scale=None)):
         layer_list = []
         if testing_utils.get_model_type() == 'subclass':
           # Subclassed models do not have an Input layer, so the model does not
@@ -579,10 +599,13 @@ class KerasModelTest(keras_parameterized.TestCase):
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
+    else:
+      loss_scale = None
     learning_rate = 2**-14
 
     with strategy.scope():
-      with policy.policy_scope(policy.Policy('float16_with_float32_vars')):
+      with policy.policy_scope(policy.Policy('mixed_float16',
+                                             loss_scale=loss_scale)):
         x = layers.Input(shape=(1,), batch_size=2)
         layer1 = AddLayer(
             assert_type=dtypes.float16,
@@ -618,8 +641,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           return math_ops.reduce_mean(y_pred)
 
         opt = gradient_descent.SGD(learning_rate)
-        if use_loss_scaling:
-          opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
         model.compile(
             opt,
             loss=loss_fn,
@@ -647,24 +668,37 @@ class KerasModelTest(keras_parameterized.TestCase):
           'testcase_name': 'distribute',
           'strategy_fn': create_mirrored_strategy,
       }, {
+          'testcase_name': 'pass_loss_scale_to_policy',
+          'strategy_fn': create_mirrored_strategy,
+          'pass_loss_scale_to_policy': True,
+      }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
           'experimental_run_tf_function': False,
       })
   def test_dynamic_loss_scaling(self,
                                 strategy_fn,
+                                pass_loss_scale_to_policy=False,
                                 experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn):
       return
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=initial_loss_scale, increment_period=2)
     expected_gradient = backend.variable([initial_loss_scale / batch_size],
                                          dtype=dtypes.float16)
     # If this variable is set to True, the model below will have NaN gradients
     have_nan_gradients = backend.variable(False, dtype=dtypes.bool)
     with strategy.scope():
-      with policy.policy_scope(policy.Policy('infer_float32_vars')):
+      opt = gradient_descent.SGD(1.)
+      if pass_loss_scale_to_policy:
+        p = policy.Policy('infer_float32_vars', loss_scale=loss_scale)
+      else:
+        p = policy.Policy('infer_float32_vars')
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      with policy.policy_scope(p):
         x = layers.Input(
             shape=(1,), batch_size=batch_size, dtype=dtypes.float16)
         layer = AddLayer(assert_type=dtypes.float16)
@@ -685,10 +719,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           del y_true
           return math_ops.reduce_mean(y_pred)
 
-        opt = gradient_descent.SGD(1.)
-        loss_scale = loss_scale_module.DynamicLossScale(
-            initial_loss_scale=initial_loss_scale, increment_period=2)
-        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
         model.compile(
             opt,
             loss=loss_fn,
@@ -727,6 +757,40 @@ class KerasModelTest(keras_parameterized.TestCase):
                       backend.get_value(expected_gradient / 2))
     model.fit(dataset)
     self.assertEqual(backend.eval(layer.v), -3)
+
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_loss_scale_optimizer_overrides_policy_loss_scale(self):
+    with policy.policy_scope(policy.Policy('float32', loss_scale=10.)):
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=5.)
+      x = layers.Input(shape=(1,))
+      y = AddLayer()(x)
+      model = models.Model(x, y)
+      model.compile(opt, loss='mse')
+      self.assertEqual(self.evaluate(model.optimizer.loss_scale()), 5.)
+
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_pass_invalid_optimizer_with_loss_scaling(self):
+    with policy.policy_scope(policy.Policy('float32', loss_scale=10.)):
+      x = layers.Input(shape=(1,))
+      y = AddLayer()(x)
+      model = models.Model(x, y)
+      with self.assertRaisesRegexp(ValueError,
+                                   'optimizer" must be an instance of '):
+        model.compile(optimizers.SGD(1.), 'mse')
+
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_functional_model_loss_dtype(self):
+    with policy.policy_scope('float16'):
+      x = layers.Input(shape=(1,))
+      y = AddLayer()(x)
+      model = models.Model(x, y)
+      model.add_loss(math_ops.cast(y, 'float32'))
+      # The loss should not be casted to the policy's dtype.
+      self.assertEqual(model.losses[0].dtype, 'float32')
 
   @parameterized.named_parameters(
       {

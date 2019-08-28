@@ -17,18 +17,12 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 # Placeholder for Google-internal load statements.
-
-# NOTE: we always assume that if_static returns "otherwise" list in open source.
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
-)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -53,10 +47,10 @@ cc_library(
 
 alias(
     name = "tensorrt_lib",
-    actual = if_static(
-        "@local_config_tensorrt//:tensorrt",
-        ":tensorrt_stub",
-    ),
+    actual = select({
+        "//tensorflow:oss": ":tensorrt_stub",
+        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+    }),
     visibility = ["//visibility:private"],
 )
 
@@ -503,7 +497,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
-    deps = if_tensorrt([":tensorrt_lib"]),
+    deps = if_tensorrt([
+        ":tensorrt_lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
 )
 
 tf_py_wrap_cc(

@@ -18,8 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import layers as layer_module
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -80,7 +84,7 @@ class WideDeepModel(training.Model):
     super(WideDeepModel, self).__init__(**kwargs)
     self.linear_model = linear_model
     self.dnn_model = dnn_model
-    self.activation = activation
+    self.activation = activations.get(activation)
 
   def call(self, inputs):
     if not isinstance(inputs, (tuple, list)) or len(inputs) != 2:
@@ -162,3 +166,28 @@ class WideDeepModel(training.Model):
 
       # Restore the current trainable state
       self._set_trainable_state(current_trainable_state)
+
+  def get_config(self):
+    linear_config = generic_utils.serialize_keras_object(self.linear_model)
+    dnn_config = generic_utils.serialize_keras_object(self.dnn_model)
+    config = {
+        'linear_model': linear_config,
+        'dnn_model': dnn_config,
+        'activation': activations.serialize(self.activation),
+    }
+    base_config = base_layer.Layer.get_config(self)
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    linear_config = config.pop('linear_model')
+    linear_model = layer_module.deserialize(linear_config, custom_objects)
+    dnn_config = config.pop('dnn_model')
+    dnn_model = layer_module.deserialize(dnn_config, custom_objects)
+    activation = activations.deserialize(
+        config.pop('activation', None), custom_objects=custom_objects)
+    return cls(
+        linear_model=linear_model,
+        dnn_model=dnn_model,
+        activation=activation,
+        **config)

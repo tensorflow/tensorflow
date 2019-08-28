@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_protos_all")
 
 package(
     default_visibility = [
@@ -308,6 +308,21 @@ cc_library(
         "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "inject_prefetch_test",
+    srcs = ["inject_prefetch_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":inject_prefetch",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
 )
 
 cc_library(

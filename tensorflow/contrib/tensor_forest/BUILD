@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 
 package(
     default_visibility = ["//visibility:public"],

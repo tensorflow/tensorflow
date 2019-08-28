@@ -53,8 +53,13 @@ public class SmartReplyClient implements AutoCloseable {
   @WorkerThread
   public synchronized void loadModel() {
     if (!isLibraryLoaded) {
-      System.loadLibrary(JNI_LIB);
-      isLibraryLoaded = true;
+      try {
+        System.loadLibrary(JNI_LIB);
+        isLibraryLoaded = true;
+      } catch (Exception e) {
+        Log.e(TAG, "Failed to load prebuilt smartreply_jni lib", e);
+        return;
+      }
     }
 
     try {

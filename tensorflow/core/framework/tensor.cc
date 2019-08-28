@@ -168,7 +168,7 @@ struct Helper {
 // Helper specialization for string (the only non-simple type we
 // support).
 template <>
-struct Helper<string> {
+struct Helper<tstring> {
   // Proto message uses RepeatedFieldType to hold repeated T.
   typedef protobuf::RepeatedPtrField<string> RepeatedFieldType;
 
@@ -176,7 +176,7 @@ struct Helper<string> {
   // "out", which is usually the TensorProto::tensor_content.
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
-    port::EncodeStringList(in->base<const string>(), n, out);
+    port::EncodeStringList(in->base<const tstring>(), n, out);
   }
 
   // Decodes "n" elements of type string from "in" and constructs a
@@ -184,8 +184,8 @@ struct Helper<string> {
   // usually the TensorProto::tensor_content.
   template <typename Source>
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
-    Buffer<string>* buf = new Buffer<string>(a, n);
-    string* strings = buf->template base<string>();
+    Buffer<tstring>* buf = new Buffer<tstring>(a, n);
+    tstring* strings = buf->template base<tstring>();
     if (strings == nullptr || !port::DecodeStringList(in, strings, n)) {
       buf->Unref();
       return nullptr;
@@ -197,8 +197,8 @@ struct Helper<string> {
   // stored in buffer "in".
   static int64 TotalBytes(TensorBuffer* in, int n) {
     int64 tot = in->size();
-    DCHECK_EQ(tot, sizeof(string) * n);
-    const string* p = in->base<const string>();
+    DCHECK_EQ(tot, sizeof(tstring) * n);
+    const tstring* p = in->base<const tstring>();
     for (int i = 0; i < n; ++i, ++p) tot += p->size();
     return tot;
   }
@@ -302,7 +302,7 @@ PROTO_TRAITS(uint32, uint32, uint32);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(bool, bool, bool);
-PROTO_TRAITS(string, string, string);
+PROTO_TRAITS(tstring, tstring, string);
 PROTO_TRAITS(qint8, int32, int);
 PROTO_TRAITS(quint8, int32, int);
 PROTO_TRAITS(qint16, int32, int);
@@ -515,7 +515,12 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
-    for (int64 i = 0; i < in_n; ++i) {
+    // If tensor shape says we have n < in_n elements in the output tensor
+    // then make sure to only decode the first n out of the in_n elements in the
+    // in tensors. In all other cases, we decode all in_n elements of in and set
+    // the remaining elements up to n to be the default Variant() value.
+    const int64 real_n = n < in_n ? n : in_n;
+    for (int64 i = 0; i < real_n; ++i) {
       data[i] = in.variant_val(i);
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""
@@ -708,7 +713,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(uint64, SINGLE_ARG(STMTS))                            \
     CASE(int16, SINGLE_ARG(STMTS))                             \
     CASE(int8, SINGLE_ARG(STMTS))                              \
-    CASE(string, SINGLE_ARG(STMTS))                            \
+    CASE(tstring, SINGLE_ARG(STMTS))                           \
     CASE(complex64, SINGLE_ARG(STMTS))                         \
     CASE(complex128, SINGLE_ARG(STMTS))                        \
     CASE(int64, SINGLE_ARG(STMTS))                             \
@@ -963,7 +968,7 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
                                                 bool print_v2) {
   return a;
 }
-inline string PrintOneElement(const string& a, bool print_v2) {
+inline string PrintOneElement(const tstring& a, bool print_v2) {
   if (print_v2) {
     return "\"" + absl::CEscape(a) + "\"";
   } else {
@@ -1159,7 +1164,7 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
       return SummarizeArray<bool>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_STRING:
-      return SummarizeArray<string>(limit, num_elts, shape_, data, print_v2);
+      return SummarizeArray<tstring>(limit, num_elts, shape_, data, print_v2);
       break;
     default: {
       // All irregular cases

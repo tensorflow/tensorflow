@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 from os import path
 import shutil
 import tempfile
@@ -39,10 +40,12 @@ from tensorflow.python.platform import test
 class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
+    super(FileCacheTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
     self.cache_prefix = path.join(self.tmp_dir, "cache")
 
   def tearDown(self):
+    super(FileCacheTest, self).tearDown()
     if self.tmp_dir:
       shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
@@ -248,9 +251,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testConcurrentReaders(self):
 
-    dataset = dataset_ops.Dataset.range(5).cache()
-    d1 = dataset.map(lambda x: x + 1)
-    d2 = dataset.map(lambda x: x + 6)
+    dataset_fn = lambda: dataset_ops.Dataset.range(5).cache()
+    d1 = dataset_fn().map(lambda x: x + 1)
+    d2 = dataset_fn().map(lambda x: x + 6)
 
     get_next1 = self.getNext(d1)
 
@@ -280,6 +283,74 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     expected_output = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheRepeatEpochs(self):
+    counter = variables.Variable(0)
+    self.evaluate(counter.initializer)
+
+    def increment_fn(x):
+      counter.assign_add(1)
+      return x
+
+    dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache().repeat(2)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    # first epoch
+    for i in range(10):
+      self.assertEqual(i, self.evaluate(counter))
+      self.assertEqual(i, self.evaluate(get_next()))
+    # second epoch
+    for i in range(10):
+      self.assertEqual(10, self.evaluate(counter))
+      self.assertEqual(i, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheIterationEpochs(self):
+    counter = variables.Variable(0)
+    self.evaluate(counter.initializer)
+
+    def increment_fn(x):
+      counter.assign_add(1)
+      return x
+
+    dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache()
+
+    # first epoch
+    i = 0
+    for elem in dataset:
+      self.assertEqual(i, self.evaluate(elem))
+      i += 1
+      self.assertEqual(i, self.evaluate(counter))
+
+    # second epoch
+    i = 0
+    for elem in dataset:
+      self.assertEqual(10, self.evaluate(counter))
+      self.assertEqual(i, self.evaluate(elem))
+      i += 1
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheV2ResourceCapture(self):
+
+    def make_dataset():
+      ids = dataset_ops.Dataset.range(10)
+      ids = ids.cache()
+
+      def interleave_fn(dataset, _):
+        return dataset
+
+      dataset = dataset_ops.Dataset.range(1)
+      dataset = dataset.interleave(functools.partial(interleave_fn, ids))
+      return dataset
+
+    results = []
+    for elem in make_dataset():
+      results.append(elem.numpy())
+
+    self.assertAllEqual(results, range(10))
 
 
 if __name__ == "__main__":

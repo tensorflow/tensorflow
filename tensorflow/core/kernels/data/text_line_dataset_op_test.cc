@@ -46,7 +46,7 @@ class TextLineDatasetOpTest : public DatasetOpsTestBase {
 };
 
 struct TestCase {
-  std::vector<string> filenames;
+  std::vector<tstring> filenames;
   std::vector<string> texts;
   CompressionType compression_type;
   int64 buffer_size;
@@ -82,81 +82,66 @@ Status CreateTestFiles(const TestCase& test_case) {
 
 // Test case 1: multiple text files with ZLIB compression.
 TestCase TestCase1() {
-  return {
-      /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
-                     absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::ZLIB,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
+                         absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::ZLIB,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<tstring>(TensorShape({}), {"hello world"}),
+           CreateTensor<tstring>(TensorShape({}), {"11223334455"}),
+           CreateTensor<tstring>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<tstring>(TensorShape({}), {"           "}),
+           CreateTensor<tstring>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 // Test case 2: multiple text files with GZIP compression.
 TestCase TestCase2() {
-  return {
-      /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
-                     absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::GZIP,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
+                         absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::GZIP,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<tstring>(TensorShape({}), {"hello world"}),
+           CreateTensor<tstring>(TensorShape({}), {"11223334455"}),
+           CreateTensor<tstring>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<tstring>(TensorShape({}), {"           "}),
+           CreateTensor<tstring>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 // Test case 3: multiple text files without compression.
 TestCase TestCase3() {
-  return {
-      /*filenames*/ {
-          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
-          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::UNCOMPRESSED,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {
+              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
+              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::UNCOMPRESSED,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<tstring>(TensorShape({}), {"hello world"}),
+           CreateTensor<tstring>(TensorShape({}), {"11223334455"}),
+           CreateTensor<tstring>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<tstring>(TensorShape({}), {"           "}),
+           CreateTensor<tstring>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 class ParameterizedTextLineDatasetOpTest
@@ -176,8 +161,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, GetNext) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -226,8 +211,8 @@ TEST_F(TextLineDatasetOpTest, DatasetNodeName) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -259,8 +244,8 @@ TEST_F(TextLineDatasetOpTest, DatasetTypeString) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -293,8 +278,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -327,8 +312,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, DatasetOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -361,8 +346,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -381,45 +366,6 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
   EXPECT_EQ(text_line_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedTextLineDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> text_line_dataset_kernel;
-  TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
-                                            TensorValue(&compression_type),
-                                            TensorValue(&buffer_size)};
-  std::unique_ptr<OpKernelContext> text_line_dataset_context;
-  TF_ASSERT_OK(CreateTextLineDatasetContext(
-      text_line_dataset_kernel.get(), &inputs, &text_line_dataset_context));
-
-  DatasetBase* text_line_dataset;
-  TF_ASSERT_OK(CreateDataset(text_line_dataset_kernel.get(),
-                             text_line_dataset_context.get(),
-                             &text_line_dataset));
-  core::ScopedUnref scoped_unref(text_line_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(text_line_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();
@@ -433,8 +379,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -475,8 +421,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -517,8 +463,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputPrefix) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -560,8 +506,8 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Roundtrip) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});

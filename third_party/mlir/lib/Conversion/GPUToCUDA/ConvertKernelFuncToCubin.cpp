@@ -106,7 +106,7 @@ OwnedCubin
 GpuKernelToCubinPass::compilePtxToCubinForTesting(const std::string &ptx,
                                                   FuncOp &function) {
   const char data[] = "CUBIN";
-  return llvm::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
+  return std::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
 }
 
 OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
@@ -163,9 +163,9 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   return success();
 }
 
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 mlir::createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator) {
-  return new GpuKernelToCubinPass(cubinGenerator);
+  return std::make_unique<GpuKernelToCubinPass>(cubinGenerator);
 }
 
 static PassRegistration<GpuKernelToCubinPass>

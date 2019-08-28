@@ -58,7 +58,7 @@ training_lib = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-def save(model, filepath, overwrite, include_optimizer):
+def save(model, filepath, overwrite, include_optimizer, signatures=None):
   """Saves a model as a SavedModel to the filepath.
 
   Args:
@@ -66,6 +66,9 @@ def save(model, filepath, overwrite, include_optimizer):
     filepath: String path to save the model.
     overwrite: whether to overwrite the existing filepath.
     include_optimizer: If True, save the model's optimizer state.
+    signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
+      format only. Please see the `signatures` argument in `tf.saved_model.save`
+      for details.
 
   Raises:
     ValueError: if the model's inputs have not been defined.
@@ -83,7 +86,10 @@ def save(model, filepath, overwrite, include_optimizer):
     orig_optimizer = model.optimizer
     model.optimizer = None
 
-  save_lib.save(model, filepath)
+  # Trace all functions and signatures with `training=0` instead of using the
+  # default learning phase placeholder.
+  with K.learning_phase_scope(0):
+    save_lib.save(model, filepath, signatures)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer
@@ -415,6 +421,14 @@ class LayerCallCollection(object):
     self._expects_training_arg = layer_uses_training_bool(layer)
     self._training_arg_index = utils.get_training_arg_index(layer.call)
 
+    # If the layer call function has kwargs, then the traced function cannot
+    # have an input signature.
+    arg_spec = tf_inspect.getfullargspec(layer.call)
+    self._has_kwargs = bool(self._expects_training_arg or
+                            arg_spec.defaults or
+                            arg_spec.kwonlyargs or
+                            arg_spec.varkw)
+
     self._input_signature = self._generate_input_signature(layer)
     self._functions = weakref.WeakValueDictionary()
     # Bool indicating whether this object is currently tracing the layer call
@@ -483,10 +497,9 @@ class LayerCallCollection(object):
   @property
   def fn_input_signature(self):
     """Returns input signature for the wrapped layer call function."""
-    if self._expects_training_arg:
-      # The training arg is left as a python boolean, so the call functions
-      # will not have an input signature (input signatures may only describe
-      # tensor arguments).
+    if self._has_kwargs:
+      # Input signatures may only describe tensor arguments and kwargs are not
+      # supported.
       return None
     if None in nest.flatten(self._input_signature):
       # TODO(b/134962016): If input signature cannot be partially defined.
@@ -514,7 +527,7 @@ class LayerCallCollection(object):
       # Add training arg to wrapper function.
       arg_spec = tf_inspect.getfullargspec(call_fn)
       args = arg_spec.args + ['training']
-      defaults = arg_spec.defaults or []
+      defaults = list(arg_spec.defaults or [])
       defaults.append(False)
       new_arg_spec = tf_inspect.FullArgSpec(
           args=args,
@@ -553,27 +566,30 @@ class LayerCallCollection(object):
         input_signature=self.fn_input_signature)
 
     if (None not in nest.flatten(self._input_signature) and
-        self._expects_training_arg):
-      # Manually add traces for layers that expect a training argument and have
+        self._has_kwargs):
+      # Manually add traces for layers that have keyword arguments and have
       # a fully defined input signature.
       self.add_trace(*self._input_signature)
     return fn
 
 
-def maintain_losses(method):
+def layer_call_wrapper(call_collection, method):
   """Ensures layer losses are kept the same, and runs method in call context."""
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     """Calls method within call context."""
-    layer = self.call_collection.layer
+    layer = call_collection.layer
     training = None
+    inputs = None
     # pylint: disable=protected-access
-    if (args or kwargs) and self.call_collection.training_arg_was_passed(
+    if (args or kwargs) and call_collection.training_arg_was_passed(
         args, kwargs):
-      training = self.call_collection.get_training_arg_value(args, kwargs)
+      inputs = args[0]
+      training = call_collection.get_training_arg_value(args, kwargs)
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)
-    with base_layer_utils.call_context().enter(layer, None, True, training):
-      ret = method(self, *args, **kwargs)
+    with base_layer_utils.call_context().enter(
+        layer, inputs=inputs, build_graph=False, training=training):
+      ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
   return tf_decorator.make_decorator(target=method, decorator_func=wrapper)
@@ -582,18 +598,17 @@ def maintain_losses(method):
 class LayerCall(def_function.Function):
   """Function that triggers traces of other functions in the same collection."""
 
-  def __init__(self, call_collection, *args, **kwargs):
-    super(LayerCall, self).__init__(*args, **kwargs)
+  def __init__(self, call_collection, python_function, *args, **kwargs):
     self.call_collection = call_collection
     self.original_call = call_collection.layer.call
+    python_function = layer_call_wrapper(call_collection, python_function)
+    super(LayerCall, self).__init__(python_function, *args, **kwargs)
 
-  @maintain_losses
   def __call__(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
     return super(LayerCall, self).__call__(*args, **kwargs)
 
-  @maintain_losses
   def get_concrete_function(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)

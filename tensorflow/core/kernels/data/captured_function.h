@@ -44,6 +44,9 @@ Status MakeIteratorFromInputElement(
     int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
     StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
+
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
 //
@@ -205,7 +208,13 @@ class CapturedFunction {
                          instantiated_captured_function);
 
   // Determines whether the captured function is stateful.
+  //
+  // TODO(jsimsa): Remove this method once all users of `CapturedFunction`
+  // migrate to `CheckExternalState`.
   bool IsStateful() const;
+
+  // Determines whether the captured function is stateful.
+  Status CheckExternalState() const;
 
   // Returns the additional captured inputs that will be passed to the function.
   const std::vector<Tensor>& captured_inputs() const {

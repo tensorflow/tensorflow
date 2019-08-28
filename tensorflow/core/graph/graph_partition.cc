@@ -953,7 +953,7 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     return;
   }
   int64 incarnation = PartitionOptions::kIllegalIncarnation;
-  if (!GetNodeAttrSimple(*ndef, "send_device_incarnation", &incarnation) ||
+  if (!TryGetNodeAttr(*ndef, "send_device_incarnation", &incarnation) ||
       (incarnation == PartitionOptions::kIllegalIncarnation)) {
     incarnation = opts.get_incarnation(send_device);
     SetAttrValue(incarnation,

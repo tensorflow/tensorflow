@@ -46,6 +46,8 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
 
   string name() const override { return name_; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Init(
       const RewriterConfig_CustomGraphOptimizer* config = nullptr) override;
 

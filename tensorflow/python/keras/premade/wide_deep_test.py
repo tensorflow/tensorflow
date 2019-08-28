@@ -234,6 +234,31 @@ class WideDeepModelTest(keras_parameterized.TestCase):
     self.assertEqual(3, linear_model.inputs[0].shape[1])
     self.assertEqual(5, dnn_model.inputs[0].shape[1])
 
+  def test_config(self):
+    linear_model = linear.LinearModel(units=1)
+    dnn_model = sequential.Sequential([core.Dense(units=1, input_dim=3)])
+    wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
+    config = wide_deep_model.get_config()
+    cloned_wide_deep_model = wide_deep.WideDeepModel.from_config(config)
+    self.assertEqual(linear_model.units,
+                     cloned_wide_deep_model.linear_model.units)
+    self.assertEqual(dnn_model.layers[0].units,
+                     cloned_wide_deep_model.dnn_model.layers[0].units)
+
+  def test_config_with_custom_objects(self):
+
+    def my_activation(x):
+      return x
+
+    linear_model = linear.LinearModel(units=1)
+    dnn_model = sequential.Sequential([core.Dense(units=1, input_dim=3)])
+    wide_deep_model = wide_deep.WideDeepModel(
+        linear_model, dnn_model, activation=my_activation)
+    config = wide_deep_model.get_config()
+    cloned_wide_deep_model = wide_deep.WideDeepModel.from_config(
+        config, custom_objects={'my_activation': my_activation})
+    self.assertEqual(cloned_wide_deep_model.activation, my_activation)
+
 
 if __name__ == '__main__':
   test.main()

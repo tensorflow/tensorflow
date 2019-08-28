@@ -43,6 +43,8 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
 
   string name() const override { return "scoped_allocator_optimizer"; }
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 

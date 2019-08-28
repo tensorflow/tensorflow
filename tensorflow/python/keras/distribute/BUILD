@@ -2,7 +2,7 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -117,7 +117,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 5,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -221,6 +221,7 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
     deps = [
         ":keras_correctness_test_lib",
     ],

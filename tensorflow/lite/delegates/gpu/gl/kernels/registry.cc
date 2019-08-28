@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/concat.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/conv.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/custom_registry.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/fully_connected.h"
@@ -106,6 +107,7 @@ class Registry : public NodeShader {
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
     insert_op(Type::MAX_UNPOOLING_2D, NewMaxUnpoolingNodeShader);
+    RegisterCustomOps(&shaders_);
 #endif  // TFLITE_GPU_BINARY_RELEASE
   }
 

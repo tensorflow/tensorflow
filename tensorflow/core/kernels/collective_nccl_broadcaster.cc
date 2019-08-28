@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/collective_nccl_broadcaster.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -48,12 +48,14 @@ void NcclBroadcaster::Run(StatusCallback done) {
     NcclManager::instance()->AddBroadcastSend(
         std::move(participant),
         {std::move(nccl_collective_key), num_local_devices, num_global_devices,
-         col_params_->group.runtime_details.communicator_key});
+         col_params_->group.runtime_details.communicator_key,
+         col_params_->source_rank});
   } else {
     NcclManager::instance()->AddBroadcastRecv(
         std::move(participant),
         {std::move(nccl_collective_key), num_local_devices, num_global_devices,
-         col_params_->group.runtime_details.communicator_key});
+         col_params_->group.runtime_details.communicator_key,
+         col_params_->source_rank});
   }
   {
     // `WaitForDependencies` may block if the collective instances on which this
@@ -78,4 +80,4 @@ REGISTER_COLLECTIVE(NcclBroadcast, NcclBroadcaster);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -146,8 +146,7 @@ class FakeDevice : public Device {
 bool MarkedNoSpecialize(const FunctionDef& fdef) {
   const auto attr = AttrSlice(&fdef.attr());
   bool nospecialize = false;
-  return GetNodeAttrSimple(attr, kNoSpecializeAttr, &nospecialize) &&
-         nospecialize;
+  return TryGetNodeAttr(attr, kNoSpecializeAttr, &nospecialize) && nospecialize;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -787,7 +786,7 @@ using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 // Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  bool found = GetNodeAttrSimple(n->attrs(), attr_name, &match);
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
   return found && match;
 }
 
@@ -816,35 +815,28 @@ bool MarkedForXlaCompilation(const Node* n) {
 }
 
 const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
-  static const auto* exemption = new absl::flat_hash_set<string>({
-      // LINT.IfChange
-      // Op types that should not run in program order, e.g. because they need
-      // to run asynchronously to avoid deadlock.
-      "CollectiveGather",
-      "CollectiveReduce",
-      "CollectiveBcastSend",
-      "CollectiveBcastRecv",
-      "NcclAllReduce",
+  static const auto* exemption = new absl::flat_hash_set<string>(
+      {// LINT.IfChange
+       // Op types that should not run in program order, e.g. because they need
+       // to run asynchronously to avoid deadlock.
+       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
+       "CollectiveBcastRecv", "NcclAllReduce",
 
-      // Legacy random ops.
-      // See details in tensorflow/python/framework/auto_control_deps.py.
-      "RandomUniform",
-      "RandomUniformInt",
-      "RandomStandardNormal",
-      "ParameterizedTruncatedNormal",
-      "TruncatedNormal",
-      "RandomShuffle",
-      "Multinomial",
-      "RandomGamma",
-      "RandomGammaGrad",
-      "RandomPoisson",
-      "RandomPoissonV2",
-      // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
+       // Legacy random ops.
+       // See details in tensorflow/python/framework/auto_control_deps.py.
+       "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
+       "ParameterizedTruncatedNormal", "TruncatedNormal", "RandomShuffle",
+       "Multinomial", "RandomGamma", "RandomGammaGrad", "RandomPoisson",
+       "RandomPoissonV2",
+       // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
 
-      // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
-      // but it can't generate any observable side-effect.
-      "ReadVariableOp",
-  });
+       // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
+       // but it can't generate any observable side-effect.
+       "ReadVariableOp",
+
+       // CudnnRNN ops are stateful but they can't generate any observable
+       // side-effect.
+       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"});
   return exemption->contains(op);
 }
 

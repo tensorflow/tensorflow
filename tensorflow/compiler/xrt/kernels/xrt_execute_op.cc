@@ -260,7 +260,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTExecutionConfig config_proto;
   TF_RET_CHECK(
-      config_proto.ParseFromString(execution_config.scalar<string>()()));
+      config_proto.ParseFromString(execution_config.scalar<tstring>()()));
 
   int core_index_in_replica = config_proto.core_index_in_replica();
   TF_RET_CHECK(core_index_in_replica == 0);
@@ -343,12 +343,12 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   const Tensor& execution_plan = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_plan.shape()));
   xrt::XRTChainedExecutePlan plan;
-  TF_RET_CHECK(plan.ParseFromString(execution_plan.scalar<string>()()));
+  TF_RET_CHECK(plan.ParseFromString(execution_plan.scalar<tstring>()()));
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTChainedExecuteConfig config;
-  TF_RET_CHECK(config.ParseFromString(execution_config.scalar<string>()()));
+  TF_RET_CHECK(config.ParseFromString(execution_config.scalar<tstring>()()));
 
   XRTCompilationCache* cache;
   TF_RETURN_IF_ERROR(rm->Lookup<XRTCompilationCache>(

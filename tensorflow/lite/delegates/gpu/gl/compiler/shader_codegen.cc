@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"

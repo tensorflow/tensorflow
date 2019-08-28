@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <vector>
 
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 
@@ -112,7 +116,7 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -144,7 +148,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 };
@@ -181,7 +185,7 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
         {GetCollectiveKey(c),
          /*num_local_devices=*/num_devices(),
          /*num_global_devices=*/num_devices(),
-         /*communicator_key=*/""},
+         /*communicator_key=*/"", /*source_rank=*/-1},
         reduction_op());
   }
 
@@ -215,7 +219,7 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(Name("_NcclBroadcastSend").Device(DEVICE_GPU),
@@ -252,7 +256,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),
-                                 /*communicator_key=*/""});
+                                 /*communicator_key=*/"", /*source_rank=*/-1});
   }
 };
 REGISTER_KERNEL_BUILDER(
@@ -276,4 +280,4 @@ REGISTER_KERNEL_BUILDER(Name("NcclReduce").Device(DEVICE_GPU), NcclStubKernel);
 }  // namespace
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

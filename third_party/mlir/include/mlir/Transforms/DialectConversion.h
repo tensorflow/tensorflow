@@ -94,14 +94,14 @@ public:
     SmallVector<Type, 4> argTypes;
   };
 
-  /// This hooks allows for converting a type. This function should return
+  /// This hook allows for converting a type. This function should return
   /// failure if no valid conversion exists, success otherwise. If the new set
   /// of types is empty, the type is removed and any usages of the existing
   /// value are expected to be removed during conversion.
   virtual LogicalResult convertType(Type t, SmallVectorImpl<Type> &results);
 
   /// This hook simplifies defining 1-1 type conversions. This function returns
-  /// the type convert to on success, and a null type on failure.
+  /// the type to convert to on success, and a null type on failure.
   virtual Type convertType(Type t) { return t; }
 
   /// Convert the given set of types, filling 'results' as necessary. This
@@ -469,24 +469,28 @@ private:
 /// returns failure if there are unreachable blocks in any of the regions nested
 /// within 'ops'. If 'converter' is provided, the signatures of blocks and
 /// regions are also converted.
-LLVM_NODISCARD LogicalResult applyPartialConversion(
-    ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
-LLVM_NODISCARD LogicalResult applyPartialConversion(
-    Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult
+applyPartialConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
+                       const OwningRewritePatternList &patterns,
+                       TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult
+applyPartialConversion(Operation *op, ConversionTarget &target,
+                       const OwningRewritePatternList &patterns,
+                       TypeConverter *converter = nullptr);
 
 /// Apply a complete conversion on the given operations, and all nested
 /// operations. This method returns failure if the conversion of any operation
 /// fails, or if there are unreachable blocks in any of the regions nested
 /// within 'ops'. If 'converter' is provided, the signatures of blocks and
 /// regions are also converted.
-LLVM_NODISCARD LogicalResult applyFullConversion(
-    ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
-LLVM_NODISCARD LogicalResult applyFullConversion(
-    Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult
+applyFullConversion(ArrayRef<Operation *> ops, ConversionTarget &target,
+                    const OwningRewritePatternList &patterns,
+                    TypeConverter *converter = nullptr);
+LLVM_NODISCARD LogicalResult
+applyFullConversion(Operation *op, ConversionTarget &target,
+                    const OwningRewritePatternList &patterns,
+                    TypeConverter *converter = nullptr);
 
 /// Apply an analysis conversion on the given operations, and all nested
 /// operations. This method analyzes which operations would be successfully
@@ -500,12 +504,12 @@ LLVM_NODISCARD LogicalResult applyFullConversion(
 /// considered for conversion.
 LLVM_NODISCARD LogicalResult applyAnalysisConversion(
     ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
-    TypeConverter *converter = nullptr);
+    const OwningRewritePatternList &patterns,
+    DenseSet<Operation *> &convertedOps, TypeConverter *converter = nullptr);
 LLVM_NODISCARD LogicalResult applyAnalysisConversion(
     Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
-    TypeConverter *converter = nullptr);
+    const OwningRewritePatternList &patterns,
+    DenseSet<Operation *> &convertedOps, TypeConverter *converter = nullptr);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_DIALECTCONVERSION_H_

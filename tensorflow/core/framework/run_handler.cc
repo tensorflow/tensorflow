@@ -100,66 +100,142 @@ typedef Eigen::RunQueue<Task, 1024> Queue;
 class ThreadWorkSource {
  public:
   ThreadWorkSource()
-      : blocking_inflight_(0), non_blocking_inflight_(0), traceme_id_(0) {
+      : non_blocking_work_sharding_factor_(2),
+        non_blocking_work_queues_(non_blocking_work_sharding_factor_),
+        blocking_inflight_(0),
+        non_blocking_inflight_(0),
+        traceme_id_(0) {
     queue_waiters_.next = &queue_waiters_;
     queue_waiters_.prev = &queue_waiters_;
+    for (int i = 0; i < NonBlockingWorkShardingFactor(); ++i) {
+      non_blocking_work_queues_.emplace_back(new NonBlockingQueue());
+    }
+  }
+
+  ~ThreadWorkSource() {
+    for (int i = 0; i < non_blocking_work_queues_.size(); ++i) {
+      delete non_blocking_work_queues_[i];
+    }
   }
 
   Task EnqueueTask(Task t, bool is_blocking) {
+    mutex* mu = nullptr;
+    Queue* task_queue = nullptr;
+    thread_local int64 closure_counter = 0;
+
+    if (!is_blocking) {
+      int queue_index = ++closure_counter % non_blocking_work_sharding_factor_;
+      task_queue = &(non_blocking_work_queues_[queue_index]->queue);
+      mu = &non_blocking_work_queues_[queue_index]->queue_op_mu;
+    } else {
+      task_queue = &blocking_work_queue_;
+      mu = &blocking_queue_op_mu_;
+    }
+
     {
-      Queue* task_queue =
-          is_blocking ? &blocking_work_queue_ : &non_blocking_work_queue_;
-      mutex_lock l(queue_mu_);
+      mutex_lock l(*mu);
       // For a given queue, only one thread can call PushFront.
       t = task_queue->PushFront(std::move(t));
-      // Only wake up the thread that can take tasks from both blocking and
-      // non-blocking queues. The rational is that we don't want to wake up more
-      // threads than the available physical cores for them to compete for
-      // resource. The non-blocking threads are used only to compensate for
-      // threads that may be blocked on some tasks. There is less need to
-      // proactively wake up those threads.
-      queue_waiters_.next->cv.notify_one();
+    }
+
+    // Only wake up the thread that can take tasks from both blocking and
+    // non-blocking queues. The rational is that we don't want to wake up more
+    // threads than the available physical cores for them to compete for
+    // resource. The non-blocking threads are used only to compensate for
+    // threads that may be blocked on some tasks. There is less need to
+    // proactively wake up those threads.
+    static int max_rank_to_wakeup = static_cast<int>(ParamFromEnvWithDefault(
+        "TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP", kMaxConcurrentHandlers));
+    if (max_rank_to_wakeup > 0 &&
+        rank_.load(std::memory_order_relaxed) <= max_rank_to_wakeup) {
+      Waiter* w = nullptr;
+      {
+        mutex_lock l(waiters_mu_);
+        if (queue_waiters_.next != &queue_waiters_) {
+          // Remove waiter from the LIFO queue
+          w = queue_waiters_.next;
+
+          CHECK(w->prev != w);
+          CHECK(w->next != w);
+
+          w->next->prev = w->prev;
+          w->prev->next = w->next;
+
+          // Use `w->next == &w` to indicate that the waiter has been removed
+          // from the queue.
+          w->next = w;
+          w->prev = w;
+        }
+      }
+      if (w != nullptr) {
+        // We call notify_one() without any locks, so we can miss notifications.
+        // The wake up logic is best effort and a thread will wake in short
+        // period of time in case a notification is missed.
+        w->cv.notify_one();
+      }
     }
     VLOG(3) << "Added " << (is_blocking ? "inter" : "intra") << " work from "
             << traceme_id_.load(std::memory_order_relaxed);
     return t;
   }
 
-  Task PopTask(bool is_blocking) {
-    Queue* task_queue =
-        is_blocking ? &blocking_work_queue_ : &non_blocking_work_queue_;
+  Task PopBlockingTask() { return blocking_work_queue_.PopBack(); }
 
-    return task_queue->PopBack();
+  Task PopNonBlockingTask(int index) {
+    return non_blocking_work_queues_[index]->queue.PopBack();
   }
 
-  void WaitIfTaskQueuesEmpty(int max_sleep_micros) {
-    mutex_lock l(queue_mu_);
-    if (!blocking_work_queue_.Empty() || !non_blocking_work_queue_.Empty()) {
-      return;
+  void WaitForWork(int max_sleep_micros) {
+    thread_local Waiter waiter;
+    {
+      mutex_lock l(waiters_mu_);
+      CHECK_EQ(waiter.next, &waiter);
+      CHECK_EQ(waiter.prev, &waiter);
+
+      // Add waiter to the LIFO queue
+      waiter.prev = &queue_waiters_;
+      waiter.next = queue_waiters_.next;
+      waiter.next->prev = &waiter;
+      waiter.prev->next = &waiter;
+    }
+    {
+      mutex_lock l(waiter.mu);
+      // Wait on the condition variable
+      waiter.cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
     }
 
-    Waiter waiter;
-    // Add waiter to the LIFO queue
-    waiter.prev = &queue_waiters_;
-    waiter.next = queue_waiters_.next;
-    waiter.next->prev = &waiter;
-    waiter.prev->next = &waiter;
-    // Wait on the condition variable
-    waiter.cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
-    // Remove waiter from the LIFO queue
-    waiter.next->prev = waiter.prev;
-    waiter.prev->next = waiter.next;
+    mutex_lock l(waiters_mu_);
+    // Remove waiter from the LIFO queue. Note even when a waiter wakes up due
+    // to a notification we cannot conclude the waiter is not in the queue.
+    // This is due to the fact that a thread preempted right before notifying
+    // may resume after a waiter got re-added.
+    if (waiter.next != &waiter) {
+      CHECK(waiter.prev != &waiter);
+      waiter.next->prev = waiter.prev;
+      waiter.prev->next = waiter.next;
+      waiter.next = &waiter;
+      waiter.prev = &waiter;
+    } else {
+      CHECK_EQ(waiter.prev, &waiter);
+    }
   }
 
   int TaskQueueSize(bool is_blocking) {
-    Queue* task_queue =
-        is_blocking ? &blocking_work_queue_ : &non_blocking_work_queue_;
-    return task_queue->Size();
+    if (is_blocking) {
+      return blocking_work_queue_.Size();
+    } else {
+      unsigned total_size = 0;
+      for (int i = 0; i < non_blocking_work_sharding_factor_; ++i) {
+        total_size += non_blocking_work_queues_[i]->queue.Size();
+      }
+      return total_size;
+    }
   }
 
   int64 GetTracemeId() { return traceme_id_.load(std::memory_order_relaxed); }
 
   void SetTracemeId(int64 value) { traceme_id_ = value; }
+  void SetRank(int64 value) { rank_ = value; }
 
   int64 GetInflightTaskCount(bool is_blocking) {
     std::atomic<int64>* counter =
@@ -179,6 +255,10 @@ class ThreadWorkSource {
     counter->fetch_sub(1, std::memory_order_relaxed);
   }
 
+  unsigned NonBlockingWorkShardingFactor() {
+    return non_blocking_work_sharding_factor_;
+  }
+
   std::string ToString() {
     return strings::StrCat("traceme_id = ", GetTracemeId(),
                            ", inter queue size = ", TaskQueueSize(true),
@@ -192,18 +272,35 @@ class ThreadWorkSource {
   // queue them in LIFO order rather than the FIFO order used by a single
   // condition variable.
   struct Waiter {
+    Waiter() {
+      next = this;
+      prev = this;
+    }
     condition_variable cv;
+    mutex mu;
     Waiter* next;
     Waiter* prev;
   };
 
+  struct NonBlockingQueue {
+    mutex queue_op_mu;
+    char pad[128];
+    Queue queue;
+  };
+
+  int32 non_blocking_work_sharding_factor_;
+  Eigen::MaxSizeVector<NonBlockingQueue*> non_blocking_work_queues_;
+
   std::atomic<int64> blocking_inflight_;
   std::atomic<int64> non_blocking_inflight_;
+
   Queue blocking_work_queue_;
-  Queue non_blocking_work_queue_;
-  mutex queue_mu_;
-  Waiter queue_waiters_ GUARDED_BY(queue_mu_);
+  mutex blocking_queue_op_mu_;
+  char pad_[128];
+  mutex waiters_mu_;
+  Waiter queue_waiters_ GUARDED_BY(waiters_mu_);
   std::atomic<int64> traceme_id_;
+  std::atomic<int64> rank_;
 };
 
 class RunHandlerThreadPool {
@@ -310,8 +407,8 @@ class RunHandlerThreadPool {
 
   void WorkerLoop(int thread_id, bool may_steal_blocking_work);
 
-  void MaybeWaitForWork(bool is_blocking, int thread_id,
-                        int32 max_blocking_inflight);
+  void WaitForWork(bool is_blocking, int thread_id,
+                   int32 max_blocking_inflight);
 
  private:
   struct ThreadData {
@@ -357,15 +454,33 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
         // This is best effort policy.
         if (may_steal_blocking_work &&
             tws->GetInflightTaskCount(true) < kMaxBlockingInflight) {
-          t = tws->PopTask(true);
+          t = tws->PopBlockingTask();
           if (t.f) {
             break;
           }
         }
-        t = tws->PopTask(false);
-        if (t.f) {
-          task_from_blocking_queue = false;
-          break;
+        if (i == 0) {
+          // Always look for any work from the "primary" work source.
+          // This way when we wake up a thread for a new closure we are
+          // guaranteed it can be worked on.
+          for (int j = 0; j < tws->NonBlockingWorkShardingFactor(); ++j) {
+            t = tws->PopNonBlockingTask((j + thread_id) %
+                                        tws->NonBlockingWorkShardingFactor());
+            if (t.f) {
+              task_from_blocking_queue = false;
+              break;
+            }
+          }
+          if (t.f) {
+            break;
+          }
+        } else {
+          t = tws->PopNonBlockingTask(thread_id %
+                                      tws->NonBlockingWorkShardingFactor());
+          if (t.f) {
+            task_from_blocking_queue = false;
+            break;
+          }
         }
       }
     }
@@ -396,14 +511,13 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
         }
       }
 
-      MaybeWaitForWork(may_steal_blocking_work, thread_id,
-                       kMaxBlockingInflight);
+      WaitForWork(may_steal_blocking_work, thread_id, kMaxBlockingInflight);
     }
   }
 }
 
-void RunHandlerThreadPool::MaybeWaitForWork(bool is_blocking, int thread_id,
-                                            int32 max_blocking_inflight) {
+void RunHandlerThreadPool::WaitForWork(bool is_blocking, int thread_id,
+                                       int32 max_blocking_inflight) {
   const int kMaxSleepMicros = 250;
 
   // The non-blocking thread will just sleep.
@@ -431,7 +545,7 @@ void RunHandlerThreadPool::MaybeWaitForWork(bool is_blocking, int thread_id,
     // Sleep to reduce contention in PropagateOutputs
     Env::Default()->SleepForMicroseconds(kMaxSleepMicros);
   }
-  tws->WaitIfTaskQueuesEmpty(kMaxSleepMicros);
+  tws->WaitForWork(kMaxSleepMicros);
 }
 
 }  // namespace
@@ -599,6 +713,7 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
   thread_work_sources.resize(num_active_requests);
   for (int i = 0; i < num_active_requests; ++i) {
     thread_work_sources[i] = sorted_active_handlers_[i]->tws();
+    thread_work_sources[i]->SetRank(i);
   }
 
   int num_threads = run_handler_thread_pool()->NumThreads();
@@ -674,7 +789,7 @@ void RunHandler::Impl::ScheduleInterOpClosure(std::function<void()> fn) {
 }
 
 void RunHandler::Impl::ScheduleIntraOpClosure(std::function<void()> fn) {
-  VLOG(3) << "Scheduling inter work for " << tws()->GetTracemeId();
+  VLOG(3) << "Scheduling intra work for " << tws()->GetTracemeId();
   pool_impl_->run_handler_thread_pool()->AddWorkToQueue(tws(), false,
                                                         std::move(fn));
 }

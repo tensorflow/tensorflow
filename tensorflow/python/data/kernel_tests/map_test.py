@@ -522,10 +522,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -555,10 +555,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       def divide():
         return x // 2
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              divide,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), divide),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -596,10 +596,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             divide,
             name="cond_mult")
 
-      pred_fn_pairs = {
-          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
-              defaults_two,
-      }
+      pred_fn_pairs = [
+          (math_ops.logical_or(math_ops.equal(y, 2),
+                               math_ops.equal(y, 3)), defaults_two),
+      ]
 
       return control_flow_ops.case(
           pred_fn_pairs, default=multiply, exclusive=True)
@@ -732,6 +732,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
+
+  def testSparseMapShapeInference(self):
+    if not context.executing_eagerly():
+      self.skipTest("SparseTensor shape inference requires eager mode")
+    row_lengths = np.random.randint(0, 4, size=128)
+    values = np.ones(np.sum(row_lengths))
+    sparse = ragged_tensor.RaggedTensor.from_row_lengths(
+        values, row_lengths).to_sparse()
+    dataset = dataset_ops.Dataset.from_tensor_slices(sparse)
+    dataset = dataset.batch(32, drop_remainder=True)
+    dataset = dataset.map(lambda x: x)
+    self.assertEqual((32, 3), dataset.element_spec.shape)
+
+  def testSparseMapShapeInferencePartial(self):
+    if not context.executing_eagerly():
+      self.skipTest("SparseTensor shape inference requires eager mode")
+    row_lengths = np.random.randint(0, 4, size=128)
+    values = np.ones(np.sum(row_lengths))
+    sparse = ragged_tensor.RaggedTensor.from_row_lengths(
+        values, row_lengths).to_sparse()
+    dataset = dataset_ops.Dataset.from_tensor_slices(sparse)
+    dataset = dataset.batch(32, drop_remainder=False)
+    dataset = dataset.map(lambda x: x)
+    self.assertEqual([None, 3], dataset.element_spec.shape.as_list())
 
   def testTensorArray(self):
 

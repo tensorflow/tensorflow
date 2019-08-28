@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
@@ -48,6 +50,24 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.PrefetchDataset(
         dataset, buffer_size, slack_period=slack_period)
     self.assertDatasetProduces(dataset, expected_output=range(100))
+
+  @test_util.run_v1_only("graph-mode specific test")
+  def testSkipEagerPrefetchCancellation(self):
+
+    def map_py_fn(x):
+      while x > -1:
+        x = x * 1
+      return x
+
+    dataset = dataset_ops.Dataset.range(10).map(map_py_fn).prefetch(3)
+    get_next = self.getNext(dataset)
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+      thread.start()
+      time.sleep(0.5)
+      sess.close()
+      thread.join()
 
 
 if __name__ == "__main__":

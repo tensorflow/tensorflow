@@ -43,7 +43,7 @@ class ArrayTest(PForTestCase):
       outputs = []
       x_i = array_ops.gather(x, i)
       for y in [x, x_i]:
-        axes = [0, 2, -1] if y == x else [0]
+        axes = [0, 2, -1] if y is x else [0]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
           outputs.append(array_ops.gather(y, i, axis=axis))
@@ -53,6 +53,19 @@ class ArrayTest(PForTestCase):
       return outputs
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 20)
+
+  def test_gather_nd(self):
+    x = random_ops.random_uniform([3, 3, 3])
+
+    def loop_fn(i):
+      outputs = []
+      x_i = array_ops.gather(x, i)
+      outputs.append(array_ops.gather_nd(x_i, [0], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [i], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [[i], [i], [i]], batch_dims=1))
+      return outputs
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_shape(self):
     x = random_ops.random_uniform([3, 2, 3])

@@ -25,6 +25,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//learning/brain:__subpackages__",
+        "//storage/d/analysis/prefetch:__pkg__",
         "//tensorflow:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],

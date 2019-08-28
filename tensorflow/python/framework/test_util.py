@@ -68,6 +68,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
@@ -532,6 +533,29 @@ def disable_control_flow_v2(unused_msg):
   def wrapper(func):
     func._disable_control_flow_v2 = True
     return func
+
+  return wrapper
+
+
+def enable_output_all_intermediates(fn):
+  """Force-enable outputing all intermediates from functional control flow ops.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    output_all_intermediates_old = \
+        control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
+          output_all_intermediates_old
 
   return wrapper
 

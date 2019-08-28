@@ -79,7 +79,7 @@ public:
   Location getLoc();
 
   /// Return the Region in which this Value is defined.
-  Region *getContainingRegion();
+  Region *getParentRegion();
 
   using use_iterator = ValueUseIterator<OpOperand>;
   using use_range = llvm::iterator_range<use_iterator>;

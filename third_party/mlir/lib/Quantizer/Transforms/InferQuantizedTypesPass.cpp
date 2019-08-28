@@ -286,9 +286,9 @@ void InferQuantizedTypesPass::transformResultType(CAGResultAnchor *anchor,
   }
 }
 
-ModulePassBase *mlir::quantizer::createInferQuantizedTypesPass(
+std::unique_ptr<ModulePassBase> mlir::quantizer::createInferQuantizedTypesPass(
     SolverContext &solverContext, const TargetConfiguration &config) {
-  return new InferQuantizedTypesPass(solverContext, config);
+  return std::make_unique<InferQuantizedTypesPass>(solverContext, config);
 }
 
 static PassRegistration<InferQuantizedTypesPass>

@@ -234,11 +234,9 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_gpu",  # TODO(b/131773093): Re-enable.
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -2979,7 +2977,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -3135,7 +3132,8 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
+    shard_count = 15,
+    tags = ["no_windows"],  # b/139739217
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3277,6 +3275,7 @@ cuda_py_test(
     ],
     tags = [
         "no_pip",
+        "nomac",  # http://b/139946976
         "notap",  # http://b/31080670
     ],
     xla_enable_strict_auto_jit = True,
@@ -3724,40 +3723,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-tf_py_test(
-    name = "accumulate_n_test",
-    size = "small",
-    srcs = ["accumulate_n_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-    ],
-)
-
-tf_py_test(
-    name = "accumulate_n_eager_test",
-    size = "small",
-    srcs = ["accumulate_n_eager_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tape",
     ],
 )
 

@@ -49,7 +49,7 @@ class TfLiteInternalBackendContext {
 // serialized way. Here's an example to illustrate the context sharing among 2
 // TF Lite interpreters:
 //
-//  TfLiteInternalBackendContext* global_ctxt = new ExternalCpuBackendContext();
+//  TfLiteExternalContext* global_ctxt = new ExternalCpuBackendContext();
 //  interpreter1 = /*...*/;
 //  interpreter1->SetExternalContext(kTfLiteCpuBackendContext, global_ctxt);
 //  interpreter2 = /*...*/;

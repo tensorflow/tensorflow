@@ -32,7 +32,7 @@ class RewritePattern;
 class Value;
 
 // Owning list of rewriting patterns.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 
 /// Emit code that computes the given affine expression using standard
 /// arithmetic operations applied to the provided dimension and symbol values.

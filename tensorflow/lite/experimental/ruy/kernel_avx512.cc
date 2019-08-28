@@ -13,14 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstdint>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#include <immintrin.h>  // IWYU pragma: keep
+#endif
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if !(RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
   __m256i a =
@@ -349,7 +369,6 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
-  RUY_DCHECK_EQ(16, 16);
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;

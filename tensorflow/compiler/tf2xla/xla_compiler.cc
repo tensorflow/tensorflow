@@ -220,7 +220,8 @@ Status BuildComputation(
           // If there is a shape representation function, reshape the output
           // tensor to the shape given by the representation shape function.
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
-                                                    output.shape, output.type));
+                                                    output.shape, output.type,
+                                                    /*use_fast_memory=*/false));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
           retval_index_and_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_shardings.end()) {
@@ -301,7 +302,8 @@ Status BuildComputation(
       if (shape_representation_fn) {
         TF_ASSIGN_OR_RETURN(
             xla::Shape xla_shape,
-            shape_representation_fn(resource->shape(), resource->type()));
+            shape_representation_fn(resource->shape(), resource->type(),
+                                    /*use_fast_memory=*/false));
         representation_shape = xla_shape;
       }
       if (resource->representation_shape().has_value()) {
@@ -477,8 +479,8 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   // The default shape representation function is the identity.
   if (!options_.shape_representation_fn) {
     options_.shape_representation_fn =
-        [](const TensorShape& shape,
-           DataType dtype) -> xla::StatusOr<xla::Shape> {
+        [](const TensorShape& shape, DataType dtype,
+           bool use_fast_memory) -> xla::StatusOr<xla::Shape> {
       xla::Shape xla_shape;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
       return xla_shape;
@@ -656,7 +658,7 @@ Status XlaCompiler::CompileFunction(
   const char* const kKernelAttr = "_kernel";
   for (Node* n : graph->nodes()) {
     string value;
-    if (GetNodeAttrSimple(n->attrs(), kKernelAttr, &value) && value == "host") {
+    if (TryGetNodeAttr(n->attrs(), kKernelAttr, &value) && value == "host") {
       n->ClearAttr(kKernelAttr);
     }
   }
@@ -711,8 +713,9 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           TF_RETURN_IF_ERROR(
               XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
         }
-        TF_ASSIGN_OR_RETURN(*xla_shape,
-                            options_.shape_representation_fn(shape, arg.type));
+        TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
+                                            shape, arg.type,
+                                            /*use_fast_memory=*/false));
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = absl::get<xla::Shape>(arg.shape);
@@ -736,7 +739,8 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
-                                  absl::get<TensorShape>(arg.shape), arg.type));
+                                  absl::get<TensorShape>(arg.shape), arg.type,
+                                  /*use_fast_memory=*/false));
 
           return Status::OK();
         }

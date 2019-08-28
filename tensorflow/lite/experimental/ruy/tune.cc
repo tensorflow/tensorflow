@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/experimental/ruy/time.h"
-
 namespace ruy {
 
 #ifdef RUY_IMPLEMENT_TUNING

@@ -39,7 +39,7 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
   const string kTaskName = "/job:localhost/replica:0/task:0";
 
   CollectiveRemoteAccessLocalTest() {
-    work_queue_ = absl::make_unique<UnboundedWorkQueue>(Env::Default(), "test");
+    work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
     ConfigProto cp;
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
@@ -51,10 +51,12 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     prl_ = absl::make_unique<CollectiveParamResolverLocal>(
         cp, device_mgr_.get(), drl_.get(), kTaskName);
     rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(
-        device_mgr_.get(), drl_.get(), work_queue_.get(), kStepId);
+        device_mgr_.get(), drl_.get(), work_queue_, kStepId);
   }
 
-  std::unique_ptr<UnboundedWorkQueue> work_queue_;
+  ~CollectiveRemoteAccessLocalTest() override = default;
+
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;

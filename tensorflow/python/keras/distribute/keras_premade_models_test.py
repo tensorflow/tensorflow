@@ -70,7 +70,7 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
         hist = model.fit(inputs, output, epochs=5)
       else:
         hist = model.fit(get_dataset(), epochs=5)
-      self.assertLess(hist.history['loss'][4], 0.1)
+      self.assertLess(hist.history['loss'][4], 0.2)
 
   @combinations.generate(strategy_combinations_eager_data_fn())
   def test_wide_deep_model(self, distribution, data_fn):

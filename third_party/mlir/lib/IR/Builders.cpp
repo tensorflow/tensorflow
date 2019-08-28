@@ -218,6 +218,15 @@ ArrayAttr Builder::getI64ArrayAttr(ArrayRef<int64_t> values) {
   return getArrayAttr(attrs);
 }
 
+ArrayAttr Builder::getIndexArrayAttr(ArrayRef<int64_t> values) {
+  auto attrs = functional::map(
+      [this](int64_t v) -> Attribute {
+        return getIntegerAttr(IndexType::get(getContext()), v);
+      },
+      values);
+  return getArrayAttr(attrs);
+}
+
 ArrayAttr Builder::getF32ArrayAttr(ArrayRef<float> values) {
   auto attrs = functional::map(
       [this](float v) -> Attribute { return getF32FloatAttr(v); }, values);
@@ -233,6 +242,12 @@ ArrayAttr Builder::getF64ArrayAttr(ArrayRef<double> values) {
 ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
   auto attrs = functional::map(
       [this](StringRef v) -> Attribute { return getStringAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
+ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
+  auto attrs = functional::map(
+      [this](AffineMap v) -> Attribute { return getAffineMapAttr(v); }, values);
   return getArrayAttr(attrs);
 }
 
@@ -290,6 +305,8 @@ IntegerSet Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                   ArrayRef<bool> isEq) {
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq);
 }
+
+AffineMap Builder::getEmptyAffineMap() { return AffineMap::get(context); }
 
 AffineMap Builder::getConstantAffineMap(int64_t val) {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/0,

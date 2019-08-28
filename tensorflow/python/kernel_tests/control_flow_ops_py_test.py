@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import collections
 import math
+import re
 import sys
 import time
 
@@ -1007,6 +1008,79 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(1.0, self.evaluate(grad))
 
   @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testCondComputeGradAfterSessRunFails(self):
+    with self.cached_session():
+      x = constant_op.constant(10.0, name="x")
+      pred = math_ops.less(1, 2)
+
+      def true_fn():
+        a = x * x
+        return a * a
+
+      def false_fn():
+        return x * x
+
+      r = control_flow_ops.cond(pred, true_fn, false_fn)
+
+      self.assertAllEqual(r, 10000.)
+      grad = gradients_impl.gradients(r, [x])[0]
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          r"Connecting to invalid output 1 of source node cond which has 1 "
+          r"outputs. Try using "
+          "tf.compat.v1.experimental.output_all_intermediates\(True\)."):
+        self.evaluate(grad)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testCondComputeGradAfterSessRun(self):
+    with self.cached_session():
+      x = constant_op.constant(10.0, name="x")
+      pred = math_ops.less(1, 2)
+
+      def true_fn():
+        a = x * x
+        return a * a
+
+      def false_fn():
+        return x * x
+
+      r = control_flow_ops.cond(pred, true_fn, false_fn)
+
+      self.assertAllEqual(r, 10000.)
+      grad = gradients_impl.gradients(r, [x])[0]
+      self.assertAllEqual(grad, 4000.)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testNestedCondComputeGradAfterSessRun(self):
+    with self.cached_session():
+      x = constant_op.constant(10.0, name="x")
+      pred = math_ops.less(1, 2)
+
+      def true_fn():
+
+        def inner_true_fn():
+          a = x * x
+          return a * a
+
+        def inner_false_fn():
+          return x * x
+
+        return control_flow_ops.cond(
+            constant_op.constant(True), inner_true_fn, inner_false_fn)
+
+      def false_fn():
+        return x * x
+
+      r = control_flow_ops.cond(pred, true_fn, false_fn)
+
+      self.assertAllEqual(r, 10000.)
+      grad = gradients_impl.gradients(r, [x])[0]
+      self.assertAllEqual(grad, 4000.)
+
+  @test_util.run_deprecated_v1
   def testCondGrad_2(self):
     with self.cached_session():
       c = array_ops.placeholder(dtypes.int32, shape=[])
@@ -1567,8 +1641,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
-      with self.assertRaisesRegexp(
-          ValueError, r"Tensor.*Placeholder:0.* must be from the same graph.*"):
+      with self.assertRaisesRegexp(ValueError,
+                                   r"must be from the same graph.*"):
         loop = create_while_loop()
       xla_context.Exit()
     else:
@@ -1654,14 +1728,17 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         for dev in run_metadata_without_xla_context.step_stats.dev_stats:
           if "/device:CPU" in dev.device:
             node_stats = dev.node_stats
-        stack_push_op = "TensorListPushBack"
+        stack_push_count = len([
+            x for x in node_stats
+            if re.match(r".*TensorListPushBack_?\d*", x.node_name)
+        ])
       else:
         for dev in run_metadata.step_stats.dev_stats:
           if "/device:CPU" in dev.device:
             node_stats = dev.node_stats
         stack_push_op = "StackPushV2"
-      stack_push_count = len(
-          [x for x in node_stats if x.node_name.endswith(stack_push_op)])
+        stack_push_count = len(
+            [x for x in node_stats if x.node_name.endswith("StackPushV2")])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
       self.assertEqual(stack_push_count, 5 * 3 * 3, str(node_stats))
@@ -2783,6 +2860,34 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       r = gradients_impl.gradients([r, y], x)[0]
       self.assertAllClose([2.0, 4.0], sess.run(r, feed_dict={x: [1.0, 2.0]}))
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testWhileGradAfterSessionRun(self):
+    v0 = constant_op.constant(2.)
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda v: v * v, [v0], maximum_iterations=3)
+
+    self.assertAllEqual(r, 256.)
+    grad = gradients_impl.gradients(r, v0)[0]
+    self.assertAllClose(grad, 1024.)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testNestedWhileGradAfterSessionRun(self):
+    v0 = constant_op.constant(2.)
+
+    def body(v):
+      inner_v0 = constant_op.constant(1.)
+      return control_flow_ops.while_loop(
+          lambda _: True, lambda x: x * v, [inner_v0], maximum_iterations=2)
+
+    r = control_flow_ops.while_loop(
+        lambda _: True, body, [v0], maximum_iterations=3)
+
+    self.assertAllEqual(r, 256.)
+    grad = gradients_impl.gradients(r, v0)[0]
+    self.assertAllClose(grad, 1024.)
 
   @test_util.run_v1_only("b/120545219")
   def testWhileGrad_MultipleUses(self):

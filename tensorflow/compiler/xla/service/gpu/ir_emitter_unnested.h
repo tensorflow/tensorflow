@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
@@ -47,7 +48,8 @@ namespace gpu {
 //    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
 //    really an IrEmitter, but is more an "IR generator generator".)
 //
-class IrEmitterUnnested : public IrEmitter {
+class IrEmitterUnnested : public IrEmitter,
+                          private ThunkEmitter::EmissionContext {
  public:
   // Parameter block_contains_multi_tiles indicates whether a tile block
   // consists of multiple tiles or not. If the tile block contains only one
@@ -155,7 +157,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status DefaultAction(HloInstruction* hlo) override;
 
   // IrEmitterUnnested handles the following instructions differently from
-  // IrEmitter.
+  // IrEmitter. It also mixes in some special handling for custom kernels
+  // via the ThunkEmitter.
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -197,8 +200,28 @@ class IrEmitterUnnested : public IrEmitter {
 
  private:
   // Add a owning Thunk object to the thunk sequence.
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
     thunk_sequence_->emplace_back(std::move(thunk));
+  }
+
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index) const override {
+    return ir_emitter_context_->buffer_assignment().GetUniqueSlice(&hlo, index);
+  }
+
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
+    return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
+  }
+
+  int64 ByteSizeOf(const Shape& shape) const override {
+    return llvm_ir::ByteSizeOf(
+        shape, ir_emitter_context_->llvm_module()->getDataLayout());
+  }
+
+  const se::Platform* platform() const override {
+    return ir_emitter_context_->platform();
   }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
@@ -307,38 +330,10 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction* inst, bool implements_whole_instruction,
       int unroll_factor = 1);
 
-  // Returns a FftThunk that calls cuFFT to implement `inst`.
-  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
-
-  // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
-  std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
-
-  // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
-  std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
-
-  // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
-  // to make sure `inst` outlives the lifetime of the returned Thunk object.
-  std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
-
   // Returns a thunk that, given a reduce or select-and-scatter op, initializes
   // its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
       HloInstruction* hlo, const ShapeIndex& index = {});
-
-  // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);
-
-  // Returns a thunk that calls device-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildDeviceToDeviceCopyThunk(
-      const HloInstruction* inst);
-
-  // Returns an InfeedThunk that performs a host-to-device memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
-
-  // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.

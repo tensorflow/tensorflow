@@ -38,14 +38,42 @@ cc_library(
     hdrs = ["mlir_compiler.h"],
     deps = [
         ":failover_compiler",
+        ":lhlo_dialect_emitter",
         "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:gpu_constants",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_hlo_schedule",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/service/gpu:stream_assignment",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor:stream_executor_headers",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
     ],
     alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "lhlo_dialect_emitter",
+    srcs = ["lhlo_dialect_emitter.cc"],
+    hdrs = ["lhlo_dialect_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:lhlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
+        "//tensorflow/compiler/xla/service/gpu:thunk_emitter",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:LLVMDialect",
+        "@local_config_mlir//:StandardOps",
+    ],
 )

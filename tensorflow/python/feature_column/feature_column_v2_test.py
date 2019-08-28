@@ -34,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.feature_column import dense_features as df
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -852,7 +853,10 @@ class BucketizedColumnTest(test.TestCase):
     self.assertIsNot(price, new_bucketized_price.source_column)
 
     new_bucketized_price = fc.BucketizedColumn._from_config(
-        config, columns_by_name={price.name: price})
+        config,
+        columns_by_name={
+            serialization._column_name_with_class_name(price): price
+        })
     self.assertEqual(bucketized_price, new_bucketized_price)
     self.assertIs(price, new_bucketized_price.source_column)
 
@@ -1613,7 +1617,8 @@ class CrossedColumnTest(test.TestCase):
     self.assertIsNot(b, new_crossed.keys[0])
 
     new_crossed = fc.CrossedColumn._from_config(
-        config, columns_by_name={b.name: b})
+        config,
+        columns_by_name={serialization._column_name_with_class_name(b): b})
     self.assertEqual(crossed, new_crossed)
     self.assertIs(b, new_crossed.keys[0])
 
@@ -3212,7 +3217,7 @@ class InputLayerTest(test.TestCase):
       # additional variables
       _ = input_layer(features)
       self.assertEqual(1, len(variables))
-      self.assertEqual(variables[0], input_layer.variables[0])
+      self.assertIs(variables[0], input_layer.variables[0])
 
   def test_feature_column_input_layer_gradient(self):
     with context.eager_mode():
@@ -5559,7 +5564,10 @@ class IndicatorColumnTest(test.TestCase):
     self.assertIsNot(parent, new_animal.categorical_column)
 
     new_animal = fc.IndicatorColumn._from_config(
-        config, columns_by_name={parent.name: parent})
+        config,
+        columns_by_name={
+            serialization._column_name_with_class_name(parent): parent
+        })
     self.assertEqual(animal, new_animal)
     self.assertIs(parent, new_animal.categorical_column)
 
@@ -6582,7 +6590,10 @@ class EmbeddingColumnTest(test.TestCase):
     new_embedding_column = fc.EmbeddingColumn._from_config(
         config,
         custom_objects=custom_objects,
-        columns_by_name={categorical_column.name: categorical_column})
+        columns_by_name={
+            serialization._column_name_with_class_name(categorical_column):
+                categorical_column
+        })
     self.assertEqual(embedding_column._get_config(),
                      new_embedding_column._get_config())
     self.assertIs(categorical_column, new_embedding_column.categorical_column)
@@ -6634,7 +6645,10 @@ class EmbeddingColumnTest(test.TestCase):
     new_embedding_column = fc.EmbeddingColumn._from_config(
         config,
         custom_objects=custom_objects,
-        columns_by_name={categorical_column.name: categorical_column})
+        columns_by_name={
+            serialization._column_name_with_class_name(categorical_column):
+                categorical_column
+        })
     self.assertEqual(embedding_column, new_embedding_column)
     self.assertIs(categorical_column, new_embedding_column.categorical_column)
 
@@ -7713,7 +7727,11 @@ class WeightedCategoricalColumnTest(test.TestCase):
     self.assertEqual(column, fc.WeightedCategoricalColumn._from_config(config))
 
     new_column = fc.WeightedCategoricalColumn._from_config(
-        config, columns_by_name={categorical_column.name: categorical_column})
+        config,
+        columns_by_name={
+            serialization._column_name_with_class_name(categorical_column):
+                categorical_column
+        })
     self.assertEqual(column, new_column)
     self.assertIs(categorical_column, new_column.categorical_column)
 

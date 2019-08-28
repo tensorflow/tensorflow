@@ -188,11 +188,11 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
     }
   }
 
-  OP_REQUIRES(
-      ctx, uninitialized_vars.empty(),
-      errors::InvalidArgument("In ReadVariableOp the following variables were "
-                              "found uninitialized: ",
-                              absl::StrJoin(uninitialized_vars, ", ")));
+  OP_REQUIRES(ctx, uninitialized_vars.empty(),
+              errors::FailedPrecondition(
+                  "In ReadVariablesOp the following variables were "
+                  "found uninitialized: ",
+                  absl::StrJoin(uninitialized_vars, ", ")));
 
   for (size_t i = 0; i < dtypes_.size(); ++i) {
     // We're acquiring a reference to the underlying buffer while
@@ -765,7 +765,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_int64(REGISTER_GATHER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
@@ -950,7 +951,7 @@ class ResourceScatterUpdateOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
-REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+REGISTER_SCATTER_KERNEL(tstring, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 REGISTER_SCATTER_KERNEL(bool, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);

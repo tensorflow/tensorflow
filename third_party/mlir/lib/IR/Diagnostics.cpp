@@ -160,7 +160,7 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
 
   /// Append and return a new note.
   notes.push_back(
-      llvm::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
+      std::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
   return *notes.back();
 }
 
@@ -415,12 +415,10 @@ void SourceMgrDiagnosticHandler::emitDiagnostic(Location loc, Twine message,
   if (smloc.isValid())
     return mgr.PrintMessage(os, smloc, getDiagKind(kind), message);
 
-  // If the conversion was unsuccessful, create a diagnostic with the source
-  // location information directly.
-  llvm::SMDiagnostic diag(mgr, llvm::SMLoc(), fileLoc->getFilename(),
-                          fileLoc->getLine(), fileLoc->getColumn(),
-                          getDiagKind(kind), message.str(), /*LineStr=*/"",
-                          /*Ranges=*/llvm::None);
+  // If the conversion was unsuccessful, create a diagnostic with the file
+  // information.
+  llvm::SMDiagnostic diag(fileLoc->getFilename(), getDiagKind(kind),
+                          message.str());
   diag.print(nullptr, os);
 }
 

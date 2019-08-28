@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics | FileCheck %s --dump-input=fail
 
 //===--------------------------------------------------------------------===//
 //  Test TF opaque attributes
@@ -62,6 +62,23 @@ func @testTFComplex(tensor<*x!tf.complex64>, tensor<*x!tf.complex128>) -> (!tf.c
 //===--------------------------------------------------------------------===//
 //  Test TF operations (tf.*)
 //===--------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @testIdentity
+func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
+  // CHECK: tf.Identity
+  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string>
+  return %0 : tensor<4x2x!tf.string>
+}
+
+// -----
+
+func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
+  // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
+  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
+  return %0 : tensor<4x2x!tf.stringref>
+}
 
 // -----
 
@@ -130,6 +147,15 @@ func @testLeakyWrongAlphaType(tensor<16xf32>) -> tensor<16xf32> {
   // expected-error @+1 {{attribute 'alpha' failed to satisfy constraint: 32-bit float}}
   %0 = "tf.LeakyRelu"(%arg0) {alpha = 1: i32}: (tensor<16xf32>) -> tensor<16xf32>
   return %0 : tensor<16xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testMul
+func @testMul(%arg0: tensor<2x!tf.uint16>) -> (tensor<2x!tf.uint16>) {
+  // CHECK: tf.Mul
+  %0 = "tf.Mul"(%arg0, %arg0) {T = "tfdtype$DT_UINT16", device = "/device:CPU:0", name = "Mul"} : (tensor<2x!tf.uint16>, tensor<2x!tf.uint16>) -> tensor<2x!tf.uint16>
+  return %0 : tensor<2x!tf.uint16>
 }
 
 // -----
@@ -632,11 +658,30 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 ^bb0(%arg0: tensor<*xf32>):
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
 }
+
+// -----
+func @testWhileUndefinedCond(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{cond refers to an undefined function : undefined_func}}
+  %0 = "tf.While"(%arg0, %arg1) {cond = @undefined_func, body = @body, is_stateless = false} : (tensor<i1>, tensor<f32>) -> (tensor<f32>)
+  return %0 : tensor<f32>
+}
+
+func @body(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32>
+
+// -----
+func @testWhileUndefinedBody(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{body refers to an undefined function : undefined_func}}
+  %0 = "tf.While"(%arg0, %arg1) {cond = @cond, body = @undefined_func, is_stateless = false} : (tensor<i1>, tensor<f32>) -> (tensor<f32>)
+  return %0 : tensor<f32>
+}
+
+func @cond(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<i1>
 
 // -----
 
@@ -649,7 +694,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{requires cond function to have exactly one result}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -666,7 +712,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xi32>) {
   // expected-error @+1 {{operand type tensor<*xf32> is incompatible with result type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xi32>)
 
   return %1 : tensor<*xi32>
@@ -683,7 +730,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{operand type tensor<*xf32> is incompatible with cond function input type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -700,7 +748,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{requires the number of operands to be equal to the number of body function inputs. Found 1 and 2, respectively}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -717,7 +766,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{body function result type tensor<*xi32> is incompatible with result type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -734,7 +784,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{cond function input type tensor<3xf32> is incompatible with body function input type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -764,7 +815,7 @@ func @testShapeWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf3
 
 func @testShapeWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
-  // expected-error @+1 {{requires 1D result type}}
+  // expected-error @+1 {{requires 1D type for result}}
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<*xi32>
   return %0 : tensor<*xi32>
 }
@@ -780,11 +831,73 @@ func @testShapeMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
 
 // -----
 
-func @testShapeWrongResultDim(tensor<*xf32>) -> tensor<2xi32> {
+func @testShapeWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{requires dynamic shape result for unranked input}}
+  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testValidShapeN
+func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>) {
+  // CHECK-NEXT: "tf.ShapeN"
+  %0:2 = "tf.ShapeN"(%arg0, %arg1) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>)
+  return %0#0, %0#1 : tensor<4xi32>, tensor<?xi32>
+}
+
+// -----
+
+func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
+  // expected-error @+1 {{result #1 must be tensor of 32/64-bit integer values}}
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
+  return %0#1 : tensor<4xf32>
+}
+
+// -----
+
+func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
+^bb0(%arg0: tensor<1x32x32x16xf32>):
+  // expected-error @+1 {{requires 1D type for result #1}}
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<*xi32>)
+  return %0#1 : tensor<*xi32>
+}
+
+// -----
+
+func @testShapeNMismatchDim(tensor<1x32x32x16xf32>) -> tensor<2xi32> {
+^bb0(%arg0: tensor<1x32x32x16xf32>):
+  // expected-error @+1 {{requires dimension size of result #1 to match rank of operand #1}}
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<2xi32>)
+  return %0#1 : tensor<2xi32>
+}
+
+// -----
+
+func @testShapeNWrongResultDimDynamic(tensor<*xf32>) -> tensor<2xi32> {
+^bb0(%arg0: tensor<*xf32>):
+  // expected-error @+1 {{requires dynamic shape result #1 for unranked operand #1}}
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) {N = 2 : i64} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<2xi32>)
+  return %0#1 : tensor<2xi32>
+}
+
+// -----
+
+func @testShapeNWrongNumOperands(tensor<*xf32>) {
+^bb0(%arg0: tensor<*xf32>):
+  // expected-error @+1 {{requires 3 operand(s), got 2 operand(s)}}
+  %0:3 = "tf.ShapeN"(%arg0, %arg0) {N = 3 : i64} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>, tensor<?xi32>)
+  return
+}
+
+// -----
+
+func @testShapeNWrongNumResults(tensor<*xf32>) {
+^bb0(%arg0: tensor<*xf32>):
+  // expected-error @+1 {{requires 3 result(s), got 2 result(s)}}
+  %0:2 = "tf.ShapeN"(%arg0, %arg0, %arg0) {N = 3 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>)
+  return
 }
 
 // -----
@@ -854,3 +967,4 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1xi32>) -> tensor<?xf32
   %0 = "tf.ConcatV2"(%arg, %axis) {N = 1: i64} : (tensor<8x16xf32>, tensor<1xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
+

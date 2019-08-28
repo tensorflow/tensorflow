@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -85,6 +86,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"CollectiveGather", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
