@@ -90,23 +90,24 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
-  KernelMappingScheme() {}
   // dims_in_elems: the normalized tensor dimensions.
-  // req_block_sizes: the requested block size in number of tiles for each
-  //   dimension. The actual block size is set to min(req_block_size,
-  //   dims_in_number_of_blocks).
   KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x,
-                      absl::Span<const int64> req_block_sizes,
+                      int64 tile_size_x, int64 block_size_z,
                       int64 num_threads_y, int64 num_threads_x,
-                      llvm::IRBuilder<>* b);
+                      bool is_dilated_x, llvm::IRBuilder<>* b);
 
+  // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64> GetDimensionsInElements() const {
     return dims_in_elems_;
   }
+
+  // Ratio of elements in each dimension over tile sizes for Z/Y/X
+  // respectively.
   absl::Span<const int64> GetDimensionsInTiles() const {
     return dims_in_tiles_;
   }
+
+  // Ratio of dimensions per tile over block sizes.
   absl::Span<const int64> GetDimensionsInBlocks() const {
     return dims_in_blocks_;
   }
@@ -147,14 +148,6 @@ class KernelMappingScheme {
   }
 
   bool DilatedX() const { return dilated_x_; }
-  void SetDilatedX(bool v) {
-    dilated_x_ = v;
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
-    }
-  }
 
   IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
   // Returns the index for the first tile in the block with the given block

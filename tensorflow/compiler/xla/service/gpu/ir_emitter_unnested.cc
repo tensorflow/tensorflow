@@ -2627,9 +2627,9 @@ void IrEmitterUnnested::EmitHlo021Tile(
   constexpr int kNumRows = 4;
   KernelMappingScheme mapping_scheme(
       reduced_output_dims, /*tile_size_y=*/kWarpSize,
-      /*tile_size_x=*/kWarpSize, /*req_block_sizes=*/{1, 1, 1},
+      /*tile_size_x=*/kWarpSize, /*block_size_z=*/1,
       /*num_threads_y=*/kNumRows,
-      /*num_threads_x=*/kWarpSize, &b_);
+      /*num_threads_x=*/kWarpSize, /*is_dilated_x=*/false, &b_);
   KernelCodegenInfo kernel_info(&mapping_scheme);
 
   std::vector<IrArray> param_arrays;
@@ -3062,7 +3062,7 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
 
 }  // namespace
 
-std::tuple<KernelMappingScheme, bool>
+std::pair<KernelMappingScheme, bool>
 IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     const HloInstruction* unnested_hlo, const HloInstruction* first_reduce) {
   const Shape& input_shape = first_reduce->operand(0)->shape();
@@ -3121,12 +3121,10 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     tile_size_y = kNumElementsPerPartialSum;
   }
 
-  DimensionVector req_block_sizes{block_size_z, 1, 1};
   llvm_ir::KernelMappingScheme mapping_scheme(
-      dims_in_elem, tile_size_y, tile_size_x, req_block_sizes, num_threads_y,
-      num_threads_x, &b_);
-  mapping_scheme.SetDilatedX(dilated_x);
-  return std::make_tuple(mapping_scheme, is_row_reduction);
+      dims_in_elem, tile_size_y, tile_size_x, block_size_z, num_threads_y,
+      num_threads_x, dilated_x, &b_);
+  return std::make_pair(mapping_scheme, is_row_reduction);
 }
 
 Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
@@ -3197,11 +3195,11 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                                      "doesn't set the input layout of "
                                   << first_reduce->ToString();
 
-  bool is_row_reduction;
-  llvm_ir::KernelMappingScheme mapping_scheme;
-  std::tie(mapping_scheme, is_row_reduction) =
+  auto mapping_scheme_pair =
       ComputeMappingSchemeAndReductionKind(unnested_hlo, first_reduce);
-  ReductionCodegenInfo reduction_info(&mapping_scheme, is_row_reduction);
+  bool is_row_reduction = mapping_scheme_pair.second;
+  ReductionCodegenInfo reduction_info(&mapping_scheme_pair.first,
+                                      is_row_reduction);
   EmitElementFunction emit_reduction_tile =
       [&](const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
           llvm::Value* x_loc, int64 x_iter_num) {
@@ -3216,9 +3214,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       [&](llvm::Value* y, llvm::Value* x, const IrArray::Index& index,
           const string& loop_name, llvm::Value* tile_height,
           llvm::Value* tile_width, KernelSupportLibrary* ksl) {
-        EmitTiledElementalCodeWithBoundsCheck(&mapping_scheme, index, loop_name,
-                                              ksl, &b_, y, x, tile_height,
-                                              tile_width, emit_reduction_tile);
+        EmitTiledElementalCodeWithBoundsCheck(
+            &mapping_scheme_pair.first, index, loop_name, ksl, &b_, y, x,
+            tile_height, tile_width, emit_reduction_tile);
       },
       /*block_prologue_generator=*/
       [&](HloInstruction* hlo, KernelCodegenInfo* kernel_info) {

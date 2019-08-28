@@ -103,29 +103,36 @@ absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
   return absl::nullopt;
 }
 
-KernelMappingScheme::KernelMappingScheme(
-    absl::Span<const int64> dims_in_elems, int64 tile_size_y, int64 tile_size_x,
-    absl::Span<const int64> req_block_sizes, int64 num_threads_y,
-    int64 num_threads_x, llvm::IRBuilder<>* b)
+KernelMappingScheme::KernelMappingScheme(absl::Span<const int64> dims_in_elems,
+                                         int64 tile_size_y, int64 tile_size_x,
+                                         int64 block_size_z,
+                                         int64 num_threads_y,
+                                         int64 num_threads_x, bool is_dilated_x,
+                                         llvm::IRBuilder<>* b)
     : b_(b),
-      dims_in_elems_{dims_in_elems.at(0), dims_in_elems.at(1),
-                     dims_in_elems.at(2)},
+      dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
       tile_sizes_{1, tile_size_y, tile_size_x},
-      dims_in_tiles_(ElementWiseCeilOfRatio(dims_in_elems_, tile_sizes_)),
-      block_sizes_{std::min(req_block_sizes.at(0), dims_in_tiles_.at(0)),
-                   std::min(req_block_sizes.at(1), dims_in_tiles_.at(1)),
-                   std::min(req_block_sizes.at(2), dims_in_tiles_.at(2))},
-      dims_in_blocks_(ElementWiseCeilOfRatio(dims_in_tiles_, block_sizes_)),
+      dims_in_tiles_{dims_in_elems[0],
+                     CeilOfRatio<int64>(dims_in_elems[1], tile_size_y),
+                     CeilOfRatio<int64>(dims_in_elems[2], tile_size_x)},
+      block_sizes_{block_size_z, 1, 1},
+      dims_in_blocks_{CeilOfRatio<int64>(dims_in_elems[0], block_sizes_[0]),
+                      dims_in_tiles_[1], dims_in_tiles_[2]},
       num_threads_x_(num_threads_x),
       num_threads_y_(num_threads_y),
-      dilated_x_(true) {
-  DCHECK_EQ(req_block_sizes.size(), 3);
+      dilated_x_(is_dilated_x) {
   DCHECK_EQ(tile_size_y % num_threads_y_, 0);
   DCHECK_EQ(tile_size_x % num_threads_x_, 0);
+  CHECK_EQ((dims_in_elems[0] % block_size_z), 0);
   VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",") << "]";
   VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",") << "]";
   VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")
            << "]";
+  if (!dilated_x_) {
+    // dilated_x_=false is for the purpose of vectorization, which requires
+    // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
+    CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+  }
 }
 
 IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(

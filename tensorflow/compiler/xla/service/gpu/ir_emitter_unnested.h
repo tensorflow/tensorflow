@@ -212,7 +212,7 @@ class IrEmitterUnnested : public IrEmitter,
   // and first_reduce are the same instruction. For a kInput fusion,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
-  std::tuple<llvm_ir::KernelMappingScheme, bool>
+  std::pair<llvm_ir::KernelMappingScheme, bool>
   ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
                                        const HloInstruction* first_reduce);
 
