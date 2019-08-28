@@ -44,6 +44,7 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 
@@ -1381,6 +1382,23 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     g = backprop.GradientTape()
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
+
+  def testOpWithNoAttrs(self):
+
+    @function.defun(autograph=False)
+    def f():
+      with backprop.GradientTape() as tape:
+        xs = random_ops.random_normal([10, 32])
+        tape.watch(xs)
+        # The `rfft()` op has no defined attrs, which exercises a different
+        # branch in the Python op wrapper code generator for recording
+        # gradients.
+        ys = fft_ops.rfft(xs)
+        self.assertEmpty(ys.op.node_def.attr)
+      gs = tape.gradient(ys, xs)
+      self.assertIsNotNone(gs)
+
+    f.get_concrete_function()
 
 
 class JacobianTest(test.TestCase):

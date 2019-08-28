@@ -142,11 +142,16 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
 pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
+def _must_record_gradient():
+  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+
+
 def _record_gradient(op_name, inputs, attrs, results, name):
   return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
                                                  results, name)
 
 
+execute.must_record_gradient = _must_record_gradient
 execute.record_gradient = _record_gradient
 
 
