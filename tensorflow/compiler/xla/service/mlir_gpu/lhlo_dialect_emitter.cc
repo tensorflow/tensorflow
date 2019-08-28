@@ -79,8 +79,8 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
       break;
     default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Opcode: ", opcode, " is not supported."));
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Opcode ", HloOpcodeString(opcode), " is not supported."));
   }
   return Status::OK();
 }
@@ -187,7 +187,7 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
   mlir_module_.push_back(function);
   function.addEntryBlock();
   instruction_to_mlir_func_[&instr] = function;
-  return Status::OK();
+  return function;
 }
 
 Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
@@ -211,8 +211,12 @@ Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
   return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
+Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {
-  LOG(FATAL) << "Not implemented yet.";
+  return Status::OK();
 }
 
 }  // namespace mlir_gpu

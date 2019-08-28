@@ -941,6 +941,16 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_gpu_plugin",
+    deps = [
+        ":service",
+        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "interpreter_plugin",
     deps = [
         ":service",

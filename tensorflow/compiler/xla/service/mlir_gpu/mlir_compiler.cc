@@ -41,6 +41,7 @@ namespace {
 
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
+using ::mlir::OwningModuleRef;
 using ::mlir::UnknownLoc;
 using ::mlir::LLVM::LLVMDialect;
 using ::xla::gpu::GpuExecutable;
@@ -143,9 +144,17 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   MLIRContext mlir_context;
-  auto mlir_module = ModuleOp::create(UnknownLoc::get(&mlir_context));
+  OwningModuleRef mlir_module =
+      ModuleOp::create(UnknownLoc::get(&mlir_context));
   LhloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
-                                  stream_exec->platform(), mlir_module);
+                                  stream_exec->platform(), *mlir_module);
+
+  TF_RETURN_IF_ERROR(
+      lhlo_emitter.EmitComputation(*module->entry_computation()));
+
+  if (module_hook_.callback && !module_hook_.apply_on_lowered) {
+    module_hook_.callback(*mlir_module);
+  }
 
   // TODO(b/137624192): Emit function per hlo and turn into ptx string and blob.
   std::string ptx;
@@ -180,6 +189,12 @@ MlirCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                  const AotCompilationOptions& options) {
   return Unimplemented("Not yet implemented in MLIR compiler");
 }
+
+void MlirCompiler::SetModuleHook(IRHook module_hook) {
+  module_hook_ = module_hook;
+}
+
+void MlirCompiler::RemoveModuleHook() { module_hook_ = {nullptr, false}; }
 
 }  // namespace mlir_gpu
 }  // namespace xla

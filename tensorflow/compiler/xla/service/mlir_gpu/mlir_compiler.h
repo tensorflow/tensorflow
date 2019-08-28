@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_MLIR_COMPILER_H_
 
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/service/compiler.h"
 
 namespace xla {
@@ -55,9 +56,18 @@ class MlirCompiler : public Compiler {
     };
   }
 
+  struct IRHook {
+    std::function<void(mlir::ModuleOp)> callback;
+    bool apply_on_lowered;
+  };
+
+  void SetModuleHook(IRHook module_hook);
+  void RemoveModuleHook();
+
  private:
   ::mlir::MLIRContext context_;
   int64 pointer_size_;
+  IRHook module_hook_;
 };
 
 }  // namespace mlir_gpu

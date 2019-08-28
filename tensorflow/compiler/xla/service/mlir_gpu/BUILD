@@ -77,3 +77,20 @@ cc_library(
         "@local_config_mlir//:StandardOps",
     ],
 )
+
+cc_library(
+    name = "mlir_irgen_test_base",
+    testonly = True,
+    srcs = ["mlir_irgen_test_base.cc"],
+    hdrs = ["mlir_irgen_test_base.h"],
+    deps = [
+        ":failover_compiler",
+        ":mlir_compiler",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:codegen_test_base",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/core:test",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
