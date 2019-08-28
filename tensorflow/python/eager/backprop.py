@@ -24,8 +24,8 @@ import sys
 
 import six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import imperative_grad
