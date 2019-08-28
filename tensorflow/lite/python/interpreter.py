@@ -108,11 +108,11 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        if (type(x) is not bytes):
-          self.message += x
+        if sys.version_info.major >= 3 and type(x) is bytes:
+          # To support PY3
+          self.message += ''.join(chr(l) for l in x)
         else:
-          # To support both: PY2 and PY3, we don't use the function decode, but do this way
-          self.message.join(chr(l) for l in x)
+          self.message += x
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)

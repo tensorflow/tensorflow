@@ -305,12 +305,12 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     if sys.platform == 'darwin': return
     destructions = []
     def register_destruction(x):
-      if (type(x) is not bytes):
-        destructions.append(x)
-      else:
-        # To support both: PY2 and PY3, we don't use the function decode, but do this way
+      if sys.version_info.major >= 3 and type(x) is bytes:
+        # To support PY3
         y = ''.join(chr(l) for l in x)
         destructions.append(y)
+      else:
+        destructions.append(x)
       return 0
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
@@ -347,8 +347,8 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
     delegate_b = interpreter_wrapper.load_delegate(
         self._delegate_file, options={
-          'unused': False,
-          'options_counter': 2
+            'unused': False,
+            'options_counter': 2
         })
     lib = delegate_b._library
 
@@ -359,6 +359,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
     del delegate_a
     del delegate_b
+
     self.assertEqual(lib.get_num_delegates_created(), 2)
     self.assertEqual(lib.get_num_delegates_destroyed(), 2)
     self.assertEqual(lib.get_num_delegates_invoked(), 0)
