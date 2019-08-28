@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
@@ -2102,19 +2103,6 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
     return reduction_input_addresses_;
   }
 
-  InlinedVector<HloComputation*, 1>* GetMutableReducers() { return &reducers_; }
-  const InlinedVector<HloComputation*, 1>& GetReducers() const {
-    return reducers_;
-  }
-  int GetNumberOfReduces() const { return reducers_.size(); }
-
-  InlinedVector<ShapeIndex, 1>* GetMutableReductionOutputShapeIndices() {
-    return &reduction_output_shape_indices_;
-  }
-  absl::Span<const ShapeIndex> GetReductionOutputShapeIndices() const {
-    return reduction_output_shape_indices_;
-  }
-
   bool IsRowReduction() const { return is_row_reduction_; }
 
   // Return the dimension that is being reduced between DimX and DimY.
@@ -2161,8 +2149,6 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
  private:
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  InlinedVector<HloComputation*, 1> reducers_;
-  InlinedVector<ShapeIndex, 1> reduction_output_shape_indices_;
   // The address of the memory that stores the linear index of the current
   // output, assuming that the output doesn't change the layout of the kept
   // elements in the reduction input.
@@ -2173,19 +2159,8 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
 
 void IrEmitterUnnested::EmitPrologueForOneReduction(
     HloInstruction* unnested_hlo, HloInstruction* reduce_inst, int reduce_idx,
-    KernelCodegenInfo* kernel_info, GpuElementalIrEmitter* elemental_emitter,
-    ShapeIndex output_shape_index) {
+    KernelCodegenInfo* kernel_info, GpuElementalIrEmitter* elemental_emitter) {
   auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
-
-  InlinedVector<HloComputation*, 1>* reducers =
-      reduction_info->GetMutableReducers();
-  CHECK(IsReductionFromOrToContiguousDimensions(*reduce_inst));
-  reducers->push_back(reduce_inst->to_apply());
-
-  InlinedVector<ShapeIndex, 1>* reduction_output_shape_indices =
-      reduction_info->GetMutableReductionOutputShapeIndices();
-  reduction_output_shape_indices->push_back(std::move(output_shape_index));
-
   AddressVector* reduction_input_addresses =
       reduction_info->GetMutableReductionInputAddresses();
   llvm::Type* element_type = llvm_ir::PrimitiveTypeToIrType(
@@ -2227,35 +2202,22 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
 
 void IrEmitterUnnested::EmitPrologueForReduction(
     HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-    absl::Span<HloInstruction* const> output_instructions) {
+    absl::Span<HloInstruction* const> reduce_instructions) {
   VLOG(10) << "Emit prologue for reduction " << unnested_hlo->ToString();
-  // Find the unnested kReduce or the tuple that contains a list of kReduce.
-  HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
-                                        ? unnested_hlo->fused_expression_root()
-                                        : unnested_hlo;
   auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                           ir_emitter_context_->llvm_module(),
                                           &b_, GetNestedComputer());
   const HloInstruction* first_reduce = nullptr;
-  for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (!IsReductionFromOrToContiguousDimensions(*output_instructions[i])) {
-      continue;
-    }
-    HloInstruction* reduce_inst = output_instructions[i];
+  for (int i = 0; i < reduce_instructions.size(); i++) {
+    HloInstruction* reduce_inst = reduce_instructions[i];
     if (first_reduce == nullptr) {
       first_reduce = reduce_inst;
     } else {
       CHECK(first_reduce->dimensions() == reduce_inst->dimensions());
     }
-    ShapeIndex output_shape_index;
-    if (reduce_or_tuple->opcode() == HloOpcode::kTuple) {
-      output_shape_index = {i};
-    }
-
     EmitPrologueForOneReduction(unnested_hlo, reduce_inst, i, kernel_info,
-                                &elemental_emitter,
-                                std::move(output_shape_index));
+                                &elemental_emitter);
   }
 
   int num_partial_results = reduction_info->GetNumberOfPartialResults();
@@ -2306,16 +2268,13 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
 
 void IrEmitterUnnested::EmitEpilogueForReduction(
     HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-    absl::Span<const HloInstruction* const> reduce_instructions) {
+    absl::Span<const HloInstruction* const> reduce_instructions,
+    absl::Span<const ShapeIndex> reduction_output_shape_indices,
+    absl::Span<HloComputation* const> reducers) {
   auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
-  int num_reduces = reduction_info->GetNumberOfReduces();
+  int num_reduces = reducers.size();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info->GetPartialResultAddresses();
-  const InlinedVector<HloComputation*, 1>& reducers =
-      reduction_info->GetReducers();
-  absl::Span<const ShapeIndex> reduction_output_shape_indices =
-      reduction_info->GetReductionOutputShapeIndices();
-
   if (reduction_info->IsRowReduction()) {
     EmitFullWarpShuffleDownLoopForAllReduces(reducers,
                                              partial_result_addresses);
@@ -2402,7 +2361,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
     absl::Span<HloInstruction* const> output_instructions,
     const llvm_ir::IrArray::Index& index, const KernelCodegenInfo* kernel_info,
-    int64 x_iter_num) {
+    absl::Span<HloComputation* const> reducers, int64 x_iter_num) {
   VLOG(10) << "Emit tile element for reduce " << unnested_hlo->ToString();
   HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
                                         ? unnested_hlo->fused_expression_root()
@@ -2467,9 +2426,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       reduction_info->GetPartialResultAddresses();
   absl::Span<llvm::AllocaInst* const> reduction_input_addresses =
       reduction_info->GetReductionInputAddresses();
-  const InlinedVector<HloComputation*, 1>& reducers =
-      reduction_info->GetReducers();
-
   // Emit code to generate the input and perform the reduction computation for
   // each reduction instruction.
   for (int i = 0; i != reducers.size(); ++i) {
@@ -2592,18 +2548,16 @@ void IrEmitterUnnested::EmitBlock(KernelCodegenInfo* kernel_info,
 //
 // unnested_hlo: The unnested hlo instruction for which the kernel is generated.
 //   Currently, these hlo instructions are supported: kLoop fusion, kCopy.
-// tiled_param_ids: The IDs for the parameters that are 0-2-1 transpose of
-//   other tensors with the same dimensions and are safe to be tranposed via
-//   the shared memory transpose implementation.
 // mapping_scheme: The tiling scheme to use.
 // kernel_generator: Contains function objects for code generation, such as
 //   element generator, block prologue and epilogue generators.
 // kernel_info: Represent other information to support the code generation
 //   of the tiled kernel for the hlo.
-LaunchDimensions IrEmitterUnnested::EmitKernel(
-    HloInstruction* unnested_hlo, absl::Span<const int64> tiled_param_ids,
-    const KernelCodeGenerator& kernel_generator,
-    KernelCodegenInfo* kernel_info) {
+void IrEmitterUnnested::EmitKernel(
+    HloInstruction* unnested_hlo, Thunk* kernel_thunk,
+    KernelCodegenInfo* kernel_info, TileElementGenerator tile_element_generator,
+    BlockPrologueGenerator block_prologue_generator,
+    BlockEpilogueGenerator block_epilogue_generator) {
   KernelMappingScheme* mapping_scheme = kernel_info->GetKernelMappingScheme();
   LaunchDimensions launch_dimensions(mapping_scheme->GetNumberOfBlocks(),
                                      mapping_scheme->GetThreadsPerBlock());
@@ -2640,18 +2594,17 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   kernel_info->SetIndexType(index_ty);
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
-  kernel_generator.GetBlockPrologueGenerator()(unnested_hlo, kernel_info);
+  block_prologue_generator(unnested_hlo, kernel_info);
   EmitBlock(kernel_info, &ksl, index_ty,
             [&](const IrArray::Index& output_tile_origin,
                 absl::Span<llvm::Value* const> output_tile_bounds) {
-              std::vector<llvm::Value*> param_shmem_buffers(
-                  unnested_hlo->operand_count(), nullptr);
-              kernel_generator.GetTileElementGenerator()(
-                  y, x, output_tile_origin, "output", output_tile_bounds[1],
-                  output_tile_bounds[2], &ksl);
+              tile_element_generator(y, x, output_tile_origin, "output",
+                                     output_tile_bounds[1],
+                                     output_tile_bounds[2], &ksl);
             });
-  kernel_generator.GetBlockEpilogueGenerator()(unnested_hlo, kernel_info);
-  return launch_dimensions;
+  block_epilogue_generator(unnested_hlo, kernel_info);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
+                         ir_emitter_context_->llvm_module());
 }
 
 // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
@@ -2678,8 +2631,9 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
 //
 // TODO(b/33320379): Here each block transposes 1 tile. It may be more
 // efficient to launch fewer blocks so each transposes many tiles.
-LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
-    HloInstruction* hlo, absl::Span<const int64> reduced_output_dims,
+void IrEmitterUnnested::EmitHlo021Tile(
+    HloInstruction* hlo, Thunk* kernel_thunk,
+    absl::Span<const int64> reduced_output_dims,
     absl::Span<const int64> tiled_param_ids) {
   constexpr int kNumRows = 4;
   KernelMappingScheme mapping_scheme(
@@ -2731,7 +2685,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
         }
       };
 
-  KernelCodeGenerator kernel_generator(
+  TileElementGenerator tile_generator =
       [&](llvm::Value* y, llvm::Value* x, const IrArray::Index& index,
           const string& loop_name, llvm::Value* tile_height,
           llvm::Value* tile_width, KernelSupportLibrary* ksl) {
@@ -2786,8 +2740,13 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
         if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
         }
-      });
-  return EmitKernel(hlo, tiled_param_ids, kernel_generator, &kernel_info);
+      };
+  BlockPrologueGenerator block_prologue_generator = [](HloInstruction*,
+                                                       KernelCodegenInfo*) {};
+  BlockEpilogueGenerator block_epilogue_generator = [](HloInstruction*,
+                                                       KernelCodegenInfo*) {};
+  EmitKernel(hlo, kernel_thunk, &kernel_info, tile_generator,
+             block_prologue_generator, block_epilogue_generator);
 }
 
 namespace {
@@ -2975,12 +2934,8 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   VLOG(3) << "EmitHlo021Tile Emitting hlo tile 0-2-1" << hlo->ToString();
   std::unique_ptr<KernelThunk> kernel_thunk =
       BuildKernelThunk(hlo, /*implements_whole_instruction=*/true);
-  const LaunchDimensions launch_dimensions =
-      EmitHlo021Tile(hlo, *reduced_dims_021, params_012);
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  EmitHlo021Tile(hlo, kernel_thunk.get(), *reduced_dims_021, params_012);
   AddThunkToThunkSequence(std::move(kernel_thunk));
-
   return true;
 }
 
@@ -3182,21 +3137,31 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   // containing the given HLO instruction. The result may be an unnested kReduce
   // HLO, a nested kReduce HLO of a kInput fusion, or the operands of the tuple
   // for a multiple output fusion.
+  bool returns_tuple = false;
   auto output_instructions = ([&]() -> absl::Span<HloInstruction* const> {
     if (reduce_or_tuple->opcode() == HloOpcode::kReduce) {
       return absl::Span<HloInstruction* const>(&reduce_or_tuple, 1);
     }
     CHECK(reduce_or_tuple->opcode() == HloOpcode::kTuple);
+    returns_tuple = true;
     return reduce_or_tuple->operands();
   })();
 
-  std::vector<const HloInstruction*> reduce_instructions;
-  absl::c_for_each(output_instructions, [&](const HloInstruction* instr) {
-    if (IsReductionFromOrToContiguousDimensions(*instr)) {
-      reduce_instructions.push_back(instr);
+  std::vector<HloInstruction*> reduce_instructions;
+  InlinedVector<ShapeIndex, 1> reduction_output_shape_indices;
+  InlinedVector<HloComputation*, 1> reducers;
+  for (int i = 0; i < output_instructions.size(); i++) {
+    HloInstruction* output_instruction = output_instructions[i];
+    if (IsReductionFromOrToContiguousDimensions(*output_instruction)) {
+      reduce_instructions.push_back(output_instruction);
+      ShapeIndex idx;
+      if (returns_tuple) {
+        idx = {i};
+      }
+      reduction_output_shape_indices.push_back(idx);
+      reducers.push_back(output_instruction->to_apply());
     }
-  });
-
+  }
   const HloInstruction* first_reduce = reduce_instructions.at(0);
   if (output_instructions.size() > 1) {
     TF_RETURN_IF_ERROR(
@@ -3239,10 +3204,11 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
           llvm::Value* x_loc, int64 x_iter_num) {
         EmitTileElementForReduction(unnested_hlo, input_shape,
                                     output_instructions, index, &reduction_info,
-                                    x_iter_num);
+                                    reducers, x_iter_num);
       };
 
-  KernelCodeGenerator kernel_generator(
+  EmitKernel(
+      unnested_hlo, kernel_thunk.get(), &reduction_info,
       /*tile_element_generator=*/
       [&](llvm::Value* y, llvm::Value* x, const IrArray::Index& index,
           const string& loop_name, llvm::Value* tile_height,
@@ -3253,17 +3219,13 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       },
       /*block_prologue_generator=*/
       [&](HloInstruction* hlo, KernelCodegenInfo* kernel_info) {
-        EmitPrologueForReduction(hlo, kernel_info, output_instructions);
+        EmitPrologueForReduction(hlo, kernel_info, reduce_instructions);
       },
-      /*block_epilogue_generator*/
+      /*block_epilogue_generator=*/
       [&](HloInstruction* hlo, KernelCodegenInfo* kernel_info) {
-        EmitEpilogueForReduction(hlo, kernel_info, reduce_instructions);
+        EmitEpilogueForReduction(hlo, kernel_info, reduce_instructions,
+                                 reduction_output_shape_indices, reducers);
       });
-
-  LaunchDimensions launch_dimensions = EmitKernel(
-      unnested_hlo, /*param_ids=*/{}, kernel_generator, &reduction_info);
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
 
   thunks.push_back(std::move(kernel_thunk));
   auto sequential_thunk =
