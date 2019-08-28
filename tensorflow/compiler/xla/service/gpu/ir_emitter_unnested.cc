@@ -2575,18 +2575,6 @@ void IrEmitterUnnested::EmitKernel(
           : GetIndexTypeForKernel(unnested_hlo,
                                   launch_dimensions.launch_bound(), &b_);
 
-  // For multioutput fusion, one thread needs to output a tuple with pointers to
-  // all the individual outputs.  We could do this at any point in the kernel,
-  // but we do it at the beginning in the hopes of reducing register pressure,
-  // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
-  // *anyway*.
-  if (!reduction_info && unnested_hlo->IsMultiOutputFusion()) {
-    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-      llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
-                         ConstructIrArrayForOutputs(*unnested_hlo), &b_);
-    });
-  }
-
   // Calculate the starting element coordinate within a tile for the current
   // thread, (y, x) from thread_id.
   llvm::Value* x;
@@ -2746,12 +2734,26 @@ void IrEmitterUnnested::EmitHlo021Tile(
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
         }
       };
-  BlockPrologueGenerator block_prologue_generator = [](HloInstruction*,
-                                                       KernelCodegenInfo*) {};
-  BlockEpilogueGenerator block_epilogue_generator = [](HloInstruction*,
-                                                       KernelCodegenInfo*) {};
-  EmitKernel(hlo, kernel_thunk, &kernel_info, tile_generator,
-             block_prologue_generator, block_epilogue_generator);
+
+  BlockPrologueGenerator hlo021_prologue = [&](HloInstruction* hlo,
+                                               KernelCodegenInfo* kernel_info) {
+    // For multioutput fusion, one thread needs to output a tuple
+    // with pointers to all the individual outputs.  We could do this
+    // at any point in the kernel, but we do it at the beginning in
+    // the hopes of reducing register pressure, since we touch
+    // threadIdx.x and blockIdx.x at the beginning of the kernel
+    // *anyway*.
+    if (hlo->IsMultiOutputFusion()) {
+      KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+        llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo),
+                           ConstructIrArrayForOutputs(*hlo), &b_);
+      });
+    }
+  };
+  BlockEpilogueGenerator epilogue_generator = [](HloInstruction*,
+                                                 KernelCodegenInfo*) {};
+  EmitKernel(hlo, kernel_thunk, &kernel_info, tile_generator, hlo021_prologue,
+             epilogue_generator);
 }
 
 namespace {
