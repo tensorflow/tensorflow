@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import operator
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -788,9 +791,12 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                                           name=name)
     else:
       values = ops.convert_to_tensor(values, name="values")
-      partition = ops.convert_to_tensor(
-          partition, preferred_dtype=dtypes.int64,
-          name=name)
+      if isinstance(partition, np.ndarray) and partition.dtype == np.int32:
+        partition = ops.convert_to_tensor(partition, name=name)
+      else:
+        partition = ops.convert_to_tensor(
+            partition, preferred_dtype=dtypes.int64,
+            name=name)
       if partition.dtype not in (dtypes.int32, dtypes.int64):
         raise ValueError("%s must have dtype int32 or int64" % name)
 
@@ -1309,9 +1315,52 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     return RaggedTensor(values, row_splits, cached_row_lengths,
                         cached_value_rowids, cached_nrows, internal=True)
 
-  #=============================================================================
-  # Tensor Type Conversions
-  #=============================================================================
+  def merge_dims(self, outer_axis, inner_axis):
+    """Merges outer_axis...inner_axis into a single dimension.
+
+    Returns a copy of this RaggedTensor with the specified range of dimensions
+    flattened into a single dimension, with elements in row-major order.
+
+    #### Examples:
+
+    ```python
+    >>> rt = tf.ragged.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    >>> rt.merge_dims(0, 1)
+    [[1, 2], [3], [4, 5, 6]]
+    >>> rt.merge_dims(1, 2)
+    [[1, 2, 3], [4, 5, 6]]
+    >>> rt.merge_dims(0, 2)
+    [1, 2, 3, 4, 5, 6]
+    ```
+
+    To mimic the behavior of `np.flatten` (which flattens all dimensions), use
+    `rt.merge_dims(0, -1).  To mimic the behavior of `tf.layers.Flatten` (which
+    flattens all dimensions except the outermost batch dimension), use
+    `rt.merge_dims(1, -1)`.
+
+    Args:
+      outer_axis: `int`: The first dimension in the range of dimensions to
+        merge. May be negative if `self.shape.rank` is statically known.
+      inner_axis: `int`: The last dimension in the range of dimensions to
+        merge. May be negative if `self.shape.rank` is statically known.
+
+    Returns:
+      A copy of this tensor, with the specified dimensions merged into a
+      single dimension.  The shape of the returned tensor will be
+      `self.shape[:outer_axis] + [N] + self.shape[inner_axis + 1:]`, where `N`
+      is the total number of slices in the merged dimensions.
+    """
+    outer_axis = ragged_util.get_positive_axis(outer_axis, self.shape.ndims)
+    inner_axis = ragged_util.get_positive_axis(inner_axis, self.shape.ndims)
+    if not outer_axis < inner_axis:
+      raise ValueError("Expected outer_axis (%d) to be less than "
+                       "inner_axis (%d)" % (outer_axis, inner_axis))
+    return _merge_dims(self, outer_axis, inner_axis)
+
+
+#=============================================================================
+# Tensor Type Conversions
+#=============================================================================
 
   @classmethod
   def from_tensor(cls,
@@ -1985,16 +2034,17 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
       return [value]
 
   def _from_components(self, tensor_list):
-    # Currently, Keras converts tensors to numpy and then calls from_components
-    # with those np.arrays.  So if we see np.ndarrays, convert them to tensors.
-    # TODO(b/133606651) Update Keras to do something different here.  Consider
-    # adding something like TypeSpec.from_numpy_components?
-    if isinstance(tensor_list[0], np.ndarray):
-      tensor_list = [ops.convert_to_tensor(t) for t in tensor_list]
-
     result = tensor_list[0]
-    for row_splits in reversed(tensor_list[1:]):
-      result = RaggedTensor(result, row_splits, internal=True)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      for row_splits in reversed(tensor_list[1:]):
+        result = ragged_tensor_value.RaggedTensorValue(result, row_splits)
+    else:
+      if isinstance(tensor_list[0], np.ndarray):
+        tensor_list = [ops.convert_to_tensor(t) for t in tensor_list]
+        result = tensor_list[0]
+      for row_splits in reversed(tensor_list[1:]):
+        result = RaggedTensor(result, row_splits, internal=True)
     return result
 
   # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops
@@ -2252,6 +2302,78 @@ def _nrows(tensor, out_type=dtypes.int32):
     return tensor.nrows(out_type=out_type)
   else:
     return array_ops.shape(tensor, out_type=out_type)[0]
+
+
+def _merge_dims(value, outer_axis, inner_axis):
+  """Merges value[outer_axis...inner_axis] into a single dimension.
+
+  See `RaggedTensor.merge_dims()` for more details.  This helper differs from
+  `RaggedTensor.merge_dims()` in that `value` may be a dense or ragged tensor.
+
+  Args:
+    value: A `RaggedTensor` or `Tensor`
+    outer_axis: `int`
+    inner_axis: `int`
+
+  Returns:
+    A flattened `RaggedTensor` or `Tensor`.
+  """
+  if outer_axis == inner_axis:
+    return value
+
+  # Flatten outer dimensions of a RaggedTensor by just taking its values.
+  while outer_axis == 0 and isinstance(value, RaggedTensor):
+    value = value.values
+    inner_axis -= 1
+    if inner_axis == 0:
+      return value
+
+  # Flatten non-Ragged tensors using tf.reshape().
+  if not isinstance(value, RaggedTensor):
+    if value.shape.is_fully_defined():
+      old_shape = value.shape.as_list()
+      new_shape = old_shape[:outer_axis] + [-1] + old_shape[inner_axis + 1:]
+    else:
+      old_shape = array_ops.shape(value)
+      new_shape = array_ops.concat(
+          [old_shape[:outer_axis], [-1], old_shape[inner_axis + 1:]], axis=0)
+    return array_ops.reshape(value, new_shape)
+
+  # Handle outer_axis>1 via recursion.
+  if outer_axis > 1:
+    return value.with_values(
+        _merge_dims(value.values, outer_axis - 1, inner_axis - 1))
+
+  # At this point, we know outer_axis == 1, and value is a RaggedTensor.
+  # So we need to flatten the values and build a corresponding splits tensor.
+  new_values = value.values
+  new_splits = value.row_splits
+  for axis in range(outer_axis, inner_axis):
+    if isinstance(new_values, RaggedTensor):
+      # Flatten a single ragged dimension.
+      new_splits = array_ops.gather(new_values.row_splits, new_splits)
+      new_values = new_values.values
+    else:
+      # Flatten all remaining dense dimensions.
+      shape_split = inner_axis - axis + 1
+      if new_values.shape.is_fully_defined():
+        old_shape = new_values.shape.as_list()
+        new_shape = [-1] + old_shape[shape_split:]
+        flat_size = _prod(old_shape[1:shape_split])
+      else:
+        old_shape = array_ops.shape(new_values)
+        new_shape = array_ops.concat([[-1], old_shape[shape_split:]], axis=0)
+        flat_size = math_ops.cast(
+            math_ops.reduce_prod(old_shape[1:shape_split]), new_splits.dtype)
+      new_values = array_ops.reshape(new_values, new_shape)
+      new_splits = new_splits * flat_size
+      break
+  return RaggedTensor.from_row_splits(new_values, new_splits)
+
+
+def _prod(lst):
+  """Returns the product of the numbers in a list."""
+  return functools.reduce(operator.mul, lst, 1)
 
 
 ops.no_gradient("RaggedTensorToVariant")

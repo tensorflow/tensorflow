@@ -41,6 +41,7 @@ limitations under the License.
 #else
 #include <gmock/gmock-generated-matchers.h>
 #include <gmock/gmock-matchers.h>
+#include <gmock/gmock-more-matchers.h>
 #endif
 
 #include "tensorflow/core/platform/test.h"

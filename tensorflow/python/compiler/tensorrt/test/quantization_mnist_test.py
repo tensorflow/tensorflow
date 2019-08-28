@@ -153,8 +153,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           # runtime to allocate GPU memory.
           max_workspace_size_bytes=1 << 28,
           minimum_segment_size=2,
-          use_calibration=False,
-          use_function_backup=False)
+          use_calibration=False)
       graph_def = converter.convert()
       logging.info('Number of nodes after TF-TRT conversion: %d',
                    len(graph_def.node))

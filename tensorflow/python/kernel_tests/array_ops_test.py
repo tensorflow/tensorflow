@@ -1421,6 +1421,40 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.disable_xla("b/140109958")
+class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
+
+  def _scale_per_slice(self, shape, axis, values):
+    out = np.take(values, np.remainder(np.arange(np.prod(shape)),
+                                       len(values))).reshape(shape)
+    if axis is not None:
+      scale_shape = [1] * 4
+      scale_shape[axis] = shape[axis]
+      out *= np.arange(1, shape[axis] + 1).reshape(scale_shape)
+    return out
+
+  def testAxis(self):
+    shape = np.array([2, 3, 4, 5])
+    values = np.array([-1, -0.5, 0, 0.3, 0.8, 0.555, 0.5],
+                      dtype=np.float32)
+    quant_values = np.array([-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128, 0.5],
+                            dtype=np.float32)
+    for axis in [None, 0, 1, 2, 3]:
+      inputs = constant_op.constant(self._scale_per_slice(shape, axis, values))
+      expected = self._scale_per_slice(shape, axis, quant_values)
+      unused_minmax_value = 0 if axis is None else []
+      fake_quantized = self.evaluate(array_ops.quantize_and_dequantize(
+          inputs, unused_minmax_value, unused_minmax_value,
+          range_given=False, round_mode="HALF_UP", axis=axis))
+      self.assertAllEqual(fake_quantized, expected)
+      if axis is not None:
+        fake_quantized = self.evaluate(array_ops.quantize_and_dequantize(
+            inputs, unused_minmax_value, unused_minmax_value, range_given=False,
+            axis=(axis - 4)))
+        self.assertAllClose(fake_quantized, expected)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class SortedSearchTest(test_util.TensorFlowTestCase):
 
   def testUpperBoundFloatHandCoded(self):
@@ -1817,6 +1851,50 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
     shape = gather_nd_t.get_shape()
     self.assertEqual(None, shape.ndims)
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
+
+
+class RepeatTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def testRepeatScalar(self):
+    with self.test_session():
+      v_tf = array_ops.repeat(constant_op.constant(3), 4)
+      v_np = np.repeat(3, 4)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrix(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), 2)
+      v_np = np.repeat(x, 2)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixAxis0(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
+      v_np = np.repeat(x, [1, 2], axis=0)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixAxis1(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant(3), axis=1)
+      v_np = np.repeat(x, 3, axis=1)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixRepeatArray(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), [1, 2, 3, 4])
+      v_np = np.repeat(x, [1, 2, 3, 4])
+      self.assertAllEqual(v_tf.eval(), v_np)
 
 
 if __name__ == "__main__":

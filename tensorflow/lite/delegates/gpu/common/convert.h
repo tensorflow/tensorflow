@@ -63,12 +63,12 @@ std::vector<float> ConvertToPIOHW4(
 // @return number of elements when shape is converted into PHWO4I4.
 uint32_t GetElementsSizeForPHWO4I4(const OHWI& shape);
 
-// Layout is Po,H,W,OI4x4.
-Status ConvertToPHWO4I4(absl::Span<const float> in, const OHWI& shape,
-                        absl::Span<float> out);
-
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWO4I4(
+    const Tensor<OHWI, DataType::FLOAT32>& tensor);
+
+// Convenience wrapper around a method above, for Transposed Convolution.
+std::vector<float> ConvertToPHWO4I4Transposed(
     const Tensor<OHWI, DataType::FLOAT32>& tensor);
 
 // @return (x,y,z) size for PHWO4I4 to access elements where each element

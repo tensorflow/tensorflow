@@ -90,23 +90,24 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
-  KernelMappingScheme() {}
   // dims_in_elems: the normalized tensor dimensions.
-  // req_block_sizes: the requested block size in number of tiles for each
-  //   dimension. The actual block size is set to min(req_block_size,
-  //   dims_in_number_of_blocks).
   KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
-                      int64 tile_size_x,
-                      absl::Span<const int64> req_block_sizes,
+                      int64 tile_size_x, int64 block_size_z,
                       int64 num_threads_y, int64 num_threads_x,
-                      llvm::IRBuilder<>* b);
+                      bool is_dilated_x, llvm::IRBuilder<>* b);
 
+  // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64> GetDimensionsInElements() const {
     return dims_in_elems_;
   }
+
+  // Ratio of elements in each dimension over tile sizes for Z/Y/X
+  // respectively.
   absl::Span<const int64> GetDimensionsInTiles() const {
     return dims_in_tiles_;
   }
+
+  // Ratio of dimensions per tile over block sizes.
   absl::Span<const int64> GetDimensionsInBlocks() const {
     return dims_in_blocks_;
   }
@@ -125,10 +126,7 @@ class KernelMappingScheme {
     return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
   }
 
-  int64 GetTileSizeForDimension(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    return tile_sizes_[d];
-  }
+  int64 GetTileSizeForDimension(int d) const { return tile_sizes_.at(d); }
   int64 GetTileSizeForDimensionX() const {
     return GetTileSizeForDimension(DimX);
   }
@@ -138,8 +136,7 @@ class KernelMappingScheme {
 
   absl::Span<const int64> GetBlockSizes() const { return block_sizes_; }
   int64 GetTileBlockSizeForDimension(int d) const {
-    DCHECK(d >= DimZ && d <= DimX);
-    return dims_in_blocks_[d];
+    return dims_in_blocks_.at(d);
   }
 
   int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
@@ -151,14 +148,6 @@ class KernelMappingScheme {
   }
 
   bool DilatedX() const { return dilated_x_; }
-  void SetDilatedX(bool v) {
-    dilated_x_ = v;
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
-    }
-  }
 
   IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
   // Returns the index for the first tile in the block with the given block
@@ -181,19 +170,19 @@ class KernelMappingScheme {
  private:
   llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
-  std::vector<int64> dims_in_elems_;
+  std::array<int64, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  std::vector<int64> tile_sizes_;
+  std::array<int64, 3> tile_sizes_;
   // The number of tiles in each dimension. It is computed from dims_in_elem_
   // and tile_sizes_.
-  std::vector<int64> dims_in_tiles_;
+  std::array<int64, 3> dims_in_tiles_;
 
   // The number of tiles for each dimension of a tile block.
-  std::vector<int64> block_sizes_;
+  std::array<int64, 3> block_sizes_;
   // The number of blocks in each dimension of a tile block. It is computed from
   // dims_in_tile_ and block_sizes_.
-  std::vector<int64> dims_in_blocks_;
+  std::array<int64, 3> dims_in_blocks_;
 
   // Number of threads used to process elements in the X direction of a tile.
   int64 num_threads_x_;
@@ -206,34 +195,6 @@ class KernelMappingScheme {
   // contiguous. On the other hand, when dilated_x=true the n elements are
   // dilated by a factor of num_threads_x.
   bool dilated_x_;
-};
-
-// A class to represent information for tiled parameters to support IR emission
-// for 021 transpose.
-class TiledParameterInfo {
- public:
-  TiledParameterInfo(absl::Span<llvm::Value* const> param_buffers,
-                     llvm::Value* y, llvm::Value* x)
-      : param_buffers_(param_buffers), y_(y), x_(x) {}
-
-  llvm::Value* x() const { return x_; }
-  llvm::Value* y() const { return y_; }
-
-  void set_x(llvm::Value* x) { x_ = x; }
-  void set_y(llvm::Value* y) { y_ = y; }
-
-  llvm::Value* GetBufferForParameter(int64 index) const {
-    return param_buffers_[index];
-  }
-
- private:
-  // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
-  // if the parameter is not tiled.
-  absl::Span<llvm::Value* const> param_buffers_;
-  // The y coordinate within a tile.
-  llvm::Value* y_;
-  // The x coordinate within a tile.
-  llvm::Value* x_;
 };
 
 }  // namespace llvm_ir

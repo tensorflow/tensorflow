@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import copy
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -637,6 +639,70 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for([inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+
+
+class IdentityLayer(base_layers.Layer):
+  """A layer returns the identity of it's input."""
+
+  def call(self, inputs):
+    return inputs
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DTypeTest(test.TestCase):
+
+  def _const(self, dtype):
+    return array_ops.constant(1, dtype=dtype)
+
+  def test_dtype_inferred_from_input(self):
+    # Test with Tensor input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with Numpy input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(np.array(1., dtype='float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with integer input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('int32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    # Test layer dtype doesn't change when passed a new dtype
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+    layer(self._const('float16'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test layer dtype inferred from first input
+    layer = IdentityLayer()
+    layer([self._const('float32'), self._const('float64')])
+    self.assertEqual(layer.dtype, 'float32')
+
+  def test_passing_dtype_to_constructor(self):
+    layer = IdentityLayer(dtype='float64')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    layer = IdentityLayer(dtype='int32')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    layer = IdentityLayer(dtype=dtypes.float64)
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+  def test_inputs_not_casted(self):
+    layer = IdentityLayer(dtype='float32')
+    self.assertEqual(layer(self._const('float64')).dtype, 'float64')
+
 
 if __name__ == '__main__':
   test.main()

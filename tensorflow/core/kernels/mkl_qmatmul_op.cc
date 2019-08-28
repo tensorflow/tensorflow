@@ -737,8 +737,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     output_mkl_shape.SetMklTensor(true);
     output_mkl_shape.SetMklLayout(&dst_pd);
     output_mkl_shape.SetElemType(MklDnnType<Toutput>());
-    output_mkl_shape.SetTfLayout2D(output_dims_mkl_order.size(),
-                                   output_dims_mkl_order, output_tf_format);
+    output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+                                 output_dims_mkl_order, output_tf_format, true);
 
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((dst_pd.get_size() / sizeof(Toutput)));

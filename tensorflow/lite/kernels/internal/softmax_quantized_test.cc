@@ -124,9 +124,14 @@ void RunOneSoftmaxTest(const uint8* input_data,
                                                      input_beta_left_shift);
 
   SoftmaxParams params;
+  float table[256];
   params.input_multiplier = input_beta_multiplier;
   params.input_left_shift = input_beta_left_shift;
   params.diff_min = diff_min;
+  params.scale = 1.0f / 256;
+  params.zero_point = 0;
+  params.table = table;
+  optimized_ops::PopulateSoftmaxLookupTable(&params, input_scale, beta);
   optimized_ops::Softmax(params, shape_common, input_data, shape_common,
                          optimized_softmax_output.data());
   reference_ops::Softmax(params, shape_common, input_data, shape_common,
@@ -137,7 +142,7 @@ void RunOneSoftmaxTest(const uint8* input_data,
                            "Optimized vs float reference", false);
   CheckOutputData<uint8_t>(optimized_softmax_output.data(),
                            reference_quant_softmax_output.data(), shape_common,
-                           "Optimized vs quant reference", true);
+                           "Optimized vs quant reference", false);
   CheckOutputData<uint8_t>(reference_quant_softmax_output.data(),
                            reference_float_softmax_output.data(), shape_common,
                            "Quant reference vs float reference", false);

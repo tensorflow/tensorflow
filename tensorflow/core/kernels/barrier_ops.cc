@@ -308,7 +308,7 @@ class Barrier : public ResourceBase {
                          int component_index, int i,
                          std::vector<Tuple>* ready_tuples, bool* new_elements)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    auto keys_vec = keys.flat<string>();
+    auto keys_vec = keys.flat<tstring>();
     auto values_matrix = values.flat_outer_dims<T>();
 
     PersistentTuple* element_ptr;
@@ -392,7 +392,7 @@ class Barrier : public ResourceBase {
                                                   &key, &allocated_key));
       ready_tuple.push_back(*element[0].AccessTensor(ctx));  // index
       ready_tuple.push_back(*allocated_key);                 // key
-      ready_tuple[1].scalar<string>()() = keys_vec(i);       // set the key
+      ready_tuple[1].scalar<tstring>()() = keys_vec(i);      // set the key
       for (int j = 1; j < num_components() + 1; ++j) {
         ready_tuple.push_back(*element[j].AccessTensor(ctx));
       }

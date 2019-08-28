@@ -90,7 +90,7 @@ class ClusterResolver(object):
 
   @abc.abstractmethod
   def cluster_spec(self):
-    """Retrieve the current state of the cluster and returns a ClusterSpec.
+    """Retrieve the current state of the cluster and return a ClusterSpec.
 
     Returns:
       A ClusterSpec representing the state of the cluster at the moment this
@@ -288,7 +288,7 @@ class UnionClusterResolver(ClusterResolver):
   when cluster_spec is called. The details of the merge function is
   documented in the cluster_spec function.
 
-  For additional Cluster Resolver properties such as task type, task index,
+  For additional ClusterResolver properties such as task type, task index,
   rpc layer, environment, etc..., we will return the value from the first
   ClusterResolver in the union.
   """

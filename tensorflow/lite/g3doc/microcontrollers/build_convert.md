@@ -9,6 +9,11 @@ This document explains the process of converting a TensorFlow model to run on
 microcontrollers. It also outlines the supported operations and gives some
 guidance on designing and training a model to fit in limited memory.
 
+For an end-to-end, runnable example of building and converting a model, see the
+following Jupyter notebook:
+
+<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/hello_world/create_sine_model.ipynb">create_sine_model.ipynb</a>
+
 ## Model conversion
 
 To convert a trained TensorFlow model to run on microcontrollers, you should use
@@ -53,7 +58,7 @@ xxd -i converted_model.tflite > model_data.cc
 
 The output will look similar to the following:
 
-```C
+```c
 unsigned char converted_model_tflite[] = {
   0x18, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x0e, 0x00,
   // <Lines omitted>

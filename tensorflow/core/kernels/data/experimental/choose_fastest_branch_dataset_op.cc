@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static const double kPercentile = 90.0;
@@ -239,6 +240,13 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // TODO(rachelim): this might be wrong if the ratio is not fixed, for
       // example, from a BatchDataset with drop_remainder = False
       return static_cast<double>(n) * ratio_numerator_ / ratio_denominator_;
+    }
+
+    Status CheckExternalState() const override {
+      for (const auto& captured_func : captured_funcs_) {
+        TF_RETURN_IF_ERROR(captured_func->CheckExternalState());
+      }
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -553,5 +561,6 @@ REGISTER_KERNEL_BUILDER(Name("ChooseFastestBranchDataset").Device(DEVICE_CPU),
                         ChooseFastestBranchDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

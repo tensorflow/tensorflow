@@ -79,6 +79,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

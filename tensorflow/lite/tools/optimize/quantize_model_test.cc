@@ -98,6 +98,31 @@ TEST_F(QuantizeConvModelTest, QuantizationSucceeds) {
   ASSERT_TRUE(output_model);
 }
 
+TEST_F(QuantizeConvModelTest, SkipUnspecifiedLayer) {
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                    /*allow_float=*/true, {}, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
+  // The resulting model should be the same.
+  ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
+       subgraph_idx++) {
+    const auto quantized_graph = model_.subgraphs[subgraph_idx].get();
+    const auto float_graph = readonly_model_->subgraphs()->Get(subgraph_idx);
+    ASSERT_EQ(quantized_graph->tensors.size(), float_graph->tensors()->size());
+    for (size_t i = 0; i < quantized_graph->tensors.size(); i++) {
+      const auto quant_tensor = quantized_graph->tensors[i].get();
+      const auto float_tensor = float_graph->tensors()->Get(i);
+      EXPECT_EQ(quant_tensor->buffer, float_tensor->buffer());
+      EXPECT_EQ(quant_tensor->is_variable, float_tensor->is_variable());
+      EXPECT_EQ(quant_tensor->shape, GetAsVector(float_tensor->shape()));
+      EXPECT_EQ(quant_tensor->name, float_tensor->name()->str());
+      EXPECT_EQ(quant_tensor->type, float_tensor->type());
+    }
+  }
+}
+
 TEST_F(QuantizeConvModelTest, TensorShapesAndStructureIsUnchanged) {
   auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
                               TensorType_INT8, &error_reporter_);

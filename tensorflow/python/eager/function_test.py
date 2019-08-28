@@ -42,6 +42,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -148,6 +149,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(1.0)
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
+
+  def testVariableOnly(self):
+    v = variables.Variable(1.0)
+    add = def_function.function(lambda x: x.assign_add(1.0))
+    r1 = add(v)
+    self.assertEqual(2.0, self.evaluate(r1))
+    c = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(AttributeError, 'no attribute'):
+      add(c)
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
@@ -287,7 +297,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(TypeError, 'set'):
+    with self.assertRaisesRegexp(AttributeError, 'set'):
       f(set([]))
 
   def testFuncName(self):
@@ -683,7 +693,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     compiled = def_function.function(f)
     var_handle = compiled()
     self.assertEqual(var_handle.dtype, dtypes.resource)
-    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -760,7 +770,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       compiled = def_function.function(f)
       var_handle = compiled()
       self.assertEqual(var_handle.dtype, dtypes.resource)
-      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
       var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
       self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -790,14 +800,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def f():
         tl, value = list_ops.tensor_list_pop_back(
             tensor_list, element_dtype=dtypes.float32)
-        self.assertEqual(value.shape, tensor_shape.scalar())
+        self.assertEqual(value.shape, tensor_shape.TensorShape([]))
         return tl
 
       compiled = def_function.function(f)
       output_tensor_list = compiled()
       _, value = list_ops.tensor_list_pop_back(
           output_tensor_list, element_dtype=dtypes.float32)
-      self.assertEqual(value.shape, tensor_shape.scalar())
+      self.assertEqual(value.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
@@ -823,16 +833,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       f(constant_op.constant(1.0))
     run_metadata = context.export_run_metadata()
     context.disable_run_metadata()
-    step_stats = run_metadata.step_stats
-    self.assertNotEmpty(step_stats.dev_stats)
-    cpu_stats = step_stats.dev_stats[0]
-    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
-                     cpu_stats.device)
-    # Testing for at least 2 because the function call should generate at most
-    # one entry in the step_stats; the ops inside function can generate
-    # arbitrarily many (placeholders, return identities, etc, might be included
-    # or not in the future, so shouldn't be tested for exactly.
-    self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
     self.assertLen(run_metadata.partition_graphs, 1)
 
   def testGraphModeCaptureVariable(self):
@@ -2092,7 +2092,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        composite.add_to_graph(register_gradient_functions=True)
+        composite.add_to_graph()
+        composite.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
@@ -2123,6 +2124,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Make sure the pre registered function is used, and no other function
         # is added.
         self.assertLen(graph._functions, 6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testEagerCaptures(self, function_decorator):
+    with context.eager_mode():
+      large_tensor = array_ops.ones(shape=(256,))
+      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+
+      small_tensor = array_ops.ones(shape=(4,))
+      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+    for captured, op_type in [(large_tensor, 'Placeholder'),
+                              (small_tensor, 'Const'), (v, 'Placeholder')]:
+      @function_decorator
+      def test_fn():
+        return captured + 1  # pylint: disable=cell-var-from-loop
+
+      g = test_fn.get_concrete_function().graph
+      internal_captures = g.internal_captures
+      self.assertLen(internal_captures, 1)
+      self.assertEqual(internal_captures[0].op.type, op_type)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -2544,10 +2571,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    weak_variables = weakref.WeakSet(m.variables)
-    self.assertLen(weak_variables, 2)
+    variable_refs = list({v.experimental_ref() for v in m.variables})
+    self.assertLen(variable_refs, 2)
     del m
-    self.assertEqual([], list(weak_variables))
+
+    # Verifying if the variables are only referenced from variable_refs.
+    # We expect the reference counter to be 1, but `sys.getrefcount` reports
+    # one higher reference counter because a temporary is created when we call
+    # sys.getrefcount().  Hence check if the number returned is 2.
+    # https://docs.python.org/3/library/sys.html#sys.getrefcount
+    self.assertEqual(sys.getrefcount(variable_refs[0].deref()), 2)
+    self.assertEqual(sys.getrefcount(variable_refs[1].deref()), 2)
 
   def testExecutorType(self):
     @function.defun

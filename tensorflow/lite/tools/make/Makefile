@@ -59,7 +59,6 @@ CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
 CFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
-CFLAGS :=
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -99,14 +98,21 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
+$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
 tensorflow/lite/experimental/ruy/allocator.cc \
 tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
 tensorflow/lite/experimental/ruy/context.cc \
-tensorflow/lite/experimental/ruy/detect_dotprod.cc \
+tensorflow/lite/experimental/ruy/detect_arm.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx2.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx512.cc \
 tensorflow/lite/experimental/ruy/kernel_arm32.cc \
 tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack.cc \
+tensorflow/lite/experimental/ruy/kernel_avx2.cc \
+tensorflow/lite/experimental/ruy/kernel_avx512.cc \
+tensorflow/lite/experimental/ruy/pack_arm.cc \
+tensorflow/lite/experimental/ruy/pack_avx2.cc \
+tensorflow/lite/experimental/ruy/pack_avx512.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
 tensorflow/lite/experimental/ruy/trace.cc \
@@ -161,9 +167,14 @@ endif
 ifeq ($(TARGET),rpi)
 	BUILD_WITH_NNAPI=false
 endif
+ifeq ($(TARGET),generic-aarch64)
+	BUILD_WITH_NNAPI=false
+endif
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
+	LIBS += -lrt
 else
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation_disabled.cc

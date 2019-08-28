@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -353,7 +353,10 @@ DirectSession::DirectSession(const SessionOptions& options,
     } else {
       printf("Device mapping:\n%s", mapping_str.c_str());
     }
-    LOG(INFO) << "Device mapping:\n" << mapping_str;
+    string msg = strings::StrCat("Device mapping:\n", mapping_str);
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);
@@ -380,9 +383,6 @@ DirectSession::~DirectSession() {
   callables_.clear();
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
-  }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->ClearResourceMgr();
   }
   functions_.clear();
   delete cancellation_manager_;
@@ -496,7 +496,17 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
 
   profiler::TraceMe activity(
-      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
+      [&] {
+        if (options_.config.experimental().has_session_metadata()) {
+          const auto& model_metadata =
+              options_.config.experimental().session_metadata();
+          return strings::StrCat("SessionRun #id=", step_id,
+                                 ",model_id=", model_metadata.name(), ":",
+                                 model_metadata.version(), "#");
+        } else {
+          return strings::StrCat("SessionRun #id=", step_id, "#");
+        }
+      },
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -590,7 +600,7 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
+    profiler_session = ProfilerSession::Create();
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -1271,9 +1281,14 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version = graphs.begin()->second->versions().producer();
 
+  const auto* session_metadata =
+      options_.config.experimental().has_session_metadata()
+          ? &options_.config.experimental().session_metadata()
+          : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
-      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
+      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
+      nullptr, nullptr, session_metadata));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1293,10 +1308,7 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
-    params.session_metadata =
-        options_.config.experimental().has_session_metadata()
-            ? &options_.config.experimental().session_metadata()
-            : nullptr;
+    params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
@@ -1614,15 +1626,15 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
-                                              device_graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        device_opts, std::move(partition.second), device_graph.get()));
     outputs->emplace(partition.first, std::move(device_graph));
   }
 

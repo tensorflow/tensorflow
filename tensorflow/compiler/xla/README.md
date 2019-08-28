@@ -3,4 +3,5 @@
 </p>
 
 XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
-algebra that optimizes TensorFlow computations. See the [documentation](./g3doc/overview.md).
+algebra that optimizes TensorFlow computations. See the
+[documentation](./g3doc/index.md).

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -40,44 +41,20 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
 
 
-def mlir_convert_and_check_for_unsupported(test_object, converter):
-  """Run the converter but don't fail MLIR was not built.
-
-  Args:
-    test_object: PyTest object.
-    converter: A TFLiteConverter
-
-  Returns:
-    The converted TF lite model or None if mlir support is not builtinto the
-    binary.
-  """
-  try:
-    model = converter.convert()
-    test_object.assertTrue(model)
-    return model
-  except lite.ConverterError as e:
-    if not e.message.startswith('This flag is not supported by this version'):
-      raise e
-    else:
-      return None
-
-
-@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -98,16 +75,16 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testString(self):
-    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
-    out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
+      out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -126,13 +103,14 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([2, 2] == output_details[0]['shape']).all())
 
   def testQuantization(self):
-    in_tensor_1 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess,
@@ -144,9 +122,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'inputA': (0., 1.),
         'inputB': (0., 1.)
     }  # mean, std_dev
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -175,16 +151,16 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testScalarValid(self):
     # Construct a graph using a scalar (empty shape) input.
-    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Test conversion with the scalar input shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -212,34 +188,33 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue((expected_output == output_data).all())
 
   def testPostTrainingQuantize(self):
+    self.skipTest('b/124315492')
     np.random.seed(0)
-    # We need the tensor to have more than 1024 elements for quantize_weights
-    # to kick in. Thus, the [33, 33] shape.
-    in_tensor_1 = array_ops.placeholder(
-        shape=[33, 33], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = constant_op.constant(
-        np.random.uniform(low=-10., high=10., size=(33, 33)),
-        shape=[33, 33],
-        dtype=dtypes.float32,
-        name='inputB')
-    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      # We need the tensor to have more than 1024 elements for quantize_weights
+      # to kick in. Thus, the [33, 33] shape.
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [in_tensor_1],
                                                         [out_tensor])
-    float_tflite = mlir_convert_and_check_for_unsupported(self, float_converter)
-    if float_tflite is None:
-      return
+    float_converter.experimental_enable_mlir_converter = True
+    float_tflite = float_converter.convert()
 
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
+    quantized_converter.experimental_enable_mlir_converter = True
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_tflite = mlir_convert_and_check_for_unsupported(
-        self, quantized_converter)
-    if quantized_tflite is None:
-      return
+    quantized_tflite = quantized_converter.convert()
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
@@ -266,9 +241,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [placeholder],
                                                   [output_node])
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -322,9 +296,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = root.f(input_data)
@@ -359,9 +331,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(**input_data)
@@ -389,9 +359,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)[0]
@@ -422,9 +390,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
@@ -449,9 +415,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
@@ -463,24 +427,46 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
         expected = expected.c.numpy()
       np.testing.assert_almost_equal(expected, actual)
 
+  @test_util.run_v2_only
+  def testKerasLSTM(self):
+    self.skipTest('b/138657502')
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((10, 10, 10)), dtype=np.float32))
+
+    model = keras.models.Sequential(
+        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+
+    run_model = def_function.function(model.__call__)
+    concrete_func = run_model.get_concrete_function(
+        tensor_spec.TensorSpec((10, 10, 10), dtype=dtypes.float32))
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    for expected, actual in zip(expected_value, actual_value):
+      np.testing.assert_almost_equal(expected, actual)
+
 
 class TestFlexMode(test_util.TensorFlowTestCase):
 
-  @test_util.run_v1_only('Incompatible with 2.0.')
   def testSession(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     converter.experimental_enable_mlir_converter = True
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Ensures the model contains TensorFlow ops.
     # TODO(nupurgarg): Check values once there is a Python delegate interface.
@@ -505,10 +491,7 @@ class TestFlexMode(test_util.TensorFlowTestCase):
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.experimental_enable_mlir_converter = True
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
-
-    tflite_model = mlir_convert_and_check_for_unsupported(self, converter)
-    if tflite_model is None:
-      return
+    tflite_model = converter.convert()
 
     # Ensures the model contains TensorFlow ops.
     # TODO(nupurgarg): Check values once there is a Python delegate interface.

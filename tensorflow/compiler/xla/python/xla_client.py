@@ -60,6 +60,18 @@ class Backend(object):
     """Returns the number of devices known to the backend."""
 
   @abc.abstractmethod
+  def local_device_count(self):
+    """Returns the number of devices local to this host."""
+
+  @abc.abstractmethod
+  def devices(self):
+    """Returns a list of `device_count()` Device subclasses."""
+
+  @abc.abstractmethod
+  def host_id(self):
+    """Returns the integer ID of this host."""
+
+  @abc.abstractmethod
   def buffer_from_pyval(self, pyval, device=0):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
@@ -93,7 +105,16 @@ class LocalBackend(Backend):
     self.client = client
 
   def device_count(self):
-    return self.client.DeviceCount()
+    return self.client.device_count()
+
+  def local_device_count(self):
+    return self.client.local_device_count()
+
+  def devices(self):
+    return self.client.devices()
+
+  def host_id(self):
+    return self.client.host_id()
 
   def buffer_from_pyval(self, pyval, device=0):
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
@@ -109,15 +130,25 @@ class LocalBackend(Backend):
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
     options.debug_options.xla_cpu_fast_math_honor_division = True
+    options.debug_options.xla_cpu_fast_math_honor_functions = True
+    options.debug_options.xla_gpu_enable_fast_min_max = False
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
                                         compile_options.device_assignment)
 
 
+xla_platform_names = {
+    'cpu': 'Host',
+    'gpu': 'CUDA',
+}
+
+
 def _cpu_backend_factory():
   client = _xla.LocalClient.Get(
-      platform='cpu', xla_platform_id='Host', asynchronous=True)
+      platform='cpu',
+      xla_platform_id=xla_platform_names['cpu'],
+      asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
@@ -142,7 +173,9 @@ def _gpu_backend_factory():
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
   client = _xla.LocalClient.Get(
-      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
+      platform='gpu',
+      xla_platform_id=xla_platform_names['gpu'],
+      asynchronous=True,
       allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
@@ -449,6 +482,9 @@ def computation_count():
 """
 
 
+Device = _xla.Device
+
+
 class CompileOptions(object):
   """Python object for XLA compile options.
 
@@ -543,6 +579,9 @@ class Computation(object):
 #   def DeviceOrdinals(self) -> [int]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#     """Return generated binary size, or -1 if not known."""
 #
 #   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
@@ -1431,12 +1470,31 @@ class ComputationBuilder(object):
         batch_group_count,
         precision_config=precision_config)
 
-  def Sort(self, operand, dimension=-1):
-    """Enqueues a sort operation onto the computation."""
-    return ops.Sort(self._builder, [operand], dimension)
+  def Sort(self, operands, dimension=-1, comparator=None):
+    """Enqueues a sort operation onto the computation.
+
+    Args:
+      operands: either an XlaOp or a sequence of XlaOps to sort. All operands
+        must be arrays with the same dimensions.
+      dimension: the array dimension over which to sort.
+      comparator: a comparator XlaComputation. See the XLA operation semantics
+        for details.
+
+    Returns:
+      Either an XlaOp or a tuple of XlaOps (if `operands` was an XlaOp or
+      a tuple of XlaOps, respectively.)
+    """
+    operands = (
+        list(operands)
+        if isinstance(operands, collections.Sequence) else [operands])
+    return ops.Sort(self._builder, operands, dimension,
+                    comparator.computation if comparator else None)
 
   def SortKeyVal(self, keys, values, dimension=-1):
-    """Enqueues a key-value sort operation onto the computation."""
+    """Enqueues a key-value sort operation onto the computation.
+
+    Deprecated. Use `Sort` instead.
+    """
     return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
@@ -1470,11 +1528,27 @@ class ComputationBuilder(object):
     """Enqueues a singular value decomposition."""
     return self.Tuple(*ops.SVD(a))
 
-  def Scatter(self, a, scatter_indices, updates, update_computation,
-              dimension_numbers):
+  def Gather(self,
+             a,
+             start_indices,
+             dimension_numbers,
+             slice_sizes,
+             indices_are_sorted=False):
+    """Enqueues a Gather operation onto the computation."""
+    return ops.Gather(a, start_indices, dimension_numbers, slice_sizes,
+                      indices_are_sorted)
+
+  def Scatter(self,
+              a,
+              scatter_indices,
+              updates,
+              update_computation,
+              dimension_numbers,
+              indices_are_sorted=False):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
-                       update_computation.computation, dimension_numbers)
+                       update_computation.computation, dimension_numbers,
+                       indices_are_sorted)
 
   def Fft(self, operand, fft_type, fft_lengths):
     """Enqueues a FFT operation onto the computation."""
@@ -1558,7 +1632,6 @@ _OTHER_OPS = [
     'CollectivePermute',
     'ConvertElementType',
     'Dot',
-    'Gather',
     'GetTupleElement',
     'ReducePrecision',
     'Rev',
@@ -1592,14 +1665,18 @@ def _forward_methods_to_local_builder():
 _forward_methods_to_local_builder()
 
 
-def register_cpu_custom_call_target(name, fn):
-  """Registers a CPU custom call target.
+def register_custom_call_target(name, fn, platform='cpu'):
+  """Registers a custom call target.
 
   Args:
     name: bytes containing the name of the function.
     fn: a PyCapsule object containing the function pointer.
+    platform: the target platform.
   """
-  _xla.RegisterCpuCustomCallTarget(name, fn)
+  _xla.RegisterCustomCallTarget(name, fn, xla_platform_names[platform])
+
+# Deprecated. Use register_custom_call_target instead.
+register_cpu_custom_call_target = register_custom_call_target
 
 
 class PaddingConfigDimension(object):

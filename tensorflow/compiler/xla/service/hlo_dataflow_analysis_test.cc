@@ -1105,8 +1105,8 @@ TEST_P(HloDataflowAnalysisTest, BitcastDefinesValue) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kBitcast, constant));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(scalar_shape_, constant));
 
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());

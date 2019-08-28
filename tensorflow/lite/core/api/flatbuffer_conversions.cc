@@ -435,6 +435,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    lstm_params->kernel_type());
             return kTfLiteError;
         }
+      } else {
+        error_reporter->Report("No valid LSTM builtin options exist");
+        return kTfLiteError;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -519,6 +522,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
       if (const auto* schema_params =
               op->builtin_options_as_SpaceToDepthOptions()) {
+        params->block_size = schema_params->block_size();
+      }
+      *builtin_data = reinterpret_cast<void*>(params.release());
+      break;
+    }
+    case BuiltinOperator_DEPTH_TO_SPACE: {
+      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
+      if (const auto* schema_params =
+              op->builtin_options_as_DepthToSpaceOptions()) {
         params->block_size = schema_params->block_size();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
@@ -719,6 +731,24 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->batch_dim = reverse_seq_params->batch_dim();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
+      break;
+    }
+    case BuiltinOperator_IF: {
+      TfLiteIfParams* params = allocator->AllocatePOD<TfLiteIfParams>();
+      if (const auto* if_params = op->builtin_options_as_IfOptions()) {
+        params->then_subgraph_index = if_params->then_subgraph_index();
+        params->else_subgraph_index = if_params->else_subgraph_index();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_WHILE: {
+      TfLiteWhileParams* params = allocator->AllocatePOD<TfLiteWhileParams>();
+      if (const auto* while_params = op->builtin_options_as_WhileOptions()) {
+        params->cond_subgraph_index = while_params->cond_subgraph_index();
+        params->body_subgraph_index = while_params->body_subgraph_index();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     // Below are the ops with no builtin_data structure.

@@ -452,7 +452,7 @@ class InverseTimeDecay(LearningRateSchedule):
     decay_steps = 1.0
     decay_rate = 0.5
     learning_rate_fn = keras.optimizers.schedules.InverseTimeDecay(
-      initial_learning_rate, global_step, decay_steps, decay_rate)
+      initial_learning_rate, decay_steps, decay_rate)
 
     model.compile(optimizer=tf.keras.optimizers.SGD(
                       learning_rate=learning_rate_fn),
@@ -549,7 +549,7 @@ class CosineDecay(LearningRateSchedule):
     ```python
     decay_steps = 1000
     lr_decayed_fn = tf.keras.experimental.CosineDecay(
-        initial_learning_rate, global_step, decay_steps)
+        initial_learning_rate, decay_steps)
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -640,7 +640,6 @@ class CosineDecayRestarts(LearningRateSchedule):
     lr_decayed_fn = (
       tf.keras.experimental.CosineDecayRestarts(
           initial_learning_rate,
-          global_step,
           first_decay_steps))
     ```
 
@@ -665,8 +664,6 @@ class CosineDecayRestarts(LearningRateSchedule):
       A 1-arg callable learning rate schedule that takes the current optimizer
       step and outputs the decayed learning rate, a scalar `Tensor` of the same
       type as `initial_learning_rate`.
-    Raises:
-      ValueError: if `global_step` is not supplied.
     """
     super(CosineDecayRestarts, self).__init__()
 
@@ -779,7 +776,7 @@ class LinearCosineDecay(LearningRateSchedule):
     decay_steps = 1000
     lr_decayed_fn = (
       tf.keras.experimental.LinearCosineDecay(
-        initial_learning_rate, global_step, decay_steps))
+        initial_learning_rate, decay_steps))
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -899,7 +896,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     decay_steps = 1000
     lr_decayed_fn = (
       tf.keras.experimental.NoisyLinearCosineDecay(
-        initial_learning_rate, global_step, decay_steps))
+        initial_learning_rate, decay_steps))
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`

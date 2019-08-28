@@ -25,6 +25,7 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -240,6 +241,7 @@ class _SaveableView(object):
         asset_initializers_by_resource={},
         asset_filename_map={},
         asset_index={})
+
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.CapturableResource):
         # pylint: disable=protected-access
@@ -248,6 +250,20 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
+      elif ds_values.is_distributed_variable(obj):
+        # Put both the distributed variable and component variable handles in
+        # `captured_tensor_node_ids`.
+        # Also create a new distributed variable for `object_map` with newly
+        # created component variables.
+        new_vars = []
+        for v in obj.values:
+          new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
+          object_map[v] = new_variable
+          new_vars.append(new_variable)
+          resource_map[v.handle] = new_variable.handle
+          self.captured_tensor_node_ids[v.handle] = node_id
+        object_map[obj] = obj._clone_with_new_values(new_vars)  # pylint: disable=protected-access
+        self.captured_tensor_node_ids[obj] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
         object_map[obj] = new_variable
@@ -258,6 +274,11 @@ class _SaveableView(object):
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
     for concrete_function in self.concrete_functions:
+      if not concrete_function.graph.saveable:
+        raise ValueError(
+            ("Unable to save function {name} for the following reason(s):\n" +
+             "\n".join(concrete_function.graph.saving_errors))
+            .format(name=concrete_function.name))
       for capture in concrete_function.captured_inputs:
         if (tensor_util.is_tensor(capture)
             and capture.dtype not in _UNCOPIABLE_DTYPES
@@ -306,7 +327,7 @@ def _map_captures_to_created_tensors(
       `resource_map`.
   """
   export_captures = []
-  for exterior, interior in original_captures.items():
+  for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
       raise AssertionError(
@@ -393,13 +414,12 @@ def _call_function_with_mapped_captures(function, args, resource_map):
   """Calls `function` in the exported graph, using mapped resource captures."""
   export_captures = _map_captures_to_created_tensors(
       function.graph.captures, resource_map)
-  mapped_inputs = args + export_captures
   # Calls the function quite directly, since we have new captured resource
   # tensors we need to feed in which weren't part of the original function
   # definition.
   # pylint: disable=protected-access
-  outputs = function._build_call_outputs(
-      function._inference_function.call(context.context(), mapped_inputs))
+  outputs = function._call_flat(args, export_captures)
+  # pylint: enable=protected-access
   return outputs
 
 
@@ -848,12 +868,12 @@ def save(obj, export_dir, signatures=None):
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   path = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(export_dir),
+      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   object_graph_proto = _serialize_object_graph(
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-  file_io.write_string_to_file(path, saved_model.SerializeToString())
+  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.

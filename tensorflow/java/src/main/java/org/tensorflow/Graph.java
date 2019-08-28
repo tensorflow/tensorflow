@@ -226,8 +226,8 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
    * Adds operations to compute the partial derivatives of sum of {@code y}s w.r.t {@code x}s,
    * i.e., {@code dy/dx_1, dy/dx_2...}
    * <p>
-   * This is a simplified version of {@link #addGradients(Output[], Output[], Output[]) where {@code y} is
-   * a single output, {@code dx} is null and {@code prefix} is null.
+   * This is a simplified version of {@link #addGradients(String, Output[], Output[], Output[])
+   * where {@code y} is a single output, {@code dx} is null and {@code prefix} is null.
    *
    * @param y output of the function to derive
    * @param x inputs of the function for which partial derivatives are computed

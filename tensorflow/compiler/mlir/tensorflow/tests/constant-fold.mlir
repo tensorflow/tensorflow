@@ -42,3 +42,38 @@ func @tfConst() -> (tensor<4xf32>, tensor<1x1x6x2xf32>) {
   // CHECK-DAG: constant dense<0.242886767> : tensor<1x1x6x2xf32>
   return %0, %21 : tensor<4xf32>, tensor<1x1x6x2xf32>
 }
+
+// CHECK-LABEL: func @testAdd() -> tensor<2x2xi32>
+func @testAdd() -> tensor<2x2xi32> {
+^bb0:
+  %0 = constant dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>
+  %1 = constant dense<1> : tensor<2xi32>
+  %2 = "tf.Add"(%0, %1) {device = "", name = "add"} : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  // CHECK:         [[cst:%.*]] = constant dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
+  return %2: tensor<2x2xi32>
+}
+
+// Ops with side effects should not get constant folded.
+// CHECK-LABEL: func @testSideEffectOp() -> tensor<3xf32>
+func @testSideEffectOp() -> tensor<3xf32> {
+  %0 = constant dense<[3]> : tensor<1xi32>
+  %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+  // CHECK: %[[random:.*]] = "tf.RandomUniform"
+  // CHECK: return %[[random]]
+  return %1: tensor<3xf32>
+}
+
+// Ops with unimplemnted attributes which couldn't be added to the TFE_Op.
+// CHECK-LABEL: func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>)
+func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
+  %0 = constant dense<1> : tensor<i32>
+  %1 = constant dense<2> : tensor<i32>
+  %2 = "tf.Maximum"(%0, %1) {_output_shapes = ["tfshape$"]} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %3 = "tf.Minimum"(%0, %1) {random_attr = "hello"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2, %3: tensor<i32>, tensor<i32>
+
+// CHECK-NEXT: %[[CST:.*]] = constant
+// CHECK-NEXT: %[[CST1:.*]] = constant
+// CHECK-NEXT: return %[[CST]], %[[CST1]]
+}

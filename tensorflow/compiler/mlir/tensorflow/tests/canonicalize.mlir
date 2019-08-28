@@ -1,5 +1,21 @@
 // RUN: tf-opt %s -canonicalize | FileCheck %s
 
+// CHECK-LABEL: func @tfAssertTrue
+func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
+  %t = constant dense<true> : tensor<i1>
+  // CHECK-NOT: tf.Assert
+  "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @tfAssertFalse
+func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
+  %f = constant dense<false> : tensor<i1>
+  // CHECK: tf.Assert
+  "tf.Assert"(%f, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
+  return
+}
+
 // CHECK-LABEL: func @testLeakyRelu
 func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>) {
   %2 = "tf.LeakyRelu"(%arg0) {alpha = 1.0 : f32} : (tensor<16xf32>) -> tensor<16xf32>

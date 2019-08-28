@@ -479,6 +479,23 @@ public final class InterpreterTest {
     }
   }
 
+  @Test
+  public void testResetVariableTensors() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+
+    // Smoke test to ensure resetting variables at various times in a simple graph doesn't fail.
+    // TODO(b/138197256): Test with model that has variables.
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
+
+      interpreter.resetVariableTensors();
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
+    }
+  }
+
   private static native long getNativeHandleForDelegate();
 
   private static native long getNativeHandleForInvalidDelegate();

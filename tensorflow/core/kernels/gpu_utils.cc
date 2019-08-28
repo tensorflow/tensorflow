@@ -25,8 +25,71 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 namespace tensorflow {
+
+bool RedzoneCheckDisabled() {
+  const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
+  return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
+}
+
+se::DeviceMemoryBase WrapRedzoneBestEffort(
+    se::cuda::RedzoneAllocator* rz_allocator, se::DeviceMemoryBase buffer) {
+  if (RedzoneCheckDisabled()) {
+    return buffer;
+  }
+  se::DeviceMemoryBase output_tensor;
+  auto output_rz_or = rz_allocator->AllocateBytes(buffer.size());
+  if (!output_rz_or.ok()) {
+    static std::once_flag rz_allocation_failure_logged;
+    std::call_once(rz_allocation_failure_logged, []() {
+      LOG(WARNING) << "Failed to allocate memory for convolution redzone "
+                   << "checking; skipping this check. This is benign and only "
+                   << "means that we won't check cudnn for out-of-bounds reads "
+                   << "and writes. This message will only be printed once.";
+    });
+    return buffer;
+  }
+  return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
+}
+
+void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
+                   tensorflow::AutotuneResult* autotune_result) {
+  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+      rz_allocator.CheckRedzones();
+  if (!rz_status.ok()) {
+    static std::once_flag failure_logged;
+    std::call_once(failure_logged, [&]() {
+      LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
+                   << "reads and writes with an error message: '"
+                   << rz_status.status().error_message()
+                   << "'; skipping this check. This only means that we won't "
+                   << "check cudnn for out-of-bounds reads and writes. This "
+                   << "message will only be printed once.";
+    });
+    return;
+  }
+  auto rz_check_status = rz_status.ValueOrDie();
+  if (!rz_check_status.ok()) {
+    auto* fail = autotune_result->mutable_failure();
+    fail->set_msg(rz_check_status.RedzoneFailureMsg());
+    fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_buffer_address(
+        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
+    LOG(ERROR)
+        << "Detected cudnn out-of-bounds write in convolution buffer! This is "
+           "likely a cudnn bug. We will skip this algorithm in the future, but "
+           "your GPU state may already be corrupted, leading to incorrect "
+           "results. Within Google, no action is needed on your part. Outside "
+           "of Google, please ensure you're running the latest version of "
+           "cudnn. If that doesn't fix the problem, please file a bug with "
+           "this full error message and we'll contact nvidia.";
+    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
+  }
+}
+
 namespace {
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
@@ -85,6 +148,14 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
   for (const auto& result : results) {
     *log.add_results() = result;
   }
@@ -123,6 +194,14 @@ void LogFusedConvForwardAutotuneResults(
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
   for (const auto& result : results) {
     *log.add_results() = result;
   }

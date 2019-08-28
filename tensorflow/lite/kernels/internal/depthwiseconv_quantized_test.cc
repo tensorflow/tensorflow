@@ -292,7 +292,7 @@ inline void DispatchDepthwiseConv(
       << " input_offset = " << params.input_offset;
 
   CpuBackendContext backend_context;
-  backend_context.set_max_num_threads(test_param.num_threads);
+  backend_context.SetMaxNumThreads(test_param.num_threads);
   optimized_ops::DepthwiseConv<uint8, int32>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data, &backend_context);

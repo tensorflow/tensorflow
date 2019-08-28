@@ -442,8 +442,8 @@ TEST_F(HeapSimulatorTest, MultiplyAdd) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(mul, {})},
       {kShare, tracker.BufferAt(add, {})},
       // All params and outputs are freed at the end.
@@ -516,8 +516,8 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot, {})},
       // All params and outputs are freed at the end.
       {kFree, tracker.BufferAt(mul, {})},
@@ -554,8 +554,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotAdd) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot, {})},
       {kFree, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(dot, {})},
@@ -596,8 +596,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(mul, {})},  // mul no longer used
       {kAlloc, tracker.BufferAt(dot1, {})},
@@ -640,8 +640,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(mul, {})},  // mul no longer used
       {kAlloc, tracker.BufferAt(dot1, {})},

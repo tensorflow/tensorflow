@@ -27,14 +27,14 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string prefix;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "prefix", &prefix));
+    tstring prefix;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "prefix", &prefix));
 
-    string start_key;
+    tstring start_key;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "start_key", &start_key));
-    string end_key;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "end_key", &end_key));
+                   ParseScalarArgument<tstring>(ctx, "start_key", &start_key));
+    tstring end_key;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "end_key", &end_key));
 
     core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
@@ -89,12 +89,17 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
       return "BigtableSampleKeyPairsDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:
@@ -175,14 +180,25 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
         *end_of_sequence = false;
         out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                   TensorShape({}));
-        out_tensors->back().scalar<string>()() = keys_[index_];
+        out_tensors->back().scalar<tstring>()() = keys_[index_];
 
         out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                   TensorShape({}));
-        out_tensors->back().scalar<string>()() = keys_[index_ + 1];
+        out_tensors->back().scalar<tstring>()() = keys_[index_ + 1];
         ++index_;
 
         return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return errors::Unimplemented("SaveInternal is currently not supported");
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        return errors::Unimplemented(
+            "RestoreInternal is currently not supported");
       }
 
      private:

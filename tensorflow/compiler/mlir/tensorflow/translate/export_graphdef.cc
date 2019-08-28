@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -34,8 +35,10 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -54,6 +57,11 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+
+namespace mlir {
+/// Create a pass to convert from the TFExecutor to the TF control dialect.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
+}  // namespace mlir
 
 namespace tensorflow {
 using llvm::cast;
@@ -201,10 +209,8 @@ std::string Exporter::UniqueName(mlir::Operation* op) {
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     mlir::BlockArgument* arg, unsigned index) {
   auto node_def = absl::make_unique<NodeDef>();
-  node_def->set_name(UniqueName(arg->getContainingRegion()
-                                    ->getParentOfType<mlir::FuncOp>()
-                                    .getName()
-                                    .str()));
+  node_def->set_name(UniqueName(
+      arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName().str()));
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -294,13 +300,17 @@ Status Exporter::AddInstructionNode(mlir::Operation* inst) {
     // check is too conservative given we could use a OpDef.
     if (auto abstract_op = inst->getAbstractOperation()) {
       if (&abstract_op->dialect == tf_dialect_) {
-        TF_ASSIGN_OR_RETURN(node_def, ConvertTFDialectOpToNodeDef(inst, name));
+        TF_ASSIGN_OR_RETURN(
+            node_def, ConvertTFDialectOpToNodeDef(
+                          inst, name, /*ignore_unregistered_attrs=*/false));
       }
     }
     // Convert TF control flow dialect ops.
     if (!node_def) {
-      TF_ASSIGN_OR_RETURN(node_def,
-                          GetOperationNodeDef(inst, name.c_str(), getTFOpName));
+      absl::flat_hash_set<absl::string_view> attrs_to_ignore;
+      TF_ASSIGN_OR_RETURN(
+          node_def, GetOperationNodeDef(attrs_to_ignore, inst, name.c_str(),
+                                        getTFOpName));
     }
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
@@ -326,7 +336,7 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (arg->getContainingRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+  if (arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
       "main") {
     if (!arg->hasOneUse()) {
       return errors::FailedPrecondition(
@@ -556,7 +566,8 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
 
   // Ignore the gradient and is_stateful attribute on the function as they have
   // been handled above.
-  absl::flat_hash_set<string> attrs_to_ignore = {grad_string, stateful_string};
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
+      grad_string.data(), stateful_string.data()};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(
@@ -604,6 +615,12 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& confs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
+  mlir::PassManager pass_manager;
+  pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
+  if (mlir::failed(pass_manager.run(module))) {
+    return errors::FailedPrecondition(
+        "Failed to convert TFExecutor Dialect to Control Dialect.");
+  }
   return Exporter::Convert(module, confs, graph, flib_def);
 }
 

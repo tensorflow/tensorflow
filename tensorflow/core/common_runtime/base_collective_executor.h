@@ -142,6 +142,10 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                                client_locality, done);
   }
 
+  void RunClosure(std::function<void()> closure) override {
+    remote_access_->RunClosure(std::move(closure));
+  }
+
   // If we need to enforce an ordering on any portion of collective
   // implementation, and the ordering is encoded via attribute on the collective
   // op, this function will block until all dependencies for this collective

@@ -43,7 +43,6 @@ class UnbatchDatasetSerializationTest(
     num_outputs = tensor_slice_len
     self.run_core_tests(
         lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
         num_outputs)
 
 

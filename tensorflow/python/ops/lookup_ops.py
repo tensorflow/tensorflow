@@ -166,7 +166,7 @@ class InitializableLookupTableBase(LookupInterface):
                                                        initializer.value_dtype)
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
-    self._default_value.get_shape().merge_with(tensor_shape.scalar())
+    self._default_value.get_shape().merge_with(tensor_shape.TensorShape([]))
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(initializer, "_initializer")
     with ops.init_scope():
@@ -1025,7 +1025,7 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = self._table.lookup(values)
           buckets = math_ops.add(buckets, self._table.size())
           is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-          ids = array_ops.where(is_id_non_default, ids, buckets)
+          ids = array_ops.where_v2(is_id_non_default, ids, buckets)
         else:
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -1199,7 +1199,7 @@ class StaticVocabularyTable(LookupInterface):
         ids = self._table.lookup(values)
         buckets = math_ops.add(buckets, self._table.size())
         is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-        ids = array_ops.where(is_id_non_default, ids, buckets)
+        ids = array_ops.where_v2(is_id_non_default, ids, buckets)
       else:
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):

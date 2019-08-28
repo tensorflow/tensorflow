@@ -41,16 +41,31 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   handle_to_decref->set_op_id(op_id);
   handle_to_decref->set_output_num(output_num);
 
+  VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
                                                         eager_client));
-  Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
-  if (!s.ok()) {
-    LOG(ERROR) << "Unable to destroy remote tensor handles: "
-               << s.error_message();
+  auto* executor = ctx->Executor();
+  if (executor->Async()) {
+    Status status = executor->Add(std::move(node));
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to destroy remote tensor handles: "
+                 << status.error_message();
+    }
+  } else {
+    // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
+    // to send out the destroy request in a new thread to avoid deadlock.
+    auto* released_node = node.release();
+    (*ctx->runner())([released_node] {
+      Status status = released_node->Run();
+      if (!status.ok()) {
+        LOG(ERROR) << "Unable to destroy remote tensor handles: "
+                   << status.error_message();
+      }
+      delete released_node;
+    });
   }
 }
-
 }  // namespace
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,

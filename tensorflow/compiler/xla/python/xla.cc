@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -109,18 +110,23 @@ StatusOr<std::string> GetComputationHloDotGraph(
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
-// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
-// "xla._CPU_CUSTOM_CALL_TARGET".
-Status RegisterCpuCustomCallTarget(const std::string& fn_name,
-                                   py::capsule capsule) {
-  static const char* const kName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName) {
+// 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
+// with name "xla._CUSTOM_CALL_TARGET".
+// 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
+Status PyRegisterCustomCallTarget(const std::string& fn_name,
+                                  py::capsule capsule,
+                                  const std::string& platform) {
+  static const char* const kName = "xla._CUSTOM_CALL_TARGET";
+  // TODO(phawkins): remove old name after fixing users.
+  static const char* const kOldCpuName = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (absl::string_view(capsule.name()) != kName &&
+      absl::string_view(capsule.name()) != kOldCpuName) {
     return InvalidArgument(
-        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
-        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+        "Argument to RegisterCustomCallTargetRegistry was not a "
+        "xla._CUSTOM_CALL_TARGET capsule.");
   }
   CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), "Host");
+      fn_name, static_cast<void*>(capsule), platform);
   return Status::OK();
 }
 
@@ -292,10 +298,34 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString);
 
+  py::class_<Device, std::shared_ptr<Device>>(
+      m, "Device",
+      "A descriptor of an available device.\n\nSubclasses are used to "
+      "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
+      "have additional properties specific to that device type.")
+      .def_property_readonly(
+          "id", &Device::id,
+          "Integer ID of this device.\n\nUnique across all available devices "
+          "of this type, including remote devices on multi-host platforms.")
+      .def_property_readonly("host_id", &Device::host_id,
+                             "Integer ID of this device's host.\n\n"
+                             "This is always 0 except on multi-host platforms.")
+      .def("__str__", &Device::DebugString);
+
+  py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
+      .def("__repr__", [](const CpuDevice& device) {
+        return absl::StrFormat("CpuDevice(id=%i)", device.id());
+      });
+
+  py::class_<GpuDevice, Device, std::shared_ptr<GpuDevice>>(m, "GpuDevice")
+      .def("__repr__", [](const GpuDevice& device) {
+        return absl::StrFormat("GpuDevice(id=%i)", device.id());
+      });
+
   // Local XLA client methods.
 
-  // CPU custom-call targets.
-  m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
+  // Custom-call targets.
+  m.def("RegisterCustomCallTarget", &PyRegisterCustomCallTarget);
 
   py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
   alloc_config.def(py::init<>())
@@ -311,21 +341,84 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
                   py::arg("xla_platform_id"), py::arg("asynchronous"),
                   py::arg("allocator_config") = AllocatorConfig())
-      .def("DeviceCount", &PyLocalClient::device_count)
-      .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
-      .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
+      .def("device_count", &PyLocalClient::device_count)
+      .def("local_device_count", &PyLocalClient::local_device_count)
+      .def("devices", &PyLocalClient::devices)
+      .def("host_id", &PyLocalClient::host_id)
+      .def("TransferToInfeed",
+           [](PyLocalClient* client, const LiteralSlice& literal,
+              int device_ordinal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return client->TransferToInfeed(literal, device_ordinal);
+           })
+      .def("TransferFromOutfeed",
+           [](PyLocalClient* client, const Shape& shape,
+              int device_ordinal) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
+                                                        shape, device_ordinal));
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           });
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
-      .def_static("from_python", &PyLocalBuffer::FromPython)
+      .def_static(
+          "from_python",
+          [](const pybind11::object& argument,
+             std::shared_ptr<PyLocalClient> client,
+             int device_ordinal) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+            GlobalPyRefManager()->CollectGarbage();
+            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
+                                GetPythonBufferTree(argument));
+            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+                GlobalPyRefManager()->ManageReferences(
+                    absl::MakeSpan(tree.arrays));
+            tree.arrays.clear();
+
+            std::vector<BorrowingLiteral> leaves;
+            leaves.insert(leaves.end(),
+                          std::make_move_iterator(tree.leaves.begin()),
+                          std::make_move_iterator(tree.leaves.end()));
+
+            py::gil_scoped_release gil_release;
+            return PyLocalBuffer::FromLiterals(
+                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                std::move(client), device_ordinal);
+          })
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
-      .def("copy_to_device", &PyLocalBuffer::CopyToDevice)
+      .def("copy_to_device",
+           [](PyLocalBuffer* buffer, int dst_device_ordinal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->CopyToDevice(dst_device_ordinal);
+           })
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
-      .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("block_host_until_ready",
+           [](PyLocalBuffer* buffer) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->BlockHostUntilReady();
+           })
       .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
-      .def("to_py", &PyLocalBuffer::ToPython)
+      .def("to_py",
+           [](PyLocalBuffer* buffer) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(literal, buffer->ToLiteral());
+             }
+             return LiteralToPython(std::move(literal));
+           })
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
+      .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
              return buffer.DeviceBuffer() == nullptr;
@@ -347,6 +440,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
+      .def("SizeOfGeneratedCodeInBytes",
+           &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
@@ -365,7 +460,13 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_nans)
       .def_property("xla_cpu_fast_math_honor_division",
                     &DebugOptions::xla_cpu_fast_math_honor_division,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division)
+      .def_property("xla_cpu_fast_math_honor_functions",
+                    &DebugOptions::xla_cpu_fast_math_honor_functions,
+                    &DebugOptions::set_xla_cpu_fast_math_honor_functions)
+      .def_property("xla_gpu_enable_fast_min_max",
+                    &DebugOptions::xla_gpu_enable_fast_min_max,
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -473,7 +574,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IRFFT", FftType::IRFFT);
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"));
+          py::arg("dimension_numbers"), py::arg("slice_sizes"),
+          py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
   ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
           py::arg("config") = "");
@@ -533,20 +635,26 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def(
       "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         int64 dimension) -> XlaOp {
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
+         absl::optional<const XlaComputation*> comparator) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
           }
-          return Sort(operands,
-                      CreateScalarLtComputation(operand_types, builder),
-                      dimension);
+
+          if (comparator) {
+            return Sort(operands, **comparator, dimension);
+          } else {
+            return Sort(operands,
+                        CreateScalarLtComputation(operand_types, builder),
+                        dimension);
+          }
         });
       },
-      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1);
+      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
+      py::arg("comparator") = absl::nullopt);
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
@@ -640,6 +748,6 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<ChannelHandle>(m, "ChannelHandle");
 
   tensorflow::AddXrtSubmodule(&m);
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace xla

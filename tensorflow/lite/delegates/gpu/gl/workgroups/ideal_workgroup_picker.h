@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_WORKGROUPS_IDEAL_WORKGROUP_PICKER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_WORKGROUPS_IDEAL_WORKGROUP_PICKER_H_
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 
 namespace tflite {
 namespace gpu {

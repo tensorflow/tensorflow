@@ -44,7 +44,6 @@ class BatchDatasetSerializationTest(
     num_outputs = tensor_slice_len // batch_size
     self.run_core_tests(
         lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
         num_outputs)
 
   def _build_dataset_dense_to_sparse(self, components):
@@ -54,11 +53,9 @@ class BatchDatasetSerializationTest(
 
   def testDenseToSparseBatchDatasetCore(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
-    diff_comp = np.random.randint(2, size=(100,)).astype(np.int32)
 
     num_outputs = len(components) // 4
     self.run_core_tests(lambda: self._build_dataset_dense_to_sparse(components),
-                        lambda: self._build_dataset_dense_to_sparse(diff_comp),
                         num_outputs)
 
   def _sparse(self, i):
@@ -69,14 +66,13 @@ class BatchDatasetSerializationTest(
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
 
   def testSparseCore(self):
-    self.run_core_tests(self._build_dataset_sparse,
-                        lambda: self._build_dataset_sparse(2), 2)
+    self.run_core_tests(self._build_dataset_sparse, 2)
 
   def _build_dataset_nested_sparse(self):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
 
   def testNestedSparseCore(self):
-    self.run_core_tests(self._build_dataset_nested_sparse, None, 1)
+    self.run_core_tests(self._build_dataset_nested_sparse, 1)
 
 
 if __name__ == "__main__":

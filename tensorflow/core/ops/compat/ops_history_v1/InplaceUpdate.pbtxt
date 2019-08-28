@@ -1,0 +1,23 @@
+op {
+  name: "InplaceUpdate"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "v"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

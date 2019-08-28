@@ -573,6 +573,43 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
               HasSubstr("each dimension exactly once"));
 }
 
+TEST_F(ShapeInferenceTest, ConvolveBatchGroupCountUnequalOutputFeature) {
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.add_kernel_spatial_dimensions(2);
+  dnums.add_kernel_spatial_dimensions(3);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(3);
+  Shape lhs_shape = ShapeUtil::MakeShape(F32, {60, 38, 17, 13});
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {38, 10, 4, 4});
+  Window window;
+  auto dim0 = window.add_dimensions();
+  auto dim1 = window.add_dimensions();
+  dim0->set_size(4);
+  dim1->set_size(4);
+  dim0->set_padding_low(0);
+  dim0->set_padding_high(2);
+  dim1->set_padding_low(2);
+  dim1->set_padding_high(1);
+  dim0->set_stride(1);
+  dim1->set_stride(1);
+  dim0->set_window_dilation(3);
+  dim1->set_window_dilation(2);
+  auto inferred_status = ShapeInference::InferConvolveShape(
+      lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/6,
+      window, dnums);
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(inferred_status.status().error_message(),
+              HasSubstr("to be equal to batch group count"));
+}
+
 namespace fft {
 
 static const char* unsupported_rank = "only supports ranks 1-3";

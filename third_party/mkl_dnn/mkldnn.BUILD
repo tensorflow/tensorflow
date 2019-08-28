@@ -45,7 +45,7 @@ template_rule(
     substitutions = {
         "@MKLDNN_VERSION_MAJOR@": "0",
         "@MKLDNN_VERSION_MINOR@": "20",
-        "@MKLDNN_VERSION_PATCH@": "0",
+        "@MKLDNN_VERSION_PATCH@": "3",
         "@MKLDNN_VERSION_HASH@": "N/A",
     },
 )
@@ -62,8 +62,6 @@ cc_library(
         "src/cpu/xbyak/*.h",
     ]) + if_mkl_v1_open_source_only([
         ":mkldnn_config_h",
-        "src/cpu/jit_utils/jit_utils.cpp",
-        "src/cpu/jit_utils/jit_utils.hpp",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
     copts = [
@@ -93,7 +91,6 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/xbyak",
     ],
-    nocopts = "-fno-exceptions",
     visibility = ["//visibility:public"],
     deps = select({
         "@org_tensorflow//tensorflow:linux_x86_64": [
@@ -136,6 +133,5 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/xbyak",
     ],
-    nocopts = "-fno-exceptions",
     visibility = ["//visibility:public"],
 )

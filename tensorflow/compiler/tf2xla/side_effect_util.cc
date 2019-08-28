@@ -28,6 +28,9 @@ const char kXlaHasHostTransferAttrName[] = "_xla_has_host_transfer";
 
 const char kXlaReplicaIdAttrName[] = "_xla_replica_id";
 
+const char kXlaIsPlaceholderForTailOcAttrName[] =
+    "_xla_is_placeholder_for_tail_oc";
+
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
     return errors::InvalidArgument("Node ", node->DebugString(),
@@ -50,7 +53,7 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
     }
-  } else if (node->type_string() == "While") {
+  } else if (node->IsWhileNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
     for (const string& attr_name : std::vector<string>{"cond", "body"}) {

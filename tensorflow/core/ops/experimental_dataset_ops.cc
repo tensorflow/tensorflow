@@ -658,18 +658,20 @@ REGISTER_OP("RandomDataset")
 
 REGISTER_OP("ExperimentalRebatchDataset")
     .Input("input_dataset: variant")
-    .Input("num_workers: int64")
+    .Input("num_replicas: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDataset")
     .Input("input_dataset: variant")
-    .Input("num_workers: int64")
+    .Input("num_replicas: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")

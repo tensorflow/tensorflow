@@ -15,19 +15,47 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 
+#include <iostream>
+
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 using mlir::Builder;
 using mlir::MLIRContext;
-using ::testing::EqualsProto;
 
 namespace xla {
 namespace {
+
+// Simple implementation of a proto matcher comparing string representations.
+// Only works as ShapeProto's textual representation is deterministic.
+class ProtoStringMatcher {
+ public:
+  explicit ProtoStringMatcher(const tensorflow::protobuf::Message& expected)
+      : expected_(expected.SerializeAsString()) {}
+
+  template <typename Message>
+  bool MatchAndExplain(const Message& p, testing::MatchResultListener*) const {
+    return p.SerializeAsString() == expected_;
+  }
+
+  void DescribeTo(::std::ostream* os) const { *os << expected_; }
+  void DescribeNegationTo(::std::ostream* os) const {
+    *os << "not equal to expected message: " << expected_;
+  }
+
+ private:
+  const std::string expected_;
+};
+
+inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
+    const tensorflow::protobuf::Message& x) {
+  return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
+}
 
 TEST(TypeToShapeTest, ConvertPrimitiveTypes) {
   MLIRContext context;

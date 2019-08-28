@@ -72,6 +72,15 @@ struct ApplyAdagrad {
 };
 
 template <typename Device, typename T>
+struct ApplyAdagradV2 {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad, bool update_slots);
+};
+
+template <typename Device, typename T>
 struct ApplyAdagradDA {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat gradient_accum,

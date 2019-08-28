@@ -27,10 +27,26 @@ import sys as _sys
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.platform import tf_logging as _logging
 
 # API IMPORTS PLACEHOLDER
 
 # WRAPPER_PLACEHOLDER
+
+if "dev" in __version__:   # pylint: disable=undefined-variable
+  _logging.warning("""
+
+  TensorFlow's `tf-nightly` package will soon be updated to TensorFlow 2.0.
+
+  Please upgrade your code to TensorFlow 2.0:
+    * https://www.tensorflow.org/beta/guide/migration_guide
+
+  Or install the latest stable TensorFlow 1.X release:
+    * `pip install -U "tensorflow==1.*"`
+
+  Otherwise your code may be broken by the change.
+
+  """)
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.

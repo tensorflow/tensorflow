@@ -34,23 +34,21 @@ class SkipDatasetSerializationTest(
   def testSkipFewerThanInputs(self):
     count = 4
     num_outputs = 10 - count
-    self.run_core_tests(lambda: self._build_skip_dataset(count),
-                        lambda: self._build_skip_dataset(count + 2),
-                        num_outputs)
+    self.run_core_tests(lambda: self._build_skip_dataset(count), num_outputs)
 
   def testSkipVarious(self):
     # Skip more than inputs
-    self.run_core_tests(lambda: self._build_skip_dataset(20), None, 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(20), 0)
     # Skip exactly the input size
-    self.run_core_tests(lambda: self._build_skip_dataset(10), None, 0)
-    self.run_core_tests(lambda: self._build_skip_dataset(-1), None, 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(10), 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(-1), 0)
     # Skip nothing
-    self.run_core_tests(lambda: self._build_skip_dataset(0), None, 10)
+    self.run_core_tests(lambda: self._build_skip_dataset(0), 10)
 
   def testInvalidSkip(self):
     with self.assertRaisesRegexp(ValueError,
                                  'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), None, 0)
+      self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), 0)
 
 
 class TakeDatasetSerializationTest(
@@ -62,26 +60,22 @@ class TakeDatasetSerializationTest(
 
   def testTakeFewerThanInputs(self):
     count = 4
-    self.run_core_tests(
-        lambda: self._build_take_dataset(count),
-        lambda: self._build_take_dataset(count + 2),
-        count,
-    )
+    self.run_core_tests(lambda: self._build_take_dataset(count), count)
 
   def testTakeVarious(self):
     # Take more than inputs
-    self.run_core_tests(lambda: self._build_take_dataset(20), None, 10)
+    self.run_core_tests(lambda: self._build_take_dataset(20), 10)
     # Take exactly the input size
-    self.run_core_tests(lambda: self._build_take_dataset(10), None, 10)
+    self.run_core_tests(lambda: self._build_take_dataset(10), 10)
     # Take all
-    self.run_core_tests(lambda: self._build_take_dataset(-1), None, 10)
+    self.run_core_tests(lambda: self._build_take_dataset(-1), 10)
     # Take nothing
-    self.run_core_tests(lambda: self._build_take_dataset(0), None, 0)
+    self.run_core_tests(lambda: self._build_take_dataset(0), 0)
 
   def testInvalidTake(self):
     with self.assertRaisesRegexp(ValueError,
                                  'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), None, 0)
+      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), 0)
 
 
 class RepeatDatasetSerializationTest(
@@ -94,35 +88,26 @@ class RepeatDatasetSerializationTest(
 
   def testFiniteRepeat(self):
     count = 10
-    self.run_core_tests(lambda: self._build_repeat_dataset(count),
-                        lambda: self._build_repeat_dataset(count + 2),
-                        3 * count)
+    self.run_core_tests(lambda: self._build_repeat_dataset(count), 3 * count)
 
   def testEmptyRepeat(self):
-    self.run_core_tests(lambda: self._build_repeat_dataset(0), None, 0)
+    self.run_core_tests(lambda: self._build_repeat_dataset(0), 0)
 
   def testInfiniteRepeat(self):
     self.verify_unused_iterator(
-        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
-    self.verify_init_before_restore(
         lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
     self.verify_multiple_breaks(
         lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
     self.verify_reset_restored_iterator(
         lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_repeat_dataset(-1),
-        lambda: self._build_repeat_dataset(2),
-        20,
-        verify_exhausted=False)
+
     # Test repeat empty dataset
-    self.run_core_tests(lambda: self._build_repeat_dataset(-1, 0), None, 0)
+    self.run_core_tests(lambda: self._build_repeat_dataset(-1, 0), 0)
 
   def testInvalidRepeat(self):
     with self.assertRaisesRegexp(
         ValueError, 'Shape must be rank 0 but is rank 1'):
-      self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0),
-                          None, 0)
+      self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0), 0)
 
 
 if __name__ == '__main__':

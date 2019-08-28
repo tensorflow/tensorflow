@@ -6,7 +6,7 @@ def repo():
     third_party_http_archive(
         name = "jpeg",
         urls = [
-            "http://mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.0.tar.gz",
             "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.0.tar.gz",
         ],
         sha256 = "f892fff427ab3adffc289363eac26d197ce3ccacefe5f5822377348a8166069b",

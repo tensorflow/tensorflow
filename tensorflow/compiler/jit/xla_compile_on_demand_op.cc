@@ -83,9 +83,11 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
       ctx, result, run_result.ConsumeValueOrDie(),
-      /*missing_ctx_input_prefix=*/0));
+      /*missing_ctx_input_prefix=*/0, input_output_alias));
   return Status::OK();
 }
 

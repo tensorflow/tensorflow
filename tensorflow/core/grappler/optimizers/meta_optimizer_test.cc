@@ -46,6 +46,7 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   TestOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
@@ -102,6 +103,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   string name() const override {
     return "grappler_item_properties_accumulator";
   }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -684,6 +686,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
  public:
   SleepingOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {

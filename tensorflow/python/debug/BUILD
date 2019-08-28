@@ -800,6 +800,22 @@ py_library(
 )
 
 cuda_py_test(
+    name = "debug_grappler_test",
+    size = "small",
+    srcs = ["lib/debug_grappler_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation
+)
+
+cuda_py_test(
     name = "session_debug_file_test",
     size = "small",
     srcs = ["lib/session_debug_file_test.py"],
@@ -1171,7 +1187,6 @@ sh_test(
         ":offline_analyzer",
     ],
     tags = [
-        "no_oss",  # TODO(b/137652456): remove when fixed
         "no_windows",
     ],
 )

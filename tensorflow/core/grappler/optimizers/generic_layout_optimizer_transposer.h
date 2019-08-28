@@ -239,6 +239,14 @@ class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class FusedBatchNormExTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit FusedBatchNormExTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class FusedBatchNormGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit FusedBatchNormGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -517,13 +525,14 @@ class UnaryGradTransposer : public LayoutAgnosticOpTransposer {
 // Permutes elements according to permutation and replaces the original values.
 // Permutation and values must have same size.
 template <typename T>
-Status PermuteSingle(absl::Span<const int> permutation, T* values) {
+Status PermuteSingle(absl::string_view location,
+                     absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size()) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
-                               permutation.size(), "."));
+                               permutation.size(), " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());
@@ -537,13 +546,14 @@ Status PermuteSingle(absl::Span<const int> permutation, T* values) {
 // Permutes two elements at a time according to permutation and replaces the
 // original values. Values must be twice the size of permutation.
 template <typename T>
-Status PermuteDouble(absl::Span<const int> permutation, T* values) {
+Status PermuteDouble(absl::string_view location,
+                     absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
   if (values->size() != permutation.size() * 2) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
-                               permutation.size(), "."));
+                               permutation.size(), " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());
@@ -585,8 +595,12 @@ std::vector<int> GetDataFaninPorts(const utils::MutableNodeView& node);
 
 std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node);
 
-bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
-                                          Tensor* tensor);
+// Returns a value of constant input to the `node` at `index`, iff `predicate`
+// evaluated to true. Returns true if `tensor` was populated with data.
+bool GetValueAttrFromConstInputNode(
+    const utils::MutableNodeView& node,
+    const std::function<bool(const NodeDef&)>& predicate, int index,
+    Tensor* tensor);
 
 bool IsDataFormatOp(const utils::MutableNodeView& node);
 

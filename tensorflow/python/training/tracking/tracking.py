@@ -383,6 +383,8 @@ def cached_per_instance(f):
     if output is None:
       cache[item] = output = f(item)
     return output
+
+  wrapped.cache = cache
   return wrapped
 
 

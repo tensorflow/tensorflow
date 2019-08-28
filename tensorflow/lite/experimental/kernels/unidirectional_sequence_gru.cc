@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/kernels/gru_cell.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -112,14 +111,12 @@ enum TemporaryTensor {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  cpu_backend_support::IncrementUsageCounter(context);
   auto* scratch_tensor_index = new int;
   context->AddTensors(context, kTemporaryNum, scratch_tensor_index);
   return scratch_tensor_index;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<int*>(buffer);
 }
 
@@ -221,7 +218,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output_state = GetOutput(context, node, kOutputState);
   TfLiteTensor* activation = GetTemporary(context, node, kActivation);
   TfLiteTensor* concat = GetTemporary(context, node, kConcat);
-  auto cpu_backend_context = cpu_backend_support::GetFromContext(context);
+  auto cpu_backend_context = CpuBackendContext::GetFromContext(context);
 
   if (gate_weight->type == kTfLiteFloat32) {
     GruImpl(input, input_state, gate_weight, gate_bias, candidate_weight,

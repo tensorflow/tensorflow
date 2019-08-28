@@ -37,20 +37,10 @@ class GroupByWindowSerializationTest(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
     self.verify_unused_iterator(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_init_before_restore(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
     self.verify_multiple_breaks(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
     self.verify_reset_restored_iterator(
         lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_restore_in_empty_graph(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    diff_components = np.array([0, 0, 0, 1, 1, 1], dtype=np.int64)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_dataset(components),
-        lambda: self._build_dataset(diff_components),
-        12,
-        verify_exhausted=False)
 
 
 if __name__ == '__main__':

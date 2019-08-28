@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import math
 
 import numpy as np
@@ -32,7 +31,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+from tensorflow.python.util.compat import collections_abc
 
 
 def GetTestConfigs():
@@ -82,7 +81,7 @@ class Conv3DTest(test.TestCase):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
-      if isinstance(stride, collections.Iterable):
+      if isinstance(stride, collections_abc.Iterable):
         strides = [1] + list(stride) + [1]
       else:
         strides = [1, stride, stride, stride, 1]
@@ -140,7 +139,7 @@ class Conv3DTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
-      if isinstance(stride, collections.Iterable):
+      if isinstance(stride, collections_abc.Iterable):
         strides = list(stride)
       else:
         strides = [stride, stride, stride]
@@ -317,6 +316,33 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
+  def _TestConv3DEmptyTensorOutputShape(self):
+    """Verifies the output shape of the Conv3D op when output tensor is empty.
+
+    Args: none
+    """
+    input_shape = [0, 112, 112, 112, 32]
+    filter_shape = [3, 3, 3, 32, 64]
+
+    output_shape = [0, 112, 112, 112, 64]
+    input_data = 1
+    filter_data = 1
+    for data_type in self._DtypesToTest(False):
+      input_tensor = constant_op.constant(
+          input_data, shape=input_shape, dtype=data_type, name="input")
+      filter_tensor = constant_op.constant(
+          filter_data, shape=filter_shape, dtype=data_type, name="filter")
+      conv = nn_ops.conv3d(
+          input_tensor,
+          filter_tensor,
+          strides=[1, 1, 1, 1, 1],
+          dilations=[1, 1, 1, 1, 1],
+          padding="SAME",
+          data_format="NDHWC",
+          name="conv")
+      values = self.evaluate(conv)
+      self.assertEqual(values.shape, tensor_shape.TensorShape(output_shape))
+
   def testKernelSmallerThanStride(self):
     expected_output = [
         0.03703704, 0.11111111, 0.25925926, 0.33333333, 0.7037037, 0.77777778,
@@ -380,7 +406,7 @@ class Conv3DTest(test.TestCase):
         filter_planes, filter_rows, filter_cols, in_depth, out_depth
     ]
 
-    if isinstance(stride, collections.Iterable):
+    if isinstance(stride, collections_abc.Iterable):
       strides = [1] + list(stride) + [1]
     else:
       strides = [1, stride, stride, stride, 1]

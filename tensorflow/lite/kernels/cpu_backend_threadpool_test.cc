@@ -61,10 +61,10 @@ void TestGenerateArrayOfIncrementingInts(int num_threads, int size) {
   ASSERT_EQ(num_threads, tasks.size());
 
   CpuBackendContext context;
-  // This set_max_num_threads is only to satisfy an assertion in Execute.
+  // This SetMaxNumThreads is only to satisfy an assertion in Execute.
   // What actually determines the number of threads used is the parameter
   // passed to Execute, since Execute does 1:1 mapping of tasks to threads.
-  context.set_max_num_threads(num_threads);
+  context.SetMaxNumThreads(num_threads);
 
   // Execute tasks on the threadpool.
   cpu_backend_threadpool::Execute(tasks.size(), tasks.data(), &context);

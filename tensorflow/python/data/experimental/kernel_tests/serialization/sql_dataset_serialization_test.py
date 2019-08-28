@@ -44,9 +44,7 @@ class SqlDatasetSerializationTest(
   def testSQLSaveable(self):
     num_repeats = 4
     num_outputs = num_repeats * 2
-    self.run_core_tests(lambda: self._build_dataset(num_repeats),
-                        lambda: self._build_dataset(num_repeats // 2),
-                        num_outputs)
+    self.run_core_tests(lambda: self._build_dataset(num_repeats), num_outputs)
 
 
 if __name__ == "__main__":

@@ -82,7 +82,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
         *v = t[0].scalar<bool>()();
         break;
       case DT_STRING:
-        *v = !t[0].scalar<string>()().empty();
+        *v = !t[0].scalar<tstring>()().empty();
         break;
       default:
         return errors::InvalidArgument(DataTypeString(t[0].dtype()),

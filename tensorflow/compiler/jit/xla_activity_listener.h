@@ -27,6 +27,18 @@ Status BroadcastXlaActivity(XlaAutoClusteringActivity auto_clustering_activity);
 // Broadcast `jit_compilation_activity` to all the registered listeners.
 Status BroadcastXlaActivity(XlaJitCompilationActivity jit_compilation_activity);
 
+// Broadcast `jit_compilation_activity` to all the registered listeners.
+Status BroadcastOptimizationRemark(XlaOptimizationRemark optimization_remark);
+
+// LINT.IfChange
+// Called after TensorFlow realizes possible lost performance. The parameters in
+// this should match all of the values in the XlaOptimizationRemark proto.
+Status BroadcastOptimizationRemark(
+    XlaOptimizationRemark::Warning optimization_warning,
+    string debug_information);
+
+// LINT.ThenChange(//tensorflow/compiler/jit/xla_activity.proto)
+
 // Various components of the system can subclass XlaActivityListener to
 // notifications on auto-clustering and JIT compilation events.
 //
@@ -40,6 +52,9 @@ class XlaActivityListener {
   // Called after TensorFlow JIT compiles an XLA cluster.
   virtual Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) = 0;
+
+  // Called after TensorFlow realizes possible lost performance.
+  virtual Status Listen(const XlaOptimizationRemark& optimization_remark) = 0;
 
   // Called at program exit in best-effort manner to give listeners a chance to
   // flush their state.

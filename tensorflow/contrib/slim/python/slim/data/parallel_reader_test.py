@@ -144,14 +144,16 @@ class ParallelReaderTest(test.TestCase):
         capacity=55,
         min_after_dequeue=28,
         dtypes=[dtypes_lib.string, dtypes_lib.string],
-        shapes=[tensor_shape.scalar(), tensor_shape.scalar()])
+        shapes=[tensor_shape.TensorShape([]),
+                tensor_shape.TensorShape([])])
     self._verify_read_up_to_out(shared_queue)
 
   def testReadUpToFromFIFOQueue(self):
     shared_queue = data_flow_ops.FIFOQueue(
         capacity=99,
         dtypes=[dtypes_lib.string, dtypes_lib.string],
-        shapes=[tensor_shape.scalar(), tensor_shape.scalar()])
+        shapes=[tensor_shape.TensorShape([]),
+                tensor_shape.TensorShape([])])
     self._verify_read_up_to_out(shared_queue)
 
 

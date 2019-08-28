@@ -111,6 +111,8 @@ class Dataset {
   std::unique_ptr<thread::ThreadPool> pool_;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
+  ResourceMgr resource_mgr_;
+  CancellationManager cancellation_manager_;
 };
 
 }  // namespace standalone

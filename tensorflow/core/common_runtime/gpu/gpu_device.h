@@ -67,11 +67,6 @@ class BaseGPUDevice : public LocalDevice {
   // completes.
   bool RequiresRecordingAccessedTensors() const override;
 
-  // GPU kernel execution requires us to use `tracing::ScopedAnnotation()`
-  // rather than `tracing::ScopedActivity()`, in order to relate asynchronously
-  // launched GPU kernels to the OpKernel.
-  bool TraceUsingAnnotations() const { return true; }
-
   void ConsumeListOfAccessedTensors(
       DeviceContext* device_context,
       const TensorReferenceVector& tensor_refs) override;

@@ -52,7 +52,7 @@ class PadOp : public OpKernel {
     const Tensor& in1 = context->input(1);
     const int dims = in0.dims();
     static const int kMinDims = 0;
-    static const int kMaxDims = 6;
+    static const int kMaxDims = 8;
     OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
                 errors::Unimplemented("inputs rank not in [", kMinDims, ",",
                                       kMaxDims, "]: ", dims));
@@ -291,7 +291,7 @@ class PadOp : public OpKernel {
                           PadOp<CPUDevice, type, int64>);
 
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
-TF_CALL_string(REGISTER_KERNEL);
+TF_CALL_tstring(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \

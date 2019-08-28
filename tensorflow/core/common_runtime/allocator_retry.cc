@@ -29,7 +29,6 @@ void* AllocatorRetry::AllocateRaw(
         alloc_func,
     int max_millis_to_wait, size_t alignment, size_t num_bytes) {
   if (num_bytes == 0) {
-    LOG(WARNING) << "Request to allocate 0 bytes";
     return nullptr;
   }
   uint64 deadline_micros = 0;

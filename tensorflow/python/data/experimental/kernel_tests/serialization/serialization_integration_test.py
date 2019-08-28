@@ -72,6 +72,7 @@ class SerializationIntegrationTest(test.TestCase):
       init_ops, get_next_ops, saver = self._build_graph(num_pipelines,
                                                         num_outputs)
       with self.session(graph=g) as sess:
+        self.evaluate(init_ops)
         saver.restore(sess, self._ckpt_path())
         for _ in range(num_outputs - break_point):
           output = self.evaluate(get_next_ops)

@@ -138,15 +138,13 @@ class OptimizerV2(trackable.Trackable):
     loss = <call_loss_function>
   vars = <list_of_variables>
   grads = tape.gradient(loss, vars)
+
+  # Process the gradients, for example cap them, etc.
+  # capped_grads = [MyCapper(g) for g in grads]
   processed_grads = [process_gradient(g) for g in grads]
-  grads_and_vars = zip(processed_grads, var_list)
 
-  # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
-  # need to the 'gradient' part, for example cap them, etc.
-  capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
-
-  # Ask the optimizer to apply the capped gradients.
-  opt.apply_gradients(capped_grads_and_vars)
+  # Ask the optimizer to apply the processed gradients.
+  opt.apply_gradients(zip(processed_grads, var_list))
   ```
 
   ### Use with `tf.distribute.Strategy`.
@@ -417,8 +415,8 @@ class OptimizerV2(trackable.Trackable):
         passed to the `Optimizer` constructor.
 
     Returns:
-      An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      An `Operation` that applies the specified gradients. The `iterations`
+        will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
@@ -474,9 +472,12 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with backend.name_scope(name or self._name):
       for grad, var in grads_and_vars:
-        scope_name = ("" if ops.executing_eagerly_outside_functions() else
-                      "_" + var.op.name)
-        with backend.name_scope("update" + scope_name):
+        scope_name = ("update" if ops.executing_eagerly_outside_functions() else
+                      "update_" + var.op.name)
+        # Colocate the update with variables to avoid unnecessary communication
+        # delays. See b/136304694.
+        with backend.name_scope(
+            scope_name), distribution.extended.colocate_vars_with(var):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
@@ -628,7 +629,8 @@ class OptimizerV2(trackable.Trackable):
       return
     # Iterate hyper values deterministically.
     for name, value in sorted(self._hyper.items()):
-      if isinstance(value, ops.Tensor) or callable(value):
+      if isinstance(
+          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
         continue
       else:
         self._hyper[name] = self.add_weight(
@@ -1021,7 +1023,7 @@ def _filter_grads(grads_and_vars):
                      ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
-        ("Gradients does not exist for variables %s when minimizing the loss."),
+        ("Gradients do not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
 

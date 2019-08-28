@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -1463,53 +1462,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
                        np.array([1, 2, 3], dtype=np.int32),
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
-
-  def testMatrixSetDiag(self):
-    # TODO(penporn): Once XLA supports MatrixSetDiagV2, change the call to
-    # gen_array_ops.matrix_set_diag (V1) to array_ops.matrix_set_diag (V2).
-    for dtype in self.numeric_types:
-      # Square
-      self._testBinary(
-          gen_array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
-                   dtype=dtype),
-          np.array([1.0, 2.0, 3.0], dtype=dtype),
-          expected=np.array([[1.0, 1.0, 0.0], [1.0, 2.0, 1.0], [1.0, 1.0, 3.0]],
-                            dtype=dtype))
-
-      self._testBinary(
-          gen_array_ops.matrix_set_diag,
-          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0], [1.0, 0.0, 3.0]],
-                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0], [2.0, 0.0, 6.0]]],
-                   dtype=dtype),
-          np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]], dtype=dtype),
-          expected=np.array(
-              [[[-1.0, 0.0, 3.0], [0.0, 0.0, 0.0], [1.0, 0.0, -3.0]],
-               [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0], [2.0, 0.0, -6.0]]],
-              dtype=dtype))
-
-      # Rectangular
-      self._testBinary(
-          gen_array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=dtype),
-          np.array([3.0, 4.0], dtype=dtype),
-          expected=np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]], dtype=dtype))
-
-      self._testBinary(
-          gen_array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]], dtype=dtype),
-          np.array([3.0, 4.0], dtype=dtype),
-          expected=np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]], dtype=dtype))
-
-      self._testBinary(
-          gen_array_ops.matrix_set_diag,
-          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0]],
-                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0]]], dtype=dtype),
-          np.array([[-1.0, -2.0], [-4.0, -5.0]],
-                   dtype=dtype),
-          expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
-                             [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
-                            dtype=dtype))
 
   def testBroadcastTo(self):
     for dtype in self.all_types:

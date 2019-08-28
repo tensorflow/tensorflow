@@ -117,6 +117,7 @@ def pop_tape(tape):
 
 @contextlib.contextmanager
 def stop_recording():
+  """Stop all gradient recording (backprop and forwardprop)."""
   is_stopped = pywrap_tensorflow.TFE_Py_TapeSetIsStopped()
   try:
     if not is_stopped:
@@ -127,15 +128,53 @@ def stop_recording():
       pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
-def should_record(tensors):
-  """Returns true if any tape in the stack watches any of these tensors."""
-  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecord(tensors)
+def should_record_backprop(tensors):
+  """Returns true if any tape in the stack watches any of these tensors.
+
+  Only takes GradientTapes into account, not forward accumulators.
+
+  Args:
+    tensors: Tensors to check, typically inputs to an operation.
+
+  Returns:
+    Boolean, whether any tape watches any of `tensors`.
+  """
+  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecordBackprop(tensors)
 
 
 def record_operation(op_type, output_tensors, input_tensors, backward_function):
   """Records the operation on all tapes in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
       op_type, output_tensors, input_tensors, backward_function)
+
+
+def record_operation_backprop_only(op_type, output_tensors, input_tensors,
+                                   backward_function):
+  """Records the operation on all backward tapes in the stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationBackprop(
+      op_type, output_tensors, input_tensors, backward_function)
+
+
+def record_operation_forwardprop_only(op_type, output_tensors, input_tensors,
+                                      backward_function,
+                                      forwardprop_output_indices):
+  """Records the operation on all forward accumulators in the stack.
+
+  Args:
+    op_type: a string for the operation type, used in the backprop code
+    output_tensors: a list of Python Tensor objects output by the operation
+    input_tensors: a list of input Tensors to the recorded operation
+    backward_function: the function to be called to, given the gradients of the
+      output tensors, produce the gradients of the input tensors. This function
+      is automatically transposed to produce output gradients given input
+      gradients.
+    forwardprop_output_indices: indicates any output_tensors which contain JVPs.
+      Typically these will have come from TFE_Py_PackForwardGradients. May be
+      None or an empty sequence if there are no JVP outputs from the operation.
+  """
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationForwardprop(
+      op_type, output_tensors, input_tensors, backward_function,
+      forwardprop_output_indices)
 
 
 def delete_trace(tensor_id):

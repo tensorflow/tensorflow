@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -114,13 +114,14 @@ Status ExtractExampleParserConfiguration(
 
   for (int i = 0; i < num_sparse; ++i) {
     int input_idx = sparse_keys_start + i;
-    (*var_len_features)[i].key = op_input_tensors[input_idx].scalar<string>()();
+    (*var_len_features)[i].key =
+        op_input_tensors[input_idx].scalar<tstring>()();
   }
 
   for (int i = 0; i < num_dense; ++i) {
     FixedLenFeature& config = (*fixed_len_features)[i];
     int dense_keys_offset = dense_keys_start + i;
-    config.key = op_input_tensors[dense_keys_offset].scalar<string>()();
+    config.key = op_input_tensors[dense_keys_offset].scalar<tstring>()();
 
     int defaults_offset = dense_defaults_start + i;
     config.default_value = op_input_tensors[defaults_offset];

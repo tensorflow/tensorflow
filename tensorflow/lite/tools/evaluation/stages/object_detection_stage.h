@@ -70,13 +70,22 @@ class ObjectDetectionStage : public EvaluationStage {
     return inference_stage_.get();
   }
 
+  // Returns a const pointer to the latest inference output.
+  const ObjectDetectionResult* GetLatestPrediction() {
+    return &predicted_objects_;
+  }
+
  private:
   const std::vector<std::string>* all_labels_ = nullptr;
   std::unique_ptr<ImagePreprocessingStage> preprocessing_stage_;
   std::unique_ptr<TfliteInferenceStage> inference_stage_;
   std::unique_ptr<ObjectDetectionAveragePrecisionStage> eval_stage_;
   std::string image_path_;
+
+  // Obtained from SetInputs(...).
   const ObjectDetectionResult* ground_truth_objects_;
+  // Reflects the outputs generated from the latest call to Run().
+  ObjectDetectionResult predicted_objects_;
 };
 
 // Reads a tflite::evaluation::ObjectDetectionGroundTruth instance from a

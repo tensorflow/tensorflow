@@ -27,6 +27,7 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver a
 from tensorflow.python.eager import profiler_client
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import versions
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu.profiler import version as profiler_version
 
@@ -155,11 +156,16 @@ def main(unused_argv=None):
                    '--tpu and using --service_addr.')
     service_addr = FLAGS.service_addr
   else:
-    tpu_cluster_resolver = (
-        resolver.TPUClusterResolver([FLAGS.tpu],
-                                    zone=FLAGS.tpu_zone,
-                                    project=FLAGS.gcp_project))
-    service_addr = tpu_cluster_resolver.get_master()
+    try:
+      tpu_cluster_resolver = (
+          resolver.TPUClusterResolver([FLAGS.tpu],
+                                      zone=FLAGS.tpu_zone,
+                                      project=FLAGS.gcp_project))
+      service_addr = tpu_cluster_resolver.get_master()
+    except (ValueError, TypeError):
+      sys.exit('Failed to find TPU %s in zone %s project %s. You may use '
+               '--tpu_zone and --gcp_project to specify the zone and project of'
+               ' your TPU.' % (FLAGS.tpu, FLAGS.tpu_zone, FLAGS.gcp_project))
   service_addr = service_addr.replace('grpc://', '').replace(':8470', ':8466')
 
   workers_list = ''
@@ -180,7 +186,11 @@ def main(unused_argv=None):
                       FLAGS.display_timestamp, FLAGS.num_queries)
   else:
     if not FLAGS.logdir:
-      sys.exit('logdir must be provided')
+      sys.exit('You must specify either --logdir or --monitoring_level.')
+
+    if not gfile.Exists(FLAGS.logdir):
+      gfile.MakeDirs(FLAGS.logdir)
+
     try:
       profiler_client.start_tracing(service_addr,
                                     os.path.expanduser(FLAGS.logdir),

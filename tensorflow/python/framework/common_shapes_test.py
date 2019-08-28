@@ -63,11 +63,11 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
       self.assertEqual(expected, common_shapes.broadcast_shape(shape2, shape1))
 
   def testBroadcast_one_dimension(self):
-    s1 = tensor_shape.vector(5)
-    s2 = tensor_shape.vector(7)
+    s1 = tensor_shape.TensorShape([5])
+    s2 = tensor_shape.TensorShape([7])
 
     unknown = tensor_shape.unknown_shape()
-    scalar = tensor_shape.scalar()
+    scalar = tensor_shape.TensorShape([])
     expanded_scalar = tensor_shape.TensorShape([1])
 
     # Tensors with same shape should have the same broadcast result.
@@ -90,13 +90,13 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
 
   def testBroadcast_many_dimensions(self):
     unknown = tensor_shape.unknown_shape()
-    shape_0 = tensor_shape.scalar()
-    shape_1 = tensor_shape.vector(1)
-    shape_4 = tensor_shape.vector(4)
-    shape_1x4 = tensor_shape.matrix(1, 4)
-    shape_4x1 = tensor_shape.matrix(4, 1)
-    shape_3x4 = tensor_shape.matrix(3, 4)
-    shape_4x3 = tensor_shape.matrix(4, 3)
+    shape_0 = tensor_shape.TensorShape([])
+    shape_1 = tensor_shape.TensorShape([1])
+    shape_4 = tensor_shape.TensorShape([4])
+    shape_1x4 = tensor_shape.TensorShape([1, 4])
+    shape_4x1 = tensor_shape.TensorShape([4, 1])
+    shape_3x4 = tensor_shape.TensorShape([3, 4])
+    shape_4x3 = tensor_shape.TensorShape([4, 3])
 
     # Tensors with same shape should have the same broadcast result.
     for shape in (
@@ -113,7 +113,7 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
       self._assert_broadcast(expected=unknown, shape1=shape, shape2=unknown)
 
     self._assert_broadcast(expected=shape_1x4, shape1=shape_4, shape2=shape_1x4)
-    shape_4x4 = tensor_shape.matrix(4, 4)
+    shape_4x4 = tensor_shape.TensorShape([4, 4])
     self._assert_broadcast(expected=shape_4x4, shape1=shape_4, shape2=shape_4x1)
     self._assert_broadcast(expected=shape_3x4, shape1=shape_4, shape2=shape_3x4)
     self._assert_incompatible_broadcast(shape1=shape_4, shape2=shape_4x3)
@@ -155,14 +155,14 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
 
   def testBroadcast_unknown_dims(self):
     unknown = tensor_shape.unknown_shape()
-    shape_0 = tensor_shape.scalar()
-    shape_1 = tensor_shape.vector(1)
+    shape_0 = tensor_shape.TensorShape([])
+    shape_1 = tensor_shape.TensorShape([1])
     # pylint: disable=invalid-name
-    shape_U = tensor_shape.vector(None)
-    shape_1xU = tensor_shape.matrix(1, None)
-    shape_Ux1 = tensor_shape.matrix(None, 1)
-    shape_4xU = tensor_shape.matrix(4, None)
-    shape_Ux4 = tensor_shape.matrix(None, 4)
+    shape_U = tensor_shape.TensorShape([None])
+    shape_1xU = tensor_shape.TensorShape([1, None])
+    shape_Ux1 = tensor_shape.TensorShape([None, 1])
+    shape_4xU = tensor_shape.TensorShape([4, None])
+    shape_Ux4 = tensor_shape.TensorShape([None, 4])
     # pylint: enable=invalid-name
 
     # Tensors with same shape should have the same broadcast result.
@@ -183,7 +183,7 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
 
     self._assert_broadcast_with_unknown_dims(
         expected=shape_1xU, shape1=shape_U, shape2=shape_1xU)
-    shape_UxU = tensor_shape.matrix(None, None)  # pylint: disable=invalid-name
+    shape_UxU = tensor_shape.TensorShape([None, None])  # pylint: disable=invalid-name
     self._assert_broadcast_with_unknown_dims(
         expected=shape_UxU, shape1=shape_U, shape2=shape_Ux1)
     self._assert_broadcast_with_unknown_dims(
@@ -200,7 +200,7 @@ class CommonShapesTest(test_util.TensorFlowTestCase):
         expected=shape_4xU, shape1=shape_Ux1, shape2=shape_4xU)
     self._assert_broadcast_with_unknown_dims(
         expected=shape_Ux4, shape1=shape_Ux1, shape2=shape_Ux4)
-    shape_4x4 = tensor_shape.matrix(4, 4)
+    shape_4x4 = tensor_shape.TensorShape([4, 4])
     self._assert_broadcast_with_unknown_dims(
         expected=shape_4x4, shape1=shape_4xU, shape2=shape_Ux4)
 

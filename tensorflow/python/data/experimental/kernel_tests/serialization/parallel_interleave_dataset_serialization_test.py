@@ -46,20 +46,18 @@ class ParallelInterleaveDatasetSerializationTest(
     # cycle_length > 1, block_length > 1
     cycle_length = 2
     block_length = 3
-    self.run_core_tests(
-        lambda: self._build_ds(cycle_length, block_length),
-        lambda: self._build_ds(cycle_length * 2, block_length * 1),
-        self.num_outputs)
+    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
+                        self.num_outputs)
     # cycle_length = 1
     cycle_length = 1
     block_length = 3
     self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        None, self.num_outputs)
+                        self.num_outputs)
     # block_length = 1
     cycle_length = 2
     block_length = 1
     self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        None, self.num_outputs)
+                        self.num_outputs)
 
   def testSerializationWithSloppy(self):
     break_points = self.gen_break_points(self.num_outputs, 10)
@@ -94,7 +92,7 @@ class ParallelInterleaveDatasetSerializationTest(
       return dataset_ops.Dataset.range(10).map(_map_fn).apply(
           interleave_ops.parallel_interleave(_interleave_fn, 1))
 
-    self.run_core_tests(_build_dataset, None, 20)
+    self.run_core_tests(_build_dataset, 20)
 
 
 if __name__ == '__main__':

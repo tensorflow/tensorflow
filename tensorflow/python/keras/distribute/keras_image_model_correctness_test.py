@@ -31,7 +31,7 @@ class DistributionStrategyCnnCorrectnessTest(
   def get_model(self,
                 initial_weights=None,
                 distribution=None,
-                run_distributed=None,
+                experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -58,7 +58,7 @@ class DistributionStrategyCnnCorrectnessTest(
           optimizer=gradient_descent.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'],
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
 
     return model
 
@@ -93,22 +93,22 @@ class DistributionStrategyCnnCorrectnessTest(
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_correctness(self, distribution, use_numpy, use_validation_data,
-                           run_distributed):
+                           experimental_run_tf_function):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+                              experimental_run_tf_function)
 
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
                                            use_validation_data,
-                                           run_distributed):
+                                           experimental_run_tf_function):
     self.skipTest('Flakily times out, b/134670856')
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
         with_batch_norm=True,
-        run_distributed=run_distributed)
+        experimental_run_tf_function=experimental_run_tf_function)
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies() +
