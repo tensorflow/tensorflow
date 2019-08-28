@@ -474,11 +474,16 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
   if (LayoutUtil::Equal(copy->operand(0)->shape().layout(),
                         copy->shape().layout()) &&
       buffer_assignment.GetUniqueTopLevelSlice(copy->operand(0)).ok()) {
-    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*copy->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*copy),
-        /*mem_size=*/
-        ByteSizeOf(copy->operand(0)->shape()), copy));
+    // Copy the operand into the output if it's not the same buffer already.
+    auto operand_buffer = GetAllocationSlice(*copy->operand(0));
+    auto destination_buffer = GetAllocationSlice(*copy);
+    if (operand_buffer != destination_buffer) {
+      AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
+          /*source_address=*/operand_buffer,
+          /*destination_buffer=*/destination_buffer,
+          /*mem_size=*/
+          ByteSizeOf(copy->operand(0)->shape()), copy));
+    }
     return Status::OK();
   }
   if (CheckAndEmitHloWithTile021(copy)) {
