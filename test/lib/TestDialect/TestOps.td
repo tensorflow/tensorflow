@@ -165,8 +165,19 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 // Test Traits
 //===----------------------------------------------------------------------===//
 
+def SameOperandElementTypeOp : TEST_Op<"same_operand_type",
+    [SameOperandsElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
 def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
     [SameOperandsAndResultElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
+def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
   let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
   let results = (outs AnyVectorOrTensor:$res);
 }

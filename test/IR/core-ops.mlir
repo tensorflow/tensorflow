@@ -452,3 +452,11 @@ func @test_vector.transfer_ops(%arg0: memref<?x?xf32>) {
   return
 }
 
+// CHECK-LABEL: func @tensor_load_store
+func @tensor_load_store(%0 : memref<4x4xi32>) {
+  // CHECK: %[[TENSOR:.*]] = tensor_load %[[MEMREF:.*]] : memref<4x4xi32>
+  %1 = tensor_load %0 : memref<4x4xi32>
+  // CHECK: tensor_store %[[TENSOR]], %[[MEMREF]] : memref<4x4xi32>
+  tensor_store %1, %0 : memref<4x4xi32>
+  return
+}

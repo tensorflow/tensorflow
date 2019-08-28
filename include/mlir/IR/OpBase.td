@@ -1073,21 +1073,25 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 }
 
 // Op supports operand broadcast behavior.
-def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
+def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
-def Commutative      : NativeOpTrait<"IsCommutative">;
+def Commutative  : NativeOpTrait<"IsCommutative">;
 // Op is isolated from above.
 def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
-def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+def NoSideEffect : NativeOpTrait<"HasNoSideEffect">;
 // Op has the same operand type.
-def SameTypeOperands  : NativeOpTrait<"SameTypeOperands">;
+def SameTypeOperands : NativeOpTrait<"SameTypeOperands">;
+// Op has same shape for all operands.
+def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 // Op has same operand and result shape.
-def SameOperandsAndResultShape   : NativeOpTrait<"SameOperandsAndResultShape">;
+def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
-def SameOperandsAndResultType    : NativeOpTrait<"SameOperandsAndResultType">;
+def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
+// Op has the same element type for all operands.
+def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type.
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
