@@ -32,7 +32,6 @@ limitations under the License.
 
 #include <Arduino.h>        // NOLINT
 #include <driver/i2s.h>
-//#include "freertos/queue.h"
 #include <soc/i2s_reg.h> // I2S_TIMING_REG
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
@@ -144,15 +143,11 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   while (!g_latest_audio_timestamp) {
   }
 
-  //Serial.printf("Audio initialized\n");
-
   return kTfLiteOk;
 }
 
 TfLiteStatus EndAudioRecording(tflite::ErrorReporter* error_reporter) {
   i2s_driver_uninstall(i2s_num); //stop & destroy i2s driver
-  //free(g_audio_capture_buffer);
-  //free(g_audio_output_buffer);
   g_latest_audio_timestamp = 0;
   return kTfLiteOk;
 }
