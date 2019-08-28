@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/layout_with_tiling.md for
+// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
 // details.
 class Tile {
  public:
