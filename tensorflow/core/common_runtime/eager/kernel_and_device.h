@@ -187,7 +187,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
-      std::unordered_map<int, TensorShape> input_tensor_shapes,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -199,7 +198,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
-        input_tensor_shapes_(std::move(input_tensor_shapes)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
@@ -242,7 +240,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
-  std::unordered_map<int, TensorShape> input_tensor_shapes_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 
