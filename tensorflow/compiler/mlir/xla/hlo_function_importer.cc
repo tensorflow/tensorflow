@@ -368,6 +368,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // If dimensions are non-default, the XLA builder implementes it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
+      NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);

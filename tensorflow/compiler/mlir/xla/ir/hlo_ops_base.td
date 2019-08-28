@@ -116,6 +116,17 @@ class BASE_HLO_NegOp {
   }];
 }
 
+class BASE_HLO_RsqrtOp {
+  string summary = "Reciprocal Square-root operator";
+
+  string description = [{
+    Returns `1.0 / sqrt(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_SignOp {
   string summary = "Sign operator";
 
