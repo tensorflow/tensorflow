@@ -74,6 +74,15 @@ func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
 
 // -----
 
+// CHECK-LABEL: func @testBitcast
+func @testBitcast(%arg0: tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16> {
+  // CHECK: tf.Bitcast
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16>
+  return %0 : tensor<3x4x!tf.quint16>
+}
+
+// -----
+
 func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
   // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
   %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
