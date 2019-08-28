@@ -356,8 +356,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kConvert, ConvertOp);
+      NoAttributeCase(kClamp, ClampOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
+      NoAttributeCase(kFloor, FloorOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
@@ -366,6 +368,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // If dimensions are non-default, the XLA builder implementes it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
+      NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);

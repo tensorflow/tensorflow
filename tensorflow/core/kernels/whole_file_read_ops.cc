@@ -34,8 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Status ReadEntireFile(Env* env, const string& filename,
-                             string* contents) {
+template <typename T>
+static Status ReadEntireFile(Env* env, const string& filename, T* contents) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
   io::RandomAccessInputStream input_stream(file.get());
@@ -112,8 +112,8 @@ class ReadFileOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output("contents",
                                                      TensorShape({}), &output));
     OP_REQUIRES_OK(context,
-                   ReadEntireFile(context->env(), input->scalar<string>()(),
-                                  &output->scalar<string>()()));
+                   ReadEntireFile(context->env(), input->scalar<tstring>()(),
+                                  &output->scalar<tstring>()()));
   }
 };
 

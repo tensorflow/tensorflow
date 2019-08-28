@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -494,6 +495,12 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
   string outside_compilation;
+  string frontend_attributes;
+  if (GetNodeAttr(frame->loop_cond->def(), kXlaFrontendAttributesAttrName,
+                  &frontend_attributes)
+          .ok()) {
+    builder.Attr(kXlaFrontendAttributesAttrName, frontend_attributes);
+  }
   if (GetNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName,
                   &outside_compilation)
           .ok()) {

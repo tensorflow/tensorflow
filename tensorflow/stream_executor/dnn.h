@@ -783,6 +783,8 @@ class AlgorithmDesc {
 
   AlgorithmProto ToProto() const { return proto_; }
 
+  string ToString() const;
+
  private:
   AlgorithmProto proto_;
 };

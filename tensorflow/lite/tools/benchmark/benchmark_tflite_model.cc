@@ -295,7 +295,7 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
-  if (params_.HasParam("nnapi_execution_preference")) {
+  if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(INFO) << "nnapi execution preference: ["
                      << params_.Get<string>("nnapi_execution_preference")
                      << "]";
@@ -631,12 +631,14 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
     }
-    if (params_.HasParam("nnapi_execution_preference")) {
+    std::string string_execution_preference =
+        params_.Get<std::string>("nnapi_execution_preference");
+    // Only set execution preference if user explicitly passes one. Otherwise,
+    // leave it as whatever NNAPI has as the default.
+    if (!string_execution_preference.empty()) {
       tflite::StatefulNnApiDelegate::Options::ExecutionPreference
           execution_preference =
               tflite::StatefulNnApiDelegate::Options::kUndefined;
-      std::string string_execution_preference =
-          params_.Get<std::string>("nnapi_execution_preference");
       if (string_execution_preference == "low_power") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kLowPower;
@@ -646,8 +648,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
       } else if (string_execution_preference == "fast_single_answer") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kFastSingleAnswer;
-      } else if (string_execution_preference == "undefined" ||
-                 string_execution_preference.empty()) {
+      } else if (string_execution_preference == "undefined") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kUndefined;
       } else {
@@ -669,7 +670,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
         << params_.Get<std::string>("nnapi_accelerator_name")
         << ") to be used.";
-  } else if (params_.HasParam("nnapi_execution_preference")) {
+  } else if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(WARN) << "`--use_nnapi=true` must be set for the provided NNAPI "
                         "execution preference ("
                      << params_.Get<std::string>("nnapi_execution_preference")

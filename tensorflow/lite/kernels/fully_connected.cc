@@ -249,20 +249,23 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
 
   // Output = bias if bias tensor exists.
   if (bias) {
-    tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
-                                          output->data.f);
+    tensor_utils::VectorBatchVectorAssign(GetTensorData<float>(bias), num_units,
+                                          batch_size,
+                                          GetTensorData<float>(output));
   } else {
-    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
+    std::fill_n(GetTensorData<float>(output), batch_size * num_units, 0.0f);
   }
 
   // Compute output += weight * input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      filter->data.f, num_units, input_size, input->data.f, batch_size,
-      output->data.f, /*result_stride=*/1);
+      GetTensorData<float>(filter), num_units, input_size,
+      GetTensorData<float>(input), batch_size, GetTensorData<float>(output),
+      /*result_stride=*/1);
 
   // Apply activation function
-  tensor_utils::ApplyActivationToVector(output->data.f, batch_size * num_units,
-                                        params->activation, output->data.f);
+  tensor_utils::ApplyActivationToVector(
+      GetTensorData<float>(output), batch_size * num_units, params->activation,
+      GetTensorData<float>(output));
 
   return kTfLiteOk;
 }
@@ -283,23 +286,25 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 
   // Output = bias if bias tensor exists.
   if (bias) {
-    tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
-                                          output->data.f);
+    tensor_utils::VectorBatchVectorAssign(GetTensorData<float>(bias), num_units,
+                                          batch_size,
+                                          GetTensorData<float>(output));
   } else {
-    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
+    std::fill_n(GetTensorData<float>(output), batch_size * num_units, 0.0f);
   }
 
   // Save matrix multiplication computation for all zero input.
-  if (tensor_utils::IsZeroVector(input->data.f, total_input_size)) {
-    tensor_utils::ApplyActivationToVector(output->data.f,
-                                          batch_size * num_units,
-                                          params->activation, output->data.f);
+  if (tensor_utils::IsZeroVector(GetTensorData<float>(input),
+                                 total_input_size)) {
+    tensor_utils::ApplyActivationToVector(
+        GetTensorData<float>(output), batch_size * num_units,
+        params->activation, GetTensorData<float>(output));
     return kTfLiteOk;
   }
 
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float unused_min, unused_max;
-  float* scaling_factors_ptr = scaling_factors->data.f;
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int8_t* quant_data;
   int8_t* filter_data;
   if (filter->type == kTfLiteUInt8) {
@@ -313,9 +318,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {
     const int offset = b * input_size;
-    tensor_utils::SymmetricQuantizeFloats(input->data.f + offset, input_size,
-                                          quant_data + offset, &unused_min,
-                                          &unused_max, &scaling_factors_ptr[b]);
+    tensor_utils::SymmetricQuantizeFloats(
+        GetTensorData<float>(input) + offset, input_size, quant_data + offset,
+        &unused_min, &unused_max, &scaling_factors_ptr[b]);
     // Incorporate scaling of the filter.
     scaling_factors_ptr[b] *= filter->params.scale;
   }
@@ -323,12 +328,13 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Compute output += weight * quantized_input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
-      batch_size, output->data.f,
+      batch_size, GetTensorData<float>(output),
       /*result_stride=*/1);
 
   // Apply activation function to floats.
-  tensor_utils::ApplyActivationToVector(output->data.f, batch_size * num_units,
-                                        params->activation, output->data.f);
+  tensor_utils::ApplyActivationToVector(
+      GetTensorData<float>(output), batch_size * num_units, params->activation,
+      GetTensorData<float>(output));
   return kTfLiteOk;
 }
 

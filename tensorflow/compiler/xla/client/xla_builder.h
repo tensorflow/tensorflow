@@ -147,8 +147,8 @@ class XlaBuilder {
   // Sets OpMetadata that will be added to all instructions until cleared.
   //
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
-  // result, OpMetadata is set on the Computation Builder. All subsequent
-  // instructions generated via this Computation Builder will have the same
+  // result, OpMetadata is set on the computation builder. All subsequent
+  // instructions generated via this computation builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
@@ -157,6 +157,35 @@ class XlaBuilder {
 
   // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
+
+  // Sets the FrontendAttributes that will be added to all instructions until
+  // cleared.
+  //
+  // FrontendAttributes are often applied to a series of XLA HLO instructions.
+  // As a result they are set on the computation builder and all the
+  // instructions generated via the computation builder will have the same
+  // frontend attributes attached to them.
+  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+    frontend_attributes_ = frontend_attributes;
+  }
+
+  // Swap the passed FrontendAttributes with the ones currently set.
+  //
+  // Return the old attributes.
+  FrontendAttributes SwapFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
+    FrontendAttributes old_attributes = std::move(frontend_attributes_);
+    frontend_attributes_ = frontend_attributes;
+    return old_attributes;
+  }
+
+  // Returns the FrontendAttributes that will be attached to all instructions.
+  const FrontendAttributes& frontend_attributes() const {
+    return frontend_attributes_;
+  }
+
+  // Clears all the frontend attributes.
+  void ClearFrontendAttributes() { frontend_attributes_.Clear(); }
 
   // Clears the sharding. Ops will be sharded according to the default placement
   // policy.
@@ -313,6 +342,16 @@ class XlaBuilder {
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
   };
+
+  // Looks up the HloInstruction and sets the frontend attribute "attribute" to
+  // "value".
+  //
+  // If the attribute already existed then its value is updated.
+  //
+  // Note: the attribute is only added to the HloInstruction, not to the
+  // builder.
+  Status SetInstructionFrontendAttribute(XlaOp op, string attribute,
+                                         string value);
 
  private:
   // Build helper which takes the id of the root operation..
@@ -595,9 +634,11 @@ class XlaBuilder {
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
 
-  StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
+  StatusOr<const HloInstructionProto*> LookUpInstruction(XlaOp op) const;
   StatusOr<const HloInstructionProto*> LookUpInstructionByHandle(
       int64 handle) const;
+  StatusOr<HloInstructionProto*> LookUpMutableInstruction(XlaOp op);
+  StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(int64 handle);
 
   // Internal helper method that does the building for an arbitrary unary op.
   XlaOp UnaryOp(HloOpcode unop, const XlaOp& operand);
@@ -706,6 +747,8 @@ class XlaBuilder {
   bool die_immediately_on_error_ = false;
 
   XlaBuilder* parent_builder_{nullptr};
+
+  FrontendAttributes frontend_attributes_;
 
   friend XlaOp Parameter(XlaBuilder* builder, int64 parameter_number,
                          const Shape& shape, const string& name,
@@ -1034,6 +1077,27 @@ class XlaScopedShardingAssignment {
   absl::optional<OpSharding> prev_sharding_;
 };
 
+// RAII-style object: save the current builder's frontend attributes, and merge
+// them with the new ones on construction.
+// Restore the original attributes on destruction.
+class XlaScopedFrontendAttributesAssignment {
+ public:
+  XlaScopedFrontendAttributesAssignment(xla::XlaBuilder* builder,
+                                        FrontendAttributes attributes)
+      : builder_(builder) {
+    saved_ = builder_->SwapFrontendAttributes(attributes);
+  }
+
+  ~XlaScopedFrontendAttributesAssignment() {
+    builder_->SetFrontendAttributes(saved_);
+  }
+
+ private:
+  xla::XlaBuilder* const builder_;
+  FrontendAttributes saved_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
+};
 // Free functions for building XlaOps. The intention is that these will
 // become the public API for building XlaOps rather than calling methods on
 // XlaBuilder directly.

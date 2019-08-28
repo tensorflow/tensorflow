@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
@@ -49,18 +50,37 @@ class ConvPowerVR : public GPUOperation {
   ConvPowerVR& operator=(const ConvPowerVR&) = delete;
 
  private:
-  friend Status CreateConvPowerVR(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const Convolution2DAttributes& attr,
-                                  ConvPowerVR* result);
+  struct ConvParams {
+    int3 block_size;
+    int3 work_group_size;
+    int src_depth_loop_size;
+    bool explicit_sync;
+  };
+
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr, const int3& block_size);
+              const Convolution2DAttributes& attr,
+              const ConvParams& conv_params);
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
   template <DataType S, typename T>
   void RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
                        absl::Span<T> dst);
+
+  friend Status CreateConvPowerVR(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const Convolution2DAttributes& attr,
+                                  ConvPowerVR* result);
+
+  friend std::string GenerateConvPowerVR1x1(
+      const TensorDescriptor& src_descriptor,
+      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+      const ConvParams& conv_params,
+      const std::vector<ElementwiseOperation*>& linked_operations);
+
+  friend ConvParams GuessBestParams(const CLDevice& device,
+                                    const OperationDef& definition,
+                                    const Convolution2DAttributes& attr);
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -72,10 +92,9 @@ class ConvPowerVR : public GPUOperation {
   int2 stride_;
   int2 padding_;
   int2 dilation_;
-  int3 block_size_;
+  ConvParams conv_params_;
 
   CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 template <DataType T>
@@ -87,7 +106,7 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   const bool f32_weights = definition_.precision != CalculationsPrecision::F16;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  const int dst_depth_aligned = AlignByN(dst_depth, block_size_.z);
+  const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
   const int elements_count =
       weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
@@ -113,16 +132,17 @@ void ConvPowerVR::RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
   const int kernel_y = weights.shape.h;
 
   int counter = 0;
-  for (int d = 0; d < IntegralDivideRoundUp(dst_depth, block_size_.z); ++d) {
+  for (int d = 0;
+       d < IntegralDivideRoundUp(dst_depth, conv_params_.block_size.z); ++d) {
     for (int y = 0; y < kernel_y; ++y) {
       for (int x = 0; x < kernel_x; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          for (int k = 0; k < block_size_.z; ++k) {
+          for (int k = 0; k < conv_params_.block_size.z; ++k) {
             T filters[4];
             for (int i = 0; i < 4; ++i) {
               for (int j = 0; j < 4; ++j) {
                 const int s_ch = s * 4 + j;
-                const int d_ch = (d * block_size_.z + k) * 4 + i;
+                const int d_ch = (d * conv_params_.block_size.z + k) * 4 + i;
                 if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
                   const int f_index =
                       weights.shape.LinearIndex({d_ch, y, x, s_ch});

@@ -44,7 +44,7 @@ RecordYielder::~RecordYielder() {
   delete thread_;
 }
 
-Status RecordYielder::YieldOne(string* value) {
+Status RecordYielder::YieldOne(tstring* value) {
   mutex_lock l(mu_);
   while (!BufEnough() && status_.ok()) {
     buf_enough_.wait(l);

@@ -519,8 +519,9 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        ":variable_op_kernels",
+        ":variable_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1180,6 +1181,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1283,6 +1285,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
     ],
 )

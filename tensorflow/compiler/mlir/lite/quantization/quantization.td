@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for TensorFlow Lite.
+// This is the quantization definition file for TensorFlow.
 
-#ifdef TFL_Quantization
+#ifdef TF_Quantization
 #else
-#define TFL_Quantization
+#define TF_Quantization
 
 #ifdef OP_BASE
 #else
@@ -46,7 +46,7 @@ def MinMaxAttr : Attr<Or<[CPred<"$_self.cast<ArrayAttr>().size() == 0">,
 //===----------------------------------------------------------------------===//
 
 // The base class of a quantized type.
-class TFL_QuantizedType<string n, list<int> params, bit signed>
+class QuantizedType<string n, list<int> params, bit signed>
   : Type<And<[CPred<"$_self.isa<mlir::quant::QuantizedType>()">,
               CPred<"$_self.cast<mlir::quant::QuantizedType>()" #
                     ".getStorageTypeIntegralWidth() == " # !head(params)>]>,
@@ -59,21 +59,21 @@ class TFL_QuantizedType<string n, list<int> params, bit signed>
 // Uniform quantized types. Two integers "smantissa" and "sexp" are used to
 // express the Mantissa and Exponent components of the floating-point scale so
 // the scale of the quantized type is "smantissa * 10 ^ sexp".
-class TFL_UInt8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
-    : TFL_QuantizedType<"Uniform",
+class UInt8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
+    : QuantizedType<"Uniform",
                         [8, zero_pt, smantissa, sexp, 0, 255], 0>;
-class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
-    : TFL_QuantizedType<"Uniform",
+class Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
+    : QuantizedType<"Uniform",
                         [8, zero_pt, smantissa, sexp, -128, 127], 1>;
 
 // General uniform quantized types. The definitions can be used to specify
 // operand's tensor types.
-def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
-def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
-def TFL_QUI16 : TFL_QuantizedType<"Uniform", [16], 0>;
-def TFL_QI16 : TFL_QuantizedType<"Uniform", [16], 1>;
-def TFL_QUI32 : TFL_QuantizedType<"Uniform", [32], 0>;
-def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
+def QUI8 : QuantizedType<"Uniform", [8], 0>;
+def QI8 : QuantizedType<"Uniform", [8], 1>;
+def QUI16 : QuantizedType<"Uniform", [16], 0>;
+def QI16 : QuantizedType<"Uniform", [16], 1>;
+def QUI32 : QuantizedType<"Uniform", [32], 0>;
+def QI32 : QuantizedType<"Uniform", [32], 1>;
 
 //===----------------------------------------------------------------------===//
 // TFL native op traits (for quantization).
@@ -83,23 +83,23 @@ def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
 //===----------------------------------------------------------------------===//
 
 // Specify this trait if the op has a fixed output value range.
-class TFL_FixedResultScale<TFL_QuantizedType qt> : NativeOpTrait<!strconcat(
-  "TFL::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
+class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
+  "quant::FixedResult", qt.name, "Scale<", qt.asTraitArgsStr, ">::Impl")>;
 
 // Specify this trait if the op requires same inputs and outputs quantization
 // scales.
-def TFL_SameOperandsAndResultsScale : NativeOpTrait<
-  "TFL::SameOperandsAndResultsScale">;
+def SameOperandsAndResultsScale : NativeOpTrait<
+  "quant::SameOperandsAndResultsScale">;
 
 // Specify this trait if the b-th input of the op is a bias input, which needs
 // a scale based on the scales of op1 and op2.
-class TFL_AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
-  !strconcat("TFL::AccumulatorUniformScale<",
+class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
+  !strconcat("quant::AccumulatorUniformScale<",
              StrJoinInt<[bias, op1, op2]>.result,
              ">::Impl")>;
 
 // Specify this trait if the op doesn't have quantizable ouput. We shouldn't
 // apply quantization on this op.
-def TFL_NoQuantizableResult : NativeOpTrait<"TFL::NoQuantizableResult">;
+def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 
-#endif // TFL_Quantization
+#endif // TF_Quantization

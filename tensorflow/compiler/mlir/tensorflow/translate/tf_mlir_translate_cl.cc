@@ -101,4 +101,4 @@ opt<std::string> saved_model_tags(
     "tf-savedmodel-tags",
     llvm::cl::desc("Tags used to indicate which MeataGraphDef to import, "
                    "separated by ','"),
-    llvm::cl::init(""));
+    llvm::cl::init("serve"));

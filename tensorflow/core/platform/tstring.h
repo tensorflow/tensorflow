@@ -78,6 +78,8 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
+  tstring(size_t n, char c) : str_(n, c) {}
+
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::string_view>::value,
                                     T>::type* = nullptr>
@@ -155,6 +157,8 @@ class tstring {
 
   size_t size() const { return str_.size(); }
 
+  size_t capacity() const { return str_.capacity(); }
+
   const char* c_str() const { return str_.c_str(); }
 
   const char* data() const { return str_.data(); }
@@ -204,6 +208,8 @@ class tstring {
 
     return *this;
   }
+
+  void push_back(char ch) { str_.push_back(ch); }
 
   friend const tstring operator+(const tstring& a, const tstring& b);
   friend bool operator==(const char* a, const tstring& b);

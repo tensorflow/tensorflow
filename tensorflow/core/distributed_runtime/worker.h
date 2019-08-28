@@ -46,7 +46,7 @@ class Worker : public WorkerInterface {
   virtual ~Worker() {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override;
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,

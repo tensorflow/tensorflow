@@ -174,6 +174,10 @@ private:
 
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
+  /// Returns true if the given type is a pointer type to a struct in Uniform or
+  /// StorageBuffer storage class.
+  bool isInterfaceStructPtrType(Type type) const;
+
   /// Main dispatch method for serializing a type. The result <id> of the
   /// serialized type will be returned as `typeID`.
   LogicalResult processType(Location loc, Type type, uint32_t &typeID);
@@ -539,6 +543,8 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   }
 
   for (auto &b : op) {
+    // TODO(antiagainst): support basic blocks and control flow properly.
+    encodeInstructionInto(functions, spirv::Opcode::OpLabel, {getNextID()});
     for (auto &op : b) {
       if (failed(processOperation(&op))) {
         return failure();
@@ -558,6 +564,22 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
   if (failed(processType(varOp.getLoc(), varOp.type(), resultTypeID))) {
     return failure();
   }
+
+  if (isInterfaceStructPtrType(varOp.type())) {
+    auto structType = varOp.type()
+                          .cast<spirv::PointerType>()
+                          .getPointeeType()
+                          .cast<spirv::StructType>();
+    SmallVector<uint32_t, 2> args{
+        findTypeID(structType),
+        static_cast<uint32_t>(spirv::Decoration::Block)};
+    if (failed(encodeInstructionInto(decorations, spirv::Opcode::OpDecorate,
+                                     args))) {
+      return varOp.emitError("cannot decorate ")
+             << structType << " with Block decoration";
+    }
+  }
+
   elidedAttrs.push_back("type");
   SmallVector<uint32_t, 4> operands;
   operands.push_back(resultTypeID);
@@ -608,6 +630,17 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
 //===----------------------------------------------------------------------===//
 // Type
 //===----------------------------------------------------------------------===//
+
+bool Serializer::isInterfaceStructPtrType(Type type) const {
+  if (auto ptrType = type.dyn_cast<spirv::PointerType>()) {
+    auto storageClass = ptrType.getStorageClass();
+    if (storageClass == spirv::StorageClass::Uniform ||
+        storageClass == spirv::StorageClass::StorageBuffer) {
+      return ptrType.getPointeeType().isa<spirv::StructType>();
+    }
+  }
+  return false;
+}
 
 LogicalResult Serializer::processType(Location loc, Type type,
                                       uint32_t &typeID) {

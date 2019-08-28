@@ -2328,7 +2328,7 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinTopkV2: {
       if (version <= 2 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
-        const auto& input = context->tensors[node->outputs->data[0]];
+        const auto& input = context->tensors[node->inputs->data[0]];
         const auto& k_param = context->tensors[node->inputs->data[1]];
         if ((input.type == kTfLiteFloat32 || input.type == kTfLiteInt32 ||
              input.type == kTfLiteUInt8 || input.type == kTfLiteInt8) &&

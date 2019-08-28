@@ -329,11 +329,29 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sampling_dataset_op",
     srcs = ["sampling_dataset_op.cc"],
+    hdrs = ["sampling_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:name_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "sampling_dataset_op_test",
+    size = "small",
+    srcs = ["sampling_dataset_op_test.cc"],
+    deps = [
+        ":sampling_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//third_party/eigen3",
     ],
 )
 

@@ -500,7 +500,8 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
-    if autocast and self._dtype_policy.should_cast_variables:
+    if (autocast and self._dtype_policy.should_cast_variables and
+        dtype.is_floating):
       # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined

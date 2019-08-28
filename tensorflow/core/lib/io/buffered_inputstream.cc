@@ -167,7 +167,8 @@ Status BufferedInputStream::Seek(int64 position) {
   return SkipNBytes(position - bufpos);
 }
 
-Status BufferedInputStream::ReadAll(string* result) {
+template <typename T>
+Status BufferedInputStream::ReadAll(T* result) {
   result->clear();
   Status status;
   while (status.ok()) {
@@ -185,6 +186,11 @@ Status BufferedInputStream::ReadAll(string* result) {
   }
   return status;
 }
+
+template Status BufferedInputStream::ReadAll<string>(string* result);
+#ifdef USE_TSTRING
+template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
+#endif  // USE_TSTRING
 
 Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());

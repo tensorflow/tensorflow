@@ -203,14 +203,15 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":frontend_attributes_util",
         ":host_compute_metadata_proto",
+        ":rearrange_function_argument",
         ":sharding_util",
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_cluster_util",
-        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -268,6 +269,21 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "frontend_attributes_util",
+    srcs = ["frontend_attributes_util.cc"],
+    hdrs = ["frontend_attributes_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -579,6 +595,7 @@ cc_library(
         "functionalize_while.h",
     ],
     deps = [
+        ":frontend_attributes_util",
         ":functionalize_cond",
         ":functionalize_control_flow_util",
         ":tf2xla_util",

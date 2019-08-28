@@ -83,6 +83,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_FloorOp {
+  string summary = "Floor operator";
+
+  string description = [{
+    Returns `Floor(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_LogOp {
   string summary = "Logarithm operator";
 
@@ -99,6 +110,17 @@ class BASE_HLO_NegOp {
 
   string description = [{
     Returns `-operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_RsqrtOp {
+  string summary = "Reciprocal Square-root operator";
+
+  string description = [{
+    Returns `1.0 / sqrt(operand)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.

@@ -966,6 +966,38 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "cublas_gemm_pad_for_tensor_cores",
+    srcs = ["cublas_gemm_pad_for_tensor_cores.cc"],
+    hdrs = ["cublas_gemm_pad_for_tensor_cores.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+tf_cc_test(
+    name = "cublas_gemm_pad_for_tensor_cores_test",
+    srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
+    deps = [
+        ":cublas_gemm_pad_for_tensor_cores",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
+cc_library(
     name = "target_constants",
     hdrs = ["target_constants.h"],
 )

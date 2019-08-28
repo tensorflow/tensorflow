@@ -1197,8 +1197,6 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
-        "no_windows",
         "noasan",  # times out
         "notsan",
         "optonly",  # times out
@@ -1507,10 +1505,7 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "manual",
-        "no_oss",
         "noasan",  # TODO(b/132183295): Re-enable this.
-        "notap",
         "notsan",
     ],
 )

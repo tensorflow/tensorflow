@@ -1385,6 +1385,14 @@ class HloInstruction {
   }
   Status set_backend_config(const tensorflow::protobuf::Message& proto);
 
+  void set_frontend_attributes(FrontendAttributes frontend_attributes) {
+    frontend_attributes_ = std::move(frontend_attributes);
+  }
+
+  const FrontendAttributes& frontend_attributes() const {
+    return frontend_attributes_;
+  }
+
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const string& raw_backend_config_string() const { return backend_config_; }
@@ -1879,6 +1887,18 @@ class HloInstruction {
   // HLO. See the documentation on backend_config().
   string backend_config_;
 
+  // Attributes passed from the frontend to give hints to the backend about
+  // how to compile this HLO.
+  // HLO -> HLO transforms are expected to preserve these attributes on a
+  // "best effort" basis only.
+  // For example:
+  //    x = const(10, frontend_attributes={x}
+  //    y = const(10, frontend_attributes={y}
+  //    z = add(x,y), frontend_attributes={y}
+  // Could be simplified to:
+  //    z' = const(20), frontend_attributes={?}
+  FrontendAttributes frontend_attributes_;
+
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
@@ -1909,6 +1929,8 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
+string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes);
 string OpMetadataToString(const OpMetadata& metadata);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);

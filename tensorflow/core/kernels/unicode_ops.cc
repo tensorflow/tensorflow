@@ -52,7 +52,7 @@ namespace tensorflow {
 namespace {
 
 void Encode(const UnicodeEncoding encoding, const icu::UnicodeString& in,
-            string* out) {
+            tstring* out) {
   if (encoding == UnicodeEncoding::UTF8) {
     out->clear();
     in.toUTF8String(*out);
@@ -330,7 +330,7 @@ class UnicodeTranscodeOp : public OpKernel {
   // Transcode the string from input encoding to the output_encoding_. If
   // non-valid characters are encountered, use the subst_/elide_replacement_
   // config to handle them.
-  void Transcode(string* s, UConverter* input_encoder,
+  void Transcode(tstring* s, UConverter* input_encoder,
                  bool* found_any_format_error) {
     icu::UnicodeString source;
     IterateUnicodeString(
@@ -561,9 +561,9 @@ class UnicodeEncodeOp : public OpKernel {
         appendable_unicode_string.appendCodePoint(code_point);
       }
       // Encode our string and save in the output.
-      string result;
+      tstring result;
       Encode(encoding_, unicode_string, &result);
-      output_tensor_flat(i - 1) = result;
+      output_tensor_flat(i - 1) = std::move(result);
     }
   }
 
