@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import re
 
@@ -28,18 +29,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_stack
+
+# A mock for ``tf_stack.StackFrame``.
+StackFrame = collections.namedtuple(
+    "StackFrame", ["filename", "lineno", "name", "line"])
 
 
 def _make_frame_with_filename(op, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
   frame = op._traceback[idx]
-  return tf_stack.StackFrame(
+  return StackFrame(
       filename,
       frame.lineno,
       frame.name,
-      frame.globals,
-      frame.func_start_lineno)
+      frame.line)
 
 
 def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,

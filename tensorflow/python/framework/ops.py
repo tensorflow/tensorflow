@@ -2304,17 +2304,7 @@ class Operation(object):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return tf_stack.convert_stack(self._traceback)
-
-  @property
-  def traceback_with_start_lines(self):
-    """Same as traceback but includes start line of function definition.
-
-    Returns:
-      A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
-    """
-    return tf_stack.convert_stack(
-        self._traceback, include_func_start_lineno=True)
+    return self._traceback
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""

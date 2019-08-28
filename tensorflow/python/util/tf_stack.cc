@@ -37,7 +37,6 @@ struct StackFrame {
   int lineno;
   py::str name;
   py::object globals;
-  int func_start_lineno;
 
   py::object line() const {
     static const auto* linecache =
@@ -101,9 +100,7 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
     }
 
     const auto& globals = py::reinterpret_borrow<py::object>(f->f_globals);
-    const int func_start_lineno = co->co_firstlineno;
-    ret.push_back({std::move(filename), lineno, std::move(name), globals,
-                   func_start_lineno});
+    ret.push_back({std::move(filename), lineno, std::move(name), globals});
   }
 
   std::reverse(ret.begin(), ret.end());
@@ -115,14 +112,9 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
 PYBIND11_MODULE(_tf_stack, m) {
   // TODO(slebedev): rename to FrameSummary to match Python 3.5+.
   py::class_<StackFrame>(m, "StackFrame")
-      .def(py::init<const py::str&, int, const py::str&, const py::object&,
-                    int>())
       .def_readonly("filename", &StackFrame::filename)
       .def_readonly("lineno", &StackFrame::lineno)
       .def_readonly("name", &StackFrame::name)
-      // TODO(slebedev): remove globals and make the constructor private.
-      .def_readonly("globals", &StackFrame::globals)
-      .def_readonly("func_start_lineno", &StackFrame::func_start_lineno)
       .def_property_readonly("line", &StackFrame::line)
       .def("__repr__",
            [](const StackFrame& self) {
@@ -132,26 +124,28 @@ PYBIND11_MODULE(_tf_stack, m) {
 
       // For compatibility with the traceback module.
       .def("__getitem__",
-           [](const StackFrame& self, ssize_t index) -> py::object {
-             switch (index >= 0 ? index : 4 + index) {
-               case 0:
-                 return self.filename;
-               case 1:
-                 return py::cast(self.lineno);
-               case 2:
-                 return self.name;
-               case 3:
-                 return self.line();
-               default:
-                 throw py::index_error();
-             }
+           [](const StackFrame& self, const py::object& index) -> py::object {
+             return py::make_tuple(self.filename, self.lineno, self.name,
+                                   self.line())[index];
            })
       .def("__len__", [](const StackFrame&) {
         return 4;  // For compatibility with the traceback module.
       });
 
   // TODO(slebedev): rename to StackSummary to match Python 3.5+.
-  py::bind_vector<std::vector<StackFrame>>(m, "Stack", py::module_local(true));
+  py::bind_vector<std::vector<StackFrame>>(m, "Stack", py::module_local(true))
+      // TODO(slebedev): upstream negative indexing support into pybind11.
+      .def(
+          "__getitem__",
+          [](const std::vector<StackFrame>& self, ssize_t index) {
+            const size_t eff_index =
+                index < 0 ? self.size() + index : static_cast<size_t>(index);
+            if (eff_index > self.size()) {
+              throw py::index_error();
+            }
+            return self[eff_index];
+          },
+          py::return_value_policy::reference_internal);
 
   m.def("extract_stack", [](const py::object& limit, const py::list& mappers,
                             const py::list& filters) {
