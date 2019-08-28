@@ -112,7 +112,6 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
-  options.input_tensor_shapes = input_tensor_shapes_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");

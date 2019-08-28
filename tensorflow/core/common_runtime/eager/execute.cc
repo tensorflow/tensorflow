@@ -486,10 +486,6 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       IsMultiDevice(ctx->FindFunctionDef(op->Name()));
 
   std::vector<Device*> input_dev_ptrs;
-  // `input_tensor_shapes` contains (potentially a subset of) non DT_RESOURCE
-  // arguments, and `input_resource_variable_dtypes_and_shapes` contains shapes
-  // and underlying types for (potentially a subset) of DT_RESOURCE arguments.
-  std::unordered_map<int, TensorShape> input_tensor_shapes;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   if (is_multi_device_function) {
@@ -524,19 +520,9 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       cache_key =
           FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
 
-      // If input is normal tensor, get its shape and add it to 'cache_key';
       // If input is a ResourceHandle, get its resource handle dtypes and shapes
       // and add them to 'cache_key'.
-      if (input->dtype != DT_RESOURCE) {
-        TensorShape shape;
-        TF_RETURN_IF_ERROR(input->Shape(&shape));
-
-        input_tensor_shapes[i] = shape;
-
-        // Add both _Arg index and shape to "cache_key".
-        cache_key = FingerprintCat128(cache_key, i);
-        AppendTensorShapeToFingerprint(shape, &cache_key);
-      } else {
+      if (input->dtype == DT_RESOURCE) {
         // We only care about data type and shape for resource variable inputs.
         // But we have no way to tell if input is resource variable (other than
         // looking it up in ResourceMgr, which is slow). So we just get
@@ -616,7 +602,6 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
               << ". Full node_def=" << ndef.DebugString();
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
-          std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
           [ctx](const int64 step_id) {
