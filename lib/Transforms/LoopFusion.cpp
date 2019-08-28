@@ -952,12 +952,13 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
                         ? AffineMap()
                         : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs);
   // Replace all users of 'oldMemRef' with 'newMemRef'.
-  bool ret =
+  LogicalResult res =
       replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,
                                /*extraOperands=*/outerIVs,
                                /*domInstFilter=*/&*forOp.getBody()->begin());
-  assert(ret && "replaceAllMemrefUsesWith should always succeed here");
-  (void)ret;
+  assert(succeeded(res) &&
+         "replaceAllMemrefUsesWith should always succeed here");
+  (void)res;
   return newMemRef;
 }
 

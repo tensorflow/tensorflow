@@ -14,7 +14,7 @@ func @loop_nest_dma() {
   %tag = alloc() : memref<1 x f32>
 
   %zero = constant 0 : index
-  %num_elts = constant 128 : index
+  %num_elts = constant 32 : index
 
   affine.for %i = 0 to 8 {
     affine.dma_start %A[%i], %Ah[%i], %tag[%zero], %num_elts : memref<256 x f32>, memref<32 x f32, 1>, memref<1 x f32>
@@ -22,7 +22,7 @@ func @loop_nest_dma() {
     %v = affine.load %Ah[%i] : memref<32 x f32, (d0) -> (d0), 1>
     %r = "compute"(%v) : (f32) -> (f32)
     affine.store %r, %Ah[%i] : memref<32 x f32, (d0) -> (d0), 1>
-    affine.for %j = 0 to 128 {
+    affine.for %j = 0 to 32 {
       "do_more_compute"(%i, %j) : (index, index) -> ()
     }
   }
@@ -41,7 +41,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
 // CHECK-NEXT:    %{{.*}} = "compute"(%{{.*}}) : (f32) -> f32
 // CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
-// CHECK-NEXT:    affine.for %{{.*}} = 0 to 128 {
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to 32 {
 // CHECK-NEXT:      "do_more_compute"(%{{.*}}, %{{.*}}) : (index, index) -> ()
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -52,7 +52,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:  %{{.*}} = affine.load %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
 // CHECK-NEXT:  %{{.*}} = "compute"(%{{.*}}) : (f32) -> f32
 // CHECK-NEXT:  affine.store %{{.*}}, %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
-// CHECK-NEXT:  affine.for %{{.*}} = 0 to 128 {
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 32 {
 // CHECK-NEXT:    "do_more_compute"(%{{.*}}, %{{.*}}) : (index, index) -> ()
 // CHECK-NEXT:  }
 // CHECK-NEXT:  dealloc %{{.*}} : memref<2x1xf32>
@@ -297,3 +297,32 @@ func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
 // CHECK:       affine.dma_wait %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xi32>
 // CHECK:       return
 }
+
+// Memref replacement will fail here due to a non-dereferencing use. However,
+// no incorrect transformation is performed since replaceAllMemRefUsesWith
+// checks for escaping uses before performing any replacement.
+// CHECK-LABEL: func @escaping_use
+func @escaping_use() {
+  %A = alloc() : memref<256 x f32, (d0) -> (d0), 0>
+  %Ah = alloc() : memref<32 x f32, (d0) -> (d0), 1>
+  %tag = alloc() : memref<1 x f32>
+  %zero = constant 0 : index
+  %num_elts = constant 32 : index
+
+  // alloc for the buffer is created but no replacement should happen.
+  affine.for %i = 0 to 8 {
+    affine.dma_start %A[%i], %Ah[%i], %tag[%zero], %num_elts : memref<256 x f32>, memref<32 x f32, 1>, memref<1 x f32>
+    affine.dma_wait %tag[%zero], %num_elts : memref<1 x f32>
+    "compute"(%Ah) : (memref<32 x f32, 1>) -> ()
+    %v = affine.load %Ah[%i] : memref<32 x f32, (d0) -> (d0), 1>
+    "foo"(%v) : (f32) -> ()
+  }
+  return
+}
+// No replacement
+// CHECK: affine.for %{{.*}} = 0 to 8 {
+// CHECK-NEXT:   affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}}], %{{.*}}
+// CHECK-NEXT:   affine.dma_wait %{{.*}}[%{{.*}}], %{{.*}} : memref<1xf32>
+// CHECK-NEXT:   "compute"(%{{.*}}) : (memref<32xf32, 1>) -> ()
+// CHECK-NEXT:   [[VAL:%[0-9]+]] = affine.load %{{.*}}[%{{.*}}] : memref<32xf32, 1>
+// CHECK-NEXT:   "foo"([[VAL]]) : (f32) -> ()
