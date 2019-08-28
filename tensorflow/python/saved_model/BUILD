@@ -289,6 +289,7 @@ py_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
+        ":save_options",
         ":signature_constants",
         ":signature_def_utils",
         ":signature_serialization",
@@ -493,5 +494,13 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "save_options",
+    srcs = ["save_options.py"],
+    deps = [
+        "@six_archive//:six",
     ],
 )
