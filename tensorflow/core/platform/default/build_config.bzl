@@ -346,7 +346,7 @@ def tf_proto_library_cc(
     if not srcs:
         # This is a collection of sub-libraries. Build header-only and impl
         # libraries containing all the sources.
-        proto_gen(y
+        proto_gen(
             name = cc_name + "_genproto",
             protoc = "@com_google_protobuf//:protoc",
             visibility = ["//visibility:public"],
