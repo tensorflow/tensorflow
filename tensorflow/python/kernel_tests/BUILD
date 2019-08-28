@@ -8,7 +8,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
+# CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
 # fix the shared/overbroad dependencies.
 
@@ -3882,58 +3882,4 @@ cuda_py_test(
     shard_count = 10,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
-)
-
-cuda_py_test(
-    name = "sparse_csr_matrix_ops_test",
-    size = "medium",
-    srcs = ["sparse_csr_matrix_ops_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-        "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
-    ],
-    main = "sparse_csr_matrix_ops_test.py",
-)
-
-cuda_py_test(
-    name = "csr_sparse_matrix_test",
-    size = "medium",
-    srcs = ["csr_sparse_matrix_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-    ],
-    main = "csr_sparse_matrix_test.py",
-)
-
-cuda_py_test(
-    name = "sparse_csr_matrix_grad_test",
-    size = "medium",
-    srcs = ["sparse_csr_matrix_grad_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-    ],
-    main = "sparse_csr_matrix_grad_test.py",
-    shard_count = 50,
-)
-
-cuda_py_test(
-    name = "sparse_csr_matrix_dense_mat_mul_grad_test",
-    size = "medium",
-    srcs = ["sparse_csr_matrix_dense_mat_mul_grad_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-    ],
-    main = "sparse_csr_matrix_dense_mat_mul_grad_test.py",
-    shard_count = 50,
-)
-
-cuda_py_test(
-    name = "sparse_csr_matrix_sparse_mat_mul_grad_test",
-    size = "medium",
-    srcs = ["sparse_csr_matrix_sparse_mat_mul_grad_test.py"],
-    additional_deps = [
-        "//tensorflow/python/ops/linalg/sparse",
-    ],
-    main = "sparse_csr_matrix_sparse_mat_mul_grad_test.py",
-    shard_count = 50,
 )

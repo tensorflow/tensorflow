@@ -38,11 +38,8 @@ tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
 tensorflow/third_party/eigen3/Eigen/Eigenvalues
 tensorflow/third_party/eigen3/Eigen/LU
-tensorflow/third_party/eigen3/Eigen/OrderingMethods
 tensorflow/third_party/eigen3/Eigen/QR
 tensorflow/third_party/eigen3/Eigen/SVD
-tensorflow/third_party/eigen3/Eigen/SparseCholesky
-tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
 tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint

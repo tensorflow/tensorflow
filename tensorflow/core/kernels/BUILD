@@ -3359,9 +3359,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:cuda_solvers",
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ],
 )
 
 LINALG_DEPS = [

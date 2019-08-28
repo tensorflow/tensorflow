@@ -184,7 +184,6 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
@@ -2858,7 +2857,6 @@ py_library(
         ":tensor_array_ops",
         ":unconnected_gradients",
         ":util",
-        "//tensorflow/python/ops/linalg/sparse",
     ],
 )
 
@@ -3843,7 +3841,6 @@ py_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/ragged",
     ],
 )
