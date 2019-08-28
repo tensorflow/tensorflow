@@ -121,7 +121,6 @@ load(
     "tf_additional_libdevice_deps",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_monitoring_hdrs",
-    "tf_additional_mpi_lib_defines",
     "tf_additional_numa_copts",
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
@@ -2428,7 +2427,6 @@ LIB_INTERNAL_DEFINES = (
     tf_additional_lib_defines() + [
         "TF_USE_SNAPPY",
     ] + tf_additional_verbs_lib_defines() +
-    tf_additional_mpi_lib_defines() +
     tf_additional_gdr_lib_defines() +
     tf_additional_numa_lib_defines()
 )

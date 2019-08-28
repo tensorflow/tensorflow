@@ -737,12 +737,6 @@ def tf_additional_verbs_lib_defines():
         "//conditions:default": [],
     })
 
-def tf_additional_mpi_lib_defines():
-    return select({
-        "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
-        "//conditions:default": [],
-    })
-
 def tf_additional_gdr_lib_defines():
     return select({
         "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],

@@ -49,14 +49,6 @@ def tf_additional_verbs_deps():
         "//conditions:default": [],
     })
 
-def tf_additional_mpi_deps():
-    return select({
-        str(Label("//tensorflow:with_mpi_support")): [
-            str(Label("//tensorflow/contrib/mpi:mpi_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
 def tf_additional_gdr_deps():
     return select({
         str(Label("//tensorflow:with_gdr_support")): [

@@ -1,7 +1,6 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 package(
@@ -108,7 +107,7 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
+    ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -175,7 +174,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
+    ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
