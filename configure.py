@@ -1504,7 +1504,6 @@ def main():
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('gdr', 'Build with GDR support.')
-  config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(

@@ -316,12 +316,6 @@ config_setting(
 )
 
 config_setting(
-    name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_numa_support",
     define_values = {"with_numa_support": "true"},
     visibility = ["//visibility:public"],
