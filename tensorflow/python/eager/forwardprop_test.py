@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
@@ -37,6 +38,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -470,6 +472,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
     self.assertAllClose(backback_hvp, forwardback_hvp_function)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testShouldRecordAndStopRecord(self):
     with forwardprop.ForwardGradientAccumulator() as acc:
       c = constant_op.constant(1.)
@@ -495,6 +498,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNone(acc.jvp(d))
       self.assertIsNone(tape.gradient(d, c))
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingSelectively(self):
     with forwardprop.ForwardGradientAccumulator() as acc:
       c = constant_op.constant(1.)
@@ -522,6 +526,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNone(tape.gradient(d, c))
         self.assertAllClose(3., tape.gradient(e, c))
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingWithJVPIndices(self):
     with forwardprop.ForwardGradientAccumulator() as acc:
       c = constant_op.constant(1.)
@@ -537,6 +542,37 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
           [c] + packed_input_tangents,
           None, (((0, 1),),))
       self.assertAllClose(3., acc.jvp(d))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testVariableWatched(self):
+    v = variables.Variable([1., 2., 3.])
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(v, constant_op.constant([.1, -.2, .3]))
+      self.assertAllClose([.1, -.2, .3], acc.jvp(v))
+      x = v * 2.
+      self.assertAllClose([.2, -.4, .6], acc.jvp(x))
+      x2 = v + .1
+      self.assertAllClose([.1, -.2, .3], acc.jvp(x2))
+
+  # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
+  # test... could be something wrong with the test decorator, or some sort of
+  # nondeterminstic caching.
+  def testMirroredVariableWatched(self):
+
+    def _replicated(input_tangent):
+      with forwardprop.ForwardGradientAccumulator() as acc:
+        acc.watch(v, input_tangent)
+        self.assertAllClose([.1, -.2, .3], acc.jvp(v))
+        x = v * 2.
+        self.assertAllClose([.2, -.4, .6], acc.jvp(x))
+        x2 = v + .1
+        self.assertAllClose([.1, -.2, .3], acc.jvp(x2))
+
+    strategy = mirrored_strategy.MirroredStrategy()
+    with strategy.scope():
+      v = variables.Variable([1., 2., 3.])
+      strategy.experimental_run_v2(
+          _replicated, args=(constant_op.constant([.1, -.2, .3]),))
 
 
 if __name__ == "__main__":
