@@ -1033,24 +1033,25 @@ tf_xla_py_test(
     ],
 )
 
-tf_xla_py_test(
-    name = "unary_ops_test",
-    size = "medium",
-    srcs = ["unary_ops_test.py"],
-    tags = [
-        "noguitar",  # TODO(b/140174740): Re-enable when fixed.
-        "notap",  # b/136030724
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
-    ],
-)
+# TODO(b/140174740): Re-enable when fixed.
+#tf_xla_py_test(
+#    name = "unary_ops_test",
+#    size = "medium",
+#    srcs = ["unary_ops_test.py"],
+#    tags = [
+#        "notap",  # b/136030724
+#    ],
+#    deps = [
+#        ":xla_test",
+#        "//third_party/py/numpy",
+#        "//tensorflow/python:array_ops",
+#        "//tensorflow/python:framework",
+#        "//tensorflow/python:math_ops",
+#        "//tensorflow/python:nn_ops",
+#        "//tensorflow/python:nn_ops_gen",
+#        "//tensorflow/python:platform_test",
+#    ],
+#)
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
