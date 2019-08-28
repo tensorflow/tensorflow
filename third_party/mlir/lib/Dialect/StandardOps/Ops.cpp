@@ -2132,6 +2132,63 @@ OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// Helpers for Tensor[Load|Store]Op
+//===----------------------------------------------------------------------===//
+
+static Type getTensorTypeFromMemRefType(Builder &b, Type type) {
+  if (auto memref = type.dyn_cast<MemRefType>())
+    return b.getTensorType(memref.getShape(), memref.getElementType());
+  return b.getNoneType();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorLoadOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, TensorLoadOp op) {
+  *p << "tensor_load " << *op.getOperand();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getOperand()->getType();
+}
+
+static ParseResult parseTensorLoadOp(OpAsmParser *parser,
+                                     OperationState *result) {
+  OpAsmParser::OperandType op;
+  Type type;
+  return failure(parser->parseOperand(op) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(op, type, result->operands) ||
+                 parser->addTypeToList(
+                     getTensorTypeFromMemRefType(parser->getBuilder(), type),
+                     result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// TensorStoreOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, TensorStoreOp op) {
+  *p << "tensor_store " << *op.tensor() << ", " << *op.memref();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.memref()->getType();
+}
+
+static ParseResult parseTensorStoreOp(OpAsmParser *parser,
+                                      OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(
+      parser->parseOperandList(ops, /*requiredOperandCount=*/2) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(
+          ops, {getTensorTypeFromMemRefType(parser->getBuilder(), type), type},
+          loc, result->operands));
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
