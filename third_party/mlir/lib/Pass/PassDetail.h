@@ -62,7 +62,7 @@ public:
   FunctionPassExecutor(const FunctionPassExecutor &rhs);
 
   /// Run the executor on the given function.
-  LogicalResult run(FuncOp function, FunctionAnalysisManager &fam);
+  LogicalResult run(FuncOp function, AnalysisManager am);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -92,7 +92,7 @@ public:
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
   /// Run the executor on the given module.
-  LogicalResult run(ModuleOp module, ModuleAnalysisManager &mam);
+  LogicalResult run(ModuleOp module, AnalysisManager am);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
