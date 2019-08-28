@@ -1156,3 +1156,6 @@ func @bool_literal_in_non_bool_tensor() {
   // expected-error @+1 {{expected i1 type for 'true' or 'false' values}}
   "foo"() {bar = dense<true> : tensor<2xi16>} : () -> ()
 }
+
+// expected-error @+1 {{unbalanced ')' character in pretty dialect name}}
+func @bad_arrow(%arg : !unreg.ptr<(i32)->)

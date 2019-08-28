@@ -1077,3 +1077,5 @@ func @op_with_passthrough_region_args() {
   return
 }
 
+// CHECK-LABEL: func @ptr_to_function() -> !unreg.ptr<() -> ()>
+func @ptr_to_function() -> !unreg.ptr<() -> ()>

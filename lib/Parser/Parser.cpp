@@ -379,6 +379,12 @@ ParseResult Parser::parsePrettyDialectSymbolName(StringRef &prettyName) {
       nestedPunctuation.push_back(c);
       continue;
 
+    case '-':
+      // The sequence `->` is treated as special token.
+      if (*curPtr == '>')
+        ++curPtr;
+      continue;
+
     case '>':
       if (nestedPunctuation.pop_back_val() != '<')
         return emitError("unbalanced '>' character in pretty dialect name");
