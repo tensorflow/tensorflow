@@ -929,6 +929,7 @@ def constant(value, dtype=None, shape=None, name=None):
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
+@keras_export('keras.backend.is_keras_tensor')
 def is_keras_tensor(x):
   """Returns whether `x` is a Keras tensor.
 
