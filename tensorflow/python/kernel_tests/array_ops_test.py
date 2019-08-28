@@ -381,6 +381,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   # Note: this test passes placeholder as constant axis is validated
   # in shape function (see testInvalidAxis)
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/140155173")
   def testInvalid(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     axis = array_ops.placeholder(dtypes.int32)
