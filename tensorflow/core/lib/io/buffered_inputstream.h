@@ -79,7 +79,8 @@ class BufferedInputStream : public InputStreamInterface {
   //
   // Note: the amount of memory used by this function call is unbounded, so only
   // use in ops that expect that behavior.
-  Status ReadAll(string* result);
+  template <typename T>
+  Status ReadAll(T* result);
 
   Status Reset() override;
 
