@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -70,21 +70,25 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
       HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
 }
 
-// Modifies the given convolution to have the given LHS/RHS/result shapes.
+// Modifies the given convolution to have the given input and result shapes.
 static Status PadConv(HloCustomCallInstruction* conv,
-                      const Shape& new_lhs_shape, const Shape& new_rhs_shape,
+                      absl::Span<const Shape> new_input_shapes,
                       const Shape& new_result_shape) {
   CHECK_EQ(0, conv->shape().tuple_shapes(1).dimensions(0))
       << "conv must use 0 scratch bytes, i.e. this pass must be run "
          "before CudnnConvAlgorithmPicker.";
-
-  auto* lhs = conv->mutable_operand(0);
-  auto* rhs = conv->mutable_operand(1);
-  auto* new_lhs = PadInstruction(lhs, new_lhs_shape);
-  auto* new_rhs = PadInstruction(rhs, new_rhs_shape);
+  std::vector<HloInstruction*> new_operands;
+  for (int i = 0; i < conv->operand_count(); ++i) {
+    new_operands.push_back(
+        PadInstruction(conv->mutable_operand(i), new_input_shapes[i]));
+  }
   const Shape& result_shape = conv->shape().tuple_shapes(0);
-  CHECK(new_lhs != lhs || new_rhs != rhs)
-      << "We should have had to pad either LHS or RHS.";
+
+  bool changed = false;
+  for (int i = 0; i < conv->operand_count(); ++i) {
+    changed |= (new_operands[i] != conv->mutable_operand(i));
+  }
+  CHECK(changed) << "We should have had to pad at least one input operand.";
 
   auto add = [&](std::unique_ptr<HloInstruction> new_instr) {
     return conv->parent()->AddInstruction(std::move(new_instr));
@@ -93,10 +97,10 @@ static Status PadConv(HloCustomCallInstruction* conv,
   Shape new_conv_shape = ShapeUtil::MakeTupleShape(
       {new_result_shape, ShapeUtil::MakeShape(U8, {0})});
   auto* new_conv =
-      add(conv->CloneWithNewOperands(new_conv_shape, {new_lhs, new_rhs}));
+      add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
 
-  // Slice the new conv result if necessary, keeping in mind that new_conv has
-  // tuple shape (new_result_shape, u8[0]).
+  // Slice the new conv result if necessary, keeping in mind that new_conv
+  // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
     std::vector<int64> start_indices(result_shape.dimensions_size(), 0);
     std::vector<int64> end_indices(result_shape.dimensions().begin(),
@@ -118,7 +122,61 @@ static Status PadConv(HloCustomCallInstruction* conv,
   return conv->parent()->ReplaceInstruction(conv, new_conv);
 }
 
-static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
+static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
+    HloComputation* comp) {
+  std::vector<HloCustomCallInstruction*> convs;
+  for (HloInstruction* instr : comp->instructions()) {
+    if (IsCustomCallToDnnConvolution(*instr)) {
+      convs.push_back(Cast<HloCustomCallInstruction>(instr));
+    }
+  }
+  return convs;
+}
+
+// This is the main function of the transform.  It runs on a given custom call
+// nodes to cuDNN convolution, calls resolve_pad_shapes to resolve
+// the desired input/output feature map shapes, and adds necessary padding and
+// slicing nodes around them.
+//
+// resolve_pad_shapes points to a function.  It takes conv, a custom call
+// instruction to cuDNN convolution that may need padding to figure out the
+// desired padded input and output tensor shapes and store the desired
+// shapes in new_input_shapes and new_input_shapes.  Notice that
+// new_input_shapes is a vector for multiple input tesnsors. This function
+// shall return true, if padding is necessary or false otherwise in addition to
+// status.
+static StatusOr<bool> ResolveAndPad(
+    HloCustomCallInstruction* conv,
+    StatusOr<bool> (*resolve_pad_shapes)(HloCustomCallInstruction* conv,
+                                         std::vector<Shape>* new_input_shapes,
+                                         Shape* new_result_shape)) {
+  std::vector<Shape> new_input_shapes;
+  Shape new_result_shape;
+  TF_ASSIGN_OR_RETURN(bool result, resolve_pad_shapes(conv, &new_input_shapes,
+                                                      &new_result_shape));
+  if (result) {
+    TF_RETURN_IF_ERROR(PadConv(conv, new_input_shapes, new_result_shape));
+    return true;
+  }
+  return false;
+}
+
+// Adds padding to cudnn convolutions to make them run faster on GPUs with
+// tensor cores.
+//
+//  - f16 convolutions are padded to have input/output channel dimensions that
+//    are multiples of 8, so that we can use tensor cores.
+//
+//  - f16 convolutions with 3 input channels and 32 or 64 output channels are
+//    padded to 4 input channels.  There's a special-cased cudnn algorithm just
+//    for this.
+//
+// Don't run this pass on GPUs without tensor cores -- it will make them slower!
+//
+// TODO(jlebar): Also pad dots.
+static StatusOr<bool> TryResolvePadedShapesForTensorCore(
+    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
+    Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const auto& dnums = conv->convolution_dimension_numbers();
   auto* lhs = conv->mutable_operand(0);
@@ -138,7 +196,8 @@ static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
 
   Shape new_lhs_shape = lhs->shape();
   Shape new_rhs_shape = rhs->shape();
-  Shape new_result_shape = conv->shape().tuple_shapes(0);
+  Shape& new_result_shape = *new_result_shape_ptr;
+  new_result_shape = conv->shape().tuple_shapes(0);
 
   // new_{input,filter_output}_shape points to the appropriate one of
   // new_{lhs,rhs,result}_shape.
@@ -211,29 +270,136 @@ static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
     return false;
   }
 
-  // OK, let's do the transformation!
-  TF_RETURN_IF_ERROR(
-      PadConv(conv, new_lhs_shape, new_rhs_shape, new_result_shape));
+  new_input_shapes_ptr->push_back(new_lhs_shape);
+  new_input_shapes_ptr->push_back(new_rhs_shape);
   return true;
 }
 
-static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
-    HloComputation* comp) {
-  std::vector<HloCustomCallInstruction*> convs;
-  for (HloInstruction* instr : comp->instructions()) {
-    if (IsCustomCallToDnnConvolution(*instr)) {
-      convs.push_back(Cast<HloCustomCallInstruction>(instr));
-    }
+// Adds padding to cudnn integer convolutions to make input and output feature
+// maps multiple of 4
+static StatusOr<bool> TryResolvePadedShapesForIntegerConvolution(
+    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
+    Shape* new_result_shape_ptr) {
+  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
+  const Shape& input_shape = conv->operand(0)->shape();
+  const Shape& result_shape = conv->shape().tuple_shapes(0);
+
+  // Integer convolution only
+  if (!primitive_util::IsIntegralType(input_shape.element_type())) {
+    return false;
   }
-  return convs;
+
+  // kForward and kForwardActivation only
+  if (kind != CudnnConvKind::kForward &&
+      kind != CudnnConvKind::kForwardActivation) {
+    return false;
+  }
+
+  const auto& dnums = conv->convolution_dimension_numbers();
+  std::vector<Shape>& new_input_shapes = *new_input_shapes_ptr;
+  for (auto operand : conv->operands()) {
+    new_input_shapes.push_back(operand->shape());
+  }
+  Shape& new_result_shape = *new_result_shape_ptr;
+  new_result_shape = conv->shape().tuple_shapes(0);
+
+  // Pad the features to multiples of 4 and check that
+  // the conv buffers size changes for debugging purpose.
+  {
+    auto pad_dim = [](Shape* s, int64 dim) {
+      s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim), 4));
+    };
+
+    switch (kind) {
+      case CudnnConvKind::kForward:
+        CHECK(new_input_shapes.size() == 2);
+        pad_dim(&new_input_shapes[0],
+                dnums.input_feature_dimension());  // Input feature maps
+        pad_dim(&new_input_shapes[1],
+                dnums.kernel_input_feature_dimension());  // Kernel for the
+                                                          // input feature maps
+        pad_dim(
+            &new_input_shapes[1],
+            dnums.kernel_output_feature_dimension());  // Kernel for the output
+                                                       // feature maps
+        pad_dim(&new_result_shape,
+                dnums.output_feature_dimension());  // Output feature maps
+        break;
+      case CudnnConvKind::kForwardActivation:
+        CHECK(new_input_shapes.size() == 3 || new_input_shapes.size() == 4);
+        pad_dim(&new_input_shapes[0],
+                dnums.input_feature_dimension());  // Input feature maps
+        pad_dim(&new_input_shapes[1],
+                dnums.kernel_input_feature_dimension());  // Kernel for the
+                                                          // input feature maps
+        pad_dim(
+            &new_input_shapes[1],
+            dnums.kernel_output_feature_dimension());  // Kernel for the output
+                                                       // feature maps
+        pad_dim(&new_input_shapes[2], 0);              // Bias
+        if (new_input_shapes.size() == 4) {
+          pad_dim(&new_input_shapes[3],
+                  dnums.output_feature_dimension());  // Optional side input
+        }
+        pad_dim(&new_result_shape,
+                dnums.output_feature_dimension());  // Output feature maps
+        break;
+      default:
+        CHECK(false);
+    }
+    // Check that padding wouldn't increase the total bytes read/written by this
+    // operation too much.
+    auto check_size_increase = [&](const Shape& old_shape,
+                                   const Shape& new_shape) {
+      int64 old_bytes = ShapeUtil::ByteSizeOf(old_shape);
+      int64 new_bytes = ShapeUtil::ByteSizeOf(new_shape);
+      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease) {
+        return;
+      }
+      VLOG(3)
+          << "Not padding convolution; doing so would change input / result "
+             "shape from "
+          << ShapeUtil::HumanString(old_shape) << " to "
+          << ShapeUtil::HumanString(new_shape) << ", a size increase of "
+          << new_bytes / static_cast<double>(old_bytes) << "x > "
+          << kMaxBytesTouchedIncrease << "x: " << conv->ToString();
+      return;
+    };
+
+    for (int64 i = 0; i < conv->operand_count(); ++i) {
+      check_size_increase(conv->operand(i)->shape(), new_input_shapes[i]);
+    }
+    check_size_increase(result_shape, new_result_shape);
+  }
+
+  bool changed = false;
+  for (int64 i = 0; i < conv->operand_count(); ++i) {
+    changed |=
+        !ShapeUtil::Equal(conv->operand(i)->shape(), new_input_shapes[i]);
+  }
+  if (!changed) {
+    VLOG(3) << "No need to pad features of " << conv->ToString();
+  }
+
+  return changed;
 }
 
-StatusOr<bool> CudnnConvPadForTensorCores::Run(HloModule* module) {
+StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
-      TF_ASSIGN_OR_RETURN(bool result, PadForTensorCores(conv));
-      changed |= result;
+      TF_ASSIGN_OR_RETURN(
+          bool local_changed,
+          ResolveAndPad(conv, TryResolvePadedShapesForIntegerConvolution));
+      changed |= local_changed;
+    }
+    for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
+      if (is_volta_or_later_) {
+        TF_ASSIGN_OR_RETURN(
+            bool local_changed,
+            ResolveAndPad(conv, TryResolvePadedShapesForTensorCore));
+        changed |= local_changed;
+      }
     }
   }
   return changed;

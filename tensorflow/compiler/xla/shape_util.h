@@ -280,7 +280,6 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
-    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()

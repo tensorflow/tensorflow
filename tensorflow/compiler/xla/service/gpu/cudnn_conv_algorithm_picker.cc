@@ -271,10 +271,10 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [stream, &result_shape,
-                                  &rng_state](DeviceMemoryBase buffer) {
-    InitializeFloatBuffer(stream, result_shape.element_type(), &rng_state,
-                          buffer);
+  const auto initialize_buffer = [&stream, &rng_state](
+                                     DeviceMemoryBase buffer,
+                                     const Shape& buffer_shape) {
+    InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
   };
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
@@ -287,13 +287,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
+    initialize_buffer(buffer, operand->shape());
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
                           ShapeUtil::ByteSizeOf(result_shape)));
-  initialize_buffer(result_buffer);
+  initialize_buffer(result_buffer, result_shape);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());

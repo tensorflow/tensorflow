@@ -337,6 +337,9 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
   return absl::nullopt;
 }
 
+// A help function to rewrite convert_or_clamp_or_other<new_type>(gte(conv()))
+// to gte<new_type>(conv<new_type>()).  It bypasses convert_or_clamp_or_other
+// and set the output data type on gte and conv.
 bool RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   auto conv = match.conv;
   auto gte = match.gte;

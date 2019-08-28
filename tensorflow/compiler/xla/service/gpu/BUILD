@@ -712,6 +712,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+	"//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
     ],
 )
@@ -937,11 +938,12 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_pad_for_tensor_cores",
-    srcs = ["cudnn_conv_pad_for_tensor_cores.cc"],
-    hdrs = ["cudnn_conv_pad_for_tensor_cores.h"],
+    name = "cudnn_pad_for_convolutions",
+    srcs = ["cudnn_pad_for_convolutions.cc"],
+    hdrs = ["cudnn_pad_for_convolutions.h"],
     deps = [
         ":ir_emission_utils",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -951,10 +953,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_pad_for_tensor_cores_test",
-    srcs = ["cudnn_conv_pad_for_tensor_cores_test.cc"],
+    name = "cudnn_pad_for_convolutions_test",
+    srcs = ["cudnn_pad_for_convolutions_test.cc"],
     deps = [
-        ":cudnn_conv_pad_for_tensor_cores",
+        ":cudnn_pad_for_convolutions",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1008,6 +1010,7 @@ cc_library(
     deps = [
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
+        ":cudnn_pad_for_convolutions",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":fusion_merger",
@@ -1110,10 +1113,10 @@ cc_library(
     ],
     deps = [
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
+        ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
