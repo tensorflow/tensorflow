@@ -83,6 +83,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_FloorOp {
+  string summary = "Floor operator";
+
+  string description = [{
+    Returns `Floor(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_LogOp {
   string summary = "Logarithm operator";
 

@@ -322,6 +322,14 @@ func @exp_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
 // -----
 
+func @floor_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.floor' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
 func @log_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   // expected-error@+1 {{'xla_hlo.log' op requires the same type for all operands and results}}
   %0 = "xla_hlo.log"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
