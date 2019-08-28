@@ -16,4 +16,5 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/hello_world/constants.h"
 
 // This is tuned so that a full cycle takes ~4 seconds on an Arduino MKRZERO.
+// For a cycle in ~4 seconds on a Teensy4.0 use kInferencesPerCycle = 400000
 const int kInferencesPerCycle = 1000;
