@@ -856,6 +856,30 @@ Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   VLOG(4) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
 
+  // If the operand is only used by a conditional, do the copy inside the branch
+  // to avoid overhead for other branches.
+  if (instruction->opcode() == HloOpcode::kConditional && operand_no > 0 &&
+      instruction->operand(operand_no)->user_count() == 1) {
+    auto branch_comp = instruction->branch_computation(operand_no - 1);
+    auto param = branch_comp->parameter_instruction(0);
+    *param->mutable_shape() = operand->shape();
+    auto param_users = param->users();
+    TF_ASSIGN_OR_RETURN(HloInstruction * param_copy,
+                        CreateCopyWithNewLayout(operand_layout.shape(), param));
+    for (auto user : param_users) {
+      TF_RETURN_IF_ERROR(param->ReplaceUseWithDifferentShape(user, param_copy));
+    }
+    VLOG(4) << "New copy of " << operand->ToString() << " is "
+            << param_copy->ToString();
+    if (param == branch_comp->root_instruction()) {
+      branch_comp->set_root_instruction(param_copy,
+                                        /*accept_different_shape=*/true);
+    }
+    *FindOrDie(computation_layouts_, branch_comp).mutable_parameter_layout(0) =
+        ShapeLayout(operand->shape());
+    return Status::OK();
+  }
+
   TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
                       CreateCopyWithNewLayout(operand_layout.shape(), operand));
 
