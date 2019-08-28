@@ -30,21 +30,21 @@ limitations under the License.
 // The pin of the built-in LED
 int led = LED_BUILTIN;
 
-// Track whether the function has run at least once
-bool initialized = false;
-
 // Set brightness of the (inbuilt) LED with PWM
 // This will give a slow fade-in and fade-out animation
 void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
                   float y_value) {
+
+  // Track whether the function has run at least once
+  static bool is_initialized = false;
   // Do this only once
-  if (!initialized) {
+  if (!is_initialized) {
     // Set the LED pin to output
     pinMode(led, OUTPUT);
     // Setup timer and attach timer to a led pin
     ledcSetup(LEDC_CHANNEL_0, LEDC_BASE_FREQ, LEDC_TIMER_13_BIT);
     ledcAttachPin(led, LEDC_CHANNEL_0);
-    initialized = true;
+    is_initialized = true;
   }
 
   // Calculate the brightness of the LED such that y=-1 is fully off
