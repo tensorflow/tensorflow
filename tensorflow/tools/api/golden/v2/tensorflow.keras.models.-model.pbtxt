@@ -277,7 +277,7 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "save_weights"
