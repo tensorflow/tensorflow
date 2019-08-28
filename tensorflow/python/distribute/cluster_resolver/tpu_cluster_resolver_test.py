@@ -27,7 +27,6 @@ from tensorflow.python import eager
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -436,14 +435,8 @@ class TPUClusterResolverTest(test.TestCase):
   def testShouldResolveLocal(self):
     self.verifyShouldResolve('local', False)
 
-  def testShouldResolveLocalhost(self):
-    self.verifyShouldResolve('localhost:12345', False)
-
   def testShouldResolveGrpc(self):
     self.verifyShouldResolve('grpc://10.1.2.3:8470', False)
-
-  def testShouldResolveBns(self):
-    self.verifyShouldResolve('/bns/foo/bar', False)
 
   def testShouldResolveName(self):
     self.verifyShouldResolve('mytpu', True)
@@ -455,20 +448,13 @@ class TPUClusterResolverTest(test.TestCase):
     self.verifyShouldResolve('grpctpu', True)
 
   def testNoCallComputeMetadata(self):
-    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/foo/bar')
-    self.assertEqual('/bns/foo/bar', cluster_resolver.master())
-    if ops.executing_eagerly_outside_functions():
-      self.assertEqual(
-          server_lib.ClusterSpec({
-              'worker': ['/bns/foo/bar']
-          }).as_dict(),
-          cluster_resolver.cluster_spec().as_dict())
-    else:
-      self.assertEqual(None, cluster_resolver.cluster_spec())
-
-  def testLocalhostMaster(self):
-    cluster_resolver = resolver.TPUClusterResolver(tpu='localhost:12345')
-    self.assertEqual('localhost:12345', cluster_resolver.master())
+    cluster_resolver = resolver.TPUClusterResolver(tpu='grpc://10.1.2.3:8470')
+    self.assertEqual('grpc://10.1.2.3:8470', cluster_resolver.master())
+    self.assertEqual(
+        server_lib.ClusterSpec({
+            'worker': ['10.1.2.3:8470']
+        }).as_dict(),
+        cluster_resolver.cluster_spec().as_dict())
 
   def testGkeEnvironmentForDonut(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
@@ -534,25 +520,6 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertEqual(
         'https://{api}.internal/{apiVersion}',
         (resolver.TPUClusterResolver._environment_discovery_url()))
-
-  def testEnvironmentAndRpcDetectionForGoogle(self):
-    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef')
-    self.assertEqual(cluster_resolver.environment, 'google')
-    self.assertEqual(cluster_resolver.rpc_layer, None)
-    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
-
-  def testEnvironmentAndRpcDetectionForGoogleNumericalPort(self):
-    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:1234')
-    self.assertEqual(cluster_resolver.environment, 'google')
-    self.assertEqual(cluster_resolver.rpc_layer, None)
-    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
-
-  def testEnvironmentAndRpcDetectionForGoogleNamedPort(self):
-    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:port')
-    self.assertEqual(cluster_resolver.environment, 'google')
-    self.assertEqual(cluster_resolver.rpc_layer, None)
-    self.assertEqual(cluster_resolver._tpu,
-                     compat.as_bytes('/bns/ab/cd/ef:port'))
 
   def testEnvironmentAndRpcDetectionForGrpcString(self):
     cluster_resolver = resolver.TPUClusterResolver(
