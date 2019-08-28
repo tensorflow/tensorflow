@@ -52,13 +52,6 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
-  // Parameter block_contains_multi_tiles indicates whether a tile block
-  // consists of multiple tiles or not. If the tile block contains only one
-  // tile, there is no need to use atomic operation to accumulate a local result
-  // to a global result to implement reduction.
-  using TileGenerator =
-      std::function<void(const llvm_ir::IrArray::Index& output_tile_origin,
-                         absl::Span<llvm::Value* const> output_tile_bounds)>;
   // KernelCodegenInfo records the common information to support the code
   // generation for a kernel to process tensor elements by blocks. A block of
   // tensor elements may contain one or multiple tiles. The code generators that
@@ -251,7 +244,8 @@ class IrEmitterUnnested : public IrEmitter,
                   BlockEpilogueGenerator block_epilogue_generator);
 
   void EmitBlock(KernelCodegenInfo* kernel_info, KernelSupportLibrary* ksl,
-                 llvm::Type* index_ty, TileGenerator emit_one_tile);
+                 llvm::Value* y, llvm::Value* x,
+                 TileElementGenerator tile_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
