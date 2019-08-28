@@ -34,6 +34,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
@@ -133,8 +134,8 @@ def _sequence_like(instance, args):
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
-    if instance_type == _collections.defaultdict:
-      d = _collections.defaultdict(instance.default_factory)
+    if instance_type == _collections_abc.defaultdict:
+      d = _collections_abc.defaultdict(instance.default_factory)
       for key in instance:
         d[key] = result[key]
       return d
