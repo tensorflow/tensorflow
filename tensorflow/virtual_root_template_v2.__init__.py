@@ -97,4 +97,29 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
+# These should not be visible in the main tf module.
+try:
+  del core
+except NameError:
+  pass
+
+try:
+  del python
+except NameError:
+  pass
+
+try:
+  del compiler
+except NameError:
+  pass
+
+try:
+  del tools
+except NameError:
+  pass
+
+try:
+  del examples
+except NameError:
+  pass
 # LINT.ThenChange(//tensorflow/virtual_root_template_v1.__init__.py.oss)
