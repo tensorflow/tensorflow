@@ -354,8 +354,8 @@ def traceback_files_common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      for frame in op.traceback:
-        filename = frame.filename
+      # TODO(slebedev): switch to .filename once 2.X support is dropped.
+      for filename, _, _, _ in op.traceback:
         if "<embedded" not in filename:
           files.add(filename)
   return os.path.split(os.path.commonprefix(list(files)))[0]

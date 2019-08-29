@@ -35,11 +35,11 @@ def _compact_stack_trace(op):
   """Returns a traceback for `op` with common file prefixes stripped."""
   compact_traces = []
   common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
-  for frame in op.traceback:
-    filename = frame.filename
+  # TODO(slebedev): switch to .filename etc once 2.X support is dropped.
+  for filename, lineno, name, line in op.traceback:
     if filename.startswith(common_prefix):
       filename = filename[len(common_prefix):]
-    compact_traces.append((filename, frame.lineno, frame.name, frame.line))
+    compact_traces.append((filename, lineno, name, line))
   return compact_traces
 
 
