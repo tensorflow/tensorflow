@@ -174,7 +174,6 @@ cc_library(
     ],
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
-        ":simple_memory_arena",
         ":string",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
