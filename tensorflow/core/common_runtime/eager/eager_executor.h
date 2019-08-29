@@ -59,6 +59,8 @@ class EagerNode {
 
   // Returns nullptr iff this Eager node is synchronous.
   virtual AsyncEagerNode* AsAsync() { return nullptr; }
+
+  virtual string DebugString() const = 0;
 };
 
 class AsyncEagerNode : public EagerNode {

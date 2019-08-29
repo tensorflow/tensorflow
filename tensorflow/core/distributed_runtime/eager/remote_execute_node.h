@@ -72,6 +72,13 @@ class RemoteExecuteNode : public AsyncEagerNode {
     }
   }
 
+  string DebugString() const override {
+    string out = "[RemoteExecuteNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    strings::StrAppend(&out, ", target_device: ", device_->name());
+    return out;
+  }
+
  private:
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned

@@ -184,6 +184,7 @@ tensorflow::Status EagerExecutor::status() const {
 }
 
 void EagerExecutor::NodeDone(EagerNode* node, const Status& status) {
+  VLOG(3) << "Node Done: " << node->DebugString();
   std::unique_ptr<EagerNode> current_node;
   std::vector<std::unique_ptr<EagerNode>> nodes_to_destroy;
   {
@@ -256,6 +257,7 @@ void EagerExecutor::Run() {
       // and register a notification for its completion.
       curr_node_raw = node_queue_.front().get();
     }
+    VLOG(3) << "Running Node: " << curr_node_raw->DebugString();
     AsyncEagerNode* async_node_raw = curr_node_raw->AsAsync();
     if (async_node_raw == nullptr) {
       tensorflow::Status status = curr_node_raw->Run();

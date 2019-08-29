@@ -50,6 +50,12 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
   void Abort(Status status) override {}
 
+  string DebugString() const override {
+    string out = "[DestroyTensorHandleNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    return out;
+  }
+
  private:
   std::unique_ptr<EnqueueRequest> request_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.

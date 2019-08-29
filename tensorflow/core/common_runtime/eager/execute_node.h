@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
@@ -89,6 +90,12 @@ class ExecuteNode : public EagerNode {
     for (auto handle : retvals_) {
       handle->Poison(status);
     }
+  }
+
+  string DebugString() const override {
+    string out = "[ExecuteNode]";
+    strings::StrAppend(&out, " kernel: ", kernel_->name());
+    return out;
   }
 
  private:
