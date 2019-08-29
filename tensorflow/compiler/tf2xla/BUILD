@@ -553,6 +553,29 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_bridge_pass",
+    srcs = ["mlir_bridge_pass.cc"],
+    hdrs = ["mlir_bridge_pass.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/core:core_cpu_lib",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_bridge_pass_registration",
+    srcs = [
+        "mlir_bridge_pass_registration.cc",
+    ],
+    deps = [
+        ":mlir_bridge_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "rearrange_function_argument",
     srcs = [
         "rearrange_function_argument.cc",
@@ -561,7 +584,7 @@ cc_library(
         "rearrange_function_argument.h",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        ":tf2xla_util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",

@@ -4,7 +4,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = ["@local_config_mlir//:friends"],
+    default_visibility = [
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "@local_config_mlir//:friends",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
