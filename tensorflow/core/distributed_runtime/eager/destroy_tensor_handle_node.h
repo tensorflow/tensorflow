@@ -25,23 +25,25 @@ namespace eager {
 
 // DestroyTensorHandleNode is an implementation of EagerNode which enqueues a
 // request to destroy a remote tensor handle.
-class DestroyTensorHandleNode : public tensorflow::EagerNode {
+class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
                           EagerClient* eager_client)
-      : tensorflow::EagerNode(),
+      : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client) {}
 
-  Status Run() override {
+  void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;
-    return eager_client_->StreamingEnqueueAsync(
-        request_.get(), response, [response](const tensorflow::Status& s) {
+    eager_client_->StreamingEnqueueAsync(
+        request_.get(), response,
+        [response, done](const tensorflow::Status& s) {
           if (!s.ok()) {
             LOG(WARNING) << "Ignoring an error encountered when deleting "
                             "remote tensors handles: "
                          << s.ToString();
           }
+          done(Status::OK());
           delete response;
         });
   }
