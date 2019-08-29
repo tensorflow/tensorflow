@@ -537,6 +537,13 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(3., tape.gradient(e, c))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testOpWithNoTrainableOutputs(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = variables.Variable(1.)
+      acc.watch(v, 11.)
+      v.assign_sub(0.5)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingWithJVPIndices(self):
     with forwardprop.ForwardGradientAccumulator() as acc:
       c = constant_op.constant(1.)

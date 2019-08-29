@@ -54,6 +54,9 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
+  if not outputs:
+    # tape.gradients([], inputs) doesn't make much sense
+    return []
   trainable_inputs = []
   trainable_indices = []
   nontrivial_tangents = []
