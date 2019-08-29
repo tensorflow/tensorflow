@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/lite/nnapi/nnapi_util.h"
+
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 #endif
@@ -302,9 +304,17 @@ void BenchmarkTfLiteModel::LogParams() {
   }
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
-  if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
-    TFLITE_LOG(INFO) << "nnapi accelerator name: ["
-                     << params_.Get<string>("nnapi_accelerator_name") << "]";
+  if (params_.Get<bool>("use_nnapi")) {
+    std::string log_string = "nnapi accelerator name: [" +
+                             params_.Get<string>("nnapi_accelerator_name") +
+                             "]";
+
+    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+    // Print available devices when possible
+    if (!string_device_names_list.empty()) {
+      log_string += " (Available: " + string_device_names_list + ")";
+    }
+    TFLITE_LOG(INFO) << log_string;
   }
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
 #if defined(__ANDROID__)
