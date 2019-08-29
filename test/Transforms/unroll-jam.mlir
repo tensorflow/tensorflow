@@ -7,48 +7,52 @@
 
 // CHECK-LABEL: func @unroll_jam_imperfect_nest() {
 func @unroll_jam_imperfect_nest() {
-  // CHECK: %c100 = constant 100 : index
-  // CHECK-NEXT: affine.for %arg0 = 0 to 100 step 2 {
   affine.for %i = 0 to 101 {
-    // CHECK: "addi32"(%arg0, %arg0) : (index, index) -> i32
-    // CHECK-NEXT: %3 = affine.apply [[MAP_PLUS_1]](%arg0)
-    // CHECK-NEXT: "addi32"(%3, %3) : (index, index) -> i32
     %x = "addi32"(%i, %i) : (index, index) -> i32
     affine.for %j = 0 to 17 {
-      // CHECK:      %8 = "addi32"(%arg0, %arg0) : (index, index) -> i32
-      // CHECK-NEXT: "addi32"(%8, %8) : (i32, i32) -> i32
-      // CHECK-NEXT: %10 = affine.apply [[MAP_PLUS_1]](%arg0)
-      // CHECK-NEXT: %11 = "addi32"(%10, %10) : (index, index) -> i32
-      // CHECK-NEXT: "addi32"(%11, %11) : (i32, i32) -> i32
       %y = "addi32"(%i, %i) : (index, index) -> i32
       %z = "addi32"(%y, %y) : (i32, i32) -> i32
     }
-    // CHECK: "addi32"(%arg0, %arg0) : (index, index) -> i32
-    // CHECK-NEXT: %6 = affine.apply [[MAP_PLUS_1]](%arg0)
-    // CHECK-NEXT: "addi32"(%6, %6) : (index, index) -> i32
-    %w = "addi32"(%i, %i) : (index, index) -> i32
-  } // CHECK }
-  // cleanup loop (single iteration)
-  // CHECK: "addi32"(%c100, %c100) : (index, index) -> i32
-  // CHECK-NEXT: affine.for %arg0 = 0 to 17 {
-  // CHECK-NEXT:   %2 = "addi32"(%c100, %c100) : (index, index) -> i32
-  // CHECK-NEXT:   "addi32"(%2, %2) : (i32, i32) -> i32
-  // CHECK-NEXT: }
-  // CHECK-NEXT: "addi32"(%c100, %c100) : (index, index) -> i32
+    %w = "foo"(%i, %x) : (index, i32) -> i32
+  }
   return
 }
+// CHECK:      affine.for [[IV0:%arg[0-9]+]] = 0 to 100 step 2 {
+// CHECK-NEXT:   [[RES1:%[0-9]+]] = "addi32"([[IV0]], [[IV0]])
+// CHECK-NEXT:   [[INC:%[0-9]+]] = affine.apply [[MAP_PLUS_1]]([[IV0]])
+// CHECK-NEXT:   [[RES2:%[0-9]+]] = "addi32"([[INC]], [[INC]])
+// CHECK-NEXT:   affine.for %{{.*}} = 0 to 17 {
+// CHECK-NEXT:     [[RES3:%[0-9]+]] = "addi32"([[IV0]], [[IV0]])
+// CHECK-NEXT:     "addi32"([[RES3]], [[RES3]]) : (i32, i32) -> i32
+// CHECK-NEXT:     [[INC1:%[0-9]+]] = affine.apply [[MAP_PLUS_1]]([[IV0]])
+// CHECK-NEXT:     [[RES4:%[0-9]+]] = "addi32"([[INC1]], [[INC1]])
+// CHECK-NEXT:     "addi32"([[RES4]], [[RES4]]) : (i32, i32) -> i32
+// CHECK-NEXT:   }
+// CHECK:        "foo"([[IV0]], [[RES1]])
+// CHECK-NEXT:   {{.*}} = affine.apply [[MAP_PLUS_1]]([[IV0]])
+// CHECK-NEXT:   "foo"({{.*}}, [[RES2]])
+// CHECK:      }
+// Cleanup loop (single iteration).
+// CHECK:      %{{.*}} = "addi32"(%c100, %c100)
+// CHECK-NEXT: affine.for [[IV0]] = 0 to 17 {
+// CHECK-NEXT:   [[RESC:%[0-9]+]] = "addi32"(%c100, %c100)
+// CHECK-NEXT:   "addi32"([[RESC]], [[RESC]]) : (i32, i32) -> i32
+// CHECK-NEXT: }
+// CHECK-NEXT: %{{.*}} = "foo"(%c100, %{{.*}})
+// CHECK-NEXT: return
 
-// CHECK-LABEL: func @loop_nest_unknown_count_1(%arg0: index) {
+// CHECK-LABEL: func @loop_nest_unknown_count_1
+// CHECK-SAME: [[N:arg[0-9]+]]: index
 func @loop_nest_unknown_count_1(%N : index) {
-  // CHECK-NEXT: affine.for %arg1 = 1 to [[MAP_DIV_OFFSET]]()[%arg0] step 2 {
-  // CHECK-NEXT:   affine.for %arg2 = 1 to 100 {
-  // CHECK-NEXT:     %0 = "foo"() : () -> i32
-  // CHECK-NEXT:     %1 = "foo"() : () -> i32
+  // CHECK-NEXT: affine.for %{{.*}} = 1 to [[MAP_DIV_OFFSET]]()[%[[N]]] step 2 {
+  // CHECK-NEXT:   affine.for %{{.*}} = 1 to 100 {
+  // CHECK-NEXT:     %{{.*}} = "foo"() : () -> i32
+  // CHECK-NEXT:     %{{.*}} = "foo"() : () -> i32
   // CHECK-NEXT:   }
   // CHECK-NEXT: }
   // A cleanup loop should be generated here.
-  // CHECK-NEXT: affine.for %arg1 = [[MAP_DIV_OFFSET]]()[%arg0] to %arg0 {
-  // CHECK-NEXT:   affine.for %arg2 = 1 to 100 {
+  // CHECK-NEXT: affine.for %{{.*}} = [[MAP_DIV_OFFSET]]()[%[[N]]] to %[[N]] {
+  // CHECK-NEXT:   affine.for %{{.*}} = 1 to 100 {
   // CHECK-NEXT:     "foo"() : () -> i32
   // CHECK_NEXT:   }
   // CHECK_NEXT: }
@@ -60,21 +64,22 @@ func @loop_nest_unknown_count_1(%N : index) {
   return
 }
 
-// CHECK-LABEL: func @loop_nest_unknown_count_2(%arg0: index) {
-func @loop_nest_unknown_count_2(%arg : index) {
-  // CHECK-NEXT: affine.for %arg1 = %arg0 to  [[M1]]()[%arg0] step 2 {
-  // CHECK-NEXT:   affine.for %arg2 = 1 to 100 {
-  // CHECK-NEXT:     "foo"(%arg1) : (index) -> i32
-  // CHECK-NEXT:     %2 = affine.apply #map{{[0-9]+}}(%arg1)
-  // CHECK-NEXT:     "foo"(%2) : (index) -> i32
+// CHECK-LABEL: func @loop_nest_unknown_count_2
+// CHECK-SAME: %[[N:arg[0-9]+]]: index
+func @loop_nest_unknown_count_2(%N : index) {
+  // CHECK-NEXT: affine.for [[IV0:%arg[0-9]+]] = %[[N]] to  [[M1]]()[%[[N]]] step 2 {
+  // CHECK-NEXT:   affine.for [[IV1:%arg[0-9]+]] = 1 to 100 {
+  // CHECK-NEXT:     "foo"([[IV0]]) : (index) -> i32
+  // CHECK-NEXT:     [[RES:%[0-9]+]] = affine.apply #map{{[0-9]+}}([[IV0]])
+  // CHECK-NEXT:     "foo"([[RES]])
   // CHECK-NEXT:   }
   // CHECK-NEXT: }
   // The cleanup loop is a single iteration one and is promoted.
-  // CHECK-NEXT: %0 = affine.apply [[M1]]()[%arg0]
-  // CHECK-NEXT: affine.for %arg1 = 1 to 100 {
-  // CHECK-NEXT:   "foo"(%0) : (index) -> i32
+  // CHECK-NEXT: [[RES:%[0-9]+]] = affine.apply [[M1]]()[%[[N]]]
+  // CHECK-NEXT: affine.for [[IV0]] = 1 to 100 {
+  // CHECK-NEXT:   "foo"([[RES]])
   // CHECK_NEXT: }
-  affine.for %i = %arg to ()[s0] -> (s0+9) ()[%arg] {
+  affine.for %i = %N to ()[s0] -> (s0+9) ()[%N] {
     affine.for %j = 1 to 100 {
       %x = "foo"(%i) : (index) -> i32
     }
@@ -83,6 +88,9 @@ func @loop_nest_unknown_count_2(%arg : index) {
 }
 
 // CHECK-LABEL: func @loop_nest_symbolic_and_min_upper_bound
+// CHECK-SAME: [[M:arg[0-9]+]]: index
+// CHECK-SAME: [[N:arg[0-9]+]]: index
+// CHECK-SAME: [[K:arg[0-9]+]]: index
 func @loop_nest_symbolic_and_min_upper_bound(%M : index, %N : index, %K : index) {
   affine.for %i = 0 to min ()[s0, s1] -> (s0, s1, 1024)()[%M, %N] {
     affine.for %j = 0 to %K {
@@ -91,16 +99,16 @@ func @loop_nest_symbolic_and_min_upper_bound(%M : index, %N : index, %K : index)
   }
   return
 }
-// CHECK-NEXT:  affine.for %arg3 = 0 to min [[MAP_MULTI_RES]]()[%arg0, %arg1] step 2 {
-// CHECK-NEXT:    affine.for %arg4 = 0 to %arg2 {
-// CHECK-NEXT:      "foo"(%arg3, %arg4) : (index, index) -> ()
-// CHECK-NEXT:      %0 = affine.apply #map0(%arg3)
-// CHECK-NEXT:      "foo"(%0, %arg4) : (index, index) -> ()
+// CHECK-NEXT:  affine.for [[IV0:%arg[0-9]+]] = 0 to min [[MAP_MULTI_RES]]()[%[[M]], %[[N]]] step 2 {
+// CHECK-NEXT:    affine.for [[IV1:%arg[0-9]+]] = 0 to %[[K]] {
+// CHECK-NEXT:      "foo"([[IV0]], [[IV1]])
+// CHECK-NEXT:      [[RES:%[0-9]+]] = affine.apply #map0([[IV0]])
+// CHECK-NEXT:      "foo"([[RES]], [[IV1]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  affine.for %arg3 = max [[MAP_MULTI_RES]]()[%arg0, %arg1] to min #map9()[%arg0, %arg1] {
-// CHECK-NEXT:    affine.for %arg4 = 0 to %arg2 {
-// CHECK-NEXT:      "foo"(%arg3, %arg4) : (index, index) -> ()
+// CHECK-NEXT:  affine.for [[IV0]] = max [[MAP_MULTI_RES]]()[%[[M]], %[[N]]] to min #map9()[%[[M]], %[[N]]] {
+// CHECK-NEXT:    affine.for [[IV1]] = 0 to %[[K]] {
+// CHECK-NEXT:      "foo"([[IV0]], [[IV1]])
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return

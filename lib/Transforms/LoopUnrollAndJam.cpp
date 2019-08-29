@@ -209,14 +209,14 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   forOp.setStep(step * unrollJamFactor);
 
   auto *forOpIV = forOp.getInductionVar();
-  for (auto &subBlock : subBlocks) {
-    // Builder to insert unroll-jammed bodies. Insert right at the end of
-    // sub-block.
-    OpBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
-
-    // Unroll and jam (appends unrollJamFactor-1 additional copies).
-    for (unsigned i = 1; i < unrollJamFactor; i++) {
-      BlockAndValueMapping operandMapping;
+  // Unroll and jam (appends unrollJamFactor-1 additional copies).
+  for (unsigned i = 1; i < unrollJamFactor; i++) {
+    // Operand map persists across all sub-blocks.
+    BlockAndValueMapping operandMapping;
+    for (auto &subBlock : subBlocks) {
+      // Builder to insert unroll-jammed bodies. Insert right at the end of
+      // sub-block.
+      OpBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
 
       // If the induction variable is used, create a remapping to the value for
       // this unrolled instance.
