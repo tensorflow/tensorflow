@@ -311,6 +311,10 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   if (VLOG_IS_ON(2)) {
     pipeline.AddPass<MemWastedOnPassthroughParams>();
   }
+  if (hlo_module->config().alias_passthrough_params()) {
+    return Unimplemented(
+        "Aliasing pass-through params is not implemented yet.");
+  }
   pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
