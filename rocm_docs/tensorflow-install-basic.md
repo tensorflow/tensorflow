@@ -53,7 +53,7 @@ Install ROCm pkgs:
 ```
 sudo apt-get update && \
     sudo apt-get install -y --allow-unauthenticated \
-    rocm-dkms rocm-dev rocm-libs rccl \
+    rocm-dkms rocm-dev rocm-libs hipcub rccl \
     rocm-device-libs \
     hsa-ext-rocr-dev hsakmt-roct-dev hsa-rocr-dev \
     rocm-opencl rocm-opencl-dev \
