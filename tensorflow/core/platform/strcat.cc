@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/strcat.h"
 
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "tensorflow/core/lib/gtl/stl_util.h"
+#include "absl/meta/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -85,8 +85,7 @@ static char *Append4(char *out, const AlphaNum &x1, const AlphaNum &x2,
 string StrCat(const AlphaNum &a) { return string(a.data(), a.size()); }
 
 string StrCat(const AlphaNum &a, const AlphaNum &b) {
-  string result;
-  gtl::STLStringResizeUninitialized(&result, a.size() + b.size());
+  string result(a.size() + b.size(), '\0');
   char *const begin = &*result.begin();
   char *out = Append2(begin, a, b);
   DCHECK_EQ(out, begin + result.size());
@@ -94,8 +93,7 @@ string StrCat(const AlphaNum &a, const AlphaNum &b) {
 }
 
 string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c) {
-  string result;
-  gtl::STLStringResizeUninitialized(&result, a.size() + b.size() + c.size());
+  string result(a.size() + b.size() + c.size(), '\0');
   char *const begin = &*result.begin();
   char *out = Append2(begin, a, b);
   out = Append1(out, c);
@@ -105,23 +103,47 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c) {
 
 string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
               const AlphaNum &d) {
-  string result;
-  gtl::STLStringResizeUninitialized(&result,
-                                    a.size() + b.size() + c.size() + d.size());
+  string result(a.size() + b.size() + c.size() + d.size(), '\0');
   char *const begin = &*result.begin();
   char *out = Append4(begin, a, b, c, d);
   DCHECK_EQ(out, begin + result.size());
   return result;
 }
 
+namespace {
+// HasMember is true_type or false_type, depending on whether or not
+// T has a __resize_default_init member. Resize will call the
+// __resize_default_init member if it exists, and will call the resize
+// member otherwise.
+template <typename string_type, typename = void>
+struct ResizeUninitializedTraits {
+  using HasMember = std::false_type;
+  static void Resize(string_type* s, size_t new_size) { s->resize(new_size); }
+};
+
+// __resize_default_init is provided by libc++ >= 8.0.
+template <typename string_type>
+struct ResizeUninitializedTraits<
+    string_type, absl::void_t<decltype(std::declval<string_type&>()
+                                           .__resize_default_init(237))> > {
+  using HasMember = std::true_type;
+  static void Resize(string_type* s, size_t new_size) {
+    s->__resize_default_init(new_size);
+  }
+};
+
+static inline void STLStringResizeUninitialized(string* s, size_t new_size) {
+  ResizeUninitializedTraits<string>::Resize(s, new_size);
+}
+
+}  // namespace
 namespace internal {
 
 // Do not call directly - these are not part of the public API.
 string CatPieces(std::initializer_list<StringPiece> pieces) {
-  string result;
   size_t total_size = 0;
   for (const StringPiece piece : pieces) total_size += piece.size();
-  gtl::STLStringResizeUninitialized(&result, total_size);
+  string result(total_size, '\0');
 
   char *const begin = &*result.begin();
   char *out = begin;
@@ -148,7 +170,7 @@ void AppendPieces(string *result, std::initializer_list<StringPiece> pieces) {
     DCHECK_NO_OVERLAP(*result, piece);
     total_size += piece.size();
   }
-  gtl::STLStringResizeUninitialized(result, total_size);
+  STLStringResizeUninitialized(result, total_size);
 
   char *const begin = &*result->begin();
   char *out = begin + old_size;
@@ -171,7 +193,7 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b) {
   DCHECK_NO_OVERLAP(*result, a);
   DCHECK_NO_OVERLAP(*result, b);
   string::size_type old_size = result->size();
-  gtl::STLStringResizeUninitialized(result, old_size + a.size() + b.size());
+  STLStringResizeUninitialized(result, old_size + a.size() + b.size());
   char *const begin = &*result->begin();
   char *out = Append2(begin + old_size, a, b);
   DCHECK_EQ(out, begin + result->size());
@@ -183,8 +205,8 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b,
   DCHECK_NO_OVERLAP(*result, b);
   DCHECK_NO_OVERLAP(*result, c);
   string::size_type old_size = result->size();
-  gtl::STLStringResizeUninitialized(result,
-                                    old_size + a.size() + b.size() + c.size());
+  STLStringResizeUninitialized(result,
+                               old_size + a.size() + b.size() + c.size());
   char *const begin = &*result->begin();
   char *out = Append2(begin + old_size, a, b);
   out = Append1(out, c);
@@ -198,7 +220,7 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b,
   DCHECK_NO_OVERLAP(*result, c);
   DCHECK_NO_OVERLAP(*result, d);
   string::size_type old_size = result->size();
-  gtl::STLStringResizeUninitialized(
+  STLStringResizeUninitialized(
       result, old_size + a.size() + b.size() + c.size() + d.size());
   char *const begin = &*result->begin();
   char *out = Append4(begin + old_size, a, b, c, d);

@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/strcat.h"
 
 #include <string>
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -357,10 +357,10 @@ static void TestFastPrints() {
   CheckHex32(0x12345678);
 
   int8 minus_one_8bit = -1;
-  EXPECT_EQ("ff", StrCat(Hex(minus_one_8bit)));
+  EXPECT_EQ("ff", tensorflow::strings::StrCat(Hex(minus_one_8bit)));
 
   int16 minus_one_16bit = -1;
-  EXPECT_EQ("ffff", StrCat(Hex(minus_one_16bit)));
+  EXPECT_EQ("ffff", tensorflow::strings::StrCat(Hex(minus_one_16bit)));
 }
 
 TEST(Numbers, TestFunctionsMovedOverFromNumbersMain) { TestFastPrints(); }
