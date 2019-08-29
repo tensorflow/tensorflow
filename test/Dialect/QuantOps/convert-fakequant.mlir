@@ -1,6 +1,36 @@
 // RUN: mlir-opt %s -split-input-file -quant-convert-simulated-quantization | FileCheck %s --dump-input=fail
 
 // -----
+// Verifies a quint8 single point.
+// CHECK-LABEL: fakeQuantArgs_Quint8_0
+func @fakeQuantArgs_Quint8_0(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+^bb0(%arg0: tensor<8x4x3xf32>):
+  // CHECK: %[[qc:.*]] = "quant.qcast"(%arg0) : (tensor<8x4x3xf32>)
+  // CHECK-SAME: -> tensor<8x4x3x!quant.uniform<u8:f32, 1.000000e+00>>
+  // CHECK-NEXT: "quant.dcast"(%[[qc]]) : (tensor<8x4x3x!quant.uniform<u8:f32, 1.000000e+00>>)
+  // CHECK-SAME: -> tensor<8x4x3xf32>
+  %0 = "quant.const_fake_quant"(%arg0) {
+    min = 0.0 : f32, max = 0.0 : f32, num_bits = 8
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+}
+
+// -----
+// Verifies a quint8 single point (with narrow_range = true).
+// CHECK-LABEL: fakeQuantArgs_Quint8_0_NarrowRange
+func @fakeQuantArgs_Quint8_0_NarrowRange(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+^bb0(%arg0: tensor<8x4x3xf32>):
+  // CHECK: %[[qc:.*]] = "quant.qcast"(%arg0) : (tensor<8x4x3xf32>)
+  // CHECK-SAME: -> tensor<8x4x3x!quant.uniform<u8<1:255>:f32, 1.000000e+00:1>>
+  // CHECK-NEXT: "quant.dcast"(%[[qc]]) : (tensor<8x4x3x!quant.uniform<u8<1:255>:f32, 1.000000e+00:1>>)
+  // CHECK-SAME: -> tensor<8x4x3xf32>
+  %0 = "quant.const_fake_quant"(%arg0) {
+    min = 0.0 : f32, max = 0.0 : f32, num_bits = 8, narrow_range = true
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+}
+
+// -----
 // Verifies a quint8 asymmetric 0..1 range.
 // CHECK-LABEL: fakeQuantArgs_Quint8_0_1
 func @fakeQuantArgs_Quint8_0_1(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
@@ -41,6 +71,36 @@ func @fakeQuantArgs_Quint8_SymmetricRange(tensor<8x4x3xf32>) -> tensor<8x4x3xf32
   // CHECK-SAME: -> tensor<8x4x3xf32>
   %0 = "quant.const_fake_quant"(%arg0) {
     min = -1.0 : f32, max = 0.9921875 : f32, num_bits = 8, narrow_range = false
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+}
+
+// -----
+// Verifies a qint8 single point.
+// CHECK-LABEL: fakeQuantArgs_Qint8_0
+func @fakeQuantArgs_Qint8_0(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+^bb0(%arg0: tensor<8x4x3xf32>):
+  // CHECK: %[[qc:.*]] = "quant.qcast"(%arg0) : (tensor<8x4x3xf32>)
+  // CHECK-SAME: -> tensor<8x4x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>
+  // CHECK-NEXT: "quant.dcast"(%[[qc]]) : (tensor<8x4x3x!quant.uniform<i8:f32, 1.000000e+00:-128>>)
+  // CHECK-SAME: -> tensor<8x4x3xf32>
+  %0 = "quant.const_fake_quant"(%arg0) {
+    min = 0.0 : f32, max = 0.0 : f32, num_bits = 8, is_signed = true
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+}
+
+// -----
+// Verifies a qint8 single point (with narrow_range = true).
+// CHECK-LABEL: fakeQuantArgs_Qint8_0_NarrowRange
+func @fakeQuantArgs_Qint8_0_NarrowRange(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+^bb0(%arg0: tensor<8x4x3xf32>):
+  // CHECK: %[[qc:.*]]  = "quant.qcast"(%arg0) : (tensor<8x4x3xf32>)
+  // CHECK-SAME: -> tensor<8x4x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00:-127>>
+  // CHECK-NEXT: "quant.dcast"(%[[qc]]) : (tensor<8x4x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00:-127>>)
+  // CHECK-SAME: -> tensor<8x4x3xf32>
+  %0 = "quant.const_fake_quant"(%arg0) {
+    min = 0.0 : f32, max = 0.0 : f32, num_bits = 8, narrow_range = true, is_signed = true
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %0 : tensor<8x4x3xf32>
 }

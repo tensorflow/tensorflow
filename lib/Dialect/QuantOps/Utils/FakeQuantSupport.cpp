@@ -76,7 +76,7 @@ mlir::quant::fakeQuantAttrsToType(Location loc, unsigned numBits, double rmin,
   // points and dequantized to 0.0.
   if (std::fabs(rmax - rmin) < std::numeric_limits<double>::epsilon()) {
     return UniformQuantizedType::getChecked(flags, storageType, expressedType,
-                                            1.0, 0, qmin, qmax, loc);
+                                            1.0, qmin, qmin, qmax, loc);
   }
 
   // Determine the scale.
