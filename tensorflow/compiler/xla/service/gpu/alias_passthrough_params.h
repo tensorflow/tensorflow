@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MEM_WASTED_ON_PASSTHROUGH_PARAMS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_MEM_WASTED_ON_PASSTHROUGH_PARAMS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALIAS_PASSTHROUGH_PARAMS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALIAS_PASSTHROUGH_PARAMS_H_
 
 #include <memory>
 
@@ -22,24 +22,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
+namespace gpu {
 
-// This pass LOGs memory waste due to pass-through params, i.e. output params
-// that are just an input argument. These arguments are currently copied from
-// the input buffer to a newly allocated output buffer. See b/133276457 for
-// more details.
+// This pass aliases input and output buffers that are associated with a
+// parameter that is passed through to the module root unmodified.
 //
-// This pass does not modify the HLO.
-class MemWastedOnPassthroughParams : public HloModulePass {
+// This pass assumes that parameters and the root use unnested shapes, which is
+// the case for XLA:GPU.
+//
+// This pass must run prior to copy insertion.
+class AliasPassthroughParams : public HloModulePass {
  public:
-  MemWastedOnPassthroughParams() = default;
-  ~MemWastedOnPassthroughParams() override = default;
-  absl::string_view name() const override {
-    return "mem_wasted_on_passthrough_params";
-  }
+  AliasPassthroughParams() = default;
+  ~AliasPassthroughParams() override = default;
+  absl::string_view name() const override { return "alias_passthrough_params"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
 
+}  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MEM_WASTED_ON_PASSTHROUGH_PARAMS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALIAS_PASSTHROUGH_PARAMS_H_

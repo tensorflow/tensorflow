@@ -1038,6 +1038,7 @@ cc_library(
         "gpu_compiler.h",
     ],
     deps = [
+        ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_padding_legalization",
@@ -1090,7 +1091,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:mem_wasted_on_passthrough_params",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_expander",
@@ -1589,5 +1589,29 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor:dnn",
+    ],
+)
+
+cc_library(
+    name = "alias_passthrough_params",
+    srcs = ["alias_passthrough_params.cc"],
+    hdrs = ["alias_passthrough_params.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "alias_passthrough_params_test",
+    srcs = ["alias_passthrough_params_test.cc"],
+    deps = [
+        ":alias_passthrough_params",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
