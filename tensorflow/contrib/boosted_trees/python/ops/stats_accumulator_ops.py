@@ -23,7 +23,6 @@ from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
 # pylint: enable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops import gen_stats_accumulator_ops
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
@@ -134,8 +133,7 @@ class StatsAccumulator(tracking.TrackableResource):
     self._hessian_shape = hessian_shape
     self._container = container
 
-    if (gradient_shape == tensor_shape.scalar() and
-        hessian_shape == tensor_shape.scalar()):
+    if (gradient_shape.rank == 0 and hessian_shape.rank == 0):
       self._is_scalar = True
     else:
       self._is_scalar = False

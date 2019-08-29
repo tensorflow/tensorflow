@@ -247,7 +247,9 @@ class MklConcatOp : public OpKernel {
       ConstMatrixVector;
 
   explicit MklConcatOp(OpKernelConstruction* c)
-      : OpKernel(c), eigen_concat_op_(c) {}
+      : OpKernel(c),
+        eigen_concat_op_(c),
+        data_format_(TensorFormat::FORMAT_NCHW) {}
 
   void Compute(OpKernelContext* context) override {
     try {
@@ -459,8 +461,14 @@ class MklConcatOp : public OpKernel {
               dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
           // Set the output format same as the most common format of inputs
           // to avoid layout conversions.
-          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
-                                mkl_common_format);
+          if (mkl_common_format == memory::format::blocked) {
+            VLOG(1) << "mkl_common_format == memory::format::blocked";
+            dst_md = MklDnnData<T>::CreateBlockedMemDesc(
+                dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
+          } else {
+            dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+                                  mkl_common_format);
+          }
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
           // When memory::format::nc, dst_dims are already in MKL-DNN order
@@ -553,7 +561,6 @@ class MklConcatOp : public OpKernel {
                                   dnn_shape_dst);
         DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
       }
-
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -576,9 +583,9 @@ class MklConcatOp : public OpKernel {
     for (size_t i = 0; i < num_mkl_input_shapes; ++i) {
       if (mkl_input_shapes[i].IsMklTensor()) {
         // do conversion from MKL to TF
-        Tensor tmp_tensor =
-            ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i]);
-        converted_values[i] = tmp_tensor;
+        OP_REQUIRES_OK(
+            context, ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i],
+                                       &converted_values[i]));
         tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
       } else {
         // no conversion since it is TF tensor already

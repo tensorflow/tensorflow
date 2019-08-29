@@ -19,8 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import errno
+import gc
 import itertools
 import os
+import re
+import shutil
 import tempfile
 import warnings
 import numpy as np
@@ -31,6 +35,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -39,12 +44,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 
 TfTrtIntegrationTestParams = namedtuple(
     "TfTrtIntegrationTestParams",
@@ -73,6 +82,8 @@ RunParams = namedtuple(
         "dynamic_engine",
         "use_calibration",
         "test_name",
+        # Is this test for TF 2.0?
+        "is_v2",
     ])
 
 FP32 = "FP32"
@@ -224,10 +235,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
         use_calibration=run_params.use_calibration,
-        use_function_backup=False,
         max_batch_size=min(batch_list))
-    return conversion_params._replace(
-        use_function_backup=IsQuantizationWithCalibration(conversion_params))
+    return conversion_params
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -286,18 +295,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetFeedDict(self, inputs_data):
     return {name: data for name, data in zip(self._GetFeedNames(), inputs_data)}
 
-  def _RunGraph(self,
-                run_params,
-                saved_model_dir,
-                inputs_data,
-                config,
-                graph_state,
-                num_runs=2):
-    """Run given graphdef multiple times."""
+  def _RunGraphV1(self, saved_model_dir, inputs_data, config, num_runs=2):
+    """Run given graphdef multiple times using TF 1.x runtime."""
     params = self._GetParamsCached()
-    for data in inputs_data:
-      assert len(params.input_specs) == len(data)
-
     fetches = self._GetFetchNames()
     g = ops.Graph()
     with g.as_default():
@@ -321,10 +321,64 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           vals.append(val)
         return vals
 
-  def _CreateConverter(self, saved_model_dir, session_config,
+  def _RunGraphV2(self, saved_model_dir, inputs_data, graph_state, num_runs=2):
+    """Run given graphdef multiple times using TF 2.0 runtime."""
+    params = self._GetParamsCached()
+    root = load.load(saved_model_dir)
+    func = root.signatures[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    results = []
+    for expected_shapes, current_input_data in zip(params.expected_output_dims,
+                                                   inputs_data):
+      val = None
+      for _ in range(num_runs):
+        feed_dict = {
+            params.input_specs[i].name: current_input_data[i]
+            for i in range(len(params.input_specs))
+        }
+        new_val = func(**feed_dict)
+        assert isinstance(new_val, dict)
+        # The key of the output map is always like output_i.
+        new_val = [new_val[key] for key in sorted(new_val)]
+        # Each element is an eager Tensor, and accessing individual elements is
+        # very expensive, so we convert them to a numpy array first.
+        new_val = [v.numpy() for v in new_val]
+        self.assertEqual(len(expected_shapes), len(new_val))
+        for expected_shape, actual_val in zip(expected_shapes, new_val):
+          self.assertEqual(list(expected_shape), list(actual_val.shape))
+        if val is not None:
+          self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
+        val = new_val
+      results.append(val)
+
+    return results
+
+  def _RunGraph(self,
+                run_params,
+                saved_model_dir,
+                inputs_data,
+                config,
+                graph_state,
+                num_runs=2):
+    params = self._GetParamsCached()
+    for data in inputs_data:
+      assert len(params.input_specs) == len(data)
+
+    if run_params.is_v2:
+      results = self._RunGraphV2(saved_model_dir, inputs_data, graph_state,
+                                 num_runs)
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      return results
+    return self._RunGraphV1(saved_model_dir, inputs_data, config, num_runs)
+
+  def _CreateConverter(self, run_params, saved_model_dir, session_config,
                        conversion_params):
     """Return a TrtGraphConverter."""
-    converter = trt_convert.TrtGraphConverter(
+    if run_params.is_v2:
+      return trt_convert.TrtGraphConverterV2(
+          input_saved_model_dir=saved_model_dir,
+          conversion_params=conversion_params)
+    return trt_convert.TrtGraphConverter(
         input_saved_model_dir=saved_model_dir,
         session_config=session_config,
         max_batch_size=conversion_params.max_batch_size,
@@ -333,9 +387,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=conversion_params.minimum_segment_size,
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
-        use_calibration=conversion_params.use_calibration,
-        use_function_backup=conversion_params.use_function_backup)
-    return converter
+        use_calibration=conversion_params.use_calibration)
 
   def _GetCalibratedInferGraph(self, run_params, saved_model_dir, inputs_data):
     """Return trt converted graphdef in INT8 mode."""
@@ -353,8 +405,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     session_config = self._GetConfigProto(run_params, GraphState.CALIBRATE)
     logging.info("Running calibration graph, config:\n%s", str(session_config))
 
-    converter = self._CreateConverter(saved_model_dir, session_config,
-                                      conversion_params)
+    converter = self._CreateConverter(run_params, saved_model_dir,
+                                      session_config, conversion_params)
     int8_gdef = converter.convert()
     self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
                          GraphState.CALIBRATE)
@@ -363,7 +415,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         fetch_names=self._GetFetchNames(),
         num_runs=5,
         feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
-    trt_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    trt_saved_model_dir = self._GetSavedModelDir(run_params,
+                                                 GraphState.CALIBRATE)
     converter.save(trt_saved_model_dir)
     return trt_saved_model_dir
 
@@ -375,27 +428,34 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     session_config = self._GetConfigProto(run_params, GraphState.INFERENCE)
     logging.info("Creating TRT graph for inference, config\n%s",
                  str(session_config))
-    converter = self._CreateConverter(saved_model_dir, session_config,
-                                      conversion_params)
+    converter = self._CreateConverter(run_params, saved_model_dir,
+                                      session_config, conversion_params)
     converter.convert()
-    trt_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    trt_saved_model_dir = self._GetSavedModelDir(run_params,
+                                                 GraphState.INFERENCE)
     converter.save(trt_saved_model_dir)
     return trt_saved_model_dir
 
-  def _WriteGraph(self, run_params, gdef, graph_state):
+  def _GetGraphStateLabel(self, graph_state):
     if graph_state == GraphState.ORIGINAL:
-      label = "Original"
+      return "Original"
     elif graph_state == GraphState.CALIBRATE:
-      label = "CalibEngine"
+      return "CalibEngine"
     elif graph_state == GraphState.INFERENCE:
-      label = "InferEngine"
+      return "InferEngine"
+    else:
+      return "UnknownState"
+
+  def _WriteGraph(self, run_params, gdef, graph_state):
+    temp_dir = os.getenv("TRT_TEST_TMPDIR")
+    if not temp_dir:
+      return
+
     graph_name = (
-        self.__class__.__name__ + "_" + run_params.test_name + "_" + label +
-        ".pbtxt")
-    temp_dir = os.getenv("TRT_TEST_TMPDIR", self.get_temp_dir())
-    if temp_dir:
-      logging.info("Writing graph to %s/%s", temp_dir, graph_name)
-      graph_io.write_graph(gdef, temp_dir, graph_name)
+        self.__class__.__name__ + "_" + run_params.test_name + "_" +
+        self._GetGraphStateLabel(graph_state) + ".pbtxt")
+    logging.info("Writing graph to %s/%s", temp_dir, graph_name)
+    graph_io.write_graph(gdef, temp_dir, graph_name)
 
   def _VerifyConnections(self, expected_engines, original_gdef, converted_gdef):
     old_to_new_node_map = {
@@ -467,19 +527,28 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         msg="\nexpected:\n%s\nvs actual:\n%s" %
         (sorted(expected_input_map.items()), sorted(actual_input_map.items())))
 
-  def _GetGraphDef(self, gdef_or_saved_model_dir):
+  def _GetGraphDef(self, run_params, gdef_or_saved_model_dir):
     if isinstance(gdef_or_saved_model_dir, str):
+      if run_params.is_v2:
+        root = load.load(gdef_or_saved_model_dir)
+        func = root.signatures[
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+        gdef = func.graph.as_graph_def()
+        # Manually unref the loaded saved model and force GC to destroy the TRT
+        # engine cache after load(). There is currently a reference cycle in 2.0
+        # which prevents auto deletion of the resource.
+        # TODO(laigd): fix this.
+        del func
+        del root
+        gc.collect()
+        return gdef
       return saved_model_utils.get_meta_graph_def(
           gdef_or_saved_model_dir, tag_constants.SERVING).graph_def
     assert isinstance(gdef_or_saved_model_dir, graph_pb2.GraphDef)
     return gdef_or_saved_model_dir
 
-  def _VerifyGraphDef(self, run_params, original_gdef_or_saved_model_dir,
-                      gdef_or_saved_model_dir_to_verify, graph_state):
-    original_gdef = self._GetGraphDef(original_gdef_or_saved_model_dir)
-    gdef_to_verify = self._GetGraphDef(gdef_or_saved_model_dir_to_verify)
-    self._WriteGraph(run_params, gdef_to_verify, graph_state)
-
+  def _VerifyGraphDefV1(self, run_params, original_gdef, gdef_to_verify,
+                        graph_state):
     expected_engines = self.ExpectedEnginesToBuild(run_params)
     num_engines = 0
     functions = [f.signature.name for f in gdef_to_verify.library.function]
@@ -487,21 +556,18 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if node.op == "TRTEngineOp":
         logging.info("Found TRTEngineOp: " + node.name)
         num_engines += 1
-        segment_funcdef_name = node.attr["segment_funcdef_name"].s
+        segment_funcdef_name = node.attr["segment_func"].func.name
         function_name = node.name + "_native_segment"
-        if IsQuantizationWithCalibration(run_params):
-          self.assertNotEmpty(segment_funcdef_name, node.name)
-          self.assertIn(function_name, functions)
-        else:
-          self.assertEmpty(segment_funcdef_name, node.name)
-          self.assertNotIn(function_name, functions)
+        is_dynamic_engine = not node.attr["static_engine"].b
+        self.assertNotEmpty(segment_funcdef_name, node.name)
+        self.assertIn(function_name, functions)
+        if not IsQuantizationWithCalibration and not is_dynamic_engine:
+          self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertIn(node.name, expected_engines)
-        self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
         self.assertEqual(
             self._ToBytes(run_params.precision_mode),
             node.attr["precision_mode"].s, node.name)
 
-        is_dynamic_engine = not node.attr["static_engine"].b
         self.assertEqual(run_params.dynamic_engine, is_dynamic_engine,
                          node.name)
         self.assertEqual(node.attr["use_calibration"].b,
@@ -521,7 +587,70 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
       # TODO(aaroey): consider verifying the corresponding TF function.
 
-  def _MakeSavedModel(self, run_params):
+  def _VerifyGraphDefV2(self, run_params, original_gdef, gdef_to_verify,
+                        graph_state):
+    if graph_state == GraphState.ORIGINAL:
+      return
+    expected_engines = self.ExpectedEnginesToBuild(run_params)
+    all_op_names = [node.name for node in gdef_to_verify.node]
+    trt_op_names = [
+        node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
+    ]
+    for func in gdef_to_verify.library.function:
+      if not re.search(r"TRTEngineOp_\d+_native_segment", func.signature.name):
+        for node in func.node_def:
+          all_op_names.append(node.name)
+          if node.op == "TRTEngineOp":
+            trt_op_names.append(node.name)
+    # Remove the function name prefix.
+    def _Canonicalize(names):
+      return set([self._ToString(name.split("/")[-1]) for name in names])
+
+    all_op_names = _Canonicalize(all_op_names)
+    trt_op_names = _Canonicalize(trt_op_names)
+
+    if isinstance(expected_engines, dict):
+      # For simplicity we don't verify the connections inside the engine in
+      # 2.0, but we still make sure that the converted ops are gone from the
+      # graph.
+      unexpected_names = set(nest.flatten(expected_engines.values()))
+      self.assertEmpty(
+          [name for name in unexpected_names if name in all_op_names])
+      expected_engines = set(expected_engines.keys())
+
+    self.assertEqual(set(expected_engines), trt_op_names)
+
+  def _VerifyGraphDef(self, run_params, original_gdef_or_saved_model_dir,
+                      gdef_or_saved_model_dir_to_verify, graph_state):
+    original_gdef = self._GetGraphDef(run_params,
+                                      original_gdef_or_saved_model_dir)
+    gdef_to_verify = self._GetGraphDef(run_params,
+                                       gdef_or_saved_model_dir_to_verify)
+    self._WriteGraph(run_params, gdef_to_verify, graph_state)
+    if run_params.is_v2:
+      self._VerifyGraphDefV2(run_params, original_gdef, gdef_to_verify,
+                             graph_state)
+    else:
+      self._VerifyGraphDefV1(run_params, original_gdef, gdef_to_verify,
+                             graph_state)
+
+  def _GetSavedModelDir(self, run_params, graph_state):
+    test_tmpdir = os.getenv("TRT_TEST_TMPDIR")
+    if test_tmpdir:
+      saved_model_dir = os.path.join(
+          test_tmpdir, self.__class__.__name__ + "_" + run_params.test_name +
+          "_" + self._GetGraphStateLabel(graph_state))
+      try:
+        # For TF 1.x we need to make sure the output directory doesn't exist
+        # before exporting the saved model.
+        shutil.rmtree(saved_model_dir)
+      except OSError as e:
+        if e.errno != errno.ENOENT:
+          raise
+      return saved_model_dir
+    return tempfile.mkdtemp(dir=self.get_temp_dir())
+
+  def _MakeSavedModelV1(self, run_params):
     """Write the saved model as an input for testing."""
     params = self._GetParamsCached()
     g = ops.Graph()
@@ -534,15 +663,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       outputs = params.graph_fn(*inputs)
       if not isinstance(outputs, list) and not isinstance(outputs, tuple):
         outputs = [outputs]
-      for spec, output in zip(params.output_specs, outputs):
-        assert spec.name == output.name.split(":")[0]
 
     signature_def = signature_def_utils.build_signature_def(
         inputs={inp.op.name: utils.build_tensor_info(inp) for inp in inputs},
         outputs={out.op.name: utils.build_tensor_info(out) for out in outputs},
         method_name=signature_constants.PREDICT_METHOD_NAME)
 
-    saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)
     saved_model_builder = builder.SavedModelBuilder(saved_model_dir)
     with self.session(
         graph=g, config=self._GetConfigProto(run_params,
@@ -555,6 +682,22 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           })
     saved_model_builder.save()
     return saved_model_dir
+
+  def _MakeSavedModelV2(self, run_params):
+    params = self._GetParamsCached()
+    root = tracking.AutoTrackable()
+    root.run = def_function.function(
+        params.graph_fn, input_signature=params.input_specs)
+    saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)
+    logging.info("Saving input SavedModel to %s", saved_model_dir)
+    save.save(root, saved_model_dir,
+              {signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: root.run})
+    return saved_model_dir
+
+  def _MakeSavedModel(self, run_params):
+    if run_params.is_v2:
+      return self._MakeSavedModelV2(run_params)
+    return self._MakeSavedModelV1(run_params)
 
   def RunTest(self, run_params):
     if not self.ShouldRunTest(run_params):
@@ -577,9 +720,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         # continuous natural numbers:
         # seq = np.arange(np.prod(np_shape))
         # seq.resize(np_shape)
-        # inputs_data.append(scale * seq.astype(np_dtype))
-        current_input_data.append(
-            (scale * np.random.random_sample(np_shape)).astype(np_dtype))
+        # current_inputs_data.append(scale * seq.astype(np_dtype))
+        data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
+        if run_params.is_v2:
+          with ops.device("/GPU:0"):
+            data = ops.convert_to_tensor(data)
+        current_input_data.append(data)
       inputs_data.append(current_input_data)
 
     # Verify original graph.
@@ -626,55 +772,94 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     pass
 
 
-def _AddTests(test_class):
-  """Adds test methods to TfTrtIntegrationTestBase."""
+def _GetTestConfigsV1():
+  """Returns the config combinations to run the test."""
+  convert_online, convert_offline = True, False
+  dynamic_engine, static_engine = True, False
+  use_calibration, no_calibration = True, False
 
-  def _GetTestConfigs():
-    """Returns the config combinations to run the test."""
-    convert_online, convert_offline = True, False
-    dynamic_engine, static_engine = True, False
-    use_calibration, no_calibration = True, False
+  # Add all possible test cases and let the derived test class to decide
+  # whether to run specific ones with ShouldRunTest().
+  #
+  # Note: INT8 without calibration behaves like FP32/FP16.
+  opts = list(
+      itertools.product([FP32, FP16, INT8], [convert_online, convert_offline],
+                        [dynamic_engine, static_engine], [no_calibration]))
+  # We always run calibration with offline tool.
+  # TODO(aaroey): static calibration engine is not supported yet.
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  return opts
 
-    # Add all possible test cases and let the derived test class to decide
-    # whether to run specific ones with ShouldRunTest().
-    #
-    # Note: INT8 without calibration behaves like FP32/FP16.
-    opts = list(
-        itertools.product([FP32, FP16, INT8], [convert_online, convert_offline],
-                          [dynamic_engine, static_engine], [no_calibration]))
-    # We always run calibration with offline tool.
-    # TODO(aaroey): static calibration engine is not supported yet.
-    opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
-    return opts
 
-  def _GetTest(run_params):
-    """Gets a single test method based on the parameters."""
+def _GetTestConfigsV2():
+  """Returns the config combinations to run the test."""
+  convert_offline = False
+  # TODO(laigd): add support for static_engine.
+  dynamic_engine = True
+  # TODO(laigd): add support for calibration.
+  no_calibration = False
 
-    @test_util.deprecated_graph_mode_only
-    def _Test(self):
-      logging.info(
-          "Running TFv1 test %s with parameters: convert_online=%s, "
-          "precision_mode=%s, dynamic_engine=%s",
-          "testTfTrt_" + run_params.test_name, run_params.convert_online,
-          run_params.precision_mode, run_params.dynamic_engine)
-      self.RunTest(run_params)
+  # Add all possible test cases and let the derived test class to decide
+  # whether to run specific ones with ShouldRunTest().
+  #
+  # Note:
+  # - In TF2.0 the conversion always produce dynamic engine, and we don't test
+  #   the offline mode here.
+  # - For simplicity we don't test online conversion which requires setting the
+  #   Grappler config in default eager context.
+  # - INT8 without calibration behaves like FP32/FP16.
+  opts = list(
+      itertools.product([FP32, FP16, INT8], [convert_offline], [dynamic_engine],
+                        [no_calibration]))
+  # We always run calibration with offline tool.
+  # TODO(aaroey): INT8+calibration is not supported yet in V2.
+  # opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  return opts
 
-    return _Test
 
-  opts = _GetTestConfigs()
+def _GetTest(run_params):
+  """Gets a single test method based on the parameters."""
+
+  def _Test(self):
+    logging.info(
+        "Running test %s with parameters: convert_online=%s, "
+        "precision_mode=%s, dynamic_engine=%s", run_params.test_name,
+        run_params.convert_online, run_params.precision_mode,
+        run_params.dynamic_engine)
+    self.RunTest(run_params)
+
+  return _Test
+
+
+def _AddTestsFor(test_class, is_v2):
+  """Adds test methods to TfTrtIntegrationTestBase for specific TF version."""
+  opts = _GetTestConfigsV2() if is_v2 else _GetTestConfigsV1()
   for (precision_mode, convert_online, dynamic_engine, use_calibration) in opts:
     conversion = "OnlineConversion" if convert_online else "OfflineConversion"
     engine_type = "DynamicEngine" if dynamic_engine else "StaticEngine"
     calibration_type = "UseCalibration" if use_calibration else "NoCalibration"
-    test_name = "%s_%s_%s_%s" % (conversion, engine_type, precision_mode,
-                                 calibration_type)
+    test_name = "%s_%s_%s_%s_%s" % ("testTfTrtV2" if is_v2 else "testTfTrt",
+                                    conversion, engine_type, precision_mode,
+                                    calibration_type)
     run_params = RunParams(
         convert_online=convert_online,
         precision_mode=precision_mode,
         dynamic_engine=dynamic_engine,
         test_name=test_name,
-        use_calibration=use_calibration)
-    setattr(test_class, "testTfTrt_" + test_name, _GetTest(run_params))
+        use_calibration=use_calibration,
+        is_v2=is_v2)
+    if is_v2:
+      setattr(test_class, test_name,
+              test_util.run_v2_only(_GetTest(run_params)))
+    else:
+      setattr(test_class, test_name,
+              test_util.run_v1_only("", _GetTest(run_params)))
+
+
+def _AddTests(test_class):
+  """Adds test methods to TfTrtIntegrationTestBase."""
+  _AddTestsFor(test_class, is_v2=False)
+  _AddTestsFor(test_class, is_v2=True)
 
 
 if is_tensorrt_enabled():

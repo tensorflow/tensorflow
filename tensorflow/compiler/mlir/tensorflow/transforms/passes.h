@@ -16,19 +16,54 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+
 namespace mlir {
-class FunctionPassBase;
+namespace TF {
+// Transforms functional control flow operations in the standard TensorFlow
+// dialect to MLIR Control Flow Graph (CFG) form.
+std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
 
-/// Transform functional control flow operations in the standard TensorFlow
-/// dialect to MLIR Control Flow Graph (CFG) form.
-FunctionPassBase *createTFFunctionalControlFlowToCFG();
+// Optimizes Tensorflow graph.
+std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 
-/// Raise from the "TensorFlow Control Flow" dialect to the standard TensorFlow
-/// dialect.
-FunctionPassBase *createRaiseTFControlFlowPass();
+}  // namespace TF
 
-/// Optimize Tensorflow graph.
-FunctionPassBase *createTFOptimizePass();
+namespace TFControlFlow {
+// Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
+// dialect.
+std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
+
+}  // namespace TFControlFlow
+
+namespace tf_executor {
+class GraphOp;
+
+// Create a pass to merge IslandOps from TFExecutor dialect.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
+
+// Create a pass to prune tf_executor.graph from dead nodes.
+FunctionPassBase* CreateTFExecutorGraphPruningPass();
+
+// Prune a tf_executor.graph operation from dead nodes.
+void prune_graph(GraphOp graph);
+
+}  // namespace tf_executor
+
+namespace TFDevice {
+// Creates a pass that forms clusters from instructions that are assigned to
+// same device.
+std::unique_ptr<FunctionPassBase> CreateClusterFormationPass();
+
+// Creates a pass that outlines regions of tf_device.launch operations.
+std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
+}  // namespace TFDevice
+
+namespace TFTPU {
+// Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
+// ops
+std::unique_ptr<ModulePassBase> CreateTPURewritePass();
+}  // namespace TFTPU
 
 }  // namespace mlir
 

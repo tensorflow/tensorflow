@@ -45,7 +45,7 @@ XrtTfClient::XrtTfClient(ClusterDef cluster_def,
 xla::StatusOr<std::shared_ptr<XrtTfContext>> XrtTfContext::Create(
     const XrtTfContext::Options& options,
     std::shared_ptr<XrtTfClient> tf_client, const std::string& job, int task) {
-  int64 rendezvous_id = random::New64();
+  int64 context_id = random::New64();
 
   eager::CreateContextRequest request;
   ServerDef* server_def = request.mutable_server_def();
@@ -53,7 +53,7 @@ xla::StatusOr<std::shared_ptr<XrtTfContext>> XrtTfContext::Create(
   server_def->set_job_name(job);
   server_def->set_protocol("grpc");
   request.set_keep_alive_secs(60);
-  request.set_rendezvous_id(rendezvous_id);
+  request.set_context_id(context_id);
   request.set_async(options.async);
 
   eager::CreateContextResponse response;
@@ -98,8 +98,9 @@ xla::StatusOr<std::shared_ptr<XrtTfContext>> XrtTfContext::Create(
               return a.name() < b.name();
             });
   return std::make_shared<XrtTfContext>(options, tf_client, eager_client,
-                                        rendezvous_id, response.context_id(),
-                                        std::move(devices), cpu_device_id);
+                                        /*rendezvous_id=*/context_id,
+                                        context_id, std::move(devices),
+                                        cpu_device_id);
 }
 
 XrtTfContext::XrtTfContext(const XrtTfContext::Options& options,
@@ -285,15 +286,16 @@ XrtTensorHandle XrtTfContext::SendTensor(
     op_id = op->id;
   }
 
-  eager::SendTensorRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  request.set_op_id(op_id);
-  request.mutable_tensors()->AddAllocated(tensor_proto.release());
-  request.set_device_name(devices_.at(rpc_device_id).name());
-  auto response = std::make_shared<eager::SendTensorResponse>();
+  auto* send_tensor = request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(op_id);
+  send_tensor->mutable_tensors()->AddAllocated(tensor_proto.release());
+  send_tensor->set_device_name(devices_.at(rpc_device_id).name());
+  auto response = std::make_shared<eager::EnqueueResponse>();
   auto context_ptr = shared_from_this();
   absl::Notification done;
-  eager_client_->SendTensorAsync(
+  eager_client_->EnqueueAsync(
       &request, response.get(),
       [context_ptr, op_id, response, &done](Status status) {
         absl::MutexLock lock(&context_ptr->mu_);
@@ -439,6 +441,7 @@ XrtTensorHandle& XrtTensorHandle::operator=(XrtTensorHandle&& other) {
 void XrtTensorHandle::Serialize(eager::RemoteTensorHandle* proto) const {
   proto->set_op_id(tensor_id_.first);
   proto->set_output_num(tensor_id_.second);
+  proto->set_device(context_->devices_.at(device_id_).name());
 }
 
 AttrValue MakeAttrValue(std::string s) {

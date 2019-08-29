@@ -22,3 +22,7 @@ from __future__ import print_function
 # e.g. the list of layers can be accessed using `loaded.keras_api.layers`, in an
 # object loaded from `tf.saved_model.load()`.
 KERAS_ATTR = 'keras_api'
+
+# Keys for the serialization cache.
+# Maps to the keras serialization dict {Layer --> SerializedAttributes object}
+KERAS_CACHE_KEY = 'keras_serialized_attributes'

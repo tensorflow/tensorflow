@@ -48,18 +48,22 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
 
     const double step = static_cast<double>(value_range(1) - value_range(0)) /
                         static_cast<double>(nbins);
+    const double nbins_minus_1 = static_cast<double>(nbins - 1);
 
     // The calculation is done by finding the slot of each value in `values`.
     // With [a, b]:
     //   step = (b - a) / nbins
     //   (x - a) / step
     // , then the entries are mapped to output.
+
+    // Bug fix: Switch the order of cwiseMin and int32-casting to avoid
+    // producing a negative index when casting an big int64 number to int32
     index_to_bin.device(d) =
         ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
              .template cast<double>() /
          step)
-            .template cast<int32>()
-            .cwiseMin(nbins - 1);
+            .cwiseMin(nbins_minus_1)
+            .template cast<int32>();
 
     out.setZero();
     for (int32 i = 0; i < index_to_bin.size(); i++) {

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -75,7 +76,14 @@ struct TFE_Context {
             async, device_mgr, device_mgr_owned, rendezvous,
             custom_kernel_creator)) {}
 
-  ~TFE_Context() { context->Unref(); }
+  ~TFE_Context() {
+    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
+    // don't send RPCs and block in destructor.
+    context->WaitForAndCloseRemoteContexts();
+    // context->RefCountIsOne() should be true here.
+    // TODO(iga): Remove EagerContext refcounting.
+    context->Unref();
+  }
 
   tensorflow::EagerContext* context;
 };
@@ -90,15 +98,6 @@ struct TFE_TensorHandle {
       return nullptr;
     }
     return new TFE_TensorHandle(handle);
-  }
-  static tensorflow::Status CreateLocalHandle(const class tensorflow::Tensor& t,
-                                              tensorflow::Device* d,
-                                              TFE_TensorHandle** h) {
-    tensorflow::TensorHandle* handle;
-    TF_RETURN_IF_ERROR(
-        tensorflow::TensorHandle::CreateLocalHandle(t, d, nullptr, &handle));
-    *h = new TFE_TensorHandle(handle);
-    return tensorflow::Status::OK();
   }
 
   tensorflow::TensorHandle* handle;
@@ -138,14 +137,8 @@ struct TFE_Op {
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
-struct TFE_ProfilerContext {
-  tensorflow::ProfilerContext profiler_context;
-};
-
 struct TFE_Profiler {
-  explicit TFE_Profiler(TFE_ProfilerContext* ctx) {
-    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
-  }
+  explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
@@ -293,6 +286,25 @@ struct TFE_TraceContext {
       input.first->Unref();
     }
   }
+};
+
+struct TFE_CancellationManager {
+  tensorflow::CancellationManager cancellation_manager;
+};
+
+struct TFE_Executor {
+  explicit TFE_Executor(bool async)
+      : owned_executor(new tensorflow::EagerExecutor(async)) {}
+
+  explicit TFE_Executor(tensorflow::EagerExecutor* executor)
+      : owned_executor(nullptr), unowned_executor(executor) {}
+
+  tensorflow::EagerExecutor* executor() {
+    return owned_executor == nullptr ? unowned_executor : owned_executor.get();
+  }
+
+  std::unique_ptr<tensorflow::EagerExecutor> owned_executor;
+  tensorflow::EagerExecutor* unowned_executor;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

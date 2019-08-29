@@ -1,0 +1,29 @@
+op {
+  name: "ConfigureDistributedTPU"
+  output_arg {
+    name: "topology"
+    type: DT_STRING
+  }
+  attr {
+    name: "embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "tpu_embedding_config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "is_global_init"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}

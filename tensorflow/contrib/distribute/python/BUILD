@@ -1,7 +1,7 @@
 # Implementation of a prototype TF distributed computation library.
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -206,6 +206,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/139307796
     ],
 )
 
@@ -273,6 +274,7 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Ignoring due to in contrib.
     deps = [
         ":mirrored_strategy",
         "//tensorflow/python/distribute:tpu_strategy",

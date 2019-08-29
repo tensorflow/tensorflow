@@ -40,7 +40,7 @@ class HloGetDimensionSizeRewriterTest : public HloTestBase {
 };
 
 TEST_F(HloGetDimensionSizeRewriterTest, Ok) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = s32[3,4] parameter(0)
@@ -56,7 +56,7 @@ ENTRY gds {
 }
 
 TEST_F(HloGetDimensionSizeRewriterTest, IllegalType) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = s32[3]{0} parameter(0)
@@ -68,7 +68,7 @@ ENTRY gds {
 }
 
 TEST_F(HloGetDimensionSizeRewriterTest, IllegalDimension) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnUnverifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = f32[2,5] parameter(0)

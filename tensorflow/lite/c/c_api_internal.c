@@ -25,13 +25,14 @@ int TfLiteIntArrayGetSizeInBytes(int size) {
   return sizeof(dummy) + sizeof(dummy.data[0]) * size;
 }
 
-int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b) {
+int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
   if (a == b) return 1;
   if (a == NULL || b == NULL) return 0;
   return TfLiteIntArrayEqualsArray(a, b->size, b->data);
 }
 
-int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]) {
+int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
+                              const int b_data[]) {
   if (a == NULL) return (b_size == 0);
   if (a->size != b_size) return 0;
   int i = 0;

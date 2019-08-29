@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import platform
 import sys
 import numpy as np
 
@@ -40,7 +41,7 @@ try:
 except ImportError:
   # When full Tensorflow Python PIP is not available do not use lazy load
   # and instead of the tflite_runtime path.
-  from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
 
   def tf_export_dummy(*x, **kwargs):
     del x, kwargs
@@ -52,11 +53,13 @@ class Delegate(object):
   """Python wrapper class to manage TfLiteDelegate objects.
 
   The shared library is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate(char**, char**, size_t)
+    TfLiteDelegate* tflite_plugin_create_delegate(
+        char**, char**, size_t, void (*report_error)(const char *))
     void tflite_plugin_destroy_delegate(TfLiteDelegate*)
 
   The first one creates a delegate object. It may return NULL to indicate an
-  error. The second one destroys delegate object and must be called for every
+  error (with a suitable error message reported by calling report_error()).
+  The second one destroys delegate object and must be called for every
   created delegate object. Passing NULL as argument value is allowed, i.e.
 
     tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
@@ -73,11 +76,21 @@ class Delegate(object):
         keys and values in the dictionary should be serializable. Consult the
         documentation of the specific delegate for required and legal options.
         (default None)
+    Raises:
+      RuntimeError: This is raised if the Python implementation is not CPython.
     """
+
+    # TODO(b/136468453): Remove need for __del__ ordering needs of CPython
+    # by using explicit closes(). See implementation of Interpreter __del__.
+    if platform.python_implementation() != 'CPython':
+      raise RuntimeError('Delegates are currently only supported into CPython'
+                         'due to missing immediate reference counting.')
+
     self._library = ctypes.pydll.LoadLibrary(library)
     self._library.tflite_plugin_create_delegate.argtypes = [
         ctypes.POINTER(ctypes.c_char_p),
-        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+        ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
@@ -86,16 +99,32 @@ class Delegate(object):
     options_keys = (ctypes.c_char_p * len(options))()
     options_values = (ctypes.c_char_p * len(options))()
     for idx, (key, value) in enumerate(options.items()):
-      options_keys[idx] = str(key)
-      options_values[idx] = str(value)
+      options_keys[idx] = str(key).encode('utf-8')
+      options_values[idx] = str(value).encode('utf-8')
 
+    class ErrorMessageCapture(object):
+
+      def __init__(self):
+        self.message = ''
+
+      def report(self, x):
+        self.message += x
+
+    capture = ErrorMessageCapture()
+    error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)
     # Do not make a copy of _delegate_ptr. It is freed by Delegate's finalizer.
     self._delegate_ptr = self._library.tflite_plugin_create_delegate(
-        options_keys, options_values, len(options))
+        options_keys, options_values, len(options), error_capturer_cb)
+    if self._delegate_ptr is None:
+      raise ValueError(capture.message)
 
   def __del__(self):
-    self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
-    self._library.tflite_plugin_destroy_delegate(self._delegate_ptr)
+    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # don't try to destroy it twice.
+    if self._library is not None:
+      self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
+      self._library.tflite_plugin_destroy_delegate(self._delegate_ptr)
+      self._library = None
 
   def _get_native_delegate_pointer(self):
     """Returns the native TfLiteDelegate pointer.
@@ -125,10 +154,18 @@ def load_delegate(library, options=None):
 
   Raises:
     ValueError: Delegate failed to load.
+    RuntimeError: If delegate loading is used on unsupported platform.
   """
-  delegate = Delegate(library, options)
-  if not delegate._get_native_delegate_pointer():  # pylint: disable=protected-access
-    raise ValueError('Failed to load delegate from {}'.format(library))
+
+  # TODO(b/137299813): Fix darwin support for delegates.
+  if sys.platform == 'darwin':
+    raise RuntimeError('Dynamic loading of delegates on Darwin not supported.')
+
+  try:
+    delegate = Delegate(library, options)
+  except ValueError as e:
+    raise ValueError('Failed to load delegate from {}\n{}'.format(
+        library, str(e)))
   return delegate
 
 
@@ -163,10 +200,12 @@ class Interpreter(object):
     Raises:
       ValueError: If the interpreter was unable to create.
     """
+    if not hasattr(self, '_custom_op_registerers'):
+      self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
-              model_path))
+              model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -176,7 +215,7 @@ class Interpreter(object):
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
-              model_content))
+              model_content, self._custom_op_registerers))
     elif not model_path and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -192,6 +231,15 @@ class Interpreter(object):
       for delegate in self._delegates:
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
+
+  def __del__(self):
+    # Must make sure the interpreter is destroyed before things that
+    # are used by it like the delegates. NOTE this only works on CPython
+    # probably.
+    # TODO(b/136468453): Remove need for __del__ ordering needs of CPython
+    # by using explicit closes(). See implementation of Interpreter __del__.
+    self._interpreter = None
+    self._delegates = None
 
   def allocate_tensors(self):
     self._ensure_safe()
@@ -408,3 +456,40 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+
+class InterpreterWithCustomOps(Interpreter):
+  """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
+
+  The interface provided by this class is experimenal and therefore not exposed
+  as part of the public API.
+
+  Wraps the tf.lite.Interpreter class and adds the ability to load custom ops
+  by providing the names of functions that take a pointer to a BuiltinOpResolver
+  and add a custom op.
+  """
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None,
+               custom_op_registerers=None):
+    """Constructor.
+
+    Args:
+      model_path: Path to TF-Lite Flatbuffer file.
+      model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+          objects returned by lite.load_delegate().
+      custom_op_registerers: List of str, symbol names of functions that take a
+        pointer to a MutableOpResolver and register a custom op.
+
+    Raises:
+      ValueError: If the interpreter was unable to create.
+    """
+    self._custom_op_registerers = custom_op_registerers
+    super(InterpreterWithCustomOps, self).__init__(
+        model_path=model_path,
+        model_content=model_content,
+        experimental_delegates=experimental_delegates)

@@ -71,8 +71,8 @@ class IgniteDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string cache_name = "";
-    string host = "";
+    tstring cache_name = "";
+    tstring host = "";
     int32 port = -1;
     bool local = false;
     int32 part = -1;
@@ -96,16 +96,17 @@ class IgniteDatasetOp : public DatasetOpKernel {
     const char* env_cert_password = std::getenv("IGNITE_DATASET_CERT_PASSWORD");
 
     if (env_cache_name) {
-      cache_name = string(env_cache_name);
+      cache_name = env_cache_name;
     } else {
-      OP_REQUIRES_OK(
-          ctx, ParseScalarArgument<string>(ctx, "cache_name", &cache_name));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<tstring>(ctx, "cache_name",
+                                                             &cache_name));
     }
 
     if (env_host) {
-      host = string(env_host);
+      host = env_host;
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "host", &host));
+      OP_REQUIRES_OK(ctx,
+                     data::ParseScalarArgument<tstring>(ctx, "host", &host));
     }
 
     if (env_port) {
@@ -114,13 +115,14 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "variable is not a valid integer: ",
                                           env_port));
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "port", &port));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<int32>(ctx, "port", &port));
     }
 
     if (env_local) {
       local = true;
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "local", &local));
+      OP_REQUIRES_OK(ctx,
+                     data::ParseScalarArgument<bool>(ctx, "local", &local));
     }
 
     if (env_part) {
@@ -129,7 +131,7 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "variable is not a valid integer: ",
                                           env_part));
     } else {
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<int32>(ctx, "part", &part));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<int32>(ctx, "part", &part));
     }
 
     if (env_page_size) {
@@ -139,17 +141,17 @@ class IgniteDatasetOp : public DatasetOpKernel {
                                           "integer: ",
                                           env_page_size));
     } else {
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<int32>(ctx, "page_size", &page_size));
+      OP_REQUIRES_OK(
+          ctx, data::ParseScalarArgument<int32>(ctx, "page_size", &page_size));
     }
 
-    if (env_username) username = string(env_username);
+    if (env_username) username = env_username;
 
-    if (env_password) password = string(env_password);
+    if (env_password) password = env_password;
 
-    if (env_certfile) certfile = string(env_certfile);
+    if (env_certfile) certfile = env_certfile;
 
-    if (env_keyfile) keyfile = string(env_keyfile);
+    if (env_keyfile) keyfile = env_keyfile;
 
     if (env_cert_password) cert_password = string(env_cert_password);
 

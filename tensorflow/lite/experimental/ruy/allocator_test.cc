@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 
-#include <cstdlib>
-
 #include <gtest/gtest.h>
 
 namespace ruy {

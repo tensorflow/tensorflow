@@ -330,6 +330,20 @@ manual_symbol_renames = {
         "tf.io.decode_csv",
     "tf.data.Iterator":
         "tf.compat.v1.data.Iterator",
+    "tf.data.experimental.DatasetStructure":
+        "tf.data.DatasetSpec",
+    "tf.data.experimental.OptionalStructure":
+        "tf.OptionalSpec",
+    "tf.data.experimental.RaggedTensorStructure":
+        "tf.RaggedTensorSpec",
+    "tf.data.experimental.SparseTensorStructure":
+        "tf.SparseTensorSpec",
+    "tf.data.experimental.Structure":
+        "tf.TypeSpec",
+    "tf.data.experimental.TensorArrayStructure":
+        "tf.TensorArraySpec",
+    "tf.data.experimental.TensorStructure":
+        "tf.TensorSpec",
     "tf.parse_example":
         "tf.io.parse_example",
     "tf.parse_single_example":

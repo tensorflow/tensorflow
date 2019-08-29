@@ -294,6 +294,10 @@ message ExecutionProfile {
 
   // The size of the binary code in the executable.
   int64 executable_size_in_bytes = 6;
+
+  // Whether this profile was drawn from a cache of profiles instead of from
+  // execution on the hardware.
+  bool profile_cache_hit = 7;
 }
 
 // Handle given to a user that represents an execution that the user launched
@@ -577,6 +581,12 @@ message CholeskyOptions {
   // If true, uses the lower triangle of `a`. If false, uses the upper triangle
   // of `a`.
   bool lower = 1;
+}
+
+// Generic map of attributes used to pass hints / configuration options from
+// the Python frontend to the XLA backend.
+message FrontendAttributes {
+  map<string, string> map = 1;
 }
 
 message OpSharding {

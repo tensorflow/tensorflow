@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import array_ops
@@ -95,6 +97,7 @@ def spectrogram_to_mel_matrix(num_mel_bins=20,
   Raises:
     ValueError: if frequency edges are incorrectly ordered.
   """
+  audio_sample_rate = tensor_util.constant_value(audio_sample_rate)
   nyquist_hertz = audio_sample_rate / 2.
   if lower_edge_hertz >= upper_edge_hertz:
     raise ValueError("lower_edge_hertz %.1f >= upper_edge_hertz %.1f" %
@@ -135,8 +138,10 @@ class LinearToMelTest(test.TestCase):
     configs = [
         # Defaults.
         (20, 129, 8000.0, 125.0, 3800.0, dtypes.float64),
+        # Same as above, but with a constant Tensor sample rate.
+        (20, 129, constant_op.constant(8000.0), 125.0, 3800.0, dtypes.float64),
         # Settings used by Tacotron (https://arxiv.org/abs/1703.10135).
-        (80, 1025, 24000.0, 80.0, 12000.0, dtypes.float64)
+        (80, 1025, 24000.0, 80.0, 12000.0, dtypes.float64),
     ]
     with self.session(use_gpu=True):
       for config in configs:
@@ -159,6 +164,9 @@ class LinearToMelTest(test.TestCase):
       mel_ops.linear_to_mel_weight_matrix(num_spectrogram_bins=0)
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(sample_rate=0.0)
+    with self.assertRaises(ValueError):
+      mel_ops.linear_to_mel_weight_matrix(
+          sample_rate=array_ops.placeholder(dtypes.float32))
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(lower_edge_hertz=-1)
     with self.assertRaises(ValueError):

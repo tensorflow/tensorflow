@@ -28,21 +28,21 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "mul",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "div",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "exp",
 // CHECK-NEXT:      quantization: {
@@ -62,7 +62,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:      opcode_index: 1,
 // CHECK-NEXT:      inputs: [ 2, 1 ],
 // CHECK-NEXT:      outputs: [ 3 ],
-// CHECK-NEXT:      custom_options: [ 3, 68, 105, 118, 0, 16, 18, 3, 68, 105, 118, 42, 7, 10, 1, 84, 18, 2, 48, 1, 50, 0, 0, 2, 23, 19, 20, 20, 4, 40, 1 ]
+// CHECK-NEXT:      custom_options: [ 3, 68, 105, 118, 0, 20, 18, 3, 68, 105, 118, 26, 0, 26, 0, 42, 7, 10, 1, 84, 18, 2, 48, 1, 50, 0, 0, 2, 27, 23, 20, 20, 4, 40, 1 ]
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      opcode_index: 2,
 // CHECK-NEXT:      inputs: [ 3 ],

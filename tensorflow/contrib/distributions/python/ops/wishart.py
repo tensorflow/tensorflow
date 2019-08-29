@@ -170,8 +170,7 @@ class _WishartLinearOperator(distribution.Distribution):
         allow_nan_stats=allow_nan_stats,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
-        graph_parents=([self._df, self._dimension] +
-                       self._scale_operator.graph_parents),
+        graph_parents=[self._df, self._dimension],
         name=name)
 
   @property
@@ -400,10 +399,9 @@ class _WishartLinearOperator(distribution.Distribution):
 
   def _mode(self):
     s = self.df - self.dimension - 1.
-    s = array_ops.where(
+    s = array_ops.where_v2(
         math_ops.less(s, 0.),
-        constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
-        s)
+        constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"), s)
     if self.cholesky_input_output_matrices:
       return math_ops.sqrt(s) * self.scale_operator.to_dense()
     return s * self._square_scale_operator()

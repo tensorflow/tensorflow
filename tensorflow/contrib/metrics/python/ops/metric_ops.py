@@ -1161,8 +1161,9 @@ def streaming_dynamic_auc(labels,
   and performing the final calculation using all of the concatenated values.
 
   Args:
-    labels: A `Tensor` of ground truth labels with the same shape as `labels`
-      and with values of 0 or 1 whose values are castable to `int64`.
+    labels:  A `Tensor` of ground truth labels with the same shape as 
+      `predictions` and with values of 0 or 1 whose values are castable to
+      `int64`.
     predictions: A `Tensor` of predictions whose values are castable to
       `float64`. Will be flattened into a 1-D `Tensor`.
     curve: The name of the curve for which to compute AUC, 'ROC' for the
@@ -3640,7 +3641,8 @@ def streaming_concat(values,
       next_shape = array_ops.stack([next_size] + fixed_shape)
       new_value = array_ops.zeros(next_shape, dtype=values.dtype)
       old_value = array.value()
-      assign_op = state_ops.assign(array, new_value, validate_shape=False)
+      with ops.control_dependencies([old_value]):
+        assign_op = state_ops.assign(array, new_value, validate_shape=False)
       with ops.control_dependencies([assign_op]):
         copy_op = array[:size].assign(old_value[:size])
       # return value needs to be the same dtype as no_op() for cond

@@ -44,12 +44,14 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
@@ -1387,6 +1389,65 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       grads = self.evaluate(grads)
       for g, g_re in zip(grads, grads_re):
         self.assertAllClose(g, g_re)
+
+
+class GradPassThroughTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_v1_only("b/120545219")
+  def test_gradients_v1(self):
+    x = variable_scope.get_variable(
+        name="x", shape=(), initializer=init_ops.constant_initializer(1.0),
+        use_resource=True)
+    z = variable_scope.get_variable(
+        name="z", shape=(), initializer=init_ops.constant_initializer(3.0),
+        use_resource=True)
+
+    # Verify that assign op is not differentiable
+    y = state_ops.assign(x, z**2)
+    grads = gradients.gradients(y, z)
+    self.assertIsNone(grads[0])
+
+    # Verify that when the (non differentiable) assign op is wrapped with
+    # grad_pass_through, gradients are correctly forwarded to the inputs.
+    # Form an input as quadratic function of variable z and check that the
+    # gradient of output wrt to z is correct.
+    y = custom_gradient.grad_pass_through(
+        lambda v: state_ops.assign(x, v))(z**2)
+    grads = gradients.gradients(y, z)
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllClose(grads[0].eval(), 6.0)
+
+    # Verify that variables involved in the wrapped op do not receive gradients.
+    y = custom_gradient.grad_pass_through(lambda v: x * v)(z)
+    grads = gradients.gradients(y, x)
+    self.assertIsNone(grads[0])
+
+  @test_util.run_v2_only
+  def test_gradients_v2(self):
+    x = variables.Variable(1.0, name="x")
+    z = variables.Variable(3.0, name="z")
+
+    # Verify that assign op is not differentiable
+    with backprop.GradientTape() as tape:
+      y = x.assign(z**2)
+    grads = tape.gradient(y, z)
+    self.assertIsNone(grads)
+
+    # Verify that when the (non differentiable) assign op is wrapped with
+    # grad_pass_through, gradients are correctly forwarded to the inputs.
+    # Form an input as quadratic function of variable z and check that the
+    # gradient of output wrt to z is correct.
+    with backprop.GradientTape() as tape:
+      y = custom_gradient.grad_pass_through(x.assign)(z**2)
+    grads = tape.gradient(y, z)
+    self.assertAllClose(grads, 6.0)
+
+    # Verify that variables involved in the wrapped op do not receive gradients.
+    with backprop.GradientTape() as tape:
+      y = custom_gradient.grad_pass_through(lambda v: x * v)(z)
+    grads = tape.gradient(y, x)
+    self.assertIsNone(grads)
 
 
 if __name__ == "__main__":

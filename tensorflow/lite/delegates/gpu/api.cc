@@ -62,11 +62,9 @@ ObjectType GetType(const TensorObject& object) {
   return absl::visit(ObjectTypeGetter{}, object);
 }
 
-bool IsValid(const TensorObject& object) {
-  return absl::visit(ObjectValidityChecker{DataType::UNKNOWN}, object);
-}
+bool IsValid(const TensorObjectDef& def) { return IsValid(def.object_def); }
 
-bool IsCompatible(const TensorObjectDef& def, const TensorObject& object) {
+bool IsValid(const TensorObjectDef& def, const TensorObject& object) {
   return GetType(object) == def.object_def.object_type &&
          absl::visit(ObjectValidityChecker{def.object_def.data_type}, object);
 }
@@ -86,6 +84,21 @@ bool IsObjectPresent(ObjectType type, const TensorObject& obj) {
     case ObjectType::UNKNOWN:
       return false;
   }
+}
+
+uint32_t NumElements(const TensorObjectDef& def) {
+  const auto& d = def.dimensions;
+  switch (def.object_def.data_layout) {
+    case DataLayout::BHWC:
+      return d.product();
+    case DataLayout::HWDC4:
+    case DataLayout::HDWC4:
+    case DataLayout::DHWC4:
+      return d.b * d.h * d.w * AlignByN(d.c, 4);
+    case DataLayout::UNKNOWN:
+      return 0;
+  }
+  return 0;
 }
 
 }  // namespace gpu

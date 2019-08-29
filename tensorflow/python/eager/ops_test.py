@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import threading
 import weakref
 
@@ -188,8 +189,16 @@ class OpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((a <= b), np.less_equal(v1, v2))
       self.assertAllEqual((a > b), np.greater(v1, v2))
       self.assertAllEqual((a >= b), np.greater_equal(v1, v2))
-      self.assertAllEqual((a == b), np.equal(v1, v2)[0])
-      self.assertAllEqual((a != b), np.not_equal(v1, v2)[0])
+
+      # TODO(b/120678848): Remove the else branch once we enable
+      # ops.Tensor._USE_EQUALITY by default.
+      if ops.Tensor._USE_EQUALITY:
+        self.assertAllEqual((a == b), np.equal(v1, v2))
+        self.assertAllEqual((a != b), np.not_equal(v1, v2))
+      else:
+        self.assertAllEqual((a == b), np.equal(v1, v2)[0])
+        self.assertAllEqual((a != b), np.not_equal(v1, v2)[0])
+
       self.assertAllEqual(v1[0], a[constant_op.constant(0)])
 
     ops_test([1, 4, 8], [2, 3, 5])
@@ -272,24 +281,23 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testSilentCopy(self):
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
-    context._context = context.Context()
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
       config.set_device_policy('silent')
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
   @test_util.run_gpu_only
   def testSoftPlacement(self):
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
-    context._context = context.Context()
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
       config.set_device_policy('silent')
       config.set_soft_device_placement(True)
@@ -298,8 +306,7 @@ class OpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(result.device,
                        '/job:localhost/replica:0/task:0/device:GPU:0')
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
   def testRandomUniform(self):
@@ -408,19 +415,37 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   def testWeakKeyDictionaryTensor(self):
     weak_key_dict = weakref.WeakKeyDictionary()
+
     strong_x = constant_op.constant([[1.]])
     strong_y = constant_op.constant([[2.]])
-    weak_key_dict[strong_x] = constant_op.constant([[3.]])
-    weak_key_dict[strong_y] = constant_op.constant([[4.]])
+    strong_x_ref = strong_x.experimental_ref()
+    strong_y_ref = strong_y.experimental_ref()
+    weak_key_dict[strong_x_ref] = constant_op.constant([[3.]])
+    weak_key_dict[strong_y_ref] = constant_op.constant([[4.]])
     strong_y.a = constant_op.constant([[5.]])
-    weak_x = weakref.ref(strong_x)
-    del strong_x
-    self.assertIs(weak_x(), None)
-    self.assertEqual([strong_y], list(weak_key_dict))
+    weak_x_ref = weakref.ref(strong_x)
+
+    del strong_x, strong_x_ref
+    self.assertIs(weak_x_ref(), None)
+    self.assertEqual([strong_y_ref], list(weak_key_dict))
     self.assertEqual(1, len(list(weak_key_dict)))
     self.assertEqual(1, len(weak_key_dict))
-    del strong_y
+
+    del strong_y, strong_y_ref
     self.assertEqual([], list(weak_key_dict))
+
+  def testEagerTensorsCanBeGarbageCollected(self):
+    x = constant_op.constant([[1.]])
+    y = constant_op.constant([[2.]])
+    x.y = y
+    y.x = x
+    weak_x = weakref.ref(x)
+    weak_y = weakref.ref(y)
+    del x
+    del y
+    gc.collect()
+    self.assertIs(weak_x(), None)
+    self.assertIs(weak_y(), None)
 
 
 if __name__ == '__main__':

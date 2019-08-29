@@ -779,7 +779,9 @@ def ZerosLikeOutsideLoop(op, index):
   val = op.outputs[index]
   if not util.IsSwitch(op):
     if val.dtype == dtypes.resource:
-      return array_ops.zeros(gen_resource_variable_ops.variable_shape(val))
+      return array_ops.zeros(
+          gen_resource_variable_ops.variable_shape(val),
+          dtype=default_gradient.get_zeros_dtype(val))
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()

@@ -58,10 +58,11 @@ class ScopedAllocatorOp : public OpKernel {
     AllocatorAttributes attr = context->output_alloc_attr(0);
     Status s =
         context->allocate_output(0, {num_elements_}, &backing_tensor, attr);
-    VLOG(1) << "_ScopedAllocatorOp new backing tensor size "
-            << backing_tensor->TotalBytes() << " num_elements_ "
-            << num_elements_ << " buffer " << DMAHelper::buffer(backing_tensor)
-            << " base addr " << DMAHelper::base(backing_tensor);
+    VLOG(1) << "_ScopedAllocatorOp " << context->op_kernel().name()
+            << " new backing tensor size " << backing_tensor->TotalBytes()
+            << " num_elements_ " << num_elements_ << " buffer "
+            << DMAHelper::buffer(backing_tensor) << " base addr "
+            << DMAHelper::base(backing_tensor);
     if (s.ok()) {
       s = sam->AddScopedAllocator(*backing_tensor, context->step_id(), id_,
                                   name_, fields_, expected_call_count_);

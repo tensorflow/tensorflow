@@ -49,6 +49,7 @@ constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDelegateFlag[] = "delegate";
 constexpr char kNnapiDelegate[] = "nnapi";
 constexpr char kGpuDelegate[] = "gpu";
+constexpr char kNumRanksFlag[] = "num_ranks";
 
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
@@ -144,6 +145,9 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
       tflite::Flag::CreateFlag(kDelegateFlag, &params.delegate,
                                "Delegate to use for inference, if available. "
                                "Must be one of {'nnapi', 'gpu'}"),
+      tflite::Flag::CreateFlag(kNumRanksFlag, &params.num_ranks,
+                               "Generates the top-1 to top-k accuracy values"
+                               "where k = num_ranks. Default: 10"),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
@@ -259,7 +263,7 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
                  &all_okay]() {
       if (EvaluateModelForShard(shard_id, image_label, model_labels, params_,
                                 &observer, params_.num_ranks) != kTfLiteOk) {
-        all_okay = all_okay && false;
+        all_okay = false;
       }
     };
     thread_pool.push_back(std::thread(func));
@@ -270,7 +274,7 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
     thread.join();
   }
 
-  return kTfLiteOk;
+  return all_okay ? kTfLiteOk : kTfLiteError;
 }
 
 }  // namespace metrics

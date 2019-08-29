@@ -83,6 +83,7 @@ class Normalization(CombinerPreprocessingLayer):
 
     # count is not used in this class's call() method, but is used to re-create
     # the accumulator during multiple calls to 'adapt'.
+    # TODO(omalleyt): should mean and variance be set to self.dtype?
     self.mean = self._add_state_variable(
         name=_MEAN_NAME,
         shape=mean_and_var_shape,

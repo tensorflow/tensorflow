@@ -660,8 +660,8 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
     case C128: {
       TF_RETURN_IF_ERROR(
           result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
-            return std::complex<float>(real.Get<double>(multi_index),
-                                       imag.Get<double>(multi_index));
+            return std::complex<double>(real.Get<double>(multi_index),
+                                        imag.Get<double>(multi_index));
           }));
       break;
     }
@@ -919,9 +919,8 @@ void Dft1D(int64 length, int64 start, int64 stride, bool inverse,
 
 // Helper to reverse the order of dimension lengths in the passed-in literal.
 std::vector<int64> GetDimensionLengths(const Literal& literal) {
-  std::vector<int64> lengths = literal.shape().dimensions();
-  absl::c_reverse(lengths);
-  return lengths;
+  auto dimensions = literal.shape().dimensions();
+  return std::vector<int64>(dimensions.rbegin(), dimensions.rend());
 }
 
 // Helper to compute strides for creating linear indices into multidimensional
@@ -1543,8 +1542,9 @@ class OutputBatchIndexToInputIndex {
     int64 index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
-      TF_ASSIGN_OR_RETURN(index_vector_[i],
-                          start_indices_.GetIntegralAsS64(index_vector_index_));
+      // TODO(george): OK what should happen here?
+      // seems OK to crash though.
+      index_vector_[i] = *start_indices_.GetIntegralAsS64(index_vector_index_);
     }
     return Status::OK();
   }
@@ -2295,12 +2295,10 @@ static StatusOr<bool> GenerateReduceOutputElement(
   }
 
   if (use_fast_add) {
-    TF_ASSIGN_OR_RETURN(double computed_result,
-                        init_values[0]->GetAsDouble({}));
+    double computed_result = *init_values[0]->GetAsDouble({});
     auto reduction_step =
         [&](absl::Span<const int64> input_index) -> StatusOr<bool> {
-      TF_ASSIGN_OR_RETURN(double argument,
-                          input_args[0]->GetAsDouble(input_index));
+      double argument = *input_args[0]->GetAsDouble(input_index);
       computed_result += argument;
       return true;
     };
@@ -2374,7 +2372,6 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     arg_dim_steps[dim] = 1;
     arg_dim_counts[dim] = arg_dimensions[dim];
   }
-  auto reduced_dimensions = arg_shape.dimensions();
 
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.

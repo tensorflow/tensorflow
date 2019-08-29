@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -39,7 +39,7 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
   for (const auto& constraint : kernel_def.constraint()) {
     if (constraint.allowed_values().list().type_size() == 0) {
       return errors::Unimplemented(
-          "KernelDef '", ProtoShortDebugString(kernel_def),
+          "KernelDef '", kernel_def.ShortDebugString(),
           " has constraint on attr '", constraint.name(),
           "' with unsupported type: ",
           SummarizeAttrValue(constraint.allowed_values()));
@@ -54,7 +54,7 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
       } else {
         if (!AttrValueHasType(*found, "list(type)").ok()) {
           return errors::InvalidArgument(
-              "KernelDef '", ProtoShortDebugString(kernel_def),
+              "KernelDef '", kernel_def.ShortDebugString(),
               "' has constraint on attr '", constraint.name(),
               "' that has value '", SummarizeAttrValue(*found),
               "' that does not have type 'type' or 'list(type)' in NodeDef "
@@ -73,7 +73,7 @@ Status KernelAttrsMatch(const KernelDef& kernel_def, AttrSlice attrs,
       return errors::InvalidArgument(
           "OpKernel '", kernel_def.op(), "' has constraint on attr '",
           constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
+          "', KernelDef: '", kernel_def.ShortDebugString(), "'");
     }
   }
   *match = true;

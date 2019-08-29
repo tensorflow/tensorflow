@@ -63,7 +63,7 @@ void MaybeConvertFromHalf(DataType data_type, absl::string_view value,
 }
 
 struct ReadFromTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -103,7 +103,7 @@ struct ReadFromTextureGenerator {
 };
 
 struct ReadFromBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -180,7 +180,7 @@ RewriteStatus GenerateReadAccessor(
 }
 
 struct WriteToBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -236,7 +236,7 @@ struct WriteToBufferGenerator {
 };
 
 struct WriteToTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -314,7 +314,7 @@ std::string ToBufferType(DataType data_type) {
 }
 
 struct TextureImageTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
@@ -355,14 +355,42 @@ struct TextureImageTypeGetter {
 };
 
 struct TextureSamplerTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
 
-  std::string operator()(const uint2&) const { return "sampler2D"; }
+  std::string operator()(const uint2&) const {
+    switch (type) {
+      case DataType::FLOAT16:
+      case DataType::FLOAT32:
+        return "sampler2D";
+      case DataType::INT32:
+      case DataType::INT16:
+        return "isampler2D";
+      case DataType::UINT32:
+      case DataType::UINT16:
+        return "usampler2D";
+      default:
+        return "unknown_sampler2D";
+    }
+  }
 
-  std::string operator()(const uint3&) const { return "sampler2DArray"; }
+  std::string operator()(const uint3&) const {
+    switch (type) {
+      case DataType::FLOAT16:
+      case DataType::FLOAT32:
+        return "sampler2DArray";
+      case DataType::INT32:
+      case DataType::INT16:
+        return "isampler2DArray";
+      case DataType::UINT32:
+      case DataType::UINT16:
+        return "usampler2DArray";
+      default:
+        return "unknown_sampler2DArray";
+    }
+  }
 
   DataType type;
 };
@@ -410,24 +438,24 @@ std::string ToImagePrecision(DataType type) {
 }
 
 struct SizeParametersAdder {
-  void operator()(uint32_t) const {}
+  void operator()(size_t) const {}
 
   void operator()(const uint2& size) const {
-    parameters->AddParameter(
+    variable_accessor->AddUniformParameter(
         {absl::StrCat(object_name, "_w"), static_cast<int32_t>(size.x)});
   }
 
   // p1 and p2 are padding. For some reason buffer does not map correctly
   // without it.
   void operator()(const uint3& size) const {
-    parameters->AddParameter(
+    variable_accessor->AddUniformParameter(
         {absl::StrCat(object_name, "_w"), static_cast<int32_t>(size.x)});
-    parameters->AddParameter(
+    variable_accessor->AddUniformParameter(
         {absl::StrCat(object_name, "_h"), static_cast<int32_t>(size.y)});
   }
 
   absl::string_view object_name;
-  ParameterAccessor* parameters;
+  VariableAccessor* variable_accessor;
 };
 
 // Adds necessary parameters to parameter accessor that represent object size
@@ -436,7 +464,7 @@ struct SizeParametersAdder {
 //  - 2D : 'int object_name_w'
 //  - 3D : 'int object_name_w' + 'int object_name_h'
 void AddSizeParameters(absl::string_view object_name, const Object& object,
-                       ParameterAccessor* parameters) {
+                       VariableAccessor* parameters) {
   absl::visit(SizeParametersAdder{object_name, parameters}, object.size);
 }
 
@@ -505,7 +533,7 @@ RewriteStatus ObjectAccessor::RewriteRead(absl::string_view location,
   auto status = GenerateReadAccessor(it->second, element, sampler_textures_,
                                      output, &requires_sizes);
   if (requires_sizes) {
-    AddSizeParameters(it->first, it->second, parameter_accessor_);
+    AddSizeParameters(it->first, it->second, variable_accessor_);
   }
   return status;
 }
@@ -527,7 +555,7 @@ RewriteStatus ObjectAccessor::RewriteWrite(absl::string_view location,
   auto status = GenerateWriteAccessor(it->second, element, value, output,
                                       &requires_sizes);
   if (requires_sizes) {
-    AddSizeParameters(it->first, it->second, parameter_accessor_);
+    AddSizeParameters(it->first, it->second, variable_accessor_);
   }
   return status;
 }

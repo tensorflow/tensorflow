@@ -97,7 +97,7 @@ Input::Initializer::Initializer(
     Tensor elem = e.tensor;
     if (first.tensor.dtype() == DT_STRING) {
       for (int i = 0; i < elem.NumElements(); ++i) {
-        t.flat<string>()(offset + i) = elem.flat<string>()(i);
+        t.flat<tstring>()(offset + i) = elem.flat<tstring>()(i);
       }
       offset += elem.NumElements();
     } else {

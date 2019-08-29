@@ -253,17 +253,17 @@ inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
   if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
     cached_cache_key_ = BuildCacheKeyForDevice(device);
-    device_for_cached_cache_key_ = device;
+    device_for_cached_cache_key_ = string(device);
   }
 
   return *cached_cache_key_;
 }
 
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
-    const string& device) const {
+    const StringPiece device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   if (node_def_ != nullptr) {

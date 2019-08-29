@@ -36,9 +36,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(bhavanis): Move ConvMklToTF to mkl_test_util.h as it is used by
-// most unit tests.
-
 // Helper class for converting MKL tensors to TF tensors and comparing to
 // expected values
 
@@ -47,6 +44,7 @@ static const TensorShape dummy_shape({8});
 
 class ConvMklToTF : public OpsTestBase {
  public:
+  // TODO(bhavanis): Move the below ConvertMklToTF() to mkl_util.h
   template <typename T>
   void ConvertMklToTF(DataType dtype, const Tensor& input,
                       const Tensor& input_metadata_tensor, Tensor& output) {
@@ -55,7 +53,7 @@ class ConvMklToTF : public OpsTestBase {
                      .Input(FakeInput(dtype))     // Input
                      .Input(FakeInput(DT_UINT8))  // MKL metadata tensor
                      .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(input.shape(), input.flat<T>());

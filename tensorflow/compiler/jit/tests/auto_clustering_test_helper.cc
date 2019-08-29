@@ -128,9 +128,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
   TF_RETURN_IF_ERROR(AssertGraphDefIsUnclustered(graphdef));
 
   OptimizationPassRunner runner;
-  TF_RETURN_IF_ERROR(
-      runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                             OptimizerOptions_GlobalJitLevel_ON_2));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
   TF_RETURN_IF_ERROR(runner.AddCpus(32));
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 
@@ -188,7 +186,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                          /*input_buffer_bytes=*/k_buffer_size,
                          /*output_buffer_bytes=*/k_buffer_size,
                          io::ZlibCompressionOptions::GZIP());
-  string decompressed_pbtxt_string;
+  tstring decompressed_pbtxt_string;
   Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
   if (!s.ok() && !errors::IsOutOfRange(s)) {
     // OutOfRange is fine since we set the number of read bytes to INT_MAX.
@@ -211,9 +209,7 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
       ReadTextProto(Env::Default(), string(graph_def_path), &graph_def));
 
   OptimizationPassRunner runner;
-  TF_RETURN_IF_ERROR(
-      runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                             OptimizerOptions_GlobalJitLevel_ON_2));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
   TF_RETURN_IF_ERROR(runner.AddCpus(32));
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 

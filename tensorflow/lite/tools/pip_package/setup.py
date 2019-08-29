@@ -35,19 +35,19 @@ from setuptools import Extension
 from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.build_py import build_py
-PACKAGE_NAME = 'tflite-runtime'
+PACKAGE_NAME = 'tflite_runtime'
 PACKAGE_VERSION = os.environ['TENSORFLOW_VERSION']
 DOCLINES = __doc__.split('\n')
-PACKAGE = 'tflite_runtime.lite.python'
 TENSORFLOW_DIR = os.environ['TENSORFLOW_SRC_ROOT']
 
 # Setup cross compiling
-TARGET = (
-    os.environ['TENSORFLOW_TARGET'] if 'TENSORFLOW_TARGET' in os.environ
-    else None)
+TARGET = os.environ.get('TENSORFLOW_TARGET', None)
 if TARGET == 'rpi':
   os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
-  os.environ['CC'] = 'arm-linux-gnueabihf-g++'
+  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
+elif TARGET == 'aarch64':
+  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
+  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
 MAKE_CROSS_OPTIONS = ['TARGET=%s' % TARGET]  if TARGET else []
 
 RELATIVE_MAKE_DIR = os.path.join('tensorflow', 'lite', 'tools', 'make')
@@ -69,7 +69,8 @@ def get_build_cpus():
 
 def make_args(target='', quiet=True):
   """Construct make command line."""
-  args = (['make', 'SHELL=/bin/bash', '-C', TENSORFLOW_DIR]
+  args = (['make', 'SHELL=/bin/bash',
+           'BUILD_WITH_NNAPI=false', '-C', TENSORFLOW_DIR]
           + MAKE_CROSS_OPTIONS +
           ['-f', RELATIVE_MAKEFILE_PATH, '-j',
            str(get_build_cpus())])
@@ -101,6 +102,13 @@ def download_dependencies():
 
 
 class CustomBuildExt(build_ext, object):
+  """Customized build extension."""
+
+  def get_ext_filename(self, ext_name):
+    if TARGET:
+      ext_path = ext_name.split('.')
+      return os.path.join(*ext_path) + '.so'
+    return super(CustomBuildExt, self).get_ext_filename(ext_name)
 
   def run(self):
     download_dependencies()
@@ -120,14 +128,17 @@ LIB_TFLITE = 'tensorflow-lite'
 LIB_TFLITE_DIR = make_output('libdir')
 
 ext = Extension(
-    name='%s._interpreter_wrapper' % PACKAGE,
+    name='%s._interpreter_wrapper' % PACKAGE_NAME,
     language='c++',
     sources=['interpreter_wrapper/interpreter_wrapper.i',
-             'interpreter_wrapper/interpreter_wrapper.cc'],
+             'interpreter_wrapper/interpreter_wrapper.cc',
+             'interpreter_wrapper/numpy.cc',
+             'interpreter_wrapper/python_error_reporter.cc',
+             'interpreter_wrapper/python_utils.cc'],
     swig_opts=['-c++',
                '-I%s' % TENSORFLOW_DIR,
                '-module', 'interpreter_wrapper',
-               '-outdir', '.'],
+               '-outdir', PACKAGE_NAME],
     extra_compile_args=['-std=c++11'],
     include_dirs=[TENSORFLOW_DIR,
                   os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
@@ -152,7 +163,6 @@ setup(
     keywords='tflite tensorflow tensor machine learning',
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
-    package_dir={PACKAGE: '.'},
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,

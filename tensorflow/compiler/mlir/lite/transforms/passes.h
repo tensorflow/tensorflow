@@ -16,32 +16,58 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
+#include "llvm/ADT/ArrayRef.h"
+
 namespace mlir {
 class FunctionPassBase;
+class ModulePassBase;
 
 namespace TFL {
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-FunctionPassBase *CreateLegalizeTFPass();
+std::unique_ptr<FunctionPassBase> CreateLegalizeTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-FunctionPassBase *CreateOptimizePass();
+std::unique_ptr<FunctionPassBase> CreateOptimizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-FunctionPassBase *CreatePrepareTFPass();
+std::unique_ptr<FunctionPassBase> CreatePrepareTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
-FunctionPassBase *CreateLowerStaticTensorListPass();
+std::unique_ptr<ModulePassBase> CreateLowerStaticTensorListPass();
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
-FunctionPassBase *CreateQuantizePass();
+std::unique_ptr<FunctionPassBase> CreateQuantizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-FunctionPassBase *CreatePrepareQuantizePass();
+// When `quantize_sign` is true, constant tensors will use int8 quantization
+// scheme.
+// TODO(fengliuai): make the bit width configurable.
+std::unique_ptr<FunctionPassBase> CreatePrepareQuantizePass(bool quantize_sign);
 
 // Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
-FunctionPassBase *CreatePostQuantizePass(bool emit_quant_adaptor_ops);
+std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
+    bool emit_quant_adaptor_ops);
+
+// Creates an instance of the TensorFlow Lite dialect TrimFunctions
+// pass.
+std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
+    llvm::ArrayRef<std::string> trim_funcs_whitelist);
+
+// Creates an instance of the TensorFlow Lite dialect PrepareCompositeFunctions
+// pass.
+std::unique_ptr<FunctionPassBase> CreatePrepareCompositeFunctionsPass();
+
+// Creates a instance of the TensorFlow Lite dialect ExtractOphint pass.
+std::unique_ptr<ModulePassBase> CreateExtractOphintPass();
+
+// Creates a instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
+// pass. The composite op is created from the ophint extraction pass.
+std::unique_ptr<ModulePassBase> CreateLegalizeOphintFuncOpPass();
+
 }  // namespace TFL
 
 }  // namespace mlir

@@ -80,6 +80,7 @@ cuda_py_test(
     srcs = ["trt_convert_test.py"],
     additional_deps = [
         ":trt_convert_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",

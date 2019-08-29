@@ -65,7 +65,8 @@ class _TFShouldUseHelper(object):
     else:
       logger = tf_logging.error
     creation_stack = ''.join(
-        [line.rstrip() for line in traceback.format_stack(self._stack_frame)])
+        [line.rstrip()
+         for line in traceback.format_stack(self._stack_frame, limit=5)])
     logger(
         '==================================\n'
         'Object was never used (type %s):\n%s\nIf you want to mark it as '

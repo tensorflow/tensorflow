@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
@@ -35,7 +36,7 @@ class DefaultCommandQueue : public CommandQueue {
   }
 
   Status WaitForCompletion() override {
-    // TODO(akulik): may be let a user to choose what wait method to use.
+    // TODO(akulik): Maybe let the user choose which wait method to use.
     return GlActiveSyncWait();
   }
 };

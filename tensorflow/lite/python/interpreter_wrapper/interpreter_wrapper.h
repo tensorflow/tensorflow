@@ -26,8 +26,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-struct _TfLiteDelegate;
-typedef struct _TfLiteDelegate TfLiteDelegate;
+struct TfLiteDelegate;
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
@@ -47,12 +46,14 @@ class PythonErrorReporter;
 class InterpreterWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path,
-                                                      std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(
+      const char* model_path, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromBuffer(PyObject* data,
-                                                        std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors();
@@ -85,7 +86,7 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateInterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
-      std::string* error_msg);
+      const std::vector<std::string>& registerers, std::string* error_msg);
 
   InterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,

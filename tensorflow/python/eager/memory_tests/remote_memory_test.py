@@ -23,7 +23,7 @@ import os
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
-from tensorflow.python.eager.memory_tests import memory_test
+from tensorflow.python.eager.memory_tests import memory_test_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +41,7 @@ class RemoteWorkerMemoryTest(test.TestCase):
     self._cached_server_target = self._cached_server.target[len("grpc://"):]
 
   def testMemoryLeakInLocalCopy(self):
-    if not memory_test.memory_profiler_is_available():
+    if not memory_test_util.memory_profiler_is_available():
       self.skipTest("memory_profiler required to run this test")
 
     remote.connect_to_remote_host(self._cached_server_target)
@@ -59,7 +59,7 @@ class RemoteWorkerMemoryTest(test.TestCase):
 
       local_func(x)
 
-    memory_test.assert_no_leak(
+    memory_test_util.assert_no_leak(
         func, num_iters=100, increase_threshold_absolute_mb=50)
 
 

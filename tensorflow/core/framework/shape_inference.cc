@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -346,7 +346,7 @@ string InferenceContext::DebugString(DimensionHandle d) {
 
 string InferenceContext::DebugString() const {
   return strings::StrCat("InferenceContext for node: ",
-                         ProtoDebugString(*node_def_));
+                         node_def_->DebugString());
 }
 
 string InferenceContext::DebugString(const ShapeAndType& shape_and_type) {

@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
-
 package tensorflow.boosted_trees.learner;
+
+import "tensorflow/contrib/boosted_trees/proto/tree_config.proto";
+
+option cc_enable_arenas = true;
 
 // Tree regularization config.
 message TreeRegularizationConfig {
@@ -149,4 +151,11 @@ message LearnerConfig {
 
   // By default we use NORMAL_DECISION_TREE as weak learner.
   WeakLearnerType weak_learner_type = 12;
+
+  // If you want to enforce some splits and allow boosting to figure out the
+  // rest, you can provide a tree that represents the starting splits for each
+  // tree in the ensemble.
+  // Set both each_tree_start and each_tree_start_num_layers.
+  tensorflow.boosted_trees.trees.DecisionTreeConfig each_tree_start = 13;
+  int32 each_tree_start_num_layers = 14;
 }

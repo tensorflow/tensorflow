@@ -59,7 +59,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -81,7 +82,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)
@@ -144,7 +146,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1)), 'b': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -165,7 +168,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)
@@ -293,7 +297,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
               keras.layers.Dense(1)]
 
     model = keras.models.Sequential(layers)
-    model.compile(keras.optimizers.SGD(0.1),
+    model.compile(optimizer='sgd',
                   loss=keras.losses.BinaryCrossentropy())
     model.fit(dataset)
 

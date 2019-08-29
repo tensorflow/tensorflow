@@ -803,8 +803,6 @@ class ScopedMetaGraphTest(test.TestCase):
         b"loc:@new_hidden1/new_hidden2/hidden3/biases",
         b"loc:@new_hidden1/new_hidden2/hidden3/weights"
     ]
-    for n, e in zip(nodes, expected):
-      self.assertEqual([e], graph2.get_operation_by_name(n).get_attr("_class"))
 
   @test_util.run_deprecated_v1
   def testExportNestedNames(self):

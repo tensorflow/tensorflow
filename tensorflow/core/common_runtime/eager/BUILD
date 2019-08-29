@@ -3,6 +3,10 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     default_visibility = [
@@ -48,6 +52,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -85,7 +90,9 @@ tf_cuda_library(
     deps = [
         ":attr_builder",
         ":context",
+        ":eager_executor",
         ":tensor_handle",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -170,6 +177,17 @@ tf_cuda_library(
     }),
 )
 
+KERNEL_AND_DEVICE_DEPS = [
+    "//tensorflow/core:core_cpu_lib",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:framework_internal",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/grappler/optimizers:meta_optimizer",
+]
+
 tf_cuda_library(
     name = "kernel_and_device",
     srcs = [
@@ -187,15 +205,9 @@ tf_cuda_library(
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
-        "//conditions:default": [
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core/profiler/lib:traceme",
-            "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
+        "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
+            "//tensorflow/compiler/jit:xla_kernel_creator_util",
         ],
     }),
 )
@@ -241,16 +253,19 @@ cc_library(
         ":context",
         ":copy_to_device_node",
         ":eager_executor",
+        ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -259,8 +274,39 @@ cc_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }),
+    }) + if_mkl([":mkl_eager_op_rewrite"]),
+)
+
+cc_library(
+    name = "mkl_eager_op_rewrite",
+    srcs = ["mkl_eager_op_rewrite.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:mkl_graph_util",
+    ],
+)
+
+cc_library(
+    name = "eager_op_rewrite_registry",
+    srcs = ["eager_op_rewrite_registry.cc"],
+    hdrs = ["eager_op_rewrite_registry.h"],
+    deps = [":eager_operation"],
+)
+
+tf_cc_test(
+    name = "eager_op_rewrite_registry_test",
+    srcs = ["eager_op_rewrite_registry_test.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_library(
@@ -315,6 +361,9 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*_test.cc"],
+        exclude = [
+            "*_test.cc",
+            "remote_*",
+        ],
     ),
 )

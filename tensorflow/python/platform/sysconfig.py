@@ -80,7 +80,7 @@ def get_link_flags():
   if not _MONOLITHIC_BUILD:
     flags.append('-L%s' % get_lib())
     if is_mac:
-      flags.append('-l:libtensorflow_framework.%s.dylib' % ver)
+      flags.append('-ltensorflow_framework.%s' % ver)
     else:
       flags.append('-l:libtensorflow_framework.so.%s' % ver)
   return flags

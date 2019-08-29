@@ -35,8 +35,12 @@ The value to pad if width > -1.  If empty, pads with spaces.
 Another typical value is '0'.  String cannot be longer than 1 character.
 END
   }
-  summary: "Converts each entry in the given tensor to strings.  Supports many numeric"
+  summary: "Converts each entry in the given tensor to strings."
   description: <<END
-types and boolean.
+Supports many numeric types and boolean.
+
+For Unicode, see the
+[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+tutorial.
 END
 }

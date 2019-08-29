@@ -4,7 +4,7 @@ load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -36,7 +36,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [":friends"],
     deps = [
-        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -46,6 +45,7 @@ py_library(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//third_party/py/numpy",
     ],
 )
@@ -207,6 +207,29 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "complex_div_test",
+    size = "medium",
+    srcs = ["complex_div_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 2,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
+    deps = [
+        ":xla_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
@@ -643,6 +666,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_diag_ops_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["matrix_diag_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
@@ -763,6 +799,7 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
+    shard_count = 5,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -915,8 +952,9 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateful_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -930,7 +968,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateless_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     tags = ["optonly"],
     deps = [
@@ -995,21 +1033,25 @@ tf_xla_py_test(
     ],
 )
 
-tf_xla_py_test(
-    name = "unary_ops_test",
-    size = "medium",
-    srcs = ["unary_ops_test.py"],
-    tags = ["notap"],  # b/136030724
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
-    ],
-)
+# TODO(b/140174740): Re-enable when fixed.
+#tf_xla_py_test(
+#    name = "unary_ops_test",
+#    size = "medium",
+#    srcs = ["unary_ops_test.py"],
+#    tags = [
+#        "notap",  # b/136030724
+#    ],
+#    deps = [
+#        ":xla_test",
+#        "//third_party/py/numpy",
+#        "//tensorflow/python:array_ops",
+#        "//tensorflow/python:framework",
+#        "//tensorflow/python:math_ops",
+#        "//tensorflow/python:nn_ops",
+#        "//tensorflow/python:nn_ops_gen",
+#        "//tensorflow/python:platform_test",
+#    ],
+#)
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
@@ -1117,9 +1159,9 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "permute_test",
+    name = "data_format_ops_test",
     size = "small",
-    srcs = ["permute_test.py"],
+    srcs = ["data_format_ops_test.py"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -1154,6 +1196,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1162,7 +1205,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1179,21 +1222,23 @@ cuda_py_test(
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "dense_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["dense_layer_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1279,6 +1324,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The
@@ -1355,5 +1401,22 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "conv_node_name_test",
+    size = "medium",
+    srcs = ["conv_node_name_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
     ],
 )

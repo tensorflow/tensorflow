@@ -38,7 +38,7 @@ class GatherOperationTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseHloString(hlo_text, config));
+                            ParseAndReturnUnverifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };

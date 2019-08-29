@@ -35,17 +35,6 @@ namespace {
 
 class GemmRewriteTest : public GpuCodegenTest {
  public:
-  void MatchOptimizedHlo(const std::string& hlo, const std::string& pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            GetOptimizedModule(hlo));
-    HloPrintOptions print_opts;
-    print_opts.set_print_operand_shape(false);
-    StatusOr<bool> filecheck_result =
-        RunFileCheck(optimized_module->ToString(print_opts), pattern);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.ValueOrDie());
-  }
-
   void CheckNumberOfAllocations(const std::string& hlo,
                                 int expected_number_of_allocations) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
@@ -63,17 +52,6 @@ class GemmRewriteTest : public GpuCodegenTest {
              expected_number_of_allocations)
         << "Unexpected buffer assignment. Was:\n"
         << buffer_assignment->ToString();
-  }
-
- private:
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      const std::string& hlo) {
-    HloModuleConfig config;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseHloString(hlo, config));
-    return backend().compiler()->RunHloPasses(
-        std::move(module), backend().default_stream_executor(),
-        backend().default_stream_executor()->GetAllocator());
   }
 };
 
@@ -96,7 +74,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -120,7 +98,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -144,7 +122,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%y, %x), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[1],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%y, %x), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[0],rhs_contracting_dimensions:[1],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -170,7 +148,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -196,7 +174,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
 ; CHECK-NEXT:    %x = c64[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = c64[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT %custom-call = c64[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1,alpha_imag:3}"
+; CHECK-NEXT:    ROOT %custom-call = c64[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1,alpha_imag:3}"
       )");
 }
 
@@ -219,7 +197,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -244,7 +222,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -273,7 +251,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    %bias = f32[2,2]{1,0} parameter(2)
-; CHECK-NEXT:    ROOT %custom-call.1 = f32[2,2]{1,0} custom-call(%x, %y, %bias), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,beta:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    ROOT %custom-call.1 = f32[2,2]{1,0} custom-call(%x, %y, %bias), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:3,beta:1,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 
@@ -303,7 +281,7 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    %bias = f32[2,2]{1,0} parameter(2)
 ; CHECK-NEXT:    %x = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
-; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
+; CHECK-NEXT:    %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{selected_algorithm:{{-?[0-9]+}},alpha_real:3,dot_dimension_numbers:{lhs_contracting_dimensions:[1],rhs_contracting_dimensions:[0],lhs_batch_dimensions:[],rhs_batch_dimensions:[]},batch_size:1}"
       )");
 }
 

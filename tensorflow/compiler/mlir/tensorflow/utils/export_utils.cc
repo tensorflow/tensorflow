@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
@@ -30,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -50,8 +50,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-using stream_executor::port::StatusOr;
 
 namespace tensorflow {
 namespace {
@@ -112,7 +110,12 @@ Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::FunctionAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
+  value->clear_value();
+  return Status::OK();
+}
+
+Status ConvertAttribute(const mlir::SymbolRefAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue());
   return Status::OK();
 }
@@ -146,7 +149,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       TensorProto tensor;
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
-    } else if (auto attr = a.dyn_cast<mlir::FunctionAttr>()) {
+    } else if (auto attr = a.dyn_cast<mlir::SymbolRefAttr>()) {
       AttrValue attrVal;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attrVal));
       *list->add_func() = attrVal.func();
@@ -157,9 +160,34 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+// Updates NodeDef constructed out of an MLIR If op to map it to either
+// TensorFlow StatelessIf or If op depending on the additional attribute.
+void UpdateCompositeIfOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessIf";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
+// Updates NodeDef constructed out of an MLIR While op to map it to either
+// TensorFlow StatelessWhile or While op depending on the additional attribute.
+void UpdateCompositeWhileOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessWhile";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
 }  // anonymous namespace
 
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name,
     OpNameMappingFunc op_name_func) {
   auto node_def = absl::make_unique<NodeDef>();
@@ -169,12 +197,18 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
                       op_name_func(inst->getName().getStringRef()));
   node_def->set_op(op_name);
   node_def->set_name(name);
+
+  // Add inputs to the NodeDef based on the number of operands. This is required
+  // as later when edges are added to the Node using Graph::AddEdge the
+  // associated NodeDef is not updated.
+  for (int i = 0, e = inst->getNumOperands(); i < e; ++i) {
+    node_def->add_input();
+  }
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("device")) {
     node_def->set_device(attr.getValue());
   }
 
   // Add the node attributes.
-  absl::flat_hash_set<string> attrs_to_ignore;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
                         node_def->mutable_attr()),
@@ -184,12 +218,16 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
 
+  if (node_def->op() == "If") UpdateCompositeIfOp(node_def.get());
+  if (node_def->op() == "While") UpdateCompositeWhileOp(node_def.get());
+
   return node_def;
 }
 
-Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
-                         const absl::flat_hash_set<string>& attrs_to_ignore,
-                         AttrValueMap* values) {
+Status ConvertAttributes(
+    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
+    AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const mlir::NamedAttribute& named_attr : attrs) {
     auto name_strref = named_attr.first.str();
@@ -208,8 +246,8 @@ Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
     }
     AttrValue value;
     switch (attr.getKind()) {
-      case mlir::StandardAttributes::Function: {
-        auto func_attr = attr.cast<mlir::FunctionAttr>();
+      case mlir::StandardAttributes::SymbolRef: {
+        auto func_attr = attr.cast<mlir::SymbolRefAttr>();
         value.mutable_func()->set_name(func_attr.getValue());
         func_call_attrs[string(name)] = value;
         continue;
@@ -238,6 +276,10 @@ Status ConvertAttributes(const llvm::ArrayRef<mlir::NamedAttribute> attrs,
       case mlir::StandardAttributes::OpaqueElements:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
+        break;
+      case mlir::StandardAttributes::Unit:
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
         break;
       // AffineMap and Type kinds are not implemented.
       default:

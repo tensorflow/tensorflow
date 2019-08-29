@@ -34,14 +34,16 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export("data.experimental.Optional")
 @six.add_metaclass(abc.ABCMeta)
 class Optional(composite_tensor.CompositeTensor):
-  """Wraps a nested structure of tensors that may/may not be present at runtime.
+  """Wraps a value that may/may not be present at runtime.
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
   `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
   contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
-  a "none"
-  value that indicates the end of the sequence has been reached.
+  a "none" value that indicates the end of the sequence has been reached.
+
+  `Optional` can only be used by values that are convertible to `Tensor` or
+  `CompositeTensor`.
   """
 
   @abc.abstractmethod
@@ -58,7 +60,7 @@ class Optional(composite_tensor.CompositeTensor):
 
   @abc.abstractmethod
   def get_value(self, name=None):
-    """Returns a nested structure of values wrapped by this optional.
+    """Returns the value wrapped by this optional.
 
     If this optional does not have a value (i.e. `self.has_value()` evaluates
     to `False`), this operation will raise `tf.errors.InvalidArgumentError`
@@ -68,7 +70,7 @@ class Optional(composite_tensor.CompositeTensor):
       name: (Optional.) A name for the created operation.
 
     Returns:
-      A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      The wrapped value.
     """
     raise NotImplementedError("Optional.get_value()")
 
@@ -87,7 +89,8 @@ class Optional(composite_tensor.CompositeTensor):
     """Returns an `Optional` that wraps the given value.
 
     Args:
-      value: A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      value: A value to wrap. The value must be convertible to `Tensor` or
+        `CompositeTensor`.
 
     Returns:
       An `Optional` that wraps `value`.
@@ -153,12 +156,12 @@ class _OptionalImpl(Optional):
 
   @property
   def _type_spec(self):
-    return OptionalStructure.from_value(self)
+    return OptionalSpec.from_value(self)
 
 
-# TODO(b/133606651) Rename this class to OptionalSpec
-@tf_export("OptionalSpec", "data.experimental.OptionalStructure")
-class OptionalStructure(type_spec.TypeSpec):
+@tf_export(
+    "OptionalSpec", v1=["OptionalSpec", "data.experimental.OptionalStructure"])
+class OptionalSpec(type_spec.TypeSpec):
   """Represents an optional potentially containing a structured value."""
 
   __slots__ = ["_value_structure"]
@@ -186,7 +189,7 @@ class OptionalStructure(type_spec.TypeSpec):
 
   @staticmethod
   def from_value(value):
-    return OptionalStructure(value.value_structure)
+    return OptionalSpec(value.value_structure)
 
   def _to_legacy_output_types(self):
     return self

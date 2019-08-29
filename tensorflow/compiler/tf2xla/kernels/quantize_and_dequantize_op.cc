@@ -47,6 +47,11 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    // TODO(b/140109958): Implement for axis != -1.
+    OP_REQUIRES(ctx, axis_ == -1,
+                errors::Unimplemented("QuantizeAndDequantizeOp with axis >= 0 "
+                                      "not yet implemented for XLA"));
     round_mode_ = ROUND_HALF_TO_EVEN;
   }
 
@@ -156,6 +161,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
 
  protected:
   int64 num_bits_ = -1;
+  int axis_;
   bool signed_input_;
   bool range_given_;
   bool narrow_range_;

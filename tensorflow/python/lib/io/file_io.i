@@ -228,7 +228,7 @@ int64 TellFile(tensorflow::WritableFile* file, TF_Status* status) {
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* status) {
-  string result;
+  tensorflow::tstring result;
   tensorflow::Status s = stream->ReadNBytes(bytes, &result);
   if (!s.ok() && s.code() != tensorflow::error::OUT_OF_RANGE) {
     Set_TF_Status_from_Status(status, s);

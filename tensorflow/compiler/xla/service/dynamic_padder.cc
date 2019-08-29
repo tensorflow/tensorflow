@@ -84,11 +84,13 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:
     case HloOpcode::kTranspose:
+    case HloOpcode::kSort:
     case HloOpcode::kSlice:
       return nullptr;
     default:

@@ -32,22 +32,33 @@ namespace xla {
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(
+// Note: Tests derived from HloTestBase should use
+// ParseAndReturnVerifiedModule() instead!
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config);
+
+// Given a string in the HloModule::ToString() format, parses the string and
+// creates a HloModule with default config.
+// Note: Tests derived from HloTestBase should use
+// ParseAndReturnVerifiedModule() instead!
+StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
+    absl::string_view str);
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // builds the HloModule in place at the given module pointer. 'module' must
 // point to an empty module (no computations).
 Status ParseHloString(absl::string_view str, HloModule* module);
 
-// Given a string in the HloModule::ToString() format, parses the string and
-// creates a HloModule with default config.
-StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
-
 // Parses sharding from str. str is supposed to contain the body of the
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string, e.g.,
 // "{replicated}".
 StatusOr<HloSharding> ParseSharding(absl::string_view str);
+
+// Parses frontend attributes from str. str is supposed to contain the body of
+// the frontend attributes , i.e. just the rhs of the
+// "frontend_attributes={...}" attribute string, e.g.,
+// "{attr_a=a,attr_b=b}".
+StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str);
 
 // Parses parameter replication from str. str is supposed to contain the body of
 // the parameter replication, i.e. just the rhs of the

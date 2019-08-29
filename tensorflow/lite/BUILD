@@ -95,6 +95,16 @@ cc_library(
 )
 
 cc_library(
+    name = "external_cpu_backend_context",
+    srcs = ["external_cpu_backend_context.cc"],
+    hdrs = ["external_cpu_backend_context.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
     copts = TFLITE_DEFAULT_COPTS,
@@ -144,18 +154,10 @@ cc_library(
     copts = TFLITE_DEFAULT_COPTS,
 )
 
-# TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
 cc_library(
-    name = "framework",
+    name = "allocation",
     srcs = [
         "allocation.cc",
-        "core/subgraph.cc",
-        "graph_info.cc",
-        "interpreter.cc",
-        "model.cc",
-        "mutable_op_resolver.cc",
-        "optional_debug_tools.cc",
-        "stderr_reporter.cc",
     ] + select({
         "//tensorflow:android": [
             "mmap_allocation.cc",
@@ -167,6 +169,30 @@ cc_library(
             "mmap_allocation.cc",
         ],
     }),
+    hdrs = [
+        "allocation.h",
+    ],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        ":simple_memory_arena",
+        ":string",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
+    ],
+)
+
+# TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
+cc_library(
+    name = "framework",
+    srcs = [
+        "core/subgraph.cc",
+        "graph_info.cc",
+        "interpreter.cc",
+        "model.cc",
+        "mutable_op_resolver.cc",
+        "optional_debug_tools.cc",
+        "stderr_reporter.cc",
+    ],
     hdrs = [
         "allocation.h",
         "context.h",
@@ -183,7 +209,9 @@ cc_library(
     ],
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     deps = [
+        ":allocation",
         ":arena_planner",
+        ":external_cpu_backend_context",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
@@ -196,6 +224,7 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/resource_variable:resource_variable",
     ] + select({
         ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",
@@ -299,6 +328,7 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],

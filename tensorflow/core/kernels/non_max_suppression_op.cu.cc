@@ -82,7 +82,8 @@ __device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
 
 // Check whether two boxes have an IoU greater than threshold.
 template <typename T>
-__device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
+__device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* __restrict__ a,
+                                                  const Box* __restrict__ b,
                                                   float a_area,
                                                   T iou_threshold) {
   const float b_area = (b->x2 - b->x1) * (b->y2 - b->y1);
@@ -130,9 +131,9 @@ __device__ EIGEN_STRONG_INLINE void Flipped<true>(Box& box) {
 // x1<x2 and y1<y2.
 template <bool flip_box>
 __launch_bounds__(kNmsBlockDim* kNmsBlockDim, 4) __global__
-    void NMSKernel(const Box* d_desc_sorted_boxes, const int num_boxes,
-                   const float iou_threshold, const int bit_mask_len,
-                   int* d_delete_mask) {
+    void NMSKernel(const Box* __restrict__ d_desc_sorted_boxes,
+                   const int num_boxes, const float iou_threshold,
+                   const int bit_mask_len, int* __restrict__ d_delete_mask) {
   // Storing boxes used by this CUDA block in the shared memory.
   __shared__ Box shared_i_boxes[kNmsBlockDim];
   // Same thing with areas
@@ -195,7 +196,8 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 template <typename Index, typename T, typename... Args>
 __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
                                                  const Index i_original,
-                                                 const T* original, T* selected,
+                                                 const T* __restrict__ original,
+                                                 T* __restrict__ selected,
                                                  Args... args) {
   selected[i_selected] = original[i_original];
   SelectHelper(i_selected, i_original, args...);
@@ -208,15 +210,18 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 // IndexMultiSelect(num_elements, indices, original1 ,selected1, original2,
 // selected2).
 template <typename Index, typename T, typename... Args>
-__global__ void IndexMultiSelect(const int num_elements, const Index* indices,
-                                 const T* original, T* selected, Args... args) {
+__global__ void IndexMultiSelect(const int num_elements,
+                                 const Index* __restrict__ indices,
+                                 const T* __restrict__ original,
+                                 T* __restrict__ selected, Args... args) {
   for (const int idx : CudaGridRangeX(num_elements)) {
     SelectHelper(idx, indices[idx], original, selected, args...);
   }
 }
 
 template <typename T>
-__global__ void Iota(const int num_elements, const T offset, T* to_fill) {
+__global__ void Iota(const int num_elements, const T offset,
+                     T* __restrict__ to_fill) {
   for (int idx : CudaGridRangeX(num_elements)) {
     to_fill[idx] = static_cast<T>(idx) + offset;
   }
@@ -241,7 +246,7 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
       DataType::DT_INT32, TensorShape({max_nms_mask_size}), &d_nms_mask));
   // reset data sensitive tensors
   auto device = context->eigen_gpu_device();
-  auto config = GetCudaLaunchConfig(d_nms_mask.NumElements(), device);
+  auto config = GetGpuLaunchConfig(d_nms_mask.NumElements(), device);
   TF_CHECK_OK(GpuLaunchKernel(SetZero<int>, config.block_count,
                               config.thread_per_block, 0, device.stream(),
                               config.virtual_thread_count,
@@ -381,7 +386,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     }
     const int output_size = max_output_size.scalar<int>()();
     size_t cub_sort_temp_storage_bytes = 0;
-    auto cuda_stream = GetCudaStream(context);
+    auto cuda_stream = GetGpuStream(context);
     auto device = context->eigen_gpu_device();
     // Calling cub with nullptrs as inputs will make it return
     // workspace size needed for the operation instead of doing the operation.
@@ -425,7 +430,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                    &d_sorted_boxes));
 
     // this will return sorted scores and their indices
-    auto config = GetCudaLaunchConfig(num_boxes, device);
+    auto config = GetGpuLaunchConfig(num_boxes, device);
     // initialize box and score indices
     TF_CHECK_OK(GpuLaunchKernel(Iota<int>, config.block_count,
                                 config.thread_per_block, 0, device.stream(),
@@ -472,7 +477,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                    context->allocate_output(0, TensorShape({num_outputs}),
                                             &output_indices));
     if (num_outputs == 0) return;
-    config = GetCudaLaunchConfig(num_outputs, device);
+    config = GetGpuLaunchConfig(num_outputs, device);
     TF_CHECK_OK(GpuLaunchKernel(
         IndexMultiSelect<int, int>, config.block_count, config.thread_per_block,
         0, device.stream(), config.virtual_thread_count,

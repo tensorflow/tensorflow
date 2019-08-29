@@ -22,12 +22,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
-using stream_executor::port::StatusOr;
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
-// name should be unique to the graph it is being inserted to.
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
-    mlir::Operation* inst, llvm::StringRef name);
+// name should be unique to the graph it is being inserted to. If the
+// `ignore_unregistered_attrs` argument is set to true, the attributes which are
+// not in the op registry will be ignored. Set it to true if the returned
+// NodeDef will be excuted by the linked TF Eager runtime.
+stream_executor::port::StatusOr<std::unique_ptr<NodeDef>>
+ConvertTFDialectOpToNodeDef(mlir::Operation* inst, llvm::StringRef name,
+                            bool ignore_unregistered_attrs);
 
 }  // namespace tensorflow
 

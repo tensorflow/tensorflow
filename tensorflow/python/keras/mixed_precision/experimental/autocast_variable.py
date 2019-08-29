@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import values as distribute_values
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -158,8 +159,75 @@ class AutoCastVariable(trackable.Trackable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
-  # TODO(reedwm): Define operator overloads.
+  def __repr__(self):
+    if context.executing_eagerly() and not self._in_graph_mode:
+      repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
+                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}, '
+                  'numpy={np_repr}>')
+      return repr_str.format(
+          v=self, np_repr=ops.numpy_text(self.read_value(), is_repr=True))
+    else:
+      repr_str = ("<AutoCastVariable '{v.name}' shape={v.shape} "
+                  'dtype={v.dtype.name} true_dtype={v.true_dtype.name}>')
+      return repr_str.format(v=self)
 
+  # Operator overloads:
+  # Note we only overload operators that support floating-point types, as
+  # non-float variables cannot be wrapped with an AutoCastVariable.
+
+  # pylint: disable=multiple-statements
+  def __add__(self, o): return self.value() + o
+  def __radd__(self, o): return o + self.value()
+  def __sub__(self, o): return self.value() - o
+  def __rsub__(self, o): return o - self.value()
+  def __mul__(self, o): return self.value() * o
+  def __rmul__(self, o): return o * self.value()
+  def __truediv__(self, o): return self.value() / o
+  def __rtruediv__(self, o): return o / self.value()
+  def __floordiv__(self, o): return self.value() // o
+
+  def __rfloordiv__(self, o): return o // self.value()
+  def __mod__(self, o): return self.value() % o
+  def __rmod__(self, o): return o % self.value()
+  def __lt__(self, o): return self.value() < o
+  def __le__(self, o): return self.value() <= o
+  def __gt__(self, o): return self.value() > o
+  def __ge__(self, o): return self.value() >= o
+  def __getitem__(self, o): return self.value()[o]
+  def __pow__(self, o, modulo=None): return pow(self.value(), o, modulo)
+  def __rpow__(self, o): return pow(o, self.value())
+  def __neg__(self): return -self.value()
+  def __abs__(self): return abs(self.value())
+
+  def __div__(self, o):
+    try:
+      return self.value().__div__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __rdiv__(self, o):
+    try:
+      return self.value().__rdiv__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __matmul__(self, o):
+    try:
+      return self.value().__matmul__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  def __rmatmul__(self, o):
+    try:
+      return self.value().__rmatmul__(o)
+    except AttributeError:
+      # See https://docs.python.org/3/library/constants.html#NotImplemented
+      return NotImplemented
+
+  # pylint: enable=multiple-statements
 
 ops.register_tensor_conversion_function(
     AutoCastVariable, AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
@@ -181,3 +249,6 @@ class AutoCastDistributedVariable(AutoCastVariable,
       raise ValueError('variable must be of type DistributedValues, '
                        'but got: %s' % variable)
     super(AutoCastDistributedVariable, self).__init__(variable)
+
+  def __repr__(self):
+    return distribute_values.DistributedVariable.__repr__(self)

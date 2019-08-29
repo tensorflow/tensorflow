@@ -51,6 +51,7 @@ docker run \
   -e TF_VERSION="${TF_VERSION}" \
   -e DEPLOY_OSSRH="${DEPLOY_OSSRH:-true}" \
   -e DEPLOY_BINTRAY="${DEPLOY_BINTRAY:-true}" \
+  -e DEPLOY_LOCAL="${DEPLOY_LOCAL:-false}" \
   -v ${PWD}:/tensorflow \
   -v "${SETTINGS_XML}":/root/.m2/settings.xml \
   -v ${HOME}/.gnupg:/root/.gnupg \

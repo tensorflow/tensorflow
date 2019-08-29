@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ERROR_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ERROR_UTIL_H_
 
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
@@ -35,9 +36,9 @@ using tensorflow::Status;
 // called from a function that will return a Status: MLIR code still uses the
 // default error reporting, and the final return function can return the Status
 // constructed from the diagnostics collected.
-class StatusScopedDiagnosticHandler : public ScopedDiagnosticHandler {
+class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
  public:
-  // Construct a diagnostic handler in a context. If propagate is true, then
+  // Constructs a diagnostic handler in a context. If propagate is true, then
   // diagnostics reported are also propagated back to the original diagnostic
   // handler.
   explicit StatusScopedDiagnosticHandler(MLIRContext* context,
@@ -63,7 +64,11 @@ class StatusScopedDiagnosticHandler : public ScopedDiagnosticHandler {
   void handler(Diagnostic diag);
 
   // String stream to assemble the final error message.
-  std::string instr_str_;
+  std::string diag_str_;
+  llvm::raw_string_ostream diag_stream_;
+
+  // A SourceMgr to use for the base handler class.
+  llvm::SourceMgr source_mgr_;
 
   // Whether to propagate diagnostics to the old diagnostic handler.
   bool propagate_;

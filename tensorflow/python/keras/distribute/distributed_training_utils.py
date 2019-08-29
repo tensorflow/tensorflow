@@ -32,6 +32,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
@@ -42,7 +43,10 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -133,6 +137,38 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
   return all_inputs, all_outputs, all_updates, all_session_args
 
 
+def unwrap_output_dict(strategy, grouped_outputs, mode):
+  """Unwrap the list of outputs contained in the PerReplica parameters."""
+  if mode == ModeKeys.PREDICT:
+    return flatten_per_replica_values(strategy, grouped_outputs)
+
+  # In the case of fit/eval, the grouped_outputs is a dict, whereas in predict,
+  # the output is as same structure as model output. They need to be treated
+  # differently
+  total_loss = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['total_loss'][0], axis=None)
+  output_losses = flatten_per_replica_values(strategy,
+                                             grouped_outputs['output_losses'])
+  metrics = flatten_per_replica_values(strategy,
+                                       grouped_outputs['metrics'])
+  batch_size = strategy.reduce(reduce_util.ReduceOp.SUM,
+                               grouped_outputs['batch_size'], axis=None)
+  if (is_tpu_strategy(strategy) and
+      ops.executing_eagerly_outside_functions()):
+    # Choose 1 value per replica in the TPU case since all replicas produce the
+    # same output.
+    # We only do this in eager mode for now since this function is used in
+    # both graph and eager mode and in the graph case we currently don't use
+    # experimental_run so would need to be removed when we converge the graph
+    # code path as well.
+    output_losses = output_losses[::strategy.num_replicas_in_sync]
+    metrics = metrics[::strategy.num_replicas_in_sync]
+  return {'total_loss': [total_loss],
+          'output_losses': output_losses,
+          'metrics': metrics,
+          'batch_size': batch_size}
+
+
 def unwrap_outputs(distribution_strategy, grouped_outputs,
                    with_loss_tensor=False):
   """Unwrap the list of outputs contained in the PerReplica parameters.
@@ -211,8 +247,8 @@ def validate_callbacks(input_callbacks, optimizer):
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
         callbacks passed.
-    ValueError: If `histogram_freq` or `write_grads` is one of the parameters
-        passed as part of the TensorBoard callback.
+    ValueError: If `write_grads` is one of the parameters passed as part of the
+        TensorBoard callback.
   """
   if input_callbacks:
     for callback in input_callbacks:
@@ -227,20 +263,13 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if getattr(callback, 'histogram_freq', False):
-          logging.warning(
-              UserWarning(
-                  '`histogram_freq` in the TensorBoard callback is not '
-                  'supported when using DistributionStrategy. Setting '
-                  '`histogram_freq` to `0`.'))
-          callback.histogram_freq = 0
         if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
                   'when using DistributionStrategy. Setting `write_grads` '
                   'to `False`.'))
-          callback.histogram_freq = False
+          callback.write_grads = False
 
 
 def validate_distributed_dataset_inputs(distribution_strategy, x, y,
@@ -311,7 +340,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
 
   """
   # Convert the inputs and targets into a list of PerReplica objects.
-  per_replica_list = nest.flatten(x)
+  per_replica_list = nest.flatten(x, expand_composites=True)
   x_values_list = []
   for x in per_replica_list:
     if not tensor_util.is_tensor(x):
@@ -421,36 +450,43 @@ def is_dataset_shape_fully_defined(dataset):
   return not unknown_shapes
 
 
-def process_batch_and_step_size(
-    strategy, inputs, batch_size, steps_per_epoch, mode):
+def process_batch_and_step_size(strategy,
+                                inputs,
+                                batch_size,
+                                steps_per_epoch,
+                                mode,
+                                validation_split=0.):
   """Process the batch size and step size based on input and dist strategy."""
   first_x_value = nest.flatten(inputs)[0]
   if isinstance(first_x_value, np.ndarray):
+    num_samples = first_x_value.shape[0]
+    if validation_split and 0. < validation_split < 1.:
+      num_samples = int(num_samples * (1 - validation_split))
     # Until support for partial batch is implemented across all
     # functions and distribution strategy, we pass `mode` to selectively
     # relax the constraint to consume all the training samples.
-    steps_per_epoch, batch_size = get_input_params(strategy,
-                                                   first_x_value,
-                                                   steps_per_epoch,
-                                                   batch_size,
-                                                   mode=mode)
+    steps_per_epoch, batch_size = get_input_params(
+        strategy, num_samples, steps_per_epoch, batch_size, mode=mode)
   return batch_size, steps_per_epoch
 
 
-def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
+def get_input_params(distribution_strategy,
+                     num_samples,
+                     steps,
+                     batch_size,
                      mode=None):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
     distribution_strategy: The DistributionStrategy used to compile the model.
-    first_x_value: This is the first input numpy array that is passed in as the
-      model input.
+    num_samples: The number of samples from which we determine the batch size
+      and steps.
     steps:  The specified number of steps.
     batch_size: The specified batch_size.
     mode: ModeKey representing whether input will be used for training,
       evaluation, or prediction. This is used to relax the constraints on
-      consuming all the training samples to keep compatibility till we
-      support partial batches. If none, then partial batches are not allowed.
+      consuming all the training samples to keep compatibility till we support
+      partial batches. If none, then partial batches are not allowed.
 
   Returns:
     steps: The steps or steps_per_epoch argument depending on if a user is
@@ -462,7 +498,6 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
     ValueError: If the number of batches or steps evaluates to 0.
 
   """
-  num_samples = first_x_value.shape[0]
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   # Currently this is only supported in TPUStrategy and CoreMirroredStrategy.
   use_per_replica_batch = not global_batch_size_supported(
@@ -545,13 +580,6 @@ def get_batch_dimension(iterator):
   # all.
   dims = shapes[0].dims
   return dims[0] if dims else None
-
-
-def list_to_tuple(maybe_list):
-  """Datasets treat lists specially, so switch them to tuples."""
-  if isinstance(maybe_list, list):
-    return tuple(maybe_list)
-  return maybe_list
 
 
 def get_iterator(dataset, distribution_strategy):
@@ -645,9 +673,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
-  We are going to distribute the model by cloning if the user has signaled
-  that intent by setting `cloning=True` in `Model.compile()` unless we are in
-  graph mode.
+  We are going to distribute the model by cloning in graph mode.
 
   Args:
     model: Keras model to distribute.
@@ -657,14 +683,11 @@ def is_distributing_by_cloning(model):
     otherwise.
   """
   if (is_tpu_strategy(model._distribution_strategy) and
-      context.executing_eagerly):
-    if model._cloning:
-      logging.warning(
-          'Model cloning is not supported in TPU Strategy in Eager mode.'
-          'cloning argument will be ignored.')
+      context.executing_eagerly):  # b/137580852
     return False
-  return (model._cloning or model._compile_distribution or
-          not ops.executing_eagerly_outside_functions())
+  elif ops.executing_eagerly_outside_functions():
+    return bool(model._compile_distribution)
+  return True
 
 
 def _custom_compile_for_predict(model):
@@ -834,7 +857,6 @@ def _make_execution_function_without_cloning(model, mode):
   with strategy.scope():
     per_replica_function = _make_replica_execution_function(model, mode)
 
-    @def_function.function
     def distributed_function(input_fn):
       """A single step of the distributed execution across replicas."""
       x, y, sample_weights = input_fn()
@@ -849,9 +871,14 @@ def _make_execution_function_without_cloning(model, mode):
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
       return all_outputs
 
-    def execution_function(input_fn):
-      # `numpy` translates Tensors to values in Eager mode.
-      return [out.numpy() for out in distributed_function(input_fn)]
+    if not model.run_eagerly:
+      distributed_function = def_function.function(distributed_function)
+      def execution_function(input_fn):
+        # `numpy` translates Tensors to values in Eager mode.
+        return [out.numpy() for out in distributed_function(input_fn)]
+    else:
+      execution_function = distributed_function
+
     return execution_function
 
 
@@ -1024,14 +1051,15 @@ def _copy_weights_to_original_model(model, mode):
     model.set_weights(updated_weights)
 
 
-def _per_replica_aggregate_batch(batch_outs, model, mode):
+def _per_replica_aggregate_batch(strategy, batch_outs, model, mode):
   """Aggregates the per-replica batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
+  if strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
-      num_replicas = model._distribution_strategy.num_replicas_in_sync
+      num_replicas = strategy.num_replicas_in_sync
       nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
-      total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
+      total_batch_outs.append(
+          concat_along_batch_dimension(nest.flatten(nested_outs)))
     return total_batch_outs
   return batch_outs
 
@@ -1111,17 +1139,18 @@ def is_current_worker_chief():
   return dc_context.get_current_worker_context().is_chief
 
 
-def filter_distributed_callbacks(callbacks_list):
+def filter_distributed_callbacks(callbacks_list, model):
   """Filter Callbacks based on the worker context when running multi-worker.
 
   Arguments:
     callbacks_list: A list of `Callback` instances.
+    model: Keras model instance.
 
   Returns:
     The list of `Callback` instances that should be run on this worker.
   """
 
-  if not multi_worker_util.in_multi_worker_mode():
+  if not model._in_multi_worker_mode():
     raise ValueError(
         'filter_distributed_callbacks() should only be called when Keras '
         'is in multi worker mode.')
@@ -1163,3 +1192,12 @@ def _update_sample_weight_modes(model, mode, sample_weights):
       if sample_weights and None not in sample_weights:
         for m, sw in zip(distributed_models, sample_weights):
           m._update_sample_weight_modes(sample_weights=[sw])
+
+
+def concat_along_batch_dimension(outputs):
+  """Concats prediction outputs along the batch dimension."""
+  if isinstance(outputs[0], sparse_tensor.SparseTensor):
+    return sparse_ops.sparse_concat_v2(axis=0, sp_inputs=outputs)
+  if isinstance(outputs[0], ragged_tensor.RaggedTensor):
+    return ragged_concat_ops.concat(outputs, axis=0)
+  return np.concatenate(outputs)

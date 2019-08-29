@@ -46,8 +46,7 @@ using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
-#endif
-
+#endif  // TENSORFLOW_USE_ROCM
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -393,6 +392,6 @@ REGISTER_KERNEL_BUILDER(Name("Where")
 
 #undef REGISTER_GPU_WHERE_OP
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

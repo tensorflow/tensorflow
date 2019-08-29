@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -59,11 +62,11 @@ void BufRendezvous::PurgeTable(const Status& s, HookTable* table) {
 }
 
 string BufRendezvous::Hook::DebugString() const {
-  return strings::StrCat("[dev:", (prod_dev ? prod_dev->name() : "none"),
-                         ", ctx:", reinterpret_cast<uint64>(prod_ctx),
-                         ", val:", reinterpret_cast<uint64>(prod_value),
-                         ", pcb:", reinterpret_cast<uint64>(&prod_cb),
-                         ", ccb:", reinterpret_cast<uint64>(&cons_cb), "]");
+  return absl::StrCat("[dev:", (prod_dev ? prod_dev->name() : "none"),
+                      ", ctx:", reinterpret_cast<uint64>(prod_ctx),
+                      ", val:", reinterpret_cast<uint64>(prod_value),
+                      ", pcb:", reinterpret_cast<uint64>(&prod_cb),
+                      ", ccb:", reinterpret_cast<uint64>(&cons_cb), "]");
 }
 
 void BufRendezvous::ProvideBuf(const string& key, Device* dev,
@@ -112,10 +115,28 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
   }
 }
 
-void BufRendezvous::ConsumeBuf(const string& key,
+void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
+                               const uint64 device_incarnation,
                                const ConsumerCallback& done) {
+  // Check the incarnation in the request matches the current device
+  // incarnation of the producer.
+  Device* device;
+  Status consumebuf_status = dev_mgr_->LookupDevice(device_name, &device);
+  if (consumebuf_status.ok() &&
+      device->attributes().incarnation() != device_incarnation) {
+    consumebuf_status = errors::FailedPrecondition(
+        "RecvBuf expects a different device incarnation: ", device_incarnation,
+        " vs. ", device->attributes().incarnation(),
+        ". Your worker job that contains the device (\"", device_name,
+        "\") was probably restarted. Check your "
+        "worker job for the reason why it was restarted.");
+  }
+  if (!consumebuf_status.ok()) {
+    done(consumebuf_status, nullptr);
+    return;
+  }
+
   Hook* existing_hook = nullptr;
-  Status consumebuf_status;
   do {
     mutex_lock l(mu_);
     if (!status_.ok()) {

@@ -163,8 +163,7 @@ class GraphExecutionState {
                       std::unique_ptr<FunctionLibraryDefinition>&& flib_def,
                       const GraphExecutionStateOptions& options);
 
-  Status InitBaseGraph(const GraphDef* graph_def,
-                       const BuildGraphOptions& options);
+  Status InitBaseGraph(std::unique_ptr<Graph>&& graph);
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these

@@ -85,6 +85,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return n1 + n2;
   }
 
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(input_->CheckExternalState());
+    return to_concatenate_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

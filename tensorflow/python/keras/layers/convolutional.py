@@ -176,24 +176,25 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
-    self.built = True
-
-  def call(self, inputs):
     if self.padding == 'causal':
       op_padding = 'valid'
     else:
       op_padding = self.padding
     if not isinstance(op_padding, (list, tuple)):
       op_padding = op_padding.upper()
-    conv_op = nn_ops.Convolution(
-        inputs.shape,
+
+    self._convolution_op = nn_ops.Convolution(
+        input_shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=op_padding,
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
-    outputs = conv_op(inputs, self.kernel)
+    self.built = True
+
+  def call(self, inputs):
+    outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
@@ -1784,6 +1785,7 @@ class DepthwiseConv2D(Conv2D):
     if len(input_shape) < 4:
       raise ValueError('Inputs to `DepthwiseConv2D` should have rank 4. '
                        'Received input shape:', str(input_shape))
+    input_shape = tensor_shape.TensorShape(input_shape)
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1985,7 +1987,11 @@ class UpSampling2D(Layer):
         interpolation=self.interpolation)
 
   def get_config(self):
-    config = {'size': self.size, 'data_format': self.data_format}
+    config = {
+        'size': self.size,
+        'data_format': self.data_format,
+        'interpolation': self.interpolation
+    }
     base_config = super(UpSampling2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 

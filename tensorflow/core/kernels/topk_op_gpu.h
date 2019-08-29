@@ -341,8 +341,9 @@ __device__ void mergeShards(int num_shards, int k,
 extern __shared__ char shared_memory[];
 
 template <typename T>
-__global__ void TopKKernel(const T* input, int length, int k, bool sorted,
-                           T* output, int* indices) {
+__global__ void TopKKernel(const T* __restrict__ input, int length, int k,
+                           bool sorted, T* __restrict__ output,
+                           int* __restrict__ indices) {
   const int batch_index = blockIdx.x;
   const T* batch_input = input + batch_index * length;
 
@@ -402,9 +403,9 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  TF_CHECK_OK(CudaLaunchKernel(TopKKernel<T>, batch_size, num_shards,
-                               shared_memory_size, stream, input, length, k,
-                               sorted, output, indices));
+  TF_CHECK_OK(GpuLaunchKernel(TopKKernel<T>, batch_size, num_shards,
+                              shared_memory_size, stream, input, length, k,
+                              sorted, output, indices));
   return cudaGetLastError();
 }
 
@@ -436,7 +437,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
                         typename TTypes<T, 2>::Tensor values,
                         TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-  const cudaStream_t& cu_stream = GetCudaStream(ctx);
+  const auto& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
 
   // TODO(ebrevdo): Once cub supports iterators for ValueT replace that tensor
@@ -550,7 +551,7 @@ struct TopKFunctor<GPUDevice, T> {
       return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
                                     k, values, indices);
     } else {
-      const cudaStream_t& cu_stream = GetCudaStream(context);
+      const auto& cu_stream = GetGpuStream(context);
       auto err = impl::LaunchTopKKernel(cu_stream, /* num_shards */ 0,
                                         input.data(), num_rows, num_cols, k,
                                         sorted, values.data(), indices.data());

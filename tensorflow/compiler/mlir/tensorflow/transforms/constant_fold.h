@@ -23,13 +23,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
-namespace tensorflow {
+namespace TF {
 
 LogicalResult ConstantFoldFallbackHook(
     Operation *inst, ArrayRef<Attribute> operands,
     SmallVectorImpl<Attribute> &results);  // NOLINT
 
-}  // namespace tensorflow
+}  // namespace TF
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_H_

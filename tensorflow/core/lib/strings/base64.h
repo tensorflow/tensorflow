@@ -24,13 +24,17 @@ namespace tensorflow {
 /// \brief Converts data into web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
-Status Base64Encode(StringPiece data, bool with_padding, string* encoded);
-Status Base64Encode(StringPiece data, string* encoded);  // with_padding=false.
+template <typename T>
+Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
+template <typename T>
+Status Base64Encode(StringPiece source,
+                    T* encoded);  // with_padding=false.
 
 /// \brief Converts data from web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
-Status Base64Decode(StringPiece data, string* decoded);
+template <typename T>
+Status Base64Decode(StringPiece data, T* decoded);
 
 }  // namespace tensorflow
 

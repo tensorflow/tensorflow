@@ -24,3 +24,6 @@ cd ${ROOT_DIR}
 pwd
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile test
+
+# Needed to solve CI build bug triggered by files added to source tree.
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

@@ -16,7 +16,7 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:        }
 // CHECK-NEXT:      }, {
-// CHECK-NEXT:        shape: [  ],
+// CHECK-NEXT:        shape: [ 3, 2 ],
 // CHECK-NEXT:        buffer: 2,
 // CHECK-NEXT:        name: "tf.AddV2",
 // CHECK-NEXT:        quantization: {
@@ -28,7 +28,7 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:      operators: [ {
 // CHECK-NEXT:        inputs: [ 0, 0 ],
 // CHECK-NEXT:        outputs: [ 1 ],
-// CHECK-NEXT:        custom_options: [ 5, 65, 100, 100, 86, 50, 0, 18, 18, 5, 65, 100, 100, 86, 50, 42, 7, 10, 1, 84, 18, 2, 48, 1, 50, 0, 0, 2, 27, 21, 20, 20, 4, 40, 1 ]
+// CHECK-NEXT:        custom_options: [ 5, 65, 100, 100, 86, 50, 0, 22, 18, 5, 65, 100, 100, 86, 50, 26, 0, 26, 0, 42, 7, 10, 1, 84, 18, 2, 48, 1, 50, 0, 0, 2, 31, 25, 20, 20, 4, 40, 1 ]
 // CHECK-NEXT:      } ],
 // CHECK-NEXT:      name: "main"
 // CHECK-NEXT:    } ],

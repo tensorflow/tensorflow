@@ -139,7 +139,8 @@ class BoundedOutputIterator
     int32* base;
     // Constructor
     __host__ __device__ __forceinline__
-    BoundedReference(int32* ptr, int32* base, IdentityOp op, int32 limit)
+    BoundedReference(int32* __restrict__ ptr, int32* __restrict__ base,
+                     IdentityOp op, int32 limit)
         : Reference(ptr, op), limit(limit), base(base) {}
 
     // Assignment
@@ -153,13 +154,13 @@ class BoundedOutputIterator
   typedef BoundedOutputIterator self_type;
   typedef BoundedReference reference;
 
-  __host__ __device__ __forceinline__ BoundedOutputIterator(int32* ptr,
-                                                            IdentityOp op,
-                                                            int32 size)
+  __host__ __device__ __forceinline__
+  BoundedOutputIterator(int32* __restrict__ ptr, IdentityOp op, int32 size)
       : TransformOutputIterator(ptr, op), limit(size), base(ptr) {}
 
   __host__ __device__ __forceinline__
-  BoundedOutputIterator(int32* ptr, int32* base, IdentityOp op, int32 size)
+  BoundedOutputIterator(int32* __restrict__ ptr, int32* __restrict__ base,
+                        IdentityOp op, int32 size)
       : TransformOutputIterator(ptr, op), limit(size), base(base) {}
 
   // Indirection
@@ -336,7 +337,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                  Tensor* indices_out, DoneCallback done) {
     int32 N = partitions->NumElements();
     const GPUDevice& device = c->eigen_device<GPUDevice>();
-    const gpuStream_t& cu_stream = GetGpuStream(c);
+    const auto& cu_stream = GetGpuStream(c);
 
     // Initialize the indices_in tensor using the Range GPU kernel.
     RangeInit(device, 0, 1, N, indices_in->flat<int32>());
@@ -369,7 +370,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                          Tensor* partition_count, Tensor* indices_out,
                          DoneCallback done) {
     const GPUDevice& device = c->eigen_device<GPUDevice>();
-    const gpuStream_t& cu_stream = GetGpuStream(c);
+    const auto& cu_stream = GetGpuStream(c);
     int32 N = partitions->NumElements();
     Tensor indices_in;
     Tensor partitions_out;

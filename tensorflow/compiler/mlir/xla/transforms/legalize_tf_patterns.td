@@ -16,9 +16,9 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
-include "mlir/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/xla_ops.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 def NullElementsAttr : NativeCodeCall<"ElementsAttr()">;
 
@@ -30,17 +30,19 @@ def FeatureDimension : NativeCodeCall<
     "getFeatureDimensionAttr($_builder, $0, $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
-def : Pattern<(TF_FusedBatchNormOp F32Tensor:$x, F32Tensor:$scale,
-                               F32Tensor:$offset, F32Tensor:$mean,
-                               F32Tensor:$variance, F32Attr:$epsilon,
+def : Pattern<
+    (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                                $data_format, FalseBoolAttr:$is_training),
-           [(XLA_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
-               $epsilon, (FeatureDimension $data_format, $x)),
-            /*batch_mean=*/(verifyUnusedValue),
-            /*batch_variance=*/(verifyUnusedValue),
-            /*reserve_space_1=*/(verifyUnusedValue),
-            /*reserve_space_2=*/(verifyUnusedValue)
-           ]>;
+    [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
+                               $epsilon, (FeatureDimension $data_format, $x)),
+     // We already guaranteed that the last four results has no use so it
+     // does not matter what value we provide here for replacement.
+     /*batch_mean=*/(replaceWithValue $x),
+     /*batch_variance=*/(replaceWithValue $x),
+     /*reserve_space_1=*/(replaceWithValue $x),
+     /*reserve_space_2=*/(replaceWithValue $x)],
+    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
+     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
 // Bias op patterns.
@@ -60,7 +62,7 @@ def ValidBiasAddFeatureDimension : Constraint<
 
 def : Pat<(TF_BiasAddOp IsAtleast3DShapeTensor:$input, Is1DShapeTensor:$bias,
                         TF_ConvnetDataFormatAttr:$data_format),
-          (XLA_AddOp $input, $bias,
+          (HLO_AddOp $input, $bias,
               (BiasAddFeatureDimension $data_format, $input)),
           [(ValidBiasAddFeatureDimension $data_format, $input, $bias)]>;
 
@@ -76,11 +78,12 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
-foreach fromToBinPair = [[TF_AddOp, XLA_AddOp],
-                         [TF_DivOp, XLA_DivOp],
-                         [TF_MulOp, XLA_MulOp],
-                         [TF_RealDivOp, XLA_DivOp],
-                         [TF_SubOp, XLA_SubOp]] in
+foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
+		         [TF_AddV2Op, HLO_AddOp],
+                         [TF_DivOp, HLO_DivOp],
+                         [TF_MulOp, HLO_MulOp],
+                         [TF_RealDivOp, HLO_DivOp],
+                         [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -94,7 +97,8 @@ def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
 //===----------------------------------------------------------------------===//
 
 // TODO(riverriddle) Formalize a policy on converting opaque attributes.
-def : Pat<(TF_ConstOp ElementsAttr:$value), (XLA_ConstOp $value)>;
+def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
+          [(AnyStaticShapeTensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -104,11 +108,11 @@ class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
 
 def : Pat<(TF_ReluOp AnyTensor:$input),
-          (XLA_MaxOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
+          (HLO_MaxOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
                      (NullElementsAttr))>;
 
 def : Pat<(TF_Relu6Op AnyTensor:$input),
-          (XLA_ClampOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
+          (HLO_ClampOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
                        (ConstantOp (ConstantSplat<"6"> $input)))>;
 
 //===----------------------------------------------------------------------===//
@@ -116,7 +120,7 @@ def : Pat<(TF_Relu6Op AnyTensor:$input),
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (XLA_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+          (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 
 def : Pat<(TF_SqueezeOp AnyStaticShapeTensor:$arg, $ignored_dims),
-          (XLA_ReshapeOp $arg)>;
+          (HLO_ReshapeOp $arg)>;

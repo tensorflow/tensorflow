@@ -18,18 +18,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import threading
 
 import numpy as np
 import six
 
-from tensorflow.python.eager import context
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
+# Loaded lazily due to a circular dependency
+# ops->tensor_conversion_registry->constant_op->ops.
+constant_op = lazy_loader.LazyLoader(
+    "constant_op", globals(),
+    "tensorflow.python.framework.constant_op")
 
-_tensor_conversion_func_registry = {}
+
+_tensor_conversion_func_registry = collections.defaultdict(list)
 _tensor_conversion_func_cache = {}
 _tensor_conversion_func_lock = threading.Lock()
+
+# Instances of these types are always converted using
+# `_default_conversion_function`.
+_UNCONVERTIBLE_TYPES = six.integer_types + (
+    float,
+    np.generic,
+    np.ndarray,
+)
+
+
+def _default_conversion_function(value, dtype, name, as_ref):
+  del as_ref  # Unused.
+  return constant_op.constant(value, dtype, name=name)
 
 
 # TODO(josh11b): Add ctx argument to conversion_func() signature.
@@ -74,40 +94,21 @@ def register_tensor_conversion_function(base_type,
 
   Raises:
     TypeError: If the arguments do not have the appropriate type.
-
   """
-  global _tensor_conversion_func_cache
+  base_types = base_type if isinstance(base_type, tuple) else (base_type,)
+  if any(not isinstance(x, type) for x in base_types):
+    raise TypeError("base_type must be a type or a tuple of types.")
+  if any(issubclass(x, _UNCONVERTIBLE_TYPES) for x in base_types):
+    raise TypeError("Cannot register conversions for Python numeric types and "
+                    "NumPy scalars and arrays.")
+  del base_types  # Only needed for validation.
+  if not callable(conversion_func):
+    raise TypeError("conversion_func must be callable.")
+
   with _tensor_conversion_func_lock:
-    if not (isinstance(base_type, type) or
-            (isinstance(base_type, tuple) and
-             all(isinstance(x, type) for x in base_type))):
-      raise TypeError("base_type must be a type or a tuple of types.")
-    if not callable(conversion_func):
-      raise TypeError("conversion_func must be callable.")
-
-    # context._context is checked so that we don't inadvertently create it.
-    # This is because enable_eager_execution will fail when called from the main
-    # function if the context._context is already created, and the
-    # register_tensor_conversion_function calls happen when the module is
-    # imported.
-    if context._context is not None and context.executing_eagerly(  # pylint: disable=protected-access
-    ) and isinstance(base_type, six.integer_types + (
-        float,
-        np.ndarray,
-    )):
-      # TODO(nareshmodi): consider setting a context variable which disables the
-      # fastpath instead.
-      raise TypeError(
-          "Cannot register conversions for numpy arrays, python number types "
-          "when executing eagerly.")
-
-    try:
-      funcs_at_priority = _tensor_conversion_func_registry[priority]
-    except KeyError:
-      funcs_at_priority = []
-      _tensor_conversion_func_registry[priority] = funcs_at_priority
-    funcs_at_priority.append((base_type, conversion_func))
-    _tensor_conversion_func_cache = {}
+    _tensor_conversion_func_registry[priority].append(
+        (base_type, conversion_func))
+    _tensor_conversion_func_cache.clear()
 
 
 def get(query):
@@ -119,6 +120,9 @@ def get(query):
   Returns:
     A list of conversion functions in increasing order of priority.
   """
+  if issubclass(query, _UNCONVERTIBLE_TYPES):
+    return [(query, _default_conversion_function)]
+
   conversion_funcs = _tensor_conversion_func_cache.get(query)
   if conversion_funcs is None:
     with _tensor_conversion_func_lock:

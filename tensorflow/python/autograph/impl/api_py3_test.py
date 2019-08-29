@@ -34,10 +34,30 @@ class ApiTest(test.TestCase):
     def test_fn(*, a):
       return a
 
-    x = api.converted_call(test_fn, None,
-                           converter.ConversionOptions(recursive=True),
+    x = api.converted_call(test_fn, converter.ConversionOptions(recursive=True),
                            (), {'a': constant_op.constant(-1)})
     self.assertEqual(-1, self.evaluate(x))
+
+  def test_super_with_no_arg(self):
+    test_case_self = self
+
+    class TestBase:
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def no_arg(self, x):
+        return super().plus_three(x)
+
+    tc = api.converted_call(TestSubclass,
+                            converter.ConversionOptions(recursive=True), (), {})
+
+    self.assertEqual(5, tc.no_arg(2))
 
 
 if __name__ == '__main__':

@@ -622,7 +622,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
-  *optimized_graph = graph;
+  *optimized_graph = std::move(graph);
 
   return Status::OK();
 }

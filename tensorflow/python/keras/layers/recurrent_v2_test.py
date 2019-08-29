@@ -57,9 +57,11 @@ class RNNV2Test(keras_parameterized.TestCase):
           layer(units, return_sequences=True, stateful=True),
           keras.layers.Dense(vocab_size)
       ])
-      model.compile(optimizer='adam',
-                    loss='sparse_categorical_crossentropy',
-                    run_eagerly=testing_utils.should_run_eagerly())
+      model.compile(
+          optimizer='adam',
+          loss='sparse_categorical_crossentropy',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       model.fit(x, y, epochs=1, shuffle=False)
 
   @parameterized.parameters([rnn_v2.LSTM, rnn_v2.GRU])

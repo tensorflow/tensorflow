@@ -22,8 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#ifndef INTEL_MKL_ML_ONLY
-
 TEST(MklUtilTest, MklDnnTfShape) {
   auto cpu_engine = engine(engine::cpu, 0);
   MklDnnData<float> a(&cpu_engine);
@@ -118,7 +116,6 @@ TEST(MklUtilTest, LRUCacheTest) {
   }
 }
 
-#endif  // INTEL_MKL_ML_ONLY
 }  // namespace
 }  // namespace tensorflow
 

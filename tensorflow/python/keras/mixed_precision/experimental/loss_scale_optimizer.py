@@ -22,6 +22,7 @@ from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util.tf_export import keras_export
 
@@ -136,6 +137,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
+    # Needed because the superclass's __getattribute__ checks this.
+    self._hyper = {}
+
   @property
   def loss_scale(self):
     """The `LossScale` instance associated with this optimizer."""
@@ -163,9 +167,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     if callable(loss):
-      return lambda: loss() * loss_scale
+      def new_loss():
+        loss_val = loss()
+        return loss_val * math_ops.cast(loss_scale, loss_val.dtype)
+      return new_loss
     else:
-      return loss * loss_scale
+      return loss * math_ops.cast(loss_scale, loss.dtype)
 
   def get_unscaled_gradients(self, grads):
     """Unscales the gradients by the loss scale.
@@ -190,7 +197,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     loss_scale_reciprocal = 1. / loss_scale
-    return [g * loss_scale_reciprocal if g is not None else None for g in grads]
+    return [g * math_ops.cast(loss_scale_reciprocal, g.dtype) if g is not None
+            else None for g in grads]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
     loss = self.get_scaled_loss(loss)
@@ -220,12 +228,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     def apply_fn():
       # We do not want DistributionStrategy to unwrap any MirroredVariables in
       # grads_and_vars, because even in a replica context, the wrapped optimizer
-      # expects mirrored variables. So we wrap grads_and_vars with an
+      # expects mirrored variables. So we wrap the variables with an
       # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
       # MirroredVariables.
-      wrapped_grads_and_vars = _UnwrapPreventer(grads_and_vars)
+      wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
-          self._apply_gradients, args=(wrapped_grads_and_vars, name))
+          self._apply_gradients, args=(grads, wrapped_vars, name))
 
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
@@ -236,9 +244,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
                                            control_flow_ops.no_op)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
-  def _apply_gradients(self, wrapped_grads_and_vars, name):
-    grads_and_vars = wrapped_grads_and_vars.value
-    return self._optimizer.apply_gradients(grads_and_vars, name)
+  def _apply_gradients(self, grads, wrapped_vars, name):
+    return self._optimizer.apply_gradients(list(zip(grads, wrapped_vars.value)),
+                                           name)
 
   @property
   def iterations(self):

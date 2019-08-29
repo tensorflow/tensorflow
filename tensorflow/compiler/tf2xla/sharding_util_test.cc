@@ -25,8 +25,7 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
   auto core_from_sharding =
       [](absl::optional<xla::OpSharding> sharding) -> int64 {
     if (sharding.has_value() &&
-        sharding.value().type() ==
-            xla::OpSharding::Type::OpSharding_Type_MAXIMAL) {
+        sharding.value().type() == xla::OpSharding::MAXIMAL) {
       return sharding.value().tile_assignment_devices(0);
     } else {
       return -1;

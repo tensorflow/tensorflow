@@ -113,5 +113,16 @@ TEST(RunHandlerUtilTest, TestComputeInterOpStealingRanges) {
   }
 }
 
+TEST(RunHandlerUtilTest, TestExponentialRequestDistribution) {
+  int num_active_requests = 3;
+  int num_threads = 10;
+  std::vector<int> actual_distribution =
+      ChooseRequestsWithExponentialDistribution(num_active_requests,
+                                                num_threads);
+
+  std::vector<int> expected_distribution{0, 0, 0, 0, 0, 1, 1, 1, 2, 2};
+  ASSERT_EQ(actual_distribution, expected_distribution);
+}
+
 }  // namespace
 }  // namespace tensorflow

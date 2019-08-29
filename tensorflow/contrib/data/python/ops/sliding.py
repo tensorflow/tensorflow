@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -39,19 +40,27 @@ class _SlideDataset(dataset_ops.UnaryDataset):
         window_shift, dtype=dtypes.int64, name="window_shift")
 
     input_structure = dataset_ops.get_structure(input_dataset)
-    self._structure = nest.map_structure(
+    self._element_spec = nest.map_structure(
         lambda component_spec: component_spec._batch(None), input_structure)  # pylint: disable=protected-access
-    variant_tensor = ged_ops.experimental_sliding_window_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        window_size=self._window_size,
-        window_shift=self._window_shift,
-        window_stride=self._window_stride,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
     super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
 
 @deprecation.deprecated_args(

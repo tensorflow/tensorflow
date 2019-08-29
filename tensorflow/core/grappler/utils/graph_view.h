@@ -359,6 +359,7 @@ class Mutation {
   MutableGraphView* graph_view_ = nullptr;
   int mutation_counter_ = 0;
   std::vector<MutableNodeViewDiff> updated_nodes_;
+  std::vector<bool> removed_nodes_;
 
   using MutationNewNodeHolder = internal::NewNode<MutableGraphView>;
   std::vector<MutationNewNodeHolder> new_nodes_;

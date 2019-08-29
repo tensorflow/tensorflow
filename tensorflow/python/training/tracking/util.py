@@ -49,11 +49,11 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
-from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -89,7 +89,7 @@ class _ObjectGraphProtoPrettyPrinter(object):
     """Lazily creates a mapping from node id to ("path", "to", "root")."""
     if self._node_name_cache is not None:
       return self._node_name_cache
-    path_to_root = object_identity.ObjectIdentityDictionary()
+    path_to_root = {}
     path_to_root[0] = ("(root)",)
     to_visit = collections.deque([0])
     while to_visit:
@@ -301,7 +301,10 @@ class _NameBasedRestoreCoordinator(object):
   def __init__(self, save_path, dtype_map=None):
     self.save_path = save_path
     self.dtype_map = dtype_map
-    self.unused_attributes = weakref.WeakKeyDictionary()
+    # A map from trackable objects to unused attribute names. We don't have
+    # proto IDs when doing a name-based restore, so the map keys differ from
+    # those in _CheckpointRestoreCoordinator.
+    self.unused_attributes = object_identity.ObjectIdentityWeakKeyDictionary()
     self.restore_uid = ops.uid()
 
   def globally_named_object_attributes(self, trackable):
@@ -685,6 +688,8 @@ class CheckpointLoadStatus(_LoadStatus):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -845,6 +850,8 @@ class InitializationOnlyStatus(_LoadStatus):
   def __init__(self, graph_view, restore_uid):
     self._restore_uid = restore_uid
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
 
   def assert_consumed(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
@@ -920,14 +927,20 @@ class NameBasedSaverStatus(_LoadStatus):
   def __init__(self, checkpoint, graph_view):
     self._checkpoint = checkpoint
     self._graph_view = graph_view
+    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._root = graph_view.root
+
 
   def assert_consumed(self):
     """Raises an exception if any variables/objects are unmatched."""
-    unused_attributes = dict(self._checkpoint.unused_attributes)
+    unused_attributes = list(self._checkpoint.unused_attributes.items())
     if unused_attributes:
+      unused_attribute_strings = [
+          "\n    {}: {}".format(obj, attributes)
+          for obj, attributes in unused_attributes]
       raise AssertionError(
-          "Some objects had attributes which were not restored: %s" %
-          (unused_attributes,))
+          "Some objects had attributes which were not restored:{}".format(
+              "".join(unused_attribute_strings)))
     for trackable in self._graph_view.list_objects():
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()

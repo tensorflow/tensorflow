@@ -90,67 +90,25 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
                          const char* /*opaque*/, size_t /*opaque_len*/) {
   // `buffers` is a flat array containing device pointers to the following.
   //
-  //   0: root tuple of param 0
-  //   1:   param 0 at tuple index {0}, shape f32[128]
-  //   2:   param 0 at tuple index {1}, shape f32[256]
-  //   3: root tuple of param 1
-  //   4:   param 1 at tuple index {0}, shape f32[1024]
-  //   5:   param 1 at tuple index {1}, shape f32[8]
-  //   6: root tuple of custom-call result
-  //   7:   result at tuple index {0}, shape f32[8]
-  //   8:   result at tuple index {1}, shape (f32[128], f32[256])
-  //   9:     result at tuple index {1, 0}, shape f32[128]
-  //  10:     result at tuple index {1, 1}, shape f32[256]
-  //  11:   result at tuple index {2}, shape f32[1024]
+  //  0:  param 0 at tuple index {0}, shape f32[128]
+  //  1:  param 0 at tuple index {1}, shape f32[256]
+  //  2:  param 1 at tuple index {0}, shape f32[1024]
+  //  3:  param 1 at tuple index {1}, shape f32[8]
+  //  4:  result at tuple index {0}, shape f32[8]
+  //  5:  result at tuple index {1, 0}, shape f32[128]
+  //  6:  result at tuple index {1, 1}, shape f32[256]
+  //  7:  result at tuple index {2}, shape f32[1024]
   //
-  // It's the contract of custom-call that the non-root pointers (i.e.
-  // everything other than indices 0, 3, and 6) may be null, if XLA is unable to
-  // analyze the program well enough to determine for sure what's in those
-  // buffers.  For this simple example, all of the buffers should be non-null.
 
-  // Check the param 0 tuple, namely that
-  //
-  //   (*buffers[0])[0] == buffers[1] and
-  //   (*buffers[0])[1] == buffers[2].
-  //
-  // because buffers contains pointers to device memory, we have to retrieve
-  // these values via cudaMemcpy.
-  void* p0[2];
-  cudaMemcpy(p0, buffers[0], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
-  ASSERT_EQ(p0[0], buffers[1]);
-  ASSERT_EQ(p0[1], buffers[2]);
-
-  // Check the param 1 tuple, namely that
-  //
-  //   (*buffers[3])[0] == buffers[4]
-  //   (*buffers[3])[1] == buffers[5].
-  void* p1[2];
-  cudaMemcpy(p1, buffers[3], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
-  ASSERT_EQ(p1[0], buffers[4]);
-  ASSERT_EQ(p1[1], buffers[5]);
-
-  // We don't have an equivalent check for the output tuple (i.e. we don't check
-  // (*buffers[6])[0] == buffers[7]) because it's up to us to set the tuple
-  // as part of this custom-call.
-
-  // Write the results.  First set the root tuple output buffer to {b7, b8,
-  // b11}.
-  void* root[3] = {buffers[7], buffers[8], buffers[11]};
-  cudaMemcpy(buffers[6], root, 3 * sizeof(void*), cudaMemcpyHostToDevice);
-
-  // Now set the sub-tuple output buffer at index 8 to {b9, b10}.
-  void* sub_tuple[2] = {buffers[9], buffers[10]};
-  cudaMemcpy(buffers[8], sub_tuple, 2 * sizeof(void*), cudaMemcpyDeviceToHost);
-
-  // Now set output leaf buffers 7, 9, 10, and 11, copying data from the
-  // corresponding same-sized inputs.
-  cudaMemcpyAsync(buffers[7], buffers[5], 8 * sizeof(float),
+  // Set output leaf buffers, copying data from the corresponding same-sized
+  // inputs.
+  cudaMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
                   cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[9], buffers[1], 128 * sizeof(float),
+  cudaMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
                   cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[10], buffers[2], 256 * sizeof(float),
+  cudaMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
                   cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[11], buffers[4], 1024 * sizeof(float),
+  cudaMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
                   cudaMemcpyDeviceToDevice, stream);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, "CUDA");
@@ -183,6 +141,46 @@ TEST_F(CustomCallTest, SubBuffers) {
   EXPECT_THAT(result.data<float>({1, 0}), ::testing::Each(1));
   EXPECT_THAT(result.data<float>({1, 1}), ::testing::Each(2));
   EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
+}
+
+void Callback_TupleSelect(CUstream stream, void** buffers,
+                          const char* /*opaque*/, size_t /*opaque_len*/) {
+  // Set the two output leaf buffers equal to the two input leaf buffers.
+  cudaMemcpyAsync(buffers[2], buffers[0], 10 * sizeof(float),
+                  cudaMemcpyDeviceToDevice, stream);
+  cudaMemcpyAsync(buffers[3], buffers[1], 10 * sizeof(float),
+                  cudaMemcpyDeviceToDevice, stream);
+}
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_TupleSelect, "CUDA");
+// Tuple-shaped select is a case where XLA can't know all buffer assignments
+// statically ahead of time and has to walk the on-device tuple sub-buffers.
+TEST_F(CustomCallTest, TupleSelect) {
+  XlaBuilder b(TestName());
+  auto tuple_shape = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(F32, {10}),
+      ShapeUtil::MakeShape(F32, {10}),
+  });
+  auto p0 = AddParam(LiteralUtil::CreateR0(false), &b);
+  auto p1 =
+      AddParam(LiteralUtil::MakeTupleOwned(
+                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 1.0f)),
+                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 2.0f))),
+               &b);
+  auto p2 =
+      AddParam(LiteralUtil::MakeTupleOwned(
+                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 10.0f)),
+                   LiteralUtil::CreateR1<float>(std::vector<float>(10, 20.0f))),
+               &b);
+  auto cc = CustomCall(&b, "Callback_TupleSelect",
+                       /*operands=*/{Select(p0, p1, p2)}, tuple_shape,
+                       /*opaque=*/"");
+
+  // Do a tuple-select on the custom-call result to ensure that the custom-call
+  // sets its output tuple index buffers.
+  Select(p0, p1, cc);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputeAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>({0}), ::testing::Each(10));
+  EXPECT_THAT(result.data<float>({1}), ::testing::Each(20));
 }
 
 }  // anonymous namespace

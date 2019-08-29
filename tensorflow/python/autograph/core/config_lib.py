@@ -21,6 +21,9 @@ from __future__ import print_function
 import enum
 
 
+# TODO(mdan): For better performance, allow each rule to take a set names.
+
+
 class Rule(object):
   """Base class for conversion rules."""
 

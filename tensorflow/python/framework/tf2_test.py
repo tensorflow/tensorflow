@@ -23,7 +23,7 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.python import tf2
-from tensorflow.python.distribute import combinations
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 

@@ -515,7 +515,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_({replica_groups.begin(), replica_groups.end()}) {
+      replica_groups_(replica_groups) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -909,6 +909,46 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
                                                     dimensions());
 }
 
+HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
+                                             HloInstruction* operand,
+                                             int64 inferred_dimension)
+    : HloInstruction(HloOpcode::kReshape, shape),
+      inferred_dimension_(inferred_dimension) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloReshapeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  if (inferred_dimension_ != -1) {
+    proto.add_dimensions(inferred_dimension_);
+  }
+  return proto;
+}
+
+std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (inferred_dimension() == -1) {
+    return {};
+  }
+  return {StrCat("inferred_dimension=", inferred_dimension())};
+}
+
+bool HloReshapeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloReshapeInstruction&>(other);
+  return inferred_dimension() == casted_other.inferred_dimension();
+}
+
+std::unique_ptr<HloInstruction> HloReshapeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloReshapeInstruction>(shape, new_operands[0],
+                                                  inferred_dimension());
+}
+
 HloMapInstruction::HloMapInstruction(const Shape& shape,
                                      absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation)
@@ -1268,10 +1308,21 @@ void HloFusionInstruction::MergeFusionInstruction(
       unfused_instructions.push_back(fused_instruction);
     }
   }
-  CHECK(unfused_instructions.front() == cloned_fusion->fused_expression_root());
+
+  // If there are no unfused instructions, the fused computation must consist
+  // only of kParameter instructions. Make the operand of the corresponding
+  // parameter number the new root.
+  HloInstruction* unfused_root =
+      unfused_instructions.empty()
+          ? instruction_to_merge->mutable_operand(
+                instruction_to_merge->fused_instructions_computation()
+                    ->root_instruction()
+                    ->parameter_number())
+          : unfused_instructions.front();
+  CHECK(unfused_root == cloned_fusion->fused_expression_root() ||
+        unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  TF_CHECK_OK(
-      instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front()));
+  TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
   // Fuse 'unfused_instructions' into 'this'.
   for (auto& instruction : unfused_instructions) {
     FuseInstruction(instruction);
@@ -1319,7 +1370,16 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     }
   }
 
-  HloInstruction* unfused_root = unfused_instructions.front();
+  // If there are no unfused instructions, the fused computation must consist
+  // only of kParameter instructions. Make the operand of the corresponding
+  // parameter number the new root.
+  HloInstruction* unfused_root =
+      unfused_instructions.empty()
+          ? instruction_to_merge->mutable_operand(
+                instruction_to_merge->fused_instructions_computation()
+                    ->root_instruction()
+                    ->parameter_number())
+          : unfused_instructions.front();
   TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
 
   TF_CHECK_OK(
@@ -1329,6 +1389,9 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   }
 
   // Fuse the root instruction and generate multiple outputs.
+  if (unfused_instructions.empty()) {
+    return;
+  }
   FuseInstructionIntoMultiOutput(unfused_root);
   TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.
@@ -1643,7 +1706,7 @@ bool HloRngInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return false;
+  return true;
 }
 
 std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
@@ -1674,7 +1737,7 @@ HloInstructionProto HloParameterInstruction::ToProto() const {
 }
 
 std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
+    const HloPrintOptions& options) const {
   std::vector<string> result;
   if (!parameter_replicated_at_leaf_buffers_) {
     return result;
@@ -1683,8 +1746,10 @@ std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
   for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
     buffers_replicated_strs.push_back(replicated ? "true" : "false");
   }
-  result.push_back(StrCat("parameter_replication={",
-                          StrJoin(buffers_replicated_strs, ","), "}"));
+  if (options.print_ids()) {
+    result.push_back(StrCat("parameter_replication={",
+                            StrJoin(buffers_replicated_strs, ","), "}"));
+  }
   return result;
 }
 
@@ -2334,8 +2399,9 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
 HloGatherInstruction::HloGatherInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    absl::Span<const int64> slice_sizes)
-    : HloInstruction(HloOpcode::kGather, shape) {
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted)
+    : HloInstruction(HloOpcode::kGather, shape),
+      indices_are_sorted_(indices_are_sorted) {
   AppendOperand(operand);
   AppendOperand(start_indices);
   gather_dimension_numbers_ =
@@ -2387,13 +2453,19 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
   for (int64 bound : gather_slice_sizes()) {
     proto.add_gather_slice_sizes(bound);
   }
+  proto.set_indices_are_sorted(indices_are_sorted());
   return proto;
 }
 
 std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {GatherDimensionNumbersToString(gather_dimension_numbers()),
-          StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
+  std::vector<string> attrs{
+      GatherDimensionNumbersToString(gather_dimension_numbers()),
+      StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
+  if (indices_are_sorted()) {
+    attrs.push_back("indices_are_sorted=true");
+  }
+  return attrs;
 }
 
 bool HloGatherInstruction::IdenticalSlowPath(
@@ -2404,7 +2476,8 @@ bool HloGatherInstruction::IdenticalSlowPath(
   return protobuf_util::ProtobufEquals(
              gather_dimension_numbers(),
              casted_other.gather_dimension_numbers()) &&
-         gather_slice_sizes() == casted_other.gather_slice_sizes();
+         gather_slice_sizes() == casted_other.gather_slice_sizes() &&
+         indices_are_sorted() == casted_other.indices_are_sorted();
 }
 
 std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
@@ -2413,15 +2486,16 @@ std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloGatherInstruction>(
       shape, new_operands[0], new_operands[1], gather_dimension_numbers(),
-      gather_slice_sizes());
+      gather_slice_sizes(), indices_are_sorted());
 }
 
 HloScatterInstruction::HloScatterInstruction(
     const Shape& shape, HloInstruction* operand,
     HloInstruction* scatter_indices, HloInstruction* updates,
     HloComputation* update_computation,
-    const ScatterDimensionNumbers& scatter_dim_numbers)
-    : HloInstruction(HloOpcode::kScatter, shape) {
+    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted)
+    : HloInstruction(HloOpcode::kScatter, shape),
+      indices_are_sorted_(indices_are_sorted) {
   AppendOperand(operand);
   AppendOperand(scatter_indices);
   AppendOperand(updates);
@@ -2475,12 +2549,18 @@ HloScatterInstruction::MakeScatterDimNumbers(
 HloInstructionProto HloScatterInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   *proto.mutable_scatter_dimension_numbers() = scatter_dimension_numbers();
+  proto.set_indices_are_sorted(indices_are_sorted());
   return proto;
 }
 
 std::vector<string> HloScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {ScatterDimensionNumbersToString(scatter_dimension_numbers())};
+  std::vector<string> attrs{
+      ScatterDimensionNumbersToString(scatter_dimension_numbers())};
+  if (indices_are_sorted()) {
+    attrs.push_back("indices_are_sorted=true");
+  }
+  return attrs;
 }
 
 bool HloScatterInstruction::IdenticalSlowPath(
@@ -2491,7 +2571,8 @@ bool HloScatterInstruction::IdenticalSlowPath(
   return protobuf_util::ProtobufEquals(
              scatter_dimension_numbers(),
              casted_other.scatter_dimension_numbers()) &&
-         eq_computations(to_apply(), casted_other.to_apply());
+         eq_computations(to_apply(), casted_other.to_apply()) &&
+         indices_are_sorted() == casted_other.indices_are_sorted();
 }
 
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
@@ -2500,7 +2581,7 @@ std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
       shape, new_operands[0], new_operands[1], new_operands[2], to_apply(),
-      scatter_dimension_numbers());
+      scatter_dimension_numbers(), indices_are_sorted());
 }
 
 HloIotaInstruction::HloIotaInstruction(const Shape& shape, int64 iota_dimension)

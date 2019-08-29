@@ -45,8 +45,8 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
 TEST_F(AutoClusteringTestImpl, KerasImagenetMain) {
   // Generated from
   //
-  //  bazel run -c opt --config=cuda                                           \
-  //   tensorflow_models/official/resnet/keras:keras_imagenet_main             \
+  //  TARGET_PATH=tensorflow_models/official/vision/image_classification       \
+  //  bazel run -c opt --config=cuda ${TARGET_PATH}:resnet_imagenet_main       \
   //    -- --skip_eval --num_gpus=1 --dtype=fp16 --batch_size=192              \
   //    --train_steps=210 --enable_xla --enable_eager=true
   //
@@ -57,8 +57,8 @@ TEST_F(AutoClusteringTestImpl, KerasImagenetMain) {
 TEST_F(AutoClusteringTestImpl, KerasImagenetMainGraphMode) {
   // Generated from
   //
-  // bazel run -c opt --config=cuda                                            \
-  //   tensorflow_models/official/resnet/keras:keras_imagenet_main             \
+  //  TARGET_PATH=tensorflow_models/official/vision/image_classification       \
+  //  bazel run -c opt --config=cuda ${TARGET_PATH}:resnet_imagenet_main       \
   //   -- --use_synthetic_data --num_gpus=1 --batch_size=117 --train_steps=600 \
   //   --skip_eval=True --logtostderr --enable_xla
   TF_ASSERT_OK(

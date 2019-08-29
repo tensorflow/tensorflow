@@ -30,13 +30,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
+namespace mlir {
 namespace {
 
 // Since this method is passed to MLIR as decode hook it has to conform
 // to LLVM style used by MLIR.
-bool DecodeOpaqueTensorHook(const mlir::OpaqueElementsAttr input,
-                            mlir::ElementsAttr& output) {  // NOLINT
-  mlir::Builder builder(input.getType().getContext());
+bool DecodeOpaqueTensorHook(const OpaqueElementsAttr input,
+                            ElementsAttr& output) {  // NOLINT
+  Builder builder(input.getType().getContext());
   auto decoded_attr_or = tensorflow::DecodeOpaqueTensor(input, builder);
   if (!decoded_attr_or.ok()) {
     VLOG(2) << decoded_attr_or.status().error_message();
@@ -48,18 +49,17 @@ bool DecodeOpaqueTensorHook(const mlir::OpaqueElementsAttr input,
 }
 
 // Hooks for the TensorFlow dialect.
-class TensorFlowHooks : public mlir::DialectHooks {
+class TensorFlowHooks : public DialectHooks {
  public:
-  mlir::DialectConstantFoldHook getConstantFoldHook() {
-    return mlir::tensorflow::ConstantFoldFallbackHook;
+  DialectConstantFoldHook getConstantFoldHook() {
+    return TF::ConstantFoldFallbackHook;
   }
-  mlir::DialectConstantDecodeHook getDecodeHook() {
-    return DecodeOpaqueTensorHook;
-  }
+  DialectConstantDecodeHook getDecodeHook() { return DecodeOpaqueTensorHook; }
 };
 
 }  // anonymous namespace
 
 // Static initialization for TensorFlow dialect hooks registration.
-static mlir::DialectHooksRegistration<TensorFlowHooks> tf_hooks_registration(
-    "tf");
+static DialectHooksRegistration<TensorFlowHooks> tf_hooks_registration("tf");
+
+}  // namespace mlir

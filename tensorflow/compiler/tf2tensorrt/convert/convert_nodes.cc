@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -76,18 +76,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-// TODO(aaroey): put these constants into some class.
-const char* const kInputPHName = "TensorRTInputPH_";
-const char* const kOutputPHName = "TensorRTOutputPH_";
+namespace convert {
 
 bool IsEngineInput(absl::string_view name) {
-  return absl::StartsWith(name, kInputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
-  return absl::StartsWith(name, kOutputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
 }
 
-namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -370,6 +367,7 @@ string DebugString(const nvinfer1::ITensor& tensor) {
 
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
+                            const bool check_feasibility,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
@@ -438,13 +436,16 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                                          output_r, operand_r_new_dims));
 
   // Compare broadcast feasibility
-  for (int i = 0; i < broadcast_num_dims; ++i) {
-    if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
-        (output_r[i] != 1)) {
-      return errors::InvalidArgument(
-          "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
-          DebugString(*operand_l_new_dims), " vs ", "batch_dim: ", output_r[0],
-          ", ", DebugString(*operand_r_new_dims), ")");
+  if (check_feasibility) {
+    for (int i = 0; i < broadcast_num_dims; ++i) {
+      if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
+          (output_r[i] != 1)) {
+        return errors::InvalidArgument("Infeasible broadcast scheme (",
+                                       "batch_dim: ", output_l[0], ", ",
+                                       DebugString(*operand_l_new_dims), " vs ",
+                                       "batch_dim: ", output_r[0], ", ",
+                                       DebugString(*operand_r_new_dims), ")");
+      }
     }
   }
   return Status::OK();
@@ -616,7 +617,7 @@ bool AreDimsStaticWithDifferentSize(const nvinfer1::Dims& lhs,
 }
 
 static std::vector<std::pair<int, int>> CreateSamePadding(
-    const nvinfer1::DimsHW& stride, const nvinfer1::DimsHW& kernel,
+    const nvinfer1::Dims& stride, const nvinfer1::Dims& kernel,
     const std::vector<int64_t>& input_dims) {
   std::vector<std::pair<int, int>> padding(input_dims.size());
   CHECK_EQ(stride.nbDims, input_dims.size());  // TODO(jie): N+C? NC+?
@@ -775,7 +776,9 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
 
   nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
 
-  bool isShape() const override { return false; }
+  bool isShapeTensor() const override { return false; }
+
+  bool isExecutionTensor() const override { return true; }
 #endif
 
  private:
@@ -841,6 +844,30 @@ string TRT_TensorOrWeights::DebugString() const {
   }
   StrAppend(&output, ")");
   return output;
+}
+
+// Perform 5 dimensional reorder of data on CPU
+// This is done once at convert time and does not affect GPU inference perf
+// Example: reorder NDHWC (Tensorflow) -> NCDHW (TensorRT)
+template <typename T>
+void Reorder5(const nvinfer1::Dims& shape, const T* idata,
+              const nvinfer1::Dims& istrides, T* odata,
+              const nvinfer1::Dims& ostrides) {
+  for (int k = 0; k < shape.d[0]; ++k) {
+    for (int c = 0; c < shape.d[1]; ++c) {
+      for (int d = 0; d < shape.d[2]; ++d) {
+        for (int r = 0; r < shape.d[3]; ++r) {
+          for (int s = 0; s < shape.d[4]; ++s) {
+            odata[k * ostrides.d[0] + c * ostrides.d[1] + d * ostrides.d[2] +
+                  r * ostrides.d[3] + s * ostrides.d[4]] =
+                idata[k * istrides.d[0] + c * istrides.d[1] +
+                      d * istrides.d[2] + r * istrides.d[3] +
+                      s * istrides.d[4]];
+          }
+        }
+      }
+    }
+  }
 }
 
 // TODO(jie): reorder4 & reorder2 should be merged?
@@ -935,6 +962,67 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
       break;
     }
 
+    default:
+      LOG(FATAL) << "Unsupported type, expected fp32 or fp16 but got "
+                 << DebugString(iweights.TrtDType());
+  }
+}
+
+// Initialize a Dims object with arbitrary dimension
+nvinfer1::Dims InitDimsN(std::initializer_list<int> list) {
+  nvinfer1::Dims dim;
+  dim.nbDims = list.size();
+  std::copy(list.begin(), list.end(), dim.d);
+  return dim;
+}
+
+// Reorder 3D convolution weights from TF to TRT
+void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
+                         TRT_ShapedWeights* oweights, const int num_groups) {
+  DCHECK(iweights.TrtDType() == oweights->TrtDType());
+  CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
+  // K indexes over output channels, C over input channels, and R, S, D over the
+  // height, width, depth
+  const int d = iweights.shape_.d[0];
+  const int r = iweights.shape_.d[1];
+  const int s = iweights.shape_.d[2];
+  // TRT requires GKcRS, while TF depthwise has RSCK where c=1, C=G
+  const int c = iweights.shape_.d[3] / num_groups;
+  const int k = iweights.shape_.d[4] * num_groups;
+
+  VLOG(2) << "num_groups: " << num_groups << ", c: " << iweights.shape_.d[3]
+          << " becomes " << c << ", k: " << iweights.shape_.d[4] << " becomes "
+          << k << ", d: " << d << ", r: " << r << ", s: " << s;
+
+  oweights->shape_.d[0] = iweights.shape_.d[4];  // k / num_groups;
+  oweights->shape_.d[1] = iweights.shape_.d[3];  // c * num_groups;
+  oweights->shape_.d[2] = d;
+  oweights->shape_.d[3] = r;
+  oweights->shape_.d[4] = s;
+
+  nvinfer1::Dims shape =
+      InitDimsN({k, c, d, r, s});  // KCDRS shape (same as output)
+
+  nvinfer1::Dims ostrides =
+      InitDimsN({c * d * r * s, d * r * s, r * s, s,
+                 1});  // Output = KCDRS = k*CDRS + c*DRS + d*RS + r*S + s
+
+  nvinfer1::Dims istrides =
+      InitDimsN({1, k, r * s * c * k, s * c * k,
+                 c * k});  // Input = DRSCK = k*1 + c*K + d*RSCK + r*SCK + s*CK
+
+  switch (iweights.TrtDType()) {
+    case nvinfer1::DataType::kFLOAT: {
+      Reorder5(shape, static_cast<float const*>(iweights.GetValues()), istrides,
+               static_cast<float*>(oweights->GetValues()), ostrides);
+      break;
+    }
+    case nvinfer1::DataType::kHALF: {
+      Reorder5(shape, static_cast<Eigen::half const*>(iweights.GetValues()),
+               istrides, static_cast<Eigen::half*>(oweights->GetValues()),
+               ostrides);
+      break;
+    }
     default:
       LOG(FATAL) << "Unsupported type, expected fp32 or fp16 but got "
                  << DebugString(iweights.TrtDType());
@@ -1449,6 +1537,15 @@ bool IsClipOrRelu(const nvinfer1::ILayer* layer) {
 #endif
 }
 
+bool IsAdd(const nvinfer1::ILayer* layer) {
+  if (layer->getType() != nvinfer1::LayerType::kELEMENTWISE) {
+    return false;
+  }
+  auto operation =
+      static_cast<const nvinfer1::IElementWiseLayer*>(layer)->getOperation();
+  return operation == nvinfer1::ElementWiseOperation::kSUM;
+}
+
 }  // namespace
 
 void Converter::MaybeApplyQuantizationRanges() {
@@ -1504,11 +1601,25 @@ void Converter::MaybeApplyQuantizationRanges() {
     }
   }
   // Identify fused tensors.
+  // Conv+BiasAdd+Add+Activation(Clip or Relu), Conv+BiasAdd+Add,
   // Conv+BiasAdd+Activation(Clip or Relu), Conv+BiasAdd,
   // Conv+Activation(Clip or Relu) are fused.
   std::set<nvinfer1::ITensor*> fused_tensors;
   typedef std::function<bool(const nvinfer1::ILayer*)> matcher;
   const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
+      {"Fused Conv+Bias+Add+Activation",
+       {
+           IsConvolution,
+           IsScale,
+           IsAdd,
+           IsClipOrRelu,
+       }},
+      {"Fused Conv+Bias+Add",
+       {
+           IsConvolution,
+           IsScale,
+           IsAdd,
+       }},
       {"Fused Conv+Bias+Activation",
        {
            IsConvolution,
@@ -1542,8 +1653,8 @@ void Converter::MaybeApplyQuantizationRanges() {
         }
         if (index < last_matcher) {
           fused_candidates.push_back(layer);
+          layer = layer_consumers[layer].front();
         }
-        layer = layer_consumers[layer].front();
       }
       if (!fused_candidates.empty()) {
         VLOG(1) << pattern.first;
@@ -1790,6 +1901,43 @@ Status UnaryCompute(const TRT_ShapedWeights& iweights,
   return Status::OK();
 }
 
+// Before TRT 5.1.3, we have to calculate padding for convolutions ourselves.
+Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
+                           const nvinfer1::DimsHW& kernel_size,
+                           const nvinfer1::DimsHW& dilation,
+                           const nvinfer1::DimsHW& stride,
+                           const std::vector<int64_t>& input_dims,
+                           nvinfer1::ITensor* tensor,
+                           std::vector<std::pair<int, int>>* padding,
+                           nvinfer1::ITensor** padded_tensor) {
+  if (attrs.get<string>("padding") == "SAME") {
+    nvinfer1::DimsHW effective_kernel_size = kernel_size;
+    effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
+    effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
+    *padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
+  } else {
+    *padding = {{0, 0}, {0, 0}};
+  }
+
+  // Handle asymmetric padding. TensorRT 5.1 added support for asymmetric
+  // padding via setPrePadding and setPostPadding. Due to a bug in 5.1.2, we can
+  // only use asymmetric padding in convolutions with 5.1.3+. But in 5.1.3, we
+  // will always use setPaddingMode for simplicity.
+  if ((*padding)[0].first != (*padding)[0].second ||
+      (*padding)[1].first != (*padding)[1].second) {
+    auto pad_layer = params->converter->network()->addPadding(
+        *tensor, nvinfer1::DimsHW((*padding)[0].first, (*padding)[1].first),
+        nvinfer1::DimsHW((*padding)[0].second, (*padding)[1].second));
+    TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, params->node_def.name());
+    params->converter->MarkQuantizationRangesAsInferrable(
+        tensor, pad_layer->getOutput(0));
+    *padding = {{0, 0}, {0, 0}};
+    tensor = pad_layer->getOutput(0);
+  }
+  *padded_tensor = tensor;
+  return Status::OK();
+}
+
 Status ConvertConv2DHelper(OpConverterParams* params, int group,
                            bool is_conv2d_backprop_input) {
   const auto& inputs = params->inputs;
@@ -1883,46 +2031,27 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 // Before TRT 5.1.3, we have to calculate padding ourselves.
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   std::vector<std::pair<int, int>> padding;
-  if (attrs.get<string>("padding") == "SAME") {
-    nvinfer1::DimsHW effective_kernel_size = kernel_size;
-    effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
-    effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
-    std::vector<int64_t> input_dims;
-    if (is_conv2d_backprop_input) {
-      // For backprop, calculate padding based on "input_sizes" input, which
-      // actually corresponds to output size. ("input_sizes" makes sense in the
-      // context of Conv2DBackpropInput).
-      // We use h_index and w_index instead of 1 and 2 because we havent
-      // transposed backprop_output_size along with the input.
-      auto output_size_weights =
-          static_cast<int*>(backprop_output_size.weights().GetValues());
-      input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
-    } else {
-      // Use 1 and 2 because tensor_dim has the dimensions of the transposed
-      // input.
-      input_dims = {static_cast<int>(tensor_dim.d[1]),
-                    static_cast<int>(tensor_dim.d[2])};
-    }
-    padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
+  std::vector<int64_t> input_dims;
+  if (is_conv2d_backprop_input) {
+    // For backprop, calculate padding based on "input_sizes" input, which
+    // actually corresponds to output size. ("input_sizes" makes sense in the
+    // context of Conv2DBackpropInput).
+    // We use h_index and w_index instead of 1 and 2 because we havent
+    // transposed backprop_output_size along with the input.
+    auto output_size_weights =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
   } else {
-    padding = {{0, 0}, {0, 0}};
+    // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+    // input.
+    input_dims = {static_cast<int>(tensor_dim.d[1]),
+                  static_cast<int>(tensor_dim.d[2])};
   }
-
-  // Handle asymmetric padding. TensorRT 5.1 added support for asymmetric
-  // padding via setPrePadding and setPostPadding. Due to a bug in 5.1.2, we can
-  // only use asymmetric padding in convolutions with 5.1.3+. But in 5.1.3, we
-  // will always use setPaddingMode for simplicity.
-  if (padding[0].first != padding[0].second ||
-      padding[1].first != padding[1].second) {
-    auto pad_layer = params->converter->network()->addPadding(
-        *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
-        nvinfer1::DimsHW(padding[0].second, padding[1].second));
-    TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, node_def.name());
-    params->converter->MarkQuantizationRangesAsInferrable(
-        tensor, pad_layer->getOutput(0));
-    padding = {{0, 0}, {0, 0}};
-    tensor = pad_layer->getOutput(0);
-  }
+  nvinfer1::ITensor* padded_tensor = nullptr;
+  TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
+                                         stride, input_dims, tensor, &padding,
+                                         &padded_tensor));
+  tensor = padded_tensor;
 #endif
 
   // Add convolution.
@@ -2578,6 +2707,368 @@ Status ConvertConv2DBackpropInput(OpConverterParams* params) {
   return ConvertConv2DHelper(params, 1, /*is_conv2d_backprop_input=*/true);
 }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+Status ConvertConv3DHelper(OpConverterParams* params, int group,
+                           bool is_conv3d_backprop_input = false) {
+  const int kNumDims = 5;
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TRT_TensorOrWeights backprop_output_size;
+  nvinfer1::ITensor* tensor = nullptr;
+  if (is_conv3d_backprop_input) {
+    // In the case when Conv3dBackpropInput is used for conv3d_transpose, these
+    // inputs correspond to: output size, filter, and input.
+    TF_RETURN_IF_ERROR(CheckInputsWeights(
+        *params,
+        {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
+    backprop_output_size = inputs.at(0);
+    tensor = inputs.at(2).tensor();
+  } else {
+    TF_RETURN_IF_ERROR(
+        CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
+    tensor = inputs.at(0).tensor();
+  }
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  const TRT_ShapedWeights weights_drsck = inputs.at(1).weights();
+  if (weights_drsck.shape_.nbDims != kNumDims) {
+    return errors::InvalidArgument("Conv3D expects kernel of dimension 5, at ",
+                                   node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  auto data_format = attrs.get<string>("data_format");
+  const bool is_ndhwc = (data_format == "NDHWC");  // Or NCDHW 01234 - > 02341
+  const int d_index = is_ndhwc ? 1 : 2;
+  const int h_index = is_ndhwc ? 2 : 3;
+  const int w_index = is_ndhwc ? 3 : 4;
+  const int c_index = is_ndhwc ? 4 : 1;
+  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
+  if (tf_dilations.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Convolution dilations field must specify 5 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_dilations[0] != 1 || tf_dilations[c_index] != 1) {
+    return errors::Unimplemented(
+        "Dilation rate must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+
+  const nvinfer1::Dims3 dilation_dhw(
+      tf_dilations[d_index], tf_dilations[h_index], tf_dilations[w_index]);
+  if (is_conv3d_backprop_input &&
+      (dilation_dhw.d[0] != 1 || dilation_dhw.d[1] != 1 ||
+       dilation_dhw.d[2] != 1)) {
+    return errors::Unimplemented(
+        "Dilation with Conv3DBackpropInputV2 (conv3d_transpose) is not "
+        "supported",
+        ", at ", node_def.name());
+  }
+
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  if (tf_stride.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Convolution strides field must specify 5 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return errors::Unimplemented(
+        "Stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+
+  const nvinfer1::Dims3 stride_dhw(tf_stride[d_index], tf_stride[h_index],
+                                   tf_stride[w_index]);
+  const auto tensor_dim = tensor->getDimensions();
+
+  // Asymmetric padding on Deconv not supported for now
+  if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
+    const int tensor_c_idx = c_index - 1;
+    const int num_groups = (group == 0) ? tensor_dim.d[tensor_c_idx] : group;
+
+    TRT_ShapedWeights weights =
+        params->weight_store->GetTempWeights(weights_drsck);
+
+    nvinfer1::Dims3 effective_kernel_size(
+        weights.shape_.d[0] +
+            (weights.shape_.d[0] - 1) * (dilation_dhw.d[0] - 1),  // D
+        weights.shape_.d[1] +
+            (weights.shape_.d[1] - 1) * (dilation_dhw.d[1] - 1),  // R
+        weights.shape_.d[2] +
+            (weights.shape_.d[2] - 1) * (dilation_dhw.d[2] - 1)  // S
+    );
+
+    const auto output_size_weights =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    const std::vector<int64_t> input_dims = {output_size_weights[d_index],
+                                             output_size_weights[h_index],
+                                             output_size_weights[w_index]};
+
+    const std::vector<std::pair<int, int>> padding =
+        CreateSamePadding(stride_dhw, effective_kernel_size, input_dims);
+
+    if (padding[0].first != padding[0].second ||
+        padding[1].first != padding[1].second ||
+        padding[2].first != padding[2].second) {
+      return errors::Unimplemented(
+          "Asymmetric padding with Conv3DBackpropInputV2 (conv3d_transpose) is "
+          "not supported, at ",
+          node_def.name());
+    }
+  }
+
+  if (params->validation_only)
+    return Status::OK();  // Finished validation checks
+
+  // Transpose to NCDHW (NCDHW is required for IConvLayer).
+  const bool need_transpose = is_ndhwc;
+  if (need_transpose) {
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
+  }
+
+  // group == 0 signifies that this is a depthwise convolution, so set
+  // num_groups to size of input's channel dim. For a non-depthwise conv,
+  // num_groups will be 1.
+  const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
+
+  // For conv, TF weights are DRSCK, and TRT expects KCDRS.
+  // For backprop, TF weights are DRSKC, and TRT expects KCDRS.
+  // Therefore, this reorder will work for both cases.
+  TRT_ShapedWeights weights =
+      params->weight_store->GetTempWeights(weights_drsck);
+  ReorderDRSCKToKCDRS(weights_drsck, &weights, num_groups);
+  TRT_ShapedWeights biases(weights.TrtDType());
+  const int output_axis = is_conv3d_backprop_input ? 1 : 0;
+  const int noutput = weights.shape_.d[output_axis] * num_groups;
+  nvinfer1::Dims3 kernel_size_drs(weights.shape_.d[2],  // D
+                                  weights.shape_.d[3],  // R
+                                  weights.shape_.d[4]   // S
+  );
+
+  // Add convolution.
+  nvinfer1::ILayer* conv_layer = nullptr;
+  if (is_conv3d_backprop_input) {
+    nvinfer1::IDeconvolutionLayer* layer =
+        params->converter->network()->addDeconvolutionNd(
+            *tensor, noutput, kernel_size_drs, weights.GetTrtWeights(),
+            biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStrideNd(stride_dhw);  // change to nd set stride
+
+    // TensorRT 5.1.3 added support for padding modes.
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      // SAME_UPPER means that post padding is preferred.
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    conv_layer = layer;
+  } else {
+    nvinfer1::IConvolutionLayer* layer =
+        params->converter->network()->addConvolutionNd(
+            *tensor, noutput, kernel_size_drs, weights.GetTrtWeights(),
+            biases.GetTrtWeights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    layer->setStrideNd(stride_dhw);
+
+    if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
+      layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+    }
+
+    layer->setName(node_def.name().c_str());
+    layer->setNbGroups(num_groups);
+    layer->setDilationNd(dilation_dhw);
+    conv_layer = layer;
+  }
+  nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
+
+  // Restore transpose.
+  if (need_transpose) {
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
+Status ConvertConv3D(OpConverterParams* params) {
+  return ConvertConv3DHelper(params, 1, /*is_conv3d_backprop_input=*/false);
+}
+
+Status ConvertConv3DBackpropInputV2(OpConverterParams* params) {
+  return ConvertConv3DHelper(params, 1, /*is_conv3d_backprop_input=*/true);
+}
+#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
+
+Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false},
+                                                  {"filter", true},
+                                                  {"bias", true},
+                                                  {"side_input", true},
+                                                  {"conv_input_scale", true},
+                                                  {"side_input_scale", true}}));
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (weights.shape_.nbDims != 4) {
+    return errors::InvalidArgument(
+        "FusedConv2DBiasActivation expects kernel of dimension 4, at " +
+        node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  auto data_format = attrs.get<string>("data_format");
+  if (data_format != "NHWC" && data_format != "NCHW") {
+    return errors::InvalidArgument("Unsupported data_format:", data_format,
+                                   " at ", node_def.name());
+  }
+
+  int c_index = (data_format == "NHWC") ? 3 : 1;
+  int h_index = (data_format == "NHWC") ? 1 : 2;
+  int w_index = (data_format == "NHWC") ? 2 : 3;
+  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
+  if (tf_dilations.size() != 4) {
+    return errors::InvalidArgument(
+        "Convolution dilations field must specify 4 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_dilations[0] != 1 || tf_dilations[c_index] != 1) {
+    return errors::Unimplemented(
+        "Dilation rate must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  if (tf_stride.size() != 4) {
+    return errors::InvalidArgument(
+        "Convolution strides field must specify 4 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return errors::Unimplemented(
+        "Stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
+  const auto activation_mode = attrs.get<string>("activation_mode");
+  auto op_pair = ActivationTypeMap()->find(activation_mode);
+  if (op_pair == ActivationTypeMap()->end() && activation_mode != "None") {
+    return errors::Unimplemented("Activation mode: ", activation_mode,
+                                 " not supported at: ", node_def.name());
+  }
+
+  const auto filter_format = attrs.get<string>("filter_format");
+  if (filter_format != "HWIO" && filter_format != "OIHW") {
+    return errors::InvalidArgument("Unsupported filter_format:", filter_format,
+                                   " at ", node_def.name());
+  }
+  // Check that there's no side_input or conv_input_scale.
+  TRT_ShapedWeights side_input = inputs.at(3).weights();
+  if (side_input.count() != 0) {
+    return errors::InvalidArgument(
+        "FusedConv2DBiasActivation doesn't yet support side_input, at " +
+        node_def.name());
+  }
+  TRT_ShapedWeights conv_input_scale = inputs.at(4).weights();
+  if (conv_input_scale.count() != 1 ||
+      conv_input_scale.TrtDType() != nvinfer1::DataType::kFLOAT ||
+      conv_input_scale.GetSpan<float>()[0] != 1.0) {
+    return errors::InvalidArgument(
+        "FusedConv2DBiasActivation doesn't yet support conv_input_scale, at " +
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Transpose to NCHW (NCHW is required for IConvLayer).
+  const bool need_transpose = (data_format == "NHWC");
+  if (need_transpose) {
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 3, 1, 2}, &tensor));
+  }
+
+  nvinfer1::DimsHW kernel_size;
+  if (filter_format == "OIHW") {
+    kernel_size.h() = weights.shape_.d[2];
+    kernel_size.w() = weights.shape_.d[3];
+  } else {
+    // HWIO.
+    DCHECK_EQ(filter_format, "HWIO");
+    kernel_size.h() = weights.shape_.d[0];
+    kernel_size.w() = weights.shape_.d[1];
+  }
+// Before TRT 5.1.3, we have to calculate padding ourselves.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
+  const auto tensor_dim = tensor->getDimensions();
+  std::vector<int64_t> input_dims;
+  // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+  // input.
+  input_dims = {static_cast<int>(tensor_dim.d[1]),
+                static_cast<int>(tensor_dim.d[2])};
+  std::vector<std::pair<int, int>> padding;
+  nvinfer1::ITensor* padded_tensor = nullptr;
+  TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
+                                         stride, input_dims, tensor, &padding,
+                                         &padded_tensor));
+  tensor = padded_tensor;
+#endif
+
+  // Add convolution.
+  TRT_ShapedWeights biases = inputs.at(2).weights();
+  nvinfer1::IConvolutionLayer* conv_layer = nullptr;
+  if (filter_format == "OIHW") {
+    // Weights are already in the right order.
+    conv_layer = params->converter->network()->addConvolution(
+        *tensor, weights.shape_.d[0], kernel_size, weights.GetTrtWeights(),
+        biases.GetTrtWeights());
+  } else {
+    // For conv, TF weights are RSCK, and TRT expects KCRS.
+    DCHECK_EQ(filter_format, "HWIO");
+    TRT_ShapedWeights weights_kcrs =
+        params->weight_store->GetTempWeights(weights);
+    ReorderRSCKToKCRS(weights, &weights_kcrs, 1);
+    conv_layer = params->converter->network()->addConvolution(
+        *tensor, weights.shape_.d[3], kernel_size, weights_kcrs.GetTrtWeights(),
+        biases.GetTrtWeights());
+  }
+  TFTRT_RETURN_ERROR_IF_NULLPTR(conv_layer, node_def.name());
+  conv_layer->setStride(stride);
+#if IS_TRT_VERSION_GE(5, 1, 3, 0)
+  if (attrs.get<string>("padding") == "SAME") {
+    conv_layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+#else
+  conv_layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+#endif
+  conv_layer->setName(node_def.name().c_str());
+  conv_layer->setNbGroups(1);
+  conv_layer->setDilation(dilation);
+  nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
+
+  // Add activation if there is one.
+  if (op_pair != ActivationTypeMap()->end()) {
+    nvinfer1::IActivationLayer* activation_layer =
+        params->converter->network()->addActivation(*output_tensor,
+                                                    op_pair->second);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(activation_layer, node_def.name());
+    output_tensor = activation_layer->getOutput(0);
+  }
+  // Restore transpose.
+  if (need_transpose) {
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        output_tensor, {0, 2, 3, 1}, &output_tensor));
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
 Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -3097,6 +3588,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   } else {
     // Next, broadcast the bias across the input.
     TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
+                                            /*check_feasibility=*/true,
                                             &input_shape, &bias_shape));
   }
 
@@ -3334,9 +3826,9 @@ Status ConvertBinary(OpConverterParams* params) {
   }
 
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r));
-
+  TF_RETURN_IF_ERROR(
+      GetTrtBroadcastShape(operand_l, operand_r, /*check_feasibility=*/true,
+                           &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   // This will also convert constants to tensors, and set quantization ranges.
@@ -3720,6 +4212,7 @@ Status ConvertPad(OpConverterParams* params) {
       *tensor, pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->MarkQuantizationRangesAsInferrable(tensor, output_tensor);
 
   if (!legit_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -4199,13 +4692,14 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   if (params->validation_only) return Status::OK();
 
   // If an FC layer can be used and would be faster, use that instead.
-  const bool should_use_fc =
-      !transpose_a && input_a.is_tensor() && input_b.is_weights() &&
-      input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
-  // If int8 is specified, FC must be used, as MM does not support int8 at this
-  // time.
-  if (should_use_fc ||
-      params->converter->precision_mode() == TrtPrecisionMode::INT8) {
+  const bool can_use_fc =
+      !transpose_a && input_a.is_tensor() && input_b.is_weights();
+  const bool should_use_fc = can_use_fc && input_a.GetTrtDims().nbDims >= 3 &&
+                             input_b.GetTrtDims().nbDims == 2;
+  // If int8 is specified, FC must be used unless it is not compatible, as MM
+  // does not support int8 at this time.
+  if (should_use_fc || (can_use_fc && params->converter->precision_mode() ==
+                                          TrtPrecisionMode::INT8)) {
     return ConvertFullyConnectedHelper(
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
@@ -4287,50 +4781,60 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // false}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (inputs[0].is_weights() && inputs[1].is_weights()) {
+  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
+  }
+  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor() &&
+      inputs.at(0).GetTrtDims().nbDims != inputs.at(1).GetTrtDims().nbDims) {
+    return errors::Unimplemented(
+        "Inputs must have the same rank if they are both tensors.");
   }
 
   TFAttrs attrs(node_def);
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
 
-  // Removes the batch dimension from weights.
-  const auto remove_weights_batch_dim =
-      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
-        auto dims = input.GetTrtDims();
-        if (input.is_weights()) {
-          // The other operand must be a tensor, this is ensured by earlier
-          // checks. Checks that the batch dimension is not changed by
-          // broadcasting.
-          if (dims.d[0] != 1) {
-            return errors::InvalidArgument(
-                "Input weight attempts to broadcast across batch dimension for "
-                "BatchMatMul, at ",
-                params->node_def.name());
-          }
-          // Remove the batch dimension from the weights.
-          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+  // There is no way to batch constants in TRT. Example:
+  // Tensor with TF Dims: 12 5 3 -> TRT Dims: 5 3
+  // Weight with TF Dims: 12 3 6 -> TRT Dims: 12 3 6
+  // It is not possible to treat the weight input as a batched [3, 6] tensor.
+  const auto check_weight_is_not_batched =
+      [](const TRT_TensorOrWeights& input_l,
+         const TRT_TensorOrWeights& input_r) {
+        // If input_l is a weight, then input_r must be a tensor because
+        // otherwise the op would be handled by Grappler.
+        if (input_l.is_weights() &&
+            input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
+            input_l.GetTrtDims().d[0] != 1) {
+          return errors::Unimplemented(
+              "TensorRT does not support batched constants.");
         }
-        // Create tensor and reshape if necessary.
-        nvinfer1::ITensor* t{nullptr};
-        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-            input, dims, params->validation_only, &t));
-        *tensor = TRT_TensorOrWeights{t};
         return Status::OK();
       };
+  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
+  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
 
-  TRT_TensorOrWeights tensor_l{nullptr};
-  TRT_TensorOrWeights tensor_r{nullptr};
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
+  // Broadcast inputs. We don't check feasibility since the dimensions in a
+  // MatMul don't need to match. For example, consider a valid set of inputs
+  // which would produce an output of shape [N, T, K]:
+  // input 0: [N, T, C]
+  // input 1: [1, C, K]
+  // Since C != K and T != C, check feasiblity would fail.
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
+      inputs.at(0), inputs.at(1), /*check_feasibility=*/false,
+      &broadcasted_dims_l, &broadcasted_dims_r));
+  nvinfer1::ITensor* tensor_l = nullptr;
+  nvinfer1::ITensor* tensor_r = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
 
-  if (params->validation_only) {
-    return Status::OK();
-  }
-
-  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
+  return ConvertMatMulHelper(params, TRT_TensorOrWeights(tensor_l),
+                             TRT_TensorOrWeights(tensor_r), transpose_a,
                              transpose_b, node_def.name());
 }
 
@@ -4548,7 +5052,8 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   // Broadcast inputs.
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
   TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
+      inputs.at(0), inputs.at(1), /*check_feasibility=*/true,
+      &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
@@ -4868,7 +5373,6 @@ Status ConvertAddN(OpConverterParams* params) {
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
-  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
@@ -4884,6 +5388,8 @@ static void RegisterValidatableOpConverters(
   (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["FusedConv2DBiasActivation"] =
+      ConvertFusedConv2DBiasActivation;
   (*registration)["GatherV2"] = ConvertGather;
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
@@ -4892,6 +5398,8 @@ static void RegisterValidatableOpConverters(
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  (*registration)["Conv3D"] = ConvertConv3D;
+  (*registration)["Conv3DBackpropInputV2"] = ConvertConv3DBackpropInputV2;
   for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
     (*registration)[resize_mode] = ConvertResize;
   }
@@ -4940,6 +5448,9 @@ static void RegisterValidatableOpConverters(
   // layer.
   for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
     (*registration)[identity_op_type] = ConvertIdentity;
+  }
+  for (auto batch_matmul_type : {"BatchMatMul", "BatchMatMulV2"}) {
+    (*registration)[batch_matmul_type] = ConvertBatchMatMul;
   }
 }
 
@@ -4990,26 +5501,44 @@ Status ConvertGraphDefToEngine(
   }
 
   // Build the network
-  VLOG(1) << "Starting engine conversion ";
+  if (VLOG_IS_ON(1)) {
+    string mode_str;
+    TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
+    VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
+  }
   Converter converter(trt_network.get(), precision_mode, use_calibration);
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
-    string node_name = node_def.name();
-    VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
+    const string& node_name = node_def.name();
+    VLOG(2) << "Converting node " << node_name << ", op=" << node_def.op();
+    if (IsEngineInput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kInputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      string type_key;
+      if (node_def.op() == "Placeholder") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kInputPHName),
+                &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+        type_key = "dtype";
+      } else if (tensorflow::grappler::IsArg(node_def)) {
+        // Maybe remove the dependence on grappler and re-implement IsArg,
+        // which is pretty simple (but could change if new Arg nodes are added)
+        slot_number = node_def.attr().at("index").i();
+        type_key = "T";
+      } else {
+        return errors::InvalidArgument(
+            "Node ", node_name,
+            " with is neither Placeholder nor Arg, instead ", node_def.op());
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
       int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
       auto status = ValidateTensorProperties(
-          node_def.op(), node_def.attr().at("dtype").type(), shape,
+          node_def.op(), node_def.attr().at(type_key).type(), shape,
           /*validation_only=*/false, &trt_dtype, &trt_dims, &batch_size);
       if (!status.ok()) {
         const string error_message =
@@ -5025,12 +5554,23 @@ Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      if (node_def.op() == "Identity") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName),
+                &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+      } else if (tensorflow::grappler::IsRetval(node_def)) {
+        slot_number = node_def.attr().at("index").i();
+      } else {
+        return errors::InvalidArgument(
+            "Node with name ", node_name,
+            " starting with IONamePrefixes::kOutputPHName is "
+            "neither Identity nor Retval, instead ",
+            node_def.op());
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);
@@ -5043,8 +5583,6 @@ Status ConvertGraphDefToEngine(
       output_tensors.at(slot_number) = {node_def.input(0), node_name,
                                         trt_dtype};
     } else {
-      VLOG(2) << "Converting node: " << node_def.name() << " , "
-              << node_def.op();
       TF_RETURN_IF_ERROR(converter.ConvertNode(node_def));
     }
   }
@@ -5099,7 +5637,8 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(kInputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5109,16 +5648,18 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Placeholder");
+      NodeDefBuilder builder(node_name, "_Arg");
       auto status = builder.Attr("shape", partial_shape)
-                        .Attr("dtype", dtype)
+                        .Attr("T", dtype)
+                        .Attr("index", connection.port_number)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing input " << node_name << " for the edge "
               << connection.outside_node_name << ":" << connection.outside_port
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(kOutputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5128,9 +5669,10 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Identity");
+      NodeDefBuilder builder(node_name, "_Retval");
       auto status =
-          builder
+          builder.Attr("T", dtype)
+              .Attr("index", connection.port_number)
               .Input(connection.inside_node_name, connection.inside_port, dtype)
               .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
@@ -5156,12 +5698,12 @@ Status ConvertSegmentToGraphDef(
     if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
-    const string placeholder_name =
-        StrCat(kInputPHName, connection.port_number);
+    const string arg_name =
+        StrCat(IONamePrefixes::kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
-            << placeholder_name;
-    snode->set_input(connection.inside_port, placeholder_name);
+            << arg_name;
+    snode->set_input(connection.inside_port, arg_name);
   }
   std::set<string> subgraph_node_names;
   for (const Node* node : subgraph_nodes) {

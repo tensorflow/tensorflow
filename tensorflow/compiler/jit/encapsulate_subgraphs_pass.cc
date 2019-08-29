@@ -1087,8 +1087,6 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
         FunctionDefToBodyHelper(*fdef, node->attrs(), library, &fbody));
 
     InlineFunctionBodyOptions inline_opts;
-    inline_opts.override_device = false;
-
     TF_RETURN_IF_ERROR(InlineFunctionBody(*library, pruned_graph->get(), node,
                                           fbody.get(), inline_opts));
   }
@@ -1319,7 +1317,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      TryGetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

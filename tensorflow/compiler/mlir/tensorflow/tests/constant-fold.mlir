@@ -1,20 +1,21 @@
 // RUN: tf-opt %s -test-constant-fold | FileCheck %s
 
 // CHECK-LABEL: func @testShape
-func @testShape(tensor<1x32x32x16xf32>, tensor<*xf32>, tensor<f32>) -> (tensor<4xi32>, tensor<?xi32>, tensor<1xi32>) {
-^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<*xf32>, %arg2: tensor<f32>):
-  // Note: The resultant constant after successful constant folding is created
-  // by the constant folding harness, using the original op's type as the
-  // resultant constant's type. So we cannot use tensor<?xi32> as the result
-  // type of tf.Shape here, otherwise the generated constant will have
-  // inconsistent types internally.
-  // TODO: do we need to support such different types?
-  // CHECK: %cst = constant dense<[1, 32, 32, 16]> : tensor<4xi32>
-  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<4xi32>
-  // CHECK: %0 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
-  %1 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
-  %2 = "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<1xi32>
-  return %0, %1, %2 : tensor<4xi32>, tensor<?xi32>, tensor<1xi32>
+func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {
+^bb0(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>):
+
+  // CHECK: constant dense<[]> : tensor<0xi32>
+  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<0xi32>
+
+  // Result shape need not be static. Folding harness uses TensorFlow constant
+  // in that case.
+  // CHECK: "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi32>} : () -> tensor<?xi32>
+  %1 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<?xi32>
+
+  // CHECK: "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
+  %2 = "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
+
+  return %0, %1, %2 : tensor<0xi32>, tensor<?xi32>, tensor<?xi32>
 }
 
 // CHECK-LABEL: func @testLeakyRelu
@@ -40,4 +41,39 @@ func @tfConst() -> (tensor<4xf32>, tensor<1x1x6x2xf32>) {
   // CHECK-DAG: value = opaque<"tf"
   // CHECK-DAG: constant dense<0.242886767> : tensor<1x1x6x2xf32>
   return %0, %21 : tensor<4xf32>, tensor<1x1x6x2xf32>
+}
+
+// CHECK-LABEL: func @testAdd() -> tensor<2x2xi32>
+func @testAdd() -> tensor<2x2xi32> {
+^bb0:
+  %0 = constant dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>
+  %1 = constant dense<1> : tensor<2xi32>
+  %2 = "tf.Add"(%0, %1) {device = "", name = "add"} : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  // CHECK:         [[cst:%.*]] = constant dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
+  return %2: tensor<2x2xi32>
+}
+
+// Ops with side effects should not get constant folded.
+// CHECK-LABEL: func @testSideEffectOp() -> tensor<3xf32>
+func @testSideEffectOp() -> tensor<3xf32> {
+  %0 = constant dense<[3]> : tensor<1xi32>
+  %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+  // CHECK: %[[random:.*]] = "tf.RandomUniform"
+  // CHECK: return %[[random]]
+  return %1: tensor<3xf32>
+}
+
+// Ops with unimplemnted attributes which couldn't be added to the TFE_Op.
+// CHECK-LABEL: func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>)
+func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
+  %0 = constant dense<1> : tensor<i32>
+  %1 = constant dense<2> : tensor<i32>
+  %2 = "tf.Maximum"(%0, %1) {_output_shapes = ["tfshape$"]} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %3 = "tf.Minimum"(%0, %1) {random_attr = "hello"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2, %3: tensor<i32>, tensor<i32>
+
+// CHECK-NEXT: %[[CST:.*]] = constant
+// CHECK-NEXT: %[[CST1:.*]] = constant
+// CHECK-NEXT: return %[[CST]], %[[CST1]]
 }

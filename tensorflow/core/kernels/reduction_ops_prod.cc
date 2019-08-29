@@ -33,7 +33,7 @@ namespace tensorflow {
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNELS(type)                                          \
   REGISTER_KERNEL_BUILDER(Name("Prod")                                      \
@@ -52,8 +52,10 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                                       Eigen::internal::ProdReducer<type>>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int32(REGISTER_GPU_KERNELS);
+#if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_GPU_KERNELS);
 TF_CALL_complex128(REGISTER_GPU_KERNELS);
+#endif
 #undef REGISTER_GPU_KERNELS
 
 #endif

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -45,10 +46,12 @@ Status EagerExecute(
 // `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
 Status EagerKernelExecute(EagerContext* ctx,
                           const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-                          KernelAndDevice* kernel, NodeExecStats* maybe_stats,
+                          const core::RefCountPtr<KernelAndDevice>& kernel,
+                          NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
-                          TensorHandle** retvals, int num_retvals);
+                          CancellationManager* cancellation_manager,
+                          absl::Span<TensorHandle*> retvals);
 
 // Low-level utility to copy a tensor handle from one device to another. If
 // successful, result TensorHandle will be populated. If the caller requests for
@@ -56,7 +59,7 @@ Status EagerKernelExecute(EagerContext* ctx,
 // original handle and update *result to point to h. Since this is not
 // guaranteed, callers should always use the value in *result.
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         const char* device_name, bool mirror,
+                         EagerExecutor* executor, Device* device, bool mirror,
                          TensorHandle** result);
 
 }  // namespace tensorflow

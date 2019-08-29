@@ -53,6 +53,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -61,13 +62,18 @@ class Aggregator(object):
 
   Attributes:
     use_steps: Whether the loop is using `step` or `batch_size`.
-    num_samples_or_steps: Either `batch_size*num_batches` or `steps`.
+    num_samples: Total number of samples: `batch_size * num_batches`.
+    steps: Total number of steps.
+    batch_size: Batch size. It is used for validation checks between inputs and
+      outputs.
     results: What to return at the end of the aggregation loop.
   """
 
-  def __init__(self, use_steps, num_samples_or_steps):
+  def __init__(self, use_steps, num_samples=None, steps=None, batch_size=None):
     self.use_steps = use_steps
-    self.num_samples_or_steps = num_samples_or_steps
+    self.num_samples = num_samples
+    self.steps = steps
+    self.batch_size = batch_size
     self.results = []
 
   @abc.abstractmethod
@@ -99,7 +105,21 @@ class Aggregator(object):
 
 
 class MetricsAggregator(Aggregator):
-  """Aggregator that calculates loss and metrics info."""
+  """Aggregator that calculates loss and metrics info.
+
+  Attributes:
+    use_steps: Whether the loop is using `step` or `batch_size`.
+    num_samples: Total number of samples: `batch_size*num_batches`.
+    steps: Total number of steps, ie number of times to iterate over a dataset
+      to cover all samples.
+  """
+
+  def __init__(self, use_steps, num_samples=None, steps=None):
+    super(MetricsAggregator, self).__init__(
+        use_steps=use_steps,
+        num_samples=num_samples,
+        steps=steps,
+        batch_size=None)
 
   def create(self, batch_outs):
     self.results = [0.] * len(batch_outs)
@@ -116,7 +136,7 @@ class MetricsAggregator(Aggregator):
   def finalize(self):
     if not self.results:
       raise ValueError('Empty training data.')
-    self.results[0] /= self.num_samples_or_steps
+    self.results[0] /= (self.num_samples or self.steps)
 
 
 class ConcatAggregator(Aggregator):
@@ -126,16 +146,25 @@ class ConcatAggregator(Aggregator):
   structure of tensor-likes.
   """
 
-  def __init__(self):
+  def __init__(self, batch_size):
     self.composite = None
     super(ConcatAggregator, self).__init__(
-        use_steps=True, num_samples_or_steps=None)
+        use_steps=True, num_samples=None, steps=None, batch_size=batch_size)
 
   def create(self, batch_element):
     self.composite = composite_tensor_utils.is_composite_or_composite_value(
         batch_element)
 
   def aggregate(self, batch_element, batch_start=None, batch_end=None):
+
+    # TODO(psv): Add num_samples check here to detect when output batch
+    # #samples is < batch size and != input batch #samples.
+    if self.batch_size and self.batch_size < batch_element.shape[0]:
+      raise ValueError(
+          'Mismatch between expected batch size and model output batch size. '
+          'Output shape = {}, expected output shape = shape {}'.format(
+              batch_element.shape,
+              (self.batch_size,) + batch_element.shape[1:]))
     self.results.append(batch_element)
 
   def finalize(self):
@@ -154,7 +183,7 @@ class ConcatAggregator(Aggregator):
       self.results = np.concatenate(self.results, axis=0)
 
     if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+      self.results = self.results._numpy()  # pylint: disable=protected-access
 
 
 _COPY_THREADS = 4
@@ -202,17 +231,20 @@ class SliceAggregator(Aggregator):
   _BINARY_SIZE_THRESHOLD = 2 ** 14
   _MAX_COPY_SECONDS = 300
 
-  def __init__(self, num_samples_or_steps):
+  def __init__(self, num_samples, batch_size):
     self._async_copies = []
     self._pool = get_copy_pool()
     self._errors = []
     super(SliceAggregator, self).__init__(
-        use_steps=False, num_samples_or_steps=num_samples_or_steps)
+        use_steps=False,
+        num_samples=num_samples,
+        steps=None,
+        batch_size=batch_size)
 
   def create(self, batch_element):
     # This step does not need to be pipelined because NumPy empty array
     # initialization is effectively instantaneous.
-    shape = (self.num_samples_or_steps,) + batch_element.shape[1:]
+    shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
       dtype = dtype.as_numpy_dtype()
@@ -225,7 +257,13 @@ class SliceAggregator(Aggregator):
       six.reraise(type(self._errors[0]), self._errors[0])
 
     # In the special case of single batch inference, no copy is needed.
-    if batch_end - batch_start == self.num_samples_or_steps:
+    if batch_end - batch_start == self.num_samples:
+      if self.num_samples != batch_element.shape[0]:
+        raise ValueError(
+            'Mismatch between expected batch size and model output batch size. '
+            'Output shape = {}, expected output shape = shape {}'.format(
+                batch_element.shape, self.results.shape))
+
       self.results = batch_element
       return
 
@@ -284,10 +322,11 @@ class OutputsAggregator(Aggregator):
         # If the output is not a ndarray, it will be either a composite tensor
         # or a composite tensor's Value object. In either case, we can't
         # allocate an array to hold the object - we'll handle it later.
-        self.results.append(ConcatAggregator())
+        self.results.append(ConcatAggregator(self.batch_size))
       elif isinstance(batch_element, (np.ndarray, ops.EagerTensor)):
-        self.results.append(ConcatAggregator() if self.use_steps else
-                            SliceAggregator(self.num_samples_or_steps))
+        self.results.append(
+            (ConcatAggregator(self.batch_size) if self.use_steps else
+             SliceAggregator(self.num_samples, self.batch_size)))
       else:
         # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
         # Fail fast rather than trying to concatenate it.
@@ -396,6 +435,10 @@ def standardize_single_array(x, expected_shape=None):
   if composite_tensor_utils.is_composite_or_composite_value(x):
     return x
 
+  if isinstance(x, int):
+    raise ValueError(
+        'Expected an array data type but received an integer: {}'.format(x))
+
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
@@ -431,9 +474,14 @@ def standardize_input_data(data,
   Raises:
       ValueError: in case of improperly formatted user-provided data.
   """
+  try:
+    data_len = len(data)
+  except TypeError:
+    # For instance if data is `None` or a symbolic Tensor.
+    data_len = None
+
   if not names:
-    if (data is not None and hasattr(data, '__len__') and len(data) and
-        not isinstance(data, dict)):
+    if data_len and not isinstance(data, dict):
       raise ValueError(
           'Error when checking model ' + exception_prefix + ': '
           'expected no data, but got:', data)
@@ -1025,7 +1073,7 @@ def get_loss_function(loss):
     return loss
 
   # Deserialize loss configuration, if needed.
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     loss = losses.get(loss)
 
   # Custom callable class.
@@ -1081,6 +1129,24 @@ def validate_dataset_input(x, y, sample_weight, validation_split=None):
         '`validation_split` argument is not supported when '
         'input `x` is a dataset or a dataset iterator. '
         'Received: x=%s, validation_split=%f' % (x, validation_split))
+
+
+def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
+  """Helper function to validate either inputs or targets."""
+  if isinstance(inp, (list, tuple)):
+    if not all(isinstance(v, np.ndarray) or
+               tensor_util.is_tensor(v) for v in inp):
+      raise ValueError(
+          'Please provide as model inputs either a single array or a list of '
+          'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
+  elif isinstance(inp, dict):
+    if not allow_dict:
+      raise ValueError(
+          'You cannot pass a dictionary as model {}.'.format(field_name))
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+    raise ValueError(
+        'Please provide as model inputs either a single array or a list of '
+        'arrays. You passed: {}={}'.format(field_name, orig_inp))
 
 
 def check_generator_arguments(y=None, sample_weight=None,
@@ -1148,11 +1214,39 @@ def check_steps_argument(input_data, steps, steps_name):
 
 
 def cast_single_tensor(x, dtype=None):
-  x = ops.convert_to_tensor(x)
+  if isinstance(x, np.ndarray):
+    x = ops.convert_to_tensor(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
   return x
+
+
+def cast_if_floating_dtype_and_mismatch(targets, outputs):
+  """Returns target data tensors using correct datatype.
+
+  Checks that each target and output pair are the same datatype. If not, casts
+  the target to the output's datatype.
+
+  Args:
+    targets: tensor or list of targets.
+    outputs: tensor or list of outputs.
+
+  Returns:
+    Targets in appropriate datatype.
+  """
+  if tensor_util.is_tensor(targets):
+    # There is one target, so output[0] should be the only output.
+    return cast_single_tensor(targets, dtype=outputs[0].dtype)
+  new_targets = []
+  for target, out in zip(targets, outputs):
+    if isinstance(target, np.ndarray):
+      target = ops.convert_to_tensor(target)
+    if target.dtype != out.dtype:
+      new_targets.append(cast_single_tensor(target, dtype=out.dtype))
+    else:
+      new_targets.append(target)
+  return new_targets
 
 
 def cast_if_floating_dtype(x):
@@ -1168,10 +1262,8 @@ def cast_if_floating_dtype(x):
   return nest.map_structure(cast_single_tensor, x)
 
 
-def cast_if_floating_to_model_input_dtypes(x, model):
+def cast_to_model_input_dtypes(x, model):
   """Casts the given data tensors to the dtypes of the model inputs.
-
-  Casts only if the input is already a floating point type.
 
   Args:
     x: tensor or list/tuple of tensors.
@@ -1181,10 +1273,8 @@ def cast_if_floating_to_model_input_dtypes(x, model):
     Converted input. Each tensor is casted to the corresponding input in
     `model.inputs`.
   """
-  # TODO(b/131372221): We should probably cast even if the input is not
-  # floating-point.
   input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
-  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+  return nest.map_structure(math_ops.cast, x, input_dtypes)
 
 
 def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
@@ -1245,7 +1335,7 @@ def prepare_loss_functions(loss, output_names):
       ValueError: If loss is a dict with keys not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
@@ -1257,7 +1347,7 @@ def prepare_loss_functions(loss, output_names):
       loss_functions.append(get_loss_function(loss.get(name, None)))
   elif isinstance(loss, six.string_types):
     loss_functions = [get_loss_function(loss) for _ in output_names]
-  elif isinstance(loss, collections.Sequence):
+  elif isinstance(loss, collections_abc.Sequence):
     if len(loss) != len(output_names):
       raise ValueError('When passing a list as loss, it should have one entry '
                        'per model outputs. The model has {} outputs, but you '
@@ -1525,10 +1615,15 @@ def unpack_iterator_input(iterator):
   return x, y, weights
 
 
-def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+def infer_steps_for_dataset(model,
+                            dataset,
+                            steps,
+                            epochs=1,
+                            steps_name='steps'):
   """Infers steps_per_epoch needed to loop through a dataset.
 
   Arguments:
+      model: Keras model instance.
       dataset: Input data of type tf.data.Dataset.
       steps: Number of steps to draw from the dataset (may be None if unknown).
       epochs: Number of times to iterate over the dataset.
@@ -1538,13 +1633,20 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
 
   Returns:
     Integer or `None`. Inferred number of steps to loop through the dataset.
-    `None` is returned if the size of the dataset is unknown and `steps` was
-    not specified.
+    `None` is returned if 1) the size of the dataset is unknown and `steps` was
+    not specified, or 2) this is multi-worker training and auto sharding is
+    enabled.
 
   Raises:
     ValueError: In case of invalid argument values.
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
+  if (model._in_multi_worker_mode() and
+      dataset.options().experimental_distribute.auto_shard):
+    # If the dataset would be auto-sharded, we should not infer a local
+    # steps_per_epoch due to the possible inbalanced sharding between workers.
+    return None
+
   size = K.get_value(cardinality.cardinality(dataset))
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
@@ -1723,6 +1825,13 @@ def convert_eager_tensors_to_numpy(structure):
   return nest.map_structure(_convert, structure)
 
 
+def list_to_tuple(maybe_list):
+  """Datasets will stack the list of tensor, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
+
+
 def should_run_validation(validation_freq, epoch):
   """Checks if validation should be run this epoch.
 
@@ -1747,9 +1856,9 @@ def should_run_validation(validation_freq, epoch):
       raise ValueError('`validation_freq` can not be less than 1.')
     return one_indexed_epoch % validation_freq == 0
 
-  if not isinstance(validation_freq, collections.Container):
+  if not isinstance(validation_freq, collections_abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
-                     '`collections.Container` (e.g. list, tuple, etc.)')
+                     '`collections_abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
 
 

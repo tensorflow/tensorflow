@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -64,10 +65,11 @@ class EmbeddingLookupSparseOpModel : public SingleOpModel {
     int rows = tensor->dims->data[0];
     int columns = tensor->dims->data[1];
     int features = tensor->dims->data[2];
+    float* tensor_ptr = GetTensorData<float>(tensor);
     for (int i = 0; i < rows; i++) {
       for (int j = 0; j < columns; j++) {
         for (int k = 0; k < features; k++) {
-          tensor->data.f[(i * columns + j) * features + k] = function(i, j, k);
+          tensor_ptr[(i * columns + j) * features + k] = function(i, j, k);
         }
       }
     }

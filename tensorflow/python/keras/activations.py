@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in activation functions.
-"""
+"""Built-in activation functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -287,17 +286,14 @@ def linear(x):
 
   Returns:
       The linear activation: `x`.
-
-  Note:
-      Often used as last layer of regression networks.
   """
   return x
 
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
-  if (hasattr(activation, '__name__')
-      and activation.__name__ in _TF_ACTIVATIONS_V2):
+  if (hasattr(activation, '__name__') and
+      activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
   return serialize_keras_object(activation)
 
@@ -322,8 +318,7 @@ def get(identifier):
     return identifier
   elif isinstance(identifier, dict):
     return deserialize_keras_object(
-        identifier,
-        printable_module_name='activation')
+        identifier, printable_module_name='activation')
   else:
     raise TypeError(
         'Could not interpret activation function identifier: {}'.format(

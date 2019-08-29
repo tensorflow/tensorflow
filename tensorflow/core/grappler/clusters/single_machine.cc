@@ -181,8 +181,7 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     }
 
     // Warmup TensorFlow if needed
-    for (int i = 0;
-         i < options_.config.graph_options().build_cost_model_after(); ++i) {
+    for (int i = 0; i < NumWarmupSteps(); ++i) {
       TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
     }
   }

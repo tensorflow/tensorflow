@@ -144,8 +144,15 @@ struct IsProd {
 };
 
 template <typename T, typename Op>
+struct IsLogSumExp {
+  constexpr static bool value = (std::is_same<Op, LogSumExp<T>>::value ||
+                                 std::is_same<Op, LogSumExpReducer<T>>::value);
+};
+
+template <typename T, typename Op>
 struct IdentityValue {
-  static_assert(IsSum<T, Op>::value || IsProd<T, Op>::value,
+  static_assert(IsSum<T, Op>::value || IsProd<T, Op>::value ||
+                    IsLogSumExp<T, Op>::value,
                 "IdentityValue not yet defined for this type.");
 
   template <typename U = T, typename OpCopy = Op>
@@ -157,6 +164,13 @@ struct IdentityValue {
   template <typename U = T, typename OpCopy = Op>
   __host__ __device__ U operator()(
       typename std::enable_if<IsProd<U, OpCopy>::value, U>::type t = U(1)) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  __host__ __device__ U
+  operator()(typename std::enable_if<IsLogSumExp<U, OpCopy>::value, U>::type t =
+                 U(Eigen::NumTraits<U>::lowest())) {
     return t;
   }
 };
@@ -308,6 +322,16 @@ struct Scan<GPUDevice, Eigen::internal::ProdReducer<T>, T> {
                   const Eigen::internal::ProdReducer<T>& reducer,
                   const bool reverse, const bool exclusive) {
     LaunchScan<T, Prod<T>>(d, in, out, Prod<T>(), reverse, exclusive);
+  }
+};
+
+template <typename T>
+struct Scan<GPUDevice, LogSumExpReducer<T>, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
+                  typename TTypes<T, 3>::Tensor out,
+                  const LogSumExpReducer<T>& reducer, const bool reverse,
+                  const bool exclusive) {
+    LaunchScan<T, LogSumExp<T>>(d, in, out, LogSumExp<T>(), reverse, exclusive);
   }
 };
 

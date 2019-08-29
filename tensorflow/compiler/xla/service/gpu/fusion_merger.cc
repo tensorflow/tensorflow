@@ -151,6 +151,7 @@ class FusionInstructionMerger {
   int num_fail_expensive_fused_instruction_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
   int num_fail_inefficient_fusion_emitter_ = 0;
+  int num_fail_fusion_too_large_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FusionInstructionMerger);
 };
@@ -172,7 +173,8 @@ Status FusionInstructionMerger::Run() {
           << " expensive_instruction: " << num_fail_expensive_fused_instruction_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " inefficient_fusion_emitter: "
-          << num_fail_inefficient_fusion_emitter_ << " }";
+          << num_fail_inefficient_fusion_emitter_
+          << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
   return Status::OK();
 }
 
@@ -255,6 +257,18 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
             << ": Contains one or more users where fusing would cause "
                "inefficiencies in the fusion emitter.";
     ++num_fail_inefficient_fusion_emitter_;
+    return Status::OK();
+  }
+
+  // Skip 'fusion' instruction if merging it into at least one of the users
+  // would make the fusion too big.
+  if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+        return FusionWouldBeTooLarge(*fusion, *user);
+      })) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": Contains one or more users where fusing would cause "
+               "the fusion to have too many parameters.";
+    ++num_fail_fusion_too_large_;
     return Status::OK();
   }
 

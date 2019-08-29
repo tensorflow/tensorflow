@@ -84,7 +84,7 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
                    GetParam().window_strides, GetParam().padding_type, source,
                    ConstantR0<float>(&builder_, 0.0f), add_f32_);
 
-  ComputeAndCompare(&builder_, {}, ErrorSpec(2e-4));
+  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5, 1e-5));
 }
 
 INSTANTIATE_TEST_CASE_P(

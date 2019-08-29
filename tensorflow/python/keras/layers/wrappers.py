@@ -23,7 +23,6 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
@@ -225,7 +224,7 @@ class TimeDistributed(Wrapper):
     if input_shape[0] and not self._always_use_reshape:
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        output = self.layer.call(x, **kwargs)
+        output = self.layer(x, **kwargs)
         return output, []
 
       _, outputs, _ = K.rnn(
@@ -252,20 +251,13 @@ class TimeDistributed(Wrapper):
       if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
         inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
         kwargs['mask'] = K.reshape(mask, inner_mask_shape)
-      y = self.layer.call(inputs, **kwargs)
+      y = self.layer(inputs, **kwargs)
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
       output_shape = self._get_shape_tuple(
           (-1, input_length), y, 1, output_shape[2:])
       y = array_ops.reshape(y, output_shape)
 
-    # Apply activity regularizer if any:
-    if (hasattr(self.layer, 'activity_regularizer') and
-        self.layer.activity_regularizer is not None):
-      regularization_loss = self.layer.activity_regularizer(y)
-      base_layer_utils.check_graph_consistency(
-          regularization_loss, method='activity_regularizer')
-      self.add_loss(regularization_loss, inputs)
     return y
 
   def compute_mask(self, inputs, mask=None):
@@ -646,13 +638,13 @@ class Bidirectional(Wrapper):
         forward_inputs, backward_inputs = inputs, inputs
         forward_state, backward_state = None, None
 
-      y = self.forward_layer.call(forward_inputs,
-                                  initial_state=forward_state, **kwargs)
-      y_rev = self.backward_layer.call(backward_inputs,
-                                       initial_state=backward_state, **kwargs)
+      y = self.forward_layer(forward_inputs,
+                             initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer(backward_inputs,
+                                  initial_state=backward_state, **kwargs)
     else:
-      y = self.forward_layer.call(inputs, **kwargs)
-      y_rev = self.backward_layer.call(inputs, **kwargs)
+      y = self.forward_layer(inputs, **kwargs)
+      y_rev = self.backward_layer(inputs, **kwargs)
 
     if self.return_state:
       states = y[1:] + y_rev[1:]

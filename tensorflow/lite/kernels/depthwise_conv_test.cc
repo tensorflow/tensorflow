@@ -616,6 +616,8 @@ class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
   }
 };
 
+// Only enable this test for neon.
+#ifdef USE_NEON
 TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
   const TensorData input({TensorType_UINT8, {1, 4, 4, 2400}, -63.5, 64});
   const TensorData filter({TensorType_UINT8, {1, 3, 3, 2400}, -63.5, 64});
@@ -646,6 +648,7 @@ TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
   reference_impl.SetInput(input_data);
   reference_impl.SetFilter(filter_data);
   reference_impl.SetBias(bias_data);
+  reference_impl.Invoke();
 
   QuantizedDepthwiseConvolutionOpModel optimized_impl(
       ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(), input, filter,
@@ -653,9 +656,11 @@ TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
   optimized_impl.SetInput(input_data);
   optimized_impl.SetFilter(filter_data);
   optimized_impl.SetBias(bias_data);
+  optimized_impl.Invoke();
 
-  // EXPECT_THAT(reference_impl.GetOutput(), optimized_impl.GetOutput());
+  EXPECT_THAT(reference_impl.GetOutput(), optimized_impl.GetOutput());
 }
+#endif
 
 // In this test we set the input and output scales so that the results match
 // exactly the 'non-quantized' version.

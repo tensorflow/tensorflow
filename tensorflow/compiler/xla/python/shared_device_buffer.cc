@@ -21,26 +21,26 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ StatusOr<std::shared_ptr<BufferDefinitionEvent>>
-BufferDefinitionEvent::Create(se::StreamExecutor* executor) {
-  auto event = std::make_shared<BufferDefinitionEvent>(executor);
-  TF_RET_CHECK(event->event_.Init())
-      << "Buffer definition event initialization failed";
-  return event;
+void BufferDefinitionEvent::SetDefinitionEvent(EventPool::Handle event,
+                                               se::Stream* stream) {
+  absl::MutexLock lock(&mu_);
+  CHECK(!event_.event());
+  event_ = std::move(event);
+  CHECK(streams_defined_on_.empty());
+  streams_defined_on_.push_back(stream);
 }
 
-BufferDefinitionEvent::BufferDefinitionEvent(se::StreamExecutor* executor)
-    : event_(executor) {}
-
-void BufferDefinitionEvent::RecordOnStream(se::Stream* stream) {
-  absl::MutexLock lock(&mu_);
-  CHECK(streams_defined_on_.empty());
-  stream->ThenRecordEvent(&event_);
-  streams_defined_on_.push_back(stream);
+bool BufferDefinitionEvent::EventHasBeenRecorded() {
+  return event_.event() != nullptr;
 }
 
 void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
   absl::MutexLock lock(&mu_);
+
+  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
+  // newly created events are deemed to have already happened past.
+  mu_.Await(
+      absl::Condition(this, &BufferDefinitionEvent::EventHasBeenRecorded));
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
@@ -50,7 +50,7 @@ void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(&event_);
+  stream->ThenWaitFor(event_.event());
   streams_defined_on_.push_back(stream);
 }
 

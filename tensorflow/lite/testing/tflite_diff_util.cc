@@ -33,7 +33,7 @@ bool RunDiffTest(const DiffOptions& options, int num_invocations) {
           options.input_layer_shape, options.output_layer)) {
     return false;
   }
-  TfLiteDriver tflite_driver(/*use_nnapi=*/true, options.delegate);
+  TfLiteDriver tflite_driver(options.delegate);
   tflite_driver.LoadModel(options.tflite_model);
   return tflite::testing::ParseAndRunTests(&tflite_stream, &tflite_driver);
 }

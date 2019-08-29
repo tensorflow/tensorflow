@@ -56,6 +56,10 @@ Status DebugNodeInserter::InsertNodes(
     return Status::OK();
   }
 
+  // Debug ops and URLs for wildcard node names (if any).
+  std::vector<string> default_debug_ops;
+  std::vector<string> default_debug_urls;
+
   // A map from tensor name (e.g., "node_a:0") to list of debug op names
   // (e.g., {"DebugIdentity", "DebugNanCount"})
   std::unordered_map<string, std::vector<string>> tensor_watches;
@@ -65,14 +69,37 @@ Status DebugNodeInserter::InsertNodes(
 
   // Cache the proto content for fast lookup later
   for (const DebugTensorWatch& watch : watches) {
-    if (watch.output_slot() < 0) {
-      // The semantics of output_slot == -1 is that the node is watched only
-      // for completion, but not for output tensor values (see
-      // NodeCompletionCallback in debug_gateway.h).
-      continue;
-    }
     if (watch.debug_ops().empty()) {
       continue;
+    }
+
+    if (watch.debug_urls().empty()) {
+      continue;
+    }
+
+    if (watch.node_name() == "*") {
+      if (watch.output_slot() == -1) {
+        default_debug_ops.insert(default_debug_ops.end(),
+                                 watch.debug_ops().begin(),
+                                 watch.debug_ops().end());
+        default_debug_urls.insert(default_debug_urls.end(),
+                                  watch.debug_urls().begin(),
+                                  watch.debug_urls().end());
+      } else {
+        return Status(error::FAILED_PRECONDITION,
+                      strings::StrCat(
+                          "output_slot is expected to be -1 for wildcard ",
+                          "node name (\"*\"), but got ", watch.output_slot()));
+      }
+      continue;
+    } else {
+      if (watch.output_slot() < 0) {
+        return Status(
+            error::FAILED_PRECONDITION,
+            strings::StrCat("A negative output_slot in DebugTensorWatch is ",
+                            "valid only for the wildcard node name (\"*\"), ",
+                            "but got node name ", watch.node_name()));
+      }
     }
 
     string tensor_name =
@@ -120,9 +147,9 @@ Status DebugNodeInserter::InsertNodes(
          ++src_output_slot) {
       const string tensor_name =
           strings::StrCat(src_node->name(), ":", src_output_slot);
-      if (tensor_watches.find(tensor_name) == tensor_watches.end()) {
-        // Add debug nodes only for edges with matching source node and source
-        // output slot.
+      const bool explicit_tensor_match =
+          tensor_watches.find(tensor_name) != tensor_watches.end();
+      if (!explicit_tensor_match && default_debug_ops.empty()) {
         continue;
       }
 
@@ -146,11 +173,17 @@ Status DebugNodeInserter::InsertNodes(
                                              src_output_slot, &memory_type));
 
       // Create the copy node for the watched tensor.
+      const std::vector<string> debug_ops = explicit_tensor_match
+                                                ? tensor_watches[tensor_name]
+                                                : default_debug_ops;
+      const std::vector<string> debug_urls =
+          explicit_tensor_match ? tensor_watch_urls[tensor_name]
+                                : default_debug_urls;
       Node* copy_node;
-      Status copy_s = CreateCopyNode(
-          graph, device_type, memory_type == HOST_MEMORY, src_node->name(),
-          src_output_slot, src_dt, tensor_name, tensor_watches[tensor_name],
-          tensor_watch_urls[tensor_name], &copy_node);
+      Status copy_s =
+          CreateCopyNode(graph, device_type, memory_type == HOST_MEMORY,
+                         src_node->name(), src_output_slot, src_dt, tensor_name,
+                         debug_ops, debug_urls, &copy_node);
       if (!copy_s.ok()) {
         return Status(
             error::FAILED_PRECONDITION,
@@ -163,13 +196,13 @@ Status DebugNodeInserter::InsertNodes(
 
       // Create all requested debug nodes and their edges to the Copy node.
       std::vector<Node*> debug_nodes;
-      for (size_t i = 0; i < tensor_watches[tensor_name].size(); ++i) {
-        const string& debug_op_name = tensor_watches[tensor_name][i];
+      for (size_t i = 0; i < debug_ops.size(); ++i) {
+        const string& debug_op_name = debug_ops[i];
 
         Node* debug_node;
-        Status debug_s = CreateDebugNode(
-            graph, *device, copy_node->name(), src_dt, tensor_name,
-            tensor_watch_urls[tensor_name], i, debug_op_name, &debug_node);
+        Status debug_s = CreateDebugNode(graph, *device, copy_node->name(),
+                                         src_dt, tensor_name, debug_urls, i,
+                                         debug_op_name, &debug_node);
         if (debug_s.ok()) {
           graph->AddEdge(copy_node, 0, debug_node, 0);
           debug_nodes.push_back(debug_node);

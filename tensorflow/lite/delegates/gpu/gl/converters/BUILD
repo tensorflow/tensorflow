@@ -30,7 +30,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 
@@ -75,7 +75,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 

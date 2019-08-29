@@ -33,7 +33,7 @@ const TfLiteRegistration* MicroMutableOpResolver::FindOp(const char* op,
                                                          int version) const {
   for (int i = 0; i < registrations_len_; ++i) {
     const TfLiteRegistration& registration = registrations_[i];
-    if ((registration.builtin_code == -1) &&
+    if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
         (strcmp(registration.custom_name, op) == 0) &&
         (registration.version == version)) {
       return &registration;
@@ -71,7 +71,7 @@ void MicroMutableOpResolver::AddCustom(const char* name,
     registrations_len_ += 1;
 
     *new_registration = *registration;
-    new_registration->builtin_code = -1;
+    new_registration->builtin_code = BuiltinOperator_CUSTOM;
     new_registration->custom_name = name;
     new_registration->version = version;
   }

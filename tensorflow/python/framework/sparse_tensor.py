@@ -21,8 +21,11 @@ from __future__ import print_function
 import collections
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_utils
+from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
@@ -253,7 +256,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
 tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
-pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
+_pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
@@ -279,6 +282,16 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     return (self._shape, self._dtype)
 
   @property
+  def dtype(self):
+    """The `tf.dtypes.DType` specified by this type for the SparseTensor."""
+    return self._dtype
+
+  @property
+  def shape(self):
+    """The `tf.TensorShape` specified by this type for the SparseTensor."""
+    return self._shape
+
+  @property
   def _component_specs(self):
     rank = self._shape.ndims
     num_values = None
@@ -293,7 +306,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     return [value.indices, value.values, value.dense_shape]
 
   def _from_components(self, tensor_list):
-    return SparseTensor(*tensor_list)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      return SparseTensorValue(*tensor_list)
+    else:
+      return SparseTensor(*tensor_list)
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &
@@ -323,11 +340,28 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
 
   def _from_compatible_tensor_list(self, tensor_list):
     tensor_list = gen_sparse_ops.deserialize_sparse(tensor_list[0], self._dtype)
-    result = SparseTensor(*tensor_list)
+    indices, values, dense_shape = tensor_list
     rank = self._shape.ndims
-    result.indices.set_shape([None, rank])
-    result.dense_shape.set_shape([rank])
-    return result
+    indices.set_shape([None, rank])
+    # We restore the dense_shape from the SparseTypeSpec. This is necessary
+    # for shape inference when using placeholder SparseTensors in function
+    # tracing.
+    if self._shape.is_fully_defined():
+      dense_shape = ops.convert_to_tensor(
+          self._shape, dtype=dtypes.int64, name="shape")
+    elif (self._shape.rank is not None and
+          any(dim.value is not None for dim in self._shape.dims)):
+      # array_ops imports sparse_tensor.py. Local import to avoid import cycle.
+      from tensorflow.python.ops import array_ops  # pylint: disable=g-import-not-at-top
+      pieces = array_ops.unstack(dense_shape, num=self._shape.rank)
+      for i, dim in enumerate(self._shape.dims):
+        if dim.value is not None:
+          pieces[i] = constant_op.constant(dim.value, dense_shape.dtype)
+      dense_shape = array_ops.stack(pieces)
+    else:
+      dense_shape.set_shape([rank])
+
+    return SparseTensor(indices, values, dense_shape)
 
   def _batch(self, batch_size):
     return SparseTensorSpec(

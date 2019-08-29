@@ -23,7 +23,7 @@ def tflite_copts():
             "-msse4.1",
         ],
         str(Label("//tensorflow:windows")): [
-            "/DTF_COMPILE_LIBRARY",
+            "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
@@ -51,7 +51,6 @@ def tflite_linkopts_unstripped():
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -110,15 +109,18 @@ def tflite_jni_binary(
         linkstatic = 1,
         testonly = 0,
         deps = [],
+        tags = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
+            "-Wl,-install_name,@rpath/" + name,
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
+            "-Wl,-soname," + name,
         ],
     })
     native.cc_binary(
@@ -128,6 +130,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
+        tags = tags,
         linkopts = linkopts,
         testonly = testonly,
     )
@@ -233,6 +236,7 @@ def generated_test_models():
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
+        "cast",
         "ceil",
         "concat",
         "constant",
@@ -243,6 +247,7 @@ def generated_test_models():
         "conv_to_depthwiseconv_with_shared_weights",
         "cos",
         "depthwiseconv",
+        "depth_to_space",
         "div",
         "elu",
         "equal",
@@ -262,6 +267,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "hardswish",
         "identity",
         "sum",
         "l2norm",
@@ -327,11 +333,13 @@ def generated_test_models():
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_np_style",
         "sub",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
+        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
@@ -353,17 +361,7 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return [
-            # TODO(b/135758082): L2Norm is broken in future forward
-            # compatibility horizon
-            "l2norm",
-            # TODO(b/135756979): Eye/MatrixDiag is broken in future
-            # forward compatibility horizon
-            "matrix_diag",
-            "matrix_set_diag",
-            "eye",
-        ]
-
+        return []
     return []
 
 def generated_test_conversion_modes():
@@ -504,6 +502,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
+            python_version = "PY2",
             tags = [
                 "no_oss",
                 "no_windows",

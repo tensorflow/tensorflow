@@ -118,6 +118,8 @@ class RegularizerTest(test.TestCase):
     l2_function = regularizers.l2_regularizer(.2)
     self.assertIsNone(regularizers.sum_regularizer([]))
     self.assertIsNone(regularizers.sum_regularizer([None]))
+    self.assertIsNone(
+        regularizers.sum_regularizer([regularizers.l1_regularizer(.0)])(None))
 
     values = np.array([-3.])
     weights = constant_op.constant(values)
@@ -128,11 +130,16 @@ class RegularizerTest(test.TestCase):
       l1_reg2 = regularizers.sum_regularizer([l1_function, None])
       l1_result2 = sess.run(l1_reg2(weights))
 
+      l1_reg3 = regularizers.sum_regularizer(
+          [l1_function, regularizers.l2_regularizer(.0)])
+      l1_result3 = sess.run(l1_reg3(weights))
+
       l1_l2_reg = regularizers.sum_regularizer([l1_function, l2_function])
       l1_l2_result = sess.run(l1_l2_reg(weights))
 
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result1)
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result2)
+    self.assertAllClose(.1 * np.abs(values).sum(), l1_result3)
     self.assertAllClose(
         .1 * np.abs(values).sum() + .2 * np.power(values, 2).sum() / 2.0,
         l1_l2_result)

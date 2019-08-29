@@ -70,7 +70,7 @@ ENTRY reduce.1 {
 }
 )";
 
-  return ParseHloString(hlo_string);
+  return ParseAndReturnUnverifiedModule(hlo_string);
 }
 
 // TODO(b/72454718): XLA:GPU does not support executing code compiled without

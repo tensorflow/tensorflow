@@ -573,7 +573,14 @@ Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
       GetMissingOutputBufferIds(output_buffers, sorted_chains);
   info.gpu_tasks_count = static_cast<int>(sorted_chains.size());
   if (sorted_chains.empty()) {
-    return InternalError("Empty chains");
+    const std::string message =
+        "No valid operations in the graph.\nInput operations count " +
+        std::to_string(info.operations_count) + "\nUnused operations " +
+        std::to_string(info.unused_operations.size()) + "\nUnused inputs " +
+        std::to_string(info.unused_input_buffer_ids.size()) +
+        "\nMissing output buffers " +
+        std::to_string(info.missing_output_buffer_ids.size());
+    return InternalError(message);
   }
   for (const auto& chain : sorted_chains) output->push_back(FuseChain(chain));
   return OkStatus();

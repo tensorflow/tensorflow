@@ -29,40 +29,12 @@ cc_test(
 )
 
 cc_library(
-    name = "parameter_accessor",
-    srcs = ["parameter_accessor.cc"],
-    hdrs = ["parameter_accessor.h"],
-    deps = [
-        ":preprocessor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:variant",
-    ],
-)
-
-cc_test(
-    name = "parameter_accessor_test",
-    srcs = ["parameter_accessor_test.cc"],
-    tags = [
-        "local",
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":parameter_accessor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "object_accessor",
     srcs = ["object_accessor.cc"],
     hdrs = ["object_accessor.h"],
     deps = [
-        ":parameter_accessor",
         ":preprocessor",
+        ":variable_accessor",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:object",
@@ -80,8 +52,9 @@ cc_test(
     ],
     deps = [
         ":object_accessor",
-        ":parameter_accessor",
+        ":variable_accessor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/types:variant",
         "@com_google_googletest//:gtest_main",
     ],
@@ -94,7 +67,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:object",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 
@@ -105,14 +78,15 @@ cc_library(
     deps = [
         ":compiled_node",
         ":object_accessor",
-        ":parameter_accessor",
         ":preprocessor",
         ":shader_code",
+        ":variable_accessor",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:compiler_options",
-        "//tensorflow/lite/delegates/gpu/gl:gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -170,12 +144,12 @@ cc_library(
     hdrs = ["rename.h"],
     deps = [
         ":object_accessor",
-        ":parameter_accessor",
         ":preprocessor",
+        ":variable_accessor",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "//tensorflow/lite/delegates/gpu/gl:object",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -193,6 +167,34 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "variable_accessor",
+    srcs = ["variable_accessor.cc"],
+    hdrs = ["variable_accessor.h"],
+    deps = [
+        ":preprocessor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_test(
+    name = "variable_accessor_test",
+    srcs = ["variable_accessor_test.cc"],
+    tags = [
+        "local",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":variable_accessor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

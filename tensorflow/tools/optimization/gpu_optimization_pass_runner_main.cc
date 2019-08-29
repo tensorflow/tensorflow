@@ -69,9 +69,7 @@ Status RealMain(int argc, char** argv) {
   TF_RETURN_IF_ERROR(runner.AddGpus(8));
 
   // This binary is used to test TF:XLA behavior, so turn on auto_jit.
-  TF_RETURN_IF_ERROR(
-      runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                             OptimizerOptions_GlobalJitLevel_ON_2));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
   GraphDef graphdef_output;
   TF_RETURN_IF_ERROR(runner.Run(optimization_pass, std::move(graphdef_input),
                                 &graphdef_output));

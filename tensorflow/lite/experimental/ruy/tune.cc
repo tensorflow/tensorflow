@@ -18,12 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "tensorflow/lite/experimental/ruy/opt_set.h"
-#include "tensorflow/lite/experimental/ruy/time.h"
-
 namespace ruy {
 
-#ifdef __aarch64__
+#ifdef RUY_IMPLEMENT_TUNING
 
 namespace {
 
@@ -89,16 +86,17 @@ float TuningResolver::EvalRatio() {
   Duration timing_nicely_ordered = Duration::max();
 
   for (int r = 0; r < kRepeats; r++) {
-    TimePoint t0 = Clock::now();
+    TimePoint t0 = Now();
     PoorlyOrderedKernel(kLoopIters);
-    TimePoint t1 = Clock::now();
+    TimePoint t1 = Now();
     NicelyOrderedKernel(kLoopIters);
-    TimePoint t2 = Clock::now();
+    TimePoint t2 = Now();
     timing_poorly_ordered = std::min(timing_poorly_ordered, t1 - t0);
     timing_nicely_ordered = std::min(timing_nicely_ordered, t2 - t1);
   }
 
-  return ToSeconds(timing_nicely_ordered) / ToSeconds(timing_poorly_ordered);
+  return ToFloatSeconds(timing_nicely_ordered) /
+         ToFloatSeconds(timing_poorly_ordered);
 }
 
 float TuningResolver::ThresholdRatio() {
@@ -130,7 +128,7 @@ Tuning TuningResolver::ResolveNow() {
   return is_probably_inorder ? Tuning::kInOrder : Tuning::kOutOfOrder;
 }
 
-#else  // not defined __aarch64__
+#else  // not defined RUY_IMPLEMENT_TUNING
 
 float TuningResolver::EvalRatio() { return 0; }
 float TuningResolver::ThresholdRatio() { return 0; }
@@ -139,19 +137,15 @@ Tuning TuningResolver::ResolveNow() { return Tuning::kOutOfOrder; }
 
 #endif
 
-static constexpr double kExpirySecs = 0.25;
-
 TuningResolver::TuningResolver()
-    : expiry_duration_(DurationFromSeconds(kExpirySecs)) {}
+    : expiry_duration_(DurationFromMilliseconds(250)) {}
 
 Tuning TuningResolver::Resolve() {
-#if !RUY_OPT_ENABLED(RUY_OPT_TUNING)
-  return Tuning::kOutOfOrder;
-#endif
+#ifdef RUY_IMPLEMENT_TUNING
   if (unresolved_tuning_ != Tuning::kAuto) {
     return unresolved_tuning_;
   }
-  TimePoint new_timepoint = Clock::now();
+  TimePoint new_timepoint = CoarseNow();
   if (last_resolved_tuning_ != Tuning::kAuto &&
       (new_timepoint - last_resolved_timepoint_) < expiry_duration_) {
     return last_resolved_tuning_;
@@ -159,6 +153,9 @@ Tuning TuningResolver::Resolve() {
   last_resolved_timepoint_ = new_timepoint;
   last_resolved_tuning_ = ResolveNow();
   return last_resolved_tuning_;
+#else
+  return Tuning::kOutOfOrder;
+#endif
 }
 
 }  // namespace ruy

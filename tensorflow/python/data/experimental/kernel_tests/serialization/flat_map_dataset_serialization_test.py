@@ -43,7 +43,7 @@ class FlatMapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(start, start + 5 * 5, 5).flat_map(map_fn)
 
-    self.run_core_tests(lambda: build_ds(0), lambda: build_ds(10), 25)
+    self.run_core_tests(lambda: build_ds(0), 25)
 
   def testMapThenFlatMap(self):
 
@@ -58,7 +58,7 @@ class FlatMapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
 
-    self.run_core_tests(build_ds, None, 500)
+    self.run_core_tests(build_ds, 500)
 
   def testCaptureDefunInMapFn(self):
 
@@ -74,7 +74,7 @@ class FlatMapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(100).flat_map(map_fn)
 
-    self.run_core_tests(build_ds, None, 100)
+    self.run_core_tests(build_ds, 100)
 
   def testDisallowVariableCapture(self):
 
@@ -84,7 +84,7 @@ class FlatMapDatasetSerializationTest(
       return dataset_ops.Dataset.range(5).flat_map(
           lambda _: dataset_ops.Dataset.from_tensor_slices([test_var]))
 
-    self.verify_error_on_save(build_ds, 5, errors.InvalidArgumentError)
+    self.verify_error_on_save(build_ds, 5, errors.FailedPreconditionError)
 
   def testDisallowCapturingStatefulOps(self):
 
@@ -100,7 +100,7 @@ class FlatMapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(5).flat_map(flat_map_fn)
 
-    self.verify_error_on_save(build_ds, 500, errors.InvalidArgumentError)
+    self.verify_error_on_save(build_ds, 500, errors.FailedPreconditionError)
 
   def testSparseCore(self):
 
@@ -115,7 +115,7 @@ class FlatMapDatasetSerializationTest(
     def _build_ds():
       return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
 
-    self.run_core_tests(_build_ds, None, 20)
+    self.run_core_tests(_build_ds, 20)
 
 
 if __name__ == "__main__":

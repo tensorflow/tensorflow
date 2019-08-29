@@ -99,15 +99,15 @@ struct Result {
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
 Status FastParseExample(const FastParseExampleConfig& config,
-                        gtl::ArraySlice<string> serialized,
-                        gtl::ArraySlice<string> example_names,
+                        gtl::ArraySlice<tstring> serialized,
+                        gtl::ArraySlice<tstring> example_names,
                         thread::ThreadPool* thread_pool, Result* result);
 
 // TODO(mrry): Move the hash table construction into the config object.
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
 Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              const string& serialized, Result* result);
+                              absl::string_view serialized, Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.
@@ -116,7 +116,7 @@ Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
 Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
     const example::FastParseExampleConfig& feature_list_config,
-    gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
+    gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
     thread::ThreadPool* thread_pool, example::Result* context_result,
     example::Result* feature_list_result,
     std::vector<Tensor>* dense_feature_lengths);

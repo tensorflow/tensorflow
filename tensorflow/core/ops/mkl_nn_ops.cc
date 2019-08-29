@@ -1140,6 +1140,72 @@ MKL-DNN implementation of quantized depthwise Conv2D with Bias, Relu and Requant
 expected to invoke this operator.
 )doc");
 
+REGISTER_OP("_MklFusedBatchNormV3")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
+    .Doc(
+        R"doc(MKL-DNN implementation of FusedBatchNormV3: Do not invoke this operator directly in Python.
+         Graph rewrite pass is expected to invoke this operator.)doc");
+
+REGISTER_OP("_MklFusedBatchNormGradV3")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: float")
+    .Input("reserve_space_1: U")
+    .Input("reserve_space_2: U")
+    .Input("reserve_space_3: U")
+    .Input("mkl_y_backprop: uint8")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_reserve_space_1: uint8")
+    .Input("mkl_reserve_space_2: uint8")
+    .Input("mkl_reserve_space_3: uint8")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: U")
+    .Output("offset_backprop: U")
+    .Output("reserve_space_4: U")
+    .Output("reserve_space_5: U")
+    .Output("mkl_x_backprop: uint8")
+    .Output("mkl_scale_backprop: uint8")
+    .Output("mkl_offset_backprop: uint8")
+    .Output("mkl_reserve_space_4: uint8")
+    .Output("mkl_reserve_space_5: uint8")
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .Doc(
+        R"doc(MKL-DNN implementation of FusedBatchNormGradV3: Do not invoke this operator directly in Python.
+             Graph rewrite pass is expected to invoke this operator.)doc");
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

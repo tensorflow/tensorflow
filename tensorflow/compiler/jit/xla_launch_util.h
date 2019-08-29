@@ -149,10 +149,10 @@ class XlaComputationLaunchContext {
   //
   // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
   // missing and adjusts input indices accordingly.
-  Status PopulateOutputs(OpKernelContext* ctx,
-                         const XlaCompiler::CompilationResult* kernel,
-                         xla::ScopedShapedBuffer output,
-                         int missing_ctx_input_prefix);
+  Status PopulateOutputs(
+      OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
+      xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
+      const xla::HloInputOutputAliasConfig& input_output_alias);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
@@ -193,12 +193,15 @@ class XlaTensorBuffer : public TensorBuffer {
   }
 
   static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
-                           se::DeviceMemoryBase buffer, Allocator* allocator) {
+                           bool unref_buffer, se::DeviceMemoryBase buffer,
+                           Allocator* allocator) {
     size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
     auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
                                               buffer.size(), allocator);
     Tensor t(dtype, shape, tensor_buffer);
-    tensor_buffer->Unref();
+    if (unref_buffer) {
+      tensor_buffer->Unref();
+    }
     return t;
   }
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -61,7 +62,7 @@ class HeapSimulator {
   // Result represents the result of the heap simulation.
   struct Result {
     // The assignment of buffers to chunks.
-    absl::flat_hash_map<const BufferValue*, Chunk> chunk_map;
+    absl::flat_hash_map<const HloValue*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
     int64 heap_size = 0;
@@ -87,10 +88,7 @@ class HeapSimulator {
     bool alloc_constants;
     // If 'buffers_to_assign' is provided, only those buffers are assigned
     // offsets, otherwise all buffers defined by the instructions are assigned.
-    const BufferValueFlatSet* buffers_to_assign;
-    // A vector of multiple buffer value sets. Each set enforces a must-alias
-    // relationship for all buffers inside them.
-    std::vector<BufferValueFlatSet> must_alias_sets;
+    const absl::flat_hash_set<const HloValue*>* buffers_to_assign;
   };
 
   // Returns the minimum memory required to compute an HLO module where all
@@ -168,26 +166,26 @@ class HeapSimulator {
 
   Status RunComputation(const HloComputation& computation,
                         const HloInstructionSequence& instruction_sequence,
-                        const HloAliasAnalysis& alias_analysis);
+                        const HloAliasAnalysis& alias_analysis,
+                        HloLiveRange* live_range);
 
-  bool IgnoreBuffer(const BufferValue* buffer) const;
-  void Alloc(const BufferValue* buffer, const HloInstruction* instruction);
-  void Free(const BufferValue* buffer, const HloInstruction* instruction);
+  bool IgnoreBuffer(const HloValue* buffer) const;
+  void Alloc(const HloValue* buffer, const HloInstruction* instruction);
+  void Free(const HloValue* buffer, const HloInstruction* instruction);
   // ShareBuffer indicates that a new buffer is defined and it has to be the
   // same address as the shared one.
-  void ShareBuffer(const BufferValue* buffer, const BufferValue* shared,
+  void ShareBuffer(const HloValue* buffer, const HloValue* shared,
                    const HloInstruction* instruction);
 
   // Returns true if:
   //  Two buffers belong to the same shared group.
   //  Eight of the buffer has no shared group assigned.
-  bool InSameSharedGroup(const BufferValue* left, const BufferValue* right);
+  bool InSameSharedGroup(const HloValue* left, const HloValue* right);
   Result Finish();
 
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
-                      const BufferValue* buffer,
-                      const HloInstruction* instruction,
-                      const BufferValue* share_with_canonical);
+                      const HloValue* buffer, const HloInstruction* instruction,
+                      const HloValue* share_with_canonical);
 
   // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
   // in which case we are calculating the same allocs/frees twice in the
@@ -204,30 +202,9 @@ class HeapSimulator {
   const absl::flat_hash_map<const HloComputation*, int64>*
       memory_by_computation_;
 
-  // In addition to Alloc and Free, the heap simulator exposes a concept of
-  // buffer sharing.  When ShareBuffer is called, instead of allocating new
-  // space for the buffer, it associates the buffer with a previously allocated
-  // (or shared) buffer.  Each group of mutually-shared buffers points to a
-  // single SharedGroup instance, which is a shared control block.
-  //
-  // This forced buffer sharing is hidden from the underlying heap algorithm,
-  // which only sees a regular Alloc call on the canonical buffer.  The
-  // corresponding Free call is delayed until the liveness of all shared buffers
-  // in the group has expired, which is tracked via the refcount.  The results
-  // are post-processed in Finish to add chunks for shared buffers.
-  //
-  // The shared_buffers_ map associates each shared buffer (including the
-  // canonical) to its SharedGroup control block.
-  struct SharedGroup {
-    const BufferValue* canonical = nullptr;
-    int64 refcount = 0;
-  };
-  absl::flat_hash_map<const BufferValue*, std::shared_ptr<SharedGroup>>
-      shared_buffers_;
-
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
-  absl::flat_hash_set<const BufferValue*> allocated_buffers_;
-  absl::flat_hash_set<const BufferValue*> freed_buffers_;
+  absl::flat_hash_set<const HloValue*> allocated_buffers_;
+  absl::flat_hash_set<const HloValue*> freed_buffers_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;
@@ -245,7 +222,7 @@ class HeapAlgorithm {
   virtual ~HeapAlgorithm() = default;
 
   // Alloc allocates a buffer of 'size' bytes.
-  virtual void Alloc(const BufferValue* buffer, int64 size) = 0;
+  virtual void Alloc(const HloValue* buffer, int64 size) = 0;
 
   // Takes memory usage of subcomputations into account when calculating the
   // memory usage of a computation. Currently, we don't handle buffer aliasing
@@ -264,17 +241,38 @@ class HeapAlgorithm {
           memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
-  virtual void Free(const BufferValue* buffer, int64 size) = 0;
+  virtual void Free(const HloValue* buffer, int64 size) = 0;
 
-  // Indicates that a buffer has to be collocated with another buffer.
-  virtual void ShareWith(const BufferValue* buffer,
-                         const BufferValue* share_with, int64 size) {
+  // Indicates that a buffer has to be collocated with another buffer. In
+  // addition to Alloc and Free, the heap simulator exposes a concept of buffer
+  // sharing.  When ShareBuffer is called, instead of allocating new space for
+  // the buffer, it associates the buffer with a previously allocated (or
+  // shared) buffer.  Each group of mutually-shared buffers points to a single
+  // SharedGroup instance, which is a shared control block.
+  virtual void ShareWith(const HloValue* buffer, const HloValue* share_with,
+                         int64 size) {
     Alloc(buffer, size);
   }
 
   // Finish collects the buffer offset assignment results.  Free may only be
   // called once, after the Alloc and Free calls.
   virtual Result Finish() = 0;
+
+  // Heap algorithms can optionally make use of the instruction/computation
+  // schedule. These data structures are guaranteed to be valid while Finish()
+  // is being called.
+  virtual void SetSchedules(
+      const HloInstructionSequence* flattened_instruction_sequence,
+      const absl::flat_hash_map<const HloInstruction*, int64>*
+          instruction_schedule) {
+    flattened_instruction_sequence_ = flattened_instruction_sequence;
+    instruction_schedule_ = instruction_schedule;
+  }
+
+ protected:
+  const HloInstructionSequence* flattened_instruction_sequence_;
+  const absl::flat_hash_map<const HloInstruction*, int64>*
+      instruction_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -286,14 +284,14 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
   NoFragmentationStatsHeap() = default;
   ~NoFragmentationStatsHeap() override = default;
 
-  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Alloc(const HloValue* buffer, int64 size) override;
 
   void AccountForSubcomputationMemory(
       const HloInstruction* instruction, int64 alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) override;
 
-  void Free(const BufferValue* buffer, int64 size) override;
+  void Free(const HloValue* buffer, int64 size) override;
 
   Result Finish() override;
 
@@ -319,10 +317,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
       : alignment_(alignment), type_(type) {}
   ~GlobalDecreasingSizeBestFitHeap() override {}
 
-  void Alloc(const BufferValue* buffer, int64 size) override;
-  void Free(const BufferValue* buffer, int64 size) override;
+  void Alloc(const HloValue* buffer, int64 size) override;
+  void Free(const HloValue* buffer, int64 size) override;
 
-  void ShareWith(const BufferValue* buffer, const BufferValue* share_with,
+  void ShareWith(const HloValue* buffer, const HloValue* share_with,
                  int64 size) override;
 
   Result Finish() override;
@@ -330,7 +328,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
  protected:
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
-    const BufferValue* buffer;
+    const HloValue* buffer;
     int64 size;
     // Alloc time of the buffer.
     int64 start;
@@ -338,7 +336,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     int64 end;
 
     // Colocation buffers that need to be collocated with this one.
-    std::vector<const BufferValue*> colocations;
+    std::vector<const HloValue*> colocations;
 
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.
@@ -390,19 +388,24 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
 
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
-  // each BufferInterval, after calling GetSortedBufferIntervals. The
-  // ChunkCandidate returns the chunk and the final heap size if it chunk is to
-  // be committed. The Finish() method can then call CommitChunk to associate
-  // the chunk with the BufferInterval, if the final heap size is within the
-  // limits.
-  ChunkCandidate FindChunkCandidate(
-      const BufferInterval& buffer_interval) const;
+  // each BufferInterval, after calling GetSortedBufferIntervals. If a
+  // non-negative preferred_offset is provided, FindChunkCandidate attempts
+  // finding a chunk at this offset. The ChunkCandidate returns the chunk and
+  // the final heap size if it chunk is to be committed. The Finish() method can
+  // then call CommitChunk to associate the chunk with the BufferInterval, if
+  // the final heap size is within the limits.
+  ChunkCandidate FindChunkCandidate(const BufferInterval& buffer_interval,
+                                    int64 preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
+  // Adds the buffer and the chunk to the result chunk map.
+  virtual void AddToChunkMap(const HloValue* buffer, Chunk chunk);
+
+  absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
+  Result result_;
 
  private:
   int64 alignment_;
-  Result result_;
   Type type_;
 
   // The current time represented as an integer. It increments by 1 at each
@@ -414,9 +417,8 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.
-  absl::flat_hash_set<const BufferValue*> GetTransitiveColocations(
+  absl::flat_hash_set<const HloValue*> GetTransitiveColocations(
       const BufferInterval& interval) const;
-  absl::flat_hash_map<const BufferValue*, BufferInterval> buffer_intervals_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to
@@ -428,20 +430,20 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm {
       : algorithms_(std::move(*algorithms)) {}
   ~ChooseBestHeapAlgorithm() override {}
 
-  void Alloc(const BufferValue* buffer, int64 size) override {
+  void Alloc(const HloValue* buffer, int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Alloc(buffer, size);
     }
   }
 
-  void ShareWith(const BufferValue* buffer, const BufferValue* share_with,
+  void ShareWith(const HloValue* buffer, const HloValue* share_with,
                  int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->ShareWith(buffer, share_with, size);
     }
   }
 
-  void Free(const BufferValue* buffer, int64 size) override {
+  void Free(const HloValue* buffer, int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Free(buffer, size);
     }

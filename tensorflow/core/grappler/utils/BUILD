@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_protos_grappler",
 )
 
@@ -178,7 +178,7 @@ cc_library(
     hdrs = ["functions.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

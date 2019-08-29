@@ -53,6 +53,20 @@ class TrtPlugin : public nvinfer1::IPluginV2Ext {
 
   const char* getPluginNamespace() const override { return namespace_.c_str(); }
 
+ protected:
+  template <typename T>
+  void WriteToBuffer(const T& val, char** buffer) const {
+    *reinterpret_cast<T*>(*buffer) = val;
+    *buffer += sizeof(T);
+  }
+
+  template <typename T>
+  T ReadFromBuffer(const char** buffer) {
+    T val = *reinterpret_cast<const T*>(*buffer);
+    *buffer += sizeof(T);
+    return val;
+  }
+
  private:
   std::string namespace_;
 };

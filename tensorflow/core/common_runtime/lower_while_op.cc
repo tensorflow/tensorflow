@@ -56,13 +56,11 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 //                   consumer
 class LowerWhileHelper {
  public:
-  static Status Run(Node* while_op, const string& cond_fn_name,
-                    const string& body_fn_name, int parallel_iterations,
-                    Graph* graph, const FunctionLibraryDefinition& flib,
-                    bool keep_node_fetchable) {
-    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name,
-                            parallel_iterations, graph, flib,
-                            keep_node_fetchable);
+  static Status Run(Node* while_op, const NameAttrList& cond_fn,
+                    const NameAttrList& body_fn, int parallel_iterations,
+                    Graph* graph, bool keep_node_fetchable) {
+    LowerWhileHelper helper(while_op, cond_fn, body_fn, parallel_iterations,
+                            graph, keep_node_fetchable);
     return helper.RunInternal();
   }
 
@@ -70,10 +68,9 @@ class LowerWhileHelper {
   // Create a LowerWhileHelper to create the lowering of While op that has cond
   // and body functions named `cond_fn_name` and `body_fn_name` respectively in
   // the given graph.
-  LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                   const string& body_fn_name, int parallel_iterations,
-                   Graph* graph, const FunctionLibraryDefinition& flib,
-                   bool keep_node_fetchable);
+  LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
+                   const NameAttrList& body_fn, int parallel_iterations,
+                   Graph* graph, bool keep_node_fetchable);
 
   Status RunInternal();
 
@@ -137,7 +134,6 @@ class LowerWhileHelper {
   // used as a source of outgoing control edges from lowered While node.
   Node* lowered_while_executed_;
   Graph* graph_;
-  const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
   string name_;
   // Max number of parallel_iterations for the while loop.
@@ -157,25 +153,29 @@ class LowerWhileHelper {
   size_t num_loop_inputs_;
 };
 
-LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                                   const string& body_fn_name,
+LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
+                                   const NameAttrList& body_fn,
                                    int parallel_iterations, Graph* graph,
-                                   const FunctionLibraryDefinition& flib,
                                    bool keep_node_fetchable)
     : while_op_(while_op),
       graph_(graph),
-      flib_(flib),
       name_(while_op->name()),
       parallel_iterations_(parallel_iterations),
       keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*while_op_),
-      cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry(),
+      cond_call_builder_(NewName("cond"), cond_fn.name(), graph->op_registry(),
                          &debug_info_),
-      body_call_builder_(NewName("body"), body_fn_name, graph->op_registry(),
+      body_call_builder_(NewName("body"), body_fn.name(), graph->op_registry(),
                          &debug_info_),
       num_loop_inputs_(while_op_->num_inputs()) {
   cond_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : cond_fn.attr()) {
+    cond_call_builder_.Attr(i.first, i.second);
+  }
   body_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : body_fn.attr()) {
+    body_call_builder_.Attr(i.first, i.second);
+  }
   // We intentionally `resize` instead of `reserve` space in `enter_nodes_`
   // because we need to set it's elements out of order in `CreateEnterNodes`.
   enter_nodes_.resize(num_loop_inputs_);
@@ -412,7 +412,6 @@ string LowerWhileHelper::NewName(const string& infix) {
 }  // namespace
 
 Status RewriteWhileNode(Node* n, Graph* g,
-                        const FunctionLibraryDefinition& flib,
                         bool keep_node_fetchable) {
   VLOG(2) << "Lower While node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
@@ -432,8 +431,8 @@ Status RewriteWhileNode(Node* n, Graph* g,
   }
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
-      n, cond_attr->func().name(), body_attr->func().name(),
-      parallel_iterations_attr->i(), g, flib, keep_node_fetchable));
+      n, cond_attr->func(), body_attr->func(), parallel_iterations_attr->i(), g,
+      keep_node_fetchable));
   g->RemoveNode(n);
 
   return Status::OK();

@@ -14,10 +14,12 @@ cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
         "pywrap_tensor.cc",
+        "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
         "pywrap_tensor.h",
+        "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
     ],
     visibility = [
@@ -34,6 +36,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -42,6 +47,8 @@ cc_library(
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -53,12 +60,14 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":core",
         ":def_function",
         ":execute",
         ":execution_callbacks",
         ":forwardprop",
+        ":forwardprop_util",
         ":function",
         ":graph_only_ops",
         ":monitoring",
@@ -68,6 +77,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
 
@@ -84,11 +94,42 @@ py_library(
 )
 
 py_library(
+    name = "cancellation",
+    srcs = ["cancellation.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+cuda_py_test(
+    name = "cancellation_test",
+    size = "small",
+    srcs = ["cancellation_test.py"],
+    additional_deps = [
+        ":cancellation",
+        ":test",
+    ],
+)
+
+py_library(
+    name = "executor",
+    srcs = ["executor.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":executor",
         ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
@@ -170,6 +211,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
@@ -217,7 +259,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_windows",  #TODO(b/139745667)
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -226,13 +271,17 @@ cuda_py_test(
     srcs = ["forwardprop_test.py"],
     additional_deps = [
         ":forwardprop",
+        ":forwardprop_util",
         ":test",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
+    shard_count = 5,
     xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "core_test",
+    size = "small",
     srcs = ["core_test.py"],
     additional_deps = [
         ":context",
@@ -304,11 +353,13 @@ cuda_py_test(
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":def_function",
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:dtypes",
@@ -366,6 +417,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:op_callbacks",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
     ],
@@ -413,10 +465,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":execute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/eager:execute",
     ],
 )
 
@@ -426,7 +478,11 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
+        ":core",
+        ":execute",
         ":graph_only_ops",
+        ":tape",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -434,10 +490,6 @@ py_library(
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:core",
-        "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -449,7 +501,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
+        ":execute",
         ":imperative_grad",
+        ":tape",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -460,9 +515,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
@@ -480,12 +532,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "forwardprop_util",
+    srcs = ["forwardprop_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     additional_deps = [
         ":backprop",
         ":context",
+        ":forwardprop",
         ":function",
         ":test",
         ":profiler",
@@ -618,7 +681,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     additional_deps = [
@@ -627,6 +690,24 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
     ],
+)
+
+cuda_py_test(
+    name = "def_function_xla_jit_test",
+    srcs = ["def_function_xla_jit_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
 )
 
 tf_xla_py_test(
@@ -658,6 +739,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/training/tracking:base",
     ],
 )
@@ -678,9 +760,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
-        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -699,5 +781,18 @@ cuda_py_test(
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+cuda_py_test(
+    name = "device_placement_test",
+    size = "small",
+    srcs = ["device_placement_test.py"],
+    additional_deps = [
+        ":context",
+        ":def_function",
+        ":test",
+        ":remote",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )

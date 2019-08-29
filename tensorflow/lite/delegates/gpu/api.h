@@ -39,7 +39,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "third_party/opencl_headers/CL/cl.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -57,13 +57,9 @@ namespace gpu {
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
-
   BHWC,
-
   DHWC4,
-
   HWDC4,
-
   HDWC4,
 };
 
@@ -168,16 +164,19 @@ struct TensorObjectDef {
   }
 };
 
+// @return true if tensor object def is defined.
+bool IsValid(const TensorObjectDef& def);
+
+// @return the number of elements in a tensor object.
+uint32_t NumElements(const TensorObjectDef& def);
+
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory, OpenClBuffer, OpenClTexture>;
 
 // @return true if object is set and corresponding values are defined.
-bool IsValid(const TensorObject& object);
+bool IsValid(const TensorObjectDef& def, const TensorObject& object);
 
 ObjectType GetType(const TensorObject& object);
-
-// @return true if object representation corresponds to the given definition.
-bool IsCompatible(const TensorObjectDef& def, const TensorObject& object);
 
 // @return true if corresponding object is set for the given type
 bool IsObjectPresent(ObjectType type, const TensorObject& obj);

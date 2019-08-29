@@ -147,6 +147,67 @@ BM_BINARY_SCALAR(sycl, DivNoNan);
 
 #undef BM_BINARY_SCALAR
 
+// Three implementations of x^3.
+Graph* CubeWithPow3(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  Tensor rhs(DT_FLOAT, TensorShape({}));
+  rhs.flat<float>().setConstant(3);
+  test::graph::Binary(g, "Pow", test::graph::Constant(g, lhs),
+                      test::graph::Constant(g, rhs));
+  return g;
+}
+
+Graph* CubeWithTwoMuls(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  auto* x = test::graph::Constant(g, lhs);
+  auto* inner = test::graph::Binary(g, "Mul", x, x);
+  test::graph::Binary(g, "Mul", x, inner);
+  return g;
+}
+
+Graph* CubeWithMulSquare(int num) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<float>().setRandom();
+  auto* x = test::graph::Constant(g, lhs);
+  auto* inner = test::graph::Unary(g, "Square", x);
+  test::graph::Binary(g, "Mul", test::graph::Constant(g, lhs), inner);
+  return g;
+}
+
+#define BM_CUBE(DEVICE, Impl)                          \
+  void BM_##DEVICE##_Cube_##Impl(int iters, int num) { \
+    const int64 tot = static_cast<int64>(iters) * num; \
+    testing::UseRealTime();                            \
+    testing::ItemsProcessed(tot);                      \
+    testing::BytesProcessed(tot * sizeof(float));      \
+    test::Benchmark(#DEVICE, Impl(num)).Run(iters);    \
+  }                                                    \
+  BENCHMARK(BM_##DEVICE##_Cube_##Impl)                 \
+      ->Arg(1 << 12) /* must >= 4096 */                \
+      ->Arg(1 << 16)                                   \
+      ->Arg(1 << 20);
+
+BM_CUBE(cpu, CubeWithPow3);
+BM_CUBE(cpu, CubeWithTwoMuls);
+BM_CUBE(cpu, CubeWithMulSquare);
+#if GOOGLE_CUDA
+BM_CUBE(gpu, CubeWithPow3);
+BM_CUBE(gpu, CubeWithTwoMuls);
+BM_CUBE(gpu, CubeWithMulSquare);
+#endif  // GOOGLE_CUDA
+#ifdef TENSORFLOW_USE_SYCL
+BM_CUBE(sycl, CubeWithPow3);
+BM_CUBE(sycl, CubeWithTwoMuls);
+BM_CUBE(sycl, CubeWithMulSquare);
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef BM_CUBE
+
 template <class T>
 Graph* BiasAdd(int rows, int cols, DataType type) {
   Graph* g = new Graph(OpRegistry::Global());

@@ -54,7 +54,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         lambda x1: math_ops.add(x1, x2), [x1]))
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testAddCustomized(self):
     size = (2, 3)
@@ -66,7 +66,7 @@ class GradientCheckerTest(test.TestCase):
         lambda x2: math_ops.add(x1, x2),
         [x2], delta=1e-2))
     tf_logging.info("x2 error = %f", error)
-    assert error < 1e-10
+    self.assertLess(error, 1e-10)
 
   def testGather(self):
     def f(params):
@@ -80,7 +80,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f, [params]))
     tf_logging.info("gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testNestedGather(self):
     def f(params):
@@ -97,7 +97,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f, [params]))
     tf_logging.info("nested gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testComplexMul(self):
     c = constant_op.constant(5 + 7j, dtype=dtypes.complex64)

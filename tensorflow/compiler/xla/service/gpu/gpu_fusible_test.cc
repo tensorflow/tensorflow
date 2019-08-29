@@ -35,7 +35,7 @@ const char kModulePrefix[] = R"(
 
 TEST_F(GpuFusibleTest,
        LayoutsAreReduceInputFusionFriendly_ElementwiseProducer) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -55,7 +55,7 @@ TEST_F(GpuFusibleTest,
 
 TEST_F(GpuFusibleTest,
        LayoutsAreReduceInputFusionFriendly_MixedLayoutProducer) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
       p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)
@@ -92,7 +92,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce {
       p0.1 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
       c0.1 = f32[] constant(0)
@@ -116,7 +116,7 @@ TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
 
 TEST_F(GpuFusibleTest,
        LayoutsAreReduceInputFusionFriendly_LayoutChangingFusionProducer) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     layout_changing_computation {
       p0.1 = f16[128,1024,32,32]{3,2,1,0} parameter(0)
       p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)
@@ -153,7 +153,7 @@ TEST_F(GpuFusibleTest,
 
 TEST_F(GpuFusibleTest,
        LayoutsAreReduceInputFusionFriendly_ConsiderMaximumRanksParamsOnly) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     broadcasting_computation {
       p0.1 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
       p1.1 = f32[128]{0} parameter(1)
@@ -161,11 +161,11 @@ TEST_F(GpuFusibleTest,
       ROOT add = f32[128,1024,32,32]{1,3,2,0} add(p0.1, broadcast)
     }
     ENTRY entry {
-      p0 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
-      p1 = f16[128]{0} parameter(1)
+      p0 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
+      p1 = f32[128]{0} parameter(1)
       loop_fusion = f32[128,1024,32,32]{1,3,2,0} fusion(p0, p1), kind=kLoop, calls=broadcasting_computation
       c0.2 = f32[] constant(0)
-      ROOT reduce = f32[128,1024]{0,1} reduce(loop_fusion, c0.2), dimensions={0,2,3}, to_apply=scalar_add
+      ROOT reduce = f32[1024]{0} reduce(loop_fusion, c0.2), dimensions={0,2,3}, to_apply=scalar_add
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
@@ -179,7 +179,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       c0 = f32[] parameter(0)
       p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
@@ -196,7 +196,7 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       c0 = f32[] parameter(0)
       p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
@@ -214,10 +214,10 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputInputReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       ROOT reduce = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
     }
     ENTRY entry {
@@ -233,10 +233,10 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputInputReduceFusion) {
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputLoopReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       ROOT reduce = f32[8,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={1,3}, to_apply=scalar_add
     }
     ENTRY entry {
@@ -252,10 +252,10 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputLoopReduceFusion) {
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputInputReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       reduce.0 = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
       reduce.1 = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
       ROOT root = (f32[128,512]{1,0}, f32[128,512]{1,0}) tuple(reduce.0, reduce.1)
@@ -274,10 +274,10 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputInputReduceFusion) {
 
 TEST_F(GpuFusibleTest,
        IsReduceInputFusion_MultiOutputInputReduceFusionWithExtraOutputs) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       reduce = f32[128,512]{1,0} reduce(p1, c0), dimensions={2,3}, to_apply=scalar_add
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
       ROOT root = (f32[128,512]{1,0}, f32[128,512,28,28]{3,2,1,0}) tuple(reduce, mul)
@@ -295,10 +295,10 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputLoopReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       reduce.0 = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
       reduce.1 = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
       ROOT root = (f32[512,28]{1,0}, f32[512,28]{1,0}) tuple(reduce.0, reduce.1)
@@ -317,10 +317,10 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputLoopReduceFusion) {
 
 TEST_F(GpuFusibleTest,
        IsReduceInputFusion_MultiOutputLoopFusionReduceAndElementwiseOp) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
-      c0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
       reduce = f32[512,28]{1,0} reduce(p1, c0), dimensions={0,2}, to_apply=scalar_add
       mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
       ROOT root = (f32[512,28]{1,0}, f32[128,512,28,28]{3,2,1,0}) tuple(reduce, mul)
@@ -338,7 +338,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -347,7 +347,8 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
     fused_computation_2 {
       p0.2 = f32[6400]{0} parameter(0)
       const.2 = f32[] constant(1)
-      ROOT div = f32[6400]{0} divide(p0.2, const.2)
+      broadcast = f32[6400]{0} broadcast(const.2), dimensions={}
+      ROOT div = f32[6400]{0} divide(p0.2, broadcast)
     }
 
     ENTRY entry {
@@ -365,7 +366,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -379,8 +380,8 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
     ENTRY entry {
       p0 = f32[6400]{0} parameter(0)
       fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
-      fusion.2 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
-      ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
+      fusion.2 = f16[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (f32[6400]{0}, f16[6400]{0}) tuple(fusion.1, fusion.2)
     })"))
                     .ValueOrDie();
   const HloInstruction* fusion_1 =
@@ -391,7 +392,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Reduce) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -413,7 +414,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Reduce) {
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Elementwise) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -423,7 +424,8 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Elementwise) {
       p0 = f32[6400]{0} parameter(0)
       fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
       const.2 = f32[] constant(1)
-      div = f32[6400]{0} divide(p0, const.2)
+      broadcast = f32[6400]{0} broadcast(const.2), dimensions={}
+      div = f32[6400]{0} divide(p0, broadcast)
       ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, div)
     })"))
                     .ValueOrDie();
@@ -436,7 +438,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Elementwise) {
 
 TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_MultiOutputLoopFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -447,7 +449,8 @@ TEST_F(GpuFusibleTest,
     fused_computation_2 {
       p0.2 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       const.2 = f32[] constant(0)
-      ROOT add = f32[8,1,5,16,1,1]{5,4,3,2,1,0} add(p0.2, const.2)
+      broadcast = f32[8,1,5,16,1,1]{5,4,3,2,1,0} broadcast(const.2), dimensions={}
+      ROOT add = f32[8,1,5,16,1,1]{5,4,3,2,1,0} add(p0.2, broadcast)
     }
 
     ENTRY entry {
@@ -467,7 +470,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_UnfusedOps) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -485,7 +488,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_UnfusedOps) {
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_DifferentLayouts) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       p1 = f32[2,2,2]{0,1,2} parameter(1)
@@ -504,7 +507,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_DifferentLayouts) {
 
 TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_MultiOutputReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
@@ -541,7 +544,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_ReduceFusions) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce_1 {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -572,7 +575,7 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_ReduceFusions) {
 
 TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_DifferentReduceDimensions) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce_1 {
       p0.1 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -607,7 +610,7 @@ TEST_F(GpuFusibleTest,
 
 TEST_F(GpuFusibleTest,
        ShapesCompatibleForMultiOutputFusion_NoReductionToVector) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {
       p0.1 = f32[32,32,32]{2,1,0} parameter(0)
       p1.1 = f32[32,32,32]{2,1,0} parameter(1)
@@ -630,7 +633,7 @@ TEST_F(GpuFusibleTest,
       p1 = f32[32,32,32]{2,1,0} parameter(1)
       element_wise = f32[32,32,32]{2,1,0} fusion(p0, p1), kind=kLoop,
         calls=fused_element_wise
-      fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(element_wise),
+      fusion = f32[32,32]{1,0} fusion(element_wise),
         kind=kLoop, calls=fused_reduce
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0})
         tuple(fusion, element_wise)
@@ -644,7 +647,7 @@ TEST_F(GpuFusibleTest,
 }
 
 TEST_F(GpuFusibleTest, IsFusibleAsMultiOutputFusionRoot) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY add {
@@ -659,13 +662,13 @@ TEST_F(GpuFusibleTest, IsFusibleAsMultiOutputFusionRoot) {
 }
 
 TEST_F(GpuFusibleTest, ScatterIsNotFusibleAsMultiOutputFusionRoot) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT add = f32[] add(lhs, rhs)
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
     }
 
     ENTRY Scatter {
@@ -690,7 +693,7 @@ TEST_F(GpuFusibleTest, ScatterIsNotFusibleAsMultiOutputFusionRoot) {
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -707,7 +710,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_add {
       p0.1 = f32[32,32,32]{2,1,0} parameter(0)
       p1.1 = f32[32,32,32]{2,1,0} parameter(1)
@@ -731,7 +734,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f32[32,32,32]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
@@ -770,7 +773,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_element_wise {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
@@ -791,7 +794,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       p1 = f32[2,2,2]{2,1,0} parameter(1)
       element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
-      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
+      fusion = f32[2,2]{1,0} fusion(element_wise), kind=kLoop, calls=fused_reduce
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
                     .ValueOrDie();
@@ -803,7 +806,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
-  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
       p1.1 = f16[128,1024,32,32]{3,2,1,0} parameter(1)
@@ -834,7 +837,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceUnfriendlyLoopFusion) {
 }
 
 TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -864,7 +867,7 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
 }
 
 TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -888,7 +891,7 @@ TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
 }
 
 TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry {
       p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)

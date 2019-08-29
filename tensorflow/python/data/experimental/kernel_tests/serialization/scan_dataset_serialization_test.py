@@ -32,8 +32,7 @@ class ScanDatasetSerializationTest(
 
   def testScanCore(self):
     num_output = 5
-    self.run_core_tests(lambda: self._build_dataset(num_output),
-                        lambda: self._build_dataset(2), num_output)
+    self.run_core_tests(lambda: self._build_dataset(num_output), num_output)
 
 
 if __name__ == "__main__":

@@ -53,8 +53,6 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-
 // macro wrapper to declare dynamic shared memory
 #if GOOGLE_CUDA
 
@@ -82,7 +80,6 @@ inline const char* GpuGetErrorString(hipError_t error) {
 }
 #endif
 
-// Exact copy from GetCudaStream() in gpu_launch_config.h
 // Returns a raw reference to the current cuda stream. Required by a
 // number of kernel calls (for which StreamInterface* does not work),
 // i.e. CUB and certain cublas primitives.

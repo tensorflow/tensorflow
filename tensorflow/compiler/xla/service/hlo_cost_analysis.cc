@@ -32,10 +32,10 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char HloCostAnalysis::kFlopsKey[];
-constexpr char HloCostAnalysis::kTranscendentalsKey[];
-constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kOptimalSecondsKey[];
+constexpr const char HloCostAnalysis::kFlopsKey[];
+constexpr const char HloCostAnalysis::kTranscendentalsKey[];
+constexpr const char HloCostAnalysis::kBytesAccessedKey[];
+constexpr const char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -153,6 +153,12 @@ int64 HloCostAnalysis::FusionParameterReadBytes(
       case HloOpcode::kDynamicSlice:
         size += hlo == user->operand(0) ? GetShapeSize(user->shape())
                                         : GetShapeSize(hlo->shape());
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
+        // Uses the same shape as 'update' which is operand 1.
+        size += hlo == user->operand(0)
+                    ? GetShapeSize(user->operand(1)->shape())
+                    : GetShapeSize(hlo->shape());
         break;
       case HloOpcode::kBroadcast:
       case HloOpcode::kReshape:
@@ -699,7 +705,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
           if (fusion->fused_expression_root()->opcode() ==
               HloOpcode::kDynamicUpdateSlice) {
             current_properties_[kBytesAccessedKey] += GetShapeSize(
-                fusion->fused_expression_root()->operand(0)->shape());
+                fusion->fused_expression_root()->operand(1)->shape());
             return;
           }
         } else if (shape_index.size() == 1) {
@@ -710,7 +716,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
             current_properties_[kBytesAccessedKey] +=
                 GetShapeSize(fusion->fused_expression_root()
                                  ->operand(shape_index[0])
-                                 ->operand(0)
+                                 ->operand(1)
                                  ->shape());
             return;
           }

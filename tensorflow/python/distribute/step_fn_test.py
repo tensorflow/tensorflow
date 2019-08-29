@@ -25,9 +25,11 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute.single_loss_example import single_loss_example
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 
 
+@test_util.with_control_flow_v2
 class SingleLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(

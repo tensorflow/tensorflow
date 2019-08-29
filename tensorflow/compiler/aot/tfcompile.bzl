@@ -22,6 +22,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.bzl", "tfcompile_extra_flags")
 
 def tf_library(
         name,
@@ -180,13 +181,7 @@ def tf_library(
     # `find` on such an object.
     need_xla_data_proto = flags and flags.find("--gen_program_shape") != -1
 
-    # Pass --target_cpu=haswell to tfcompile if compiling for Haswell (bazel
-    # build --cpu=haswell).  We put it at the beginning of the flags list so
-    # that tfcompile_flags can override if if desired.
-    flags = select({
-        "//tools/target_cpu:haswell": "--target_cpu=haswell ",
-        "//conditions:default": "",
-    }) + flags
+    flags = tfcompile_extra_flags() + flags
 
     if enable_xla_hlo_profiling:
         profiling_flag = "--xla_hlo_profile"

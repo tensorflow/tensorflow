@@ -899,7 +899,7 @@ class ARModel(model.TimeSeriesModel):
         math_ops.range(self._buckets, dtype=self.dtype),
         [1, 1, 1, self._buckets])
     mod = nn_ops.relu(mod - intervals)
-    mod = array_ops.where(mod < 1.0, mod, array_ops.zeros_like(mod))
+    mod = array_ops.where_v2(mod < 1.0, mod, array_ops.zeros_like(mod))
     return window_offset, mod
 
 

@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],
@@ -35,6 +36,7 @@ tf_py_test(
         ":compat",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["nofwdcompat"],
 )
 
 tf_py_test(

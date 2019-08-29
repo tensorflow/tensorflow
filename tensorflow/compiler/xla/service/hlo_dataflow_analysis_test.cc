@@ -1105,8 +1105,8 @@ TEST_P(HloDataflowAnalysisTest, BitcastDefinesValue) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kBitcast, constant));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(scalar_shape_, constant));
 
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
@@ -1616,7 +1616,7 @@ ENTRY root {
   p1 = s32[1000] copy(param)
   ROOT t = (s32[1000], s32[1000]) tuple(p0, p1)
   })";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
   auto entry = module_->entry_computation();
   entry->GetInstructionWithName("t");
   auto& dataflow_analysis = RunAnalysis(GetParam());
@@ -1967,7 +1967,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseHloString(module_string, GetModuleConfigForTest()));
+      ParseAndReturnUnverifiedModule(module_string, GetModuleConfigForTest()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
                           HloDataflowAnalysis::Run(*module));
@@ -2475,7 +2475,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
           index_vector_dim=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
   computation_ = module_->entry_computation();
   RunAnalysis();
 
@@ -2503,7 +2503,7 @@ TEST_F(CanShareOperandBufferWithUserTest, TriangularSolveCanShare) {
                                               transpose_a=NO_TRANSPOSE
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
   computation_ = module_->entry_computation();
   RunAnalysis();
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/core/platform/logger.h"
 
@@ -29,9 +30,15 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(3) << "Logging XlaAutoClusteringActivity disabled";
       return Status::OK();
     }
-    VLOG(2) << "Logging XlaAutoClusteringActivity";
-    VLOG(3) << auto_clustering_activity.DebugString();
-    Logger::Singleton()->LogProto(auto_clustering_activity);
+
+    if (Logger* logger = Logger::GetSingletonAsync()) {
+      VLOG(2) << "Logging XlaAutoClusteringActivity";
+      VLOG(3) << auto_clustering_activity.DebugString();
+      logger->LogProto(auto_clustering_activity);
+    } else {
+      VLOG(2) << "Not logging: logger not ready yet.";
+    }
+
     return Status::OK();
   }
 
@@ -41,9 +48,32 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
       return Status::OK();
     }
-    VLOG(2) << "Logging XlaJitCompilationActivity";
-    VLOG(3) << jit_compilation_activity.DebugString();
-    Logger::Singleton()->LogProto(jit_compilation_activity);
+
+    if (Logger* logger = Logger::GetSingletonAsync()) {
+      VLOG(2) << "Logging XlaJitCompilationActivity";
+      VLOG(3) << jit_compilation_activity.DebugString();
+      logger->LogProto(jit_compilation_activity);
+    } else {
+      VLOG(2) << "Not logging: logger not ready yet.";
+    }
+
+    return Status::OK();
+  }
+
+  Status Listen(const XlaOptimizationRemark& optimization_remark) override {
+    if (!IsEnabled()) {
+      VLOG(3) << "Logging XlaJitCompilationActivity disabled";
+      return Status::OK();
+    }
+
+    if (Logger* logger = Logger::GetSingletonAsync()) {
+      VLOG(2) << "Logging XlaJitCompilationActivity";
+      VLOG(3) << optimization_remark.DebugString();
+      logger->LogProto(optimization_remark);
+    } else {
+      VLOG(2) << "Not logging: logger not ready yet.";
+    }
+
     return Status::OK();
   }
 
@@ -55,7 +85,12 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
 
   bool ComputeIsEnabled() {
     char* log_xla_activity = getenv("TF_LOG_XLA_ACTIVITY");
-    return log_xla_activity && !strcmp(log_xla_activity, "1");
+    if (log_xla_activity == nullptr) {
+      bool enabled_by_default = true;
+      return enabled_by_default;
+    }
+
+    return absl::string_view(log_xla_activity) == "1";
   }
 };
 

@@ -63,8 +63,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
           l2_regularization=1.,
@@ -197,8 +197,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       partition_ids = array_ops.constant([1, 1, 1, 2], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.1,
           l2_regularization=1.,
@@ -333,8 +333,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
       class_id = -1
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       split_handler = ordinal_split_handler.DenseSplitHandler(
           l1_regularization=0.2,
           l2_regularization=2.,
@@ -645,8 +645,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -720,8 +720,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -854,8 +854,8 @@ class DenseSplitHandlerTest(test_util.TensorFlowTestCase):
       hessians = array_ops.constant([0.12, 0.07, 0.2, 2])
       partition_ids = array_ops.constant([0, 0, 0, 1], dtype=dtypes.int32)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.DenseSplitHandler(
@@ -965,8 +965,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1088,8 +1088,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1411,8 +1411,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.52, 0.3, 0.52])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1481,8 +1481,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = constant_op.constant_v1([], dtype=dtypes.float32)
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1565,8 +1565,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
           non_empty_indices, non_empty_values, [4, 2])
       non_empty_sparse_column = non_empty_sparse_column.eval(session=sess)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
@@ -1650,8 +1650,8 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       values = array_ops.constant([0.58])
       sparse_column = sparse_tensor.SparseTensor(indices, values, [1, 1])
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = ordinal_split_handler.SparseSplitHandler(
