@@ -39681,6 +39681,27 @@ op {
       i: 1
     }
   }
+  attr {
+    name: "shuffle_on_read"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "Softmax"
