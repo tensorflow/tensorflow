@@ -43,7 +43,6 @@ from tensorflow.python.keras.layers.recurrent import *
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
 from tensorflow.python.keras.layers.wrappers import *
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.util.tf_export import keras_export
 
 if tf2.enabled():
@@ -62,7 +61,7 @@ _DESERIALIZATION_TABLE = {
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
-  return serialize_keras_object(layer)
+  return {'class_name': layer.__class__.__name__, 'config': layer.get_config()}
 
 
 @keras_export('keras.layers.deserialize')

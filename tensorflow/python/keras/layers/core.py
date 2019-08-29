@@ -986,8 +986,7 @@ class Dense(Layer):
 
     super(Dense, self).__init__(
         activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
-
-    self.units = units
+    self.units = int(units)
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)
