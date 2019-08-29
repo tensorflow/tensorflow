@@ -80,7 +80,7 @@ class ViewController: UIViewController {
     super.viewDidLoad()
 
     invokeButton.isEnabled = false
-    updateResultsText("Using TensorFlow Lite runtime version \(TensorFlowLite.Runtime.version).")
+    updateResultsText("Using TensorFlow Lite runtime version \(TensorFlowLiteVersionNumber).")
     loadModel()
   }
 
@@ -118,7 +118,7 @@ class ViewController: UIViewController {
   private func setUpInterpreter(withModelPath modelPath: String) {
     interpreterQueue.async {
       do {
-        var options = Interpreter.Options()
+        var options = InterpreterOptions()
         options.threadCount = 2
         self.interpreter = try Interpreter(modelPath: modelPath, options: options)
       } catch let error {
@@ -207,7 +207,7 @@ class ViewController: UIViewController {
         return
       }
       do {
-        let shape = Tensor.Shape(2)
+        let shape = TensorShape([2])
         try (0..<interpreter.inputTensorCount).forEach { index in
           try interpreter.resizeInput(at: index, to: shape)
         }
