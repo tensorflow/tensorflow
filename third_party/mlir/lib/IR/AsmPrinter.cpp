@@ -1511,6 +1511,11 @@ void OperationPrinter::print(Operation *op) {
 
 void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
                                         raw_ostream &stream) const {
+  if (!value) {
+    stream << "<<NULL>>";
+    return;
+  }
+
   int resultNo = -1;
   auto lookupValue = value;
 
