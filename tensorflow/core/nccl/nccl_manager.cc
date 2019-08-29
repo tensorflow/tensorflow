@@ -69,7 +69,7 @@ struct NcclManager::NcclStream : public core::RefCounted {
 
   // The stream on which to run the nccl collective.
   // This is a different stream than the tensorflow compute stream.
-  se::Stream* stream = nullptr;
+  std::unique_ptr<se::Stream> stream;
 
   // `mu` protects access to `pending_launches_`, which is the list of
   // collectives ready but whose kernels are yet to be launched.  When the
@@ -300,7 +300,6 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   std::vector<int> devices(collective->num_local_devices);
   for (int i = 0; i < collective->num_local_devices; ++i) {
     auto* executor = collective->participants[i]->executor;
-    auto* borrowed_nccl_stream = collective->participants[i]->nccl_stream;
 
     // Find a communication stream to use for the device.
     auto& streams = device_to_comm_streams_[executor];
@@ -314,7 +313,8 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
-      nccl_stream->stream = borrowed_nccl_stream;
+      nccl_stream->stream.reset(new se::Stream(executor));
+      nccl_stream->stream->Init();
 
       streams.emplace_back(nccl_stream);
       used_streams.insert(nccl_stream);
@@ -604,7 +604,7 @@ void NcclManager::RunCollective(Collective* collective) {
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
-  se::Stream* comm_stream = nccl_stream->stream;
+  se::Stream* comm_stream = nccl_stream->stream.get();
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
   const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
       comm_stream->implementation()->GpuStreamMemberHack());
