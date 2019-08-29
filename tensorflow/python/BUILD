@@ -5072,8 +5072,8 @@ genrule(
     name = "pywrap_tensorflow_filtered_def_file",
     srcs = [
         "//tensorflow:tensorflow_def_file",
+        ":pybind_symbol_target_libs_file",
         "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ":cpp_python_util",
     ],
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
@@ -5082,12 +5082,30 @@ genrule(
               --input $(location //tensorflow:tensorflow_def_file) \\
               --output $@ \\
               --target _pywrap_tensorflow_internal.pyd \\
-              --lib_paths $(execpath :cpp_python_util) \\
-              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind)
+              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind) \\
+              --lib_paths $(location :pybind_symbol_target_libs_file)
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
     tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
+)
+
+# Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
+genrule(
+    name = "pybind_symbol_target_libs_file",
+    srcs = [
+        ":cpp_python_util",  # util
+    ],
+    outs = ["pybind_symbol_target_libs_file"],
+    cmd = select({
+        "//tensorflow:windows": """
+            for SRC in $(SRCS); do
+              echo $$SRC | sed 's/third_party\\///g' >> $@
+            done
+          """,
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
     visibility = ["//visibility:public"],
 )
 
