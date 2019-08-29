@@ -8,6 +8,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_nccl",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -384,9 +385,21 @@ cc_library(
     ],
 )
 
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_all_reduce_thunk_src",
+    srcs = if_nccl(
+        ["nccl_all_reduce_thunk.cc"],
+        ["dummy_all_reduce_thunk.cc"],
+    ),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = ["nccl_all_reduce_thunk.cc"],
+    srcs = if_cuda(
+        [":nccl_all_reduce_thunk_src"],
+        ["dummy_all_reduce_thunk.cc"],
+    ),
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
         ":buffer_allocations",
