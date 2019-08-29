@@ -41,20 +41,10 @@ class GroupByReducerSerializationTest(
     components = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.int64)
     self.verify_unused_iterator(
         lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_init_before_restore(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
     self.verify_multiple_breaks(
         lambda: self._build_dataset(components), 5, verify_exhausted=True)
     self.verify_reset_restored_iterator(
         lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_restore_in_empty_graph(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    diff_components = np.array([5, 4, 3, 2, 1, 0], dtype=np.int64)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_dataset(components),
-        lambda: self._build_dataset(diff_components),
-        5,
-        verify_exhausted=True)
 
 
 if __name__ == '__main__':

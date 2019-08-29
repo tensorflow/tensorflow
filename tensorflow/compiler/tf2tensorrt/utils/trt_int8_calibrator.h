@@ -89,7 +89,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool done_;
 
   // Map to keep tensorrt input buffers and sizes keyed with buffer names
-  const std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
+  std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
 
   bool calib_running_;
   bool batch_is_set_;

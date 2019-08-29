@@ -38,7 +38,17 @@ class ProcessFunctionLibraryRuntime {
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
-      const CustomKernelCreator* custom_kernel_creator = nullptr);
+      const CustomKernelCreator* custom_kernel_creator = nullptr,
+      const SessionMetadata* metadata = nullptr);
+
+  ~ProcessFunctionLibraryRuntime() {
+    // Deleting the FunctionLibraryRuntime map will delete the function handles
+    // registered in it, which may call ReleaseHandle in this class again to
+    // release their sub-function. These circular calls may casue segfault
+    // since the flr_map_ may has already been deleted. Explicitly releasing
+    // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
+    flr_map_.reset();
+  }
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -138,6 +148,12 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
+
+  const DeviceSet* device_set() { return &device_set_; }
+
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition() const {
+    return lib_def_;
+  }
 
  private:
   friend class FunctionLibraryRuntimeImpl;
@@ -340,9 +356,12 @@ class ProcessFunctionLibraryRuntime {
                      std::unique_ptr<MultiDeviceFunctionData>>
       mdevice_data_ GUARDED_BY(mu_);
 
-  std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  std::unique_ptr<
+      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      flr_map_;
   int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
+  const SessionMetadata* const session_metadata_;
 };
 
 }  // namespace tensorflow

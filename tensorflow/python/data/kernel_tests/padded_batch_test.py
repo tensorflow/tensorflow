@@ -221,7 +221,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         TypeError, r'Padded shape .* must be a 1-D tensor '
         r'of tf.int64 values, but its element type was float32.'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
-          5, padded_shapes=constant_op.constant([1., 2., 3.]))
+          5, padded_shapes=constant_op.constant([1.5, 2., 3.]))
 
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '

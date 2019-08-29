@@ -16,65 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_INL_H_
 
+#include "tensorflow/core/kernels/eigen_convolution_helpers.h"
+
 // Note this header is used in both TF and TFLite.
 namespace Eigen {
 
 namespace internal {
-
-// TensorEvaluatorHasPartialPacket<TensorEvaluatorType, PacketType, IndexType>
-// provides `value` that is true if TensorEvaluatorType has `PacketType
-// partialPacket<PacketType>(IndexType, unpacket_traits<PacketType>::mask_t)
-// const` and if the PacketType supports masked load.
-//
-// Partial packets are used to:
-//
-// 1) Split the packet over two columns and use partial loads for each
-//    individual part before combining them to get the required packet. This
-//    class is used to pick the correct implementation of loadPacketStandard
-//    function below.
-//
-// 2) Finalize packing of columns in gemm_pack_colmajor after processing
-//    vectorized part with full packets (see eigen_spatiual_convolutions.h).
-template <typename TensorEvaluatorType, typename PacketType, typename IndexType>
-class TensorEvaluatorHasPartialPacket {
- public:
-  template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
-  static auto functionExistsSfinae(
-      typename std::enable_if<
-          unpacket_traits<PacketT>::masked_load_available &&
-          std::is_same<PacketT,
-                       decltype(std::declval<const TensorEvaluatorT>()
-                                    .template partialPacket<PacketT>(
-                                        std::declval<IndexT>(),
-                                        std::declval<typename unpacket_traits<
-                                            PacketT>::mask_t>()))>::value>::
-          type*) -> std::true_type;
-
-  template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
-  static auto functionExistsSfinae(...) -> std::false_type;
-
-  typedef decltype(
-      functionExistsSfinae<TensorEvaluatorType, PacketType, IndexType>(
-          nullptr)) status;
-
-  static const bool value = status::value;
-};
-
-// Compute a mask for loading/storing coefficients in/from a packet in a
-// [from, to) range. If the mask bit is 1, element will be loaded/stored.
-template <typename Packet>
-EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-    typename std::enable_if<unpacket_traits<Packet>::masked_load_available,
-                            typename unpacket_traits<Packet>::mask_t>::type
-    mask(int from, int to) {
-  const Index packet_size = internal::unpacket_traits<Packet>::size;
-  eigen_assert(0 <= from && to <= (packet_size + 1) && from < to);
-
-  using Mask = typename internal::unpacket_traits<Packet>::mask_t;
-  const Mask mask_max = std::numeric_limits<Mask>::max();
-
-  return (mask_max >> (packet_size - to)) ^ (mask_max >> (packet_size - from));
-}
 
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see
@@ -936,9 +883,39 @@ class TensorContractionSubMapper<
            m_rowIndex + last_row >= m_base_mapper.m_inputRows;
   }
   EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padOrSkipRow(const Index row,
+                                        Index* orig_row) const {
+    eigen_assert(nonStandardPatches());
+
+    const Index input_row = m_rowIndex + row * m_base_mapper.m_in_row_strides;
+    *orig_row = (m_base_mapper.m_patch_row_inflate_strides == 1)
+                    ? input_row
+                    : ((input_row >= 0)
+                           ? (input_row / m_base_mapper.m_fastInputRowStride)
+                           : 0);
+
+    return (*orig_row < 0 || *orig_row >= m_base_mapper.m_inputRows) ||
+           (input_row != *orig_row * m_base_mapper.m_patch_row_inflate_strides);
+  }
+  EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padCol(const Index col) const {
     const Index c = m_colIndex + col;
     return c < 0 || c >= m_base_mapper.m_inputCols;
+  }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padOrSkipCol(const Index col,
+                                        Index* orig_col) const {
+    eigen_assert(nonStandardPatches());
+
+    const Index input_col = m_colIndex + col * m_base_mapper.m_in_col_strides;
+    *orig_col = (m_base_mapper.m_patch_col_inflate_strides == 1)
+                    ? input_col
+                    : ((input_col >= 0)
+                           ? (input_col / m_base_mapper.m_fastInputColStride)
+                           : 0);
+
+    return (*orig_col < 0 || *orig_col >= m_base_mapper.m_inputCols) ||
+           (input_col != *orig_col * m_base_mapper.m_patch_col_inflate_strides);
   }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Index baseIndex(const Index row, const Index col) const {
@@ -946,6 +923,14 @@ class TensorContractionSubMapper<
     const Index c = m_colIndex + col;
     return r * m_base_mapper.m_rowInputStride +
            c * m_base_mapper.m_colInputStride + m_otherIndex;
+  }
+  // Compute a base index when original input row and column were precomputed
+  // using padOrSkipRow and padOrSkipCol. Used only for non standard patches.
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index origBaseIndex(const Index orig_row,
+                                          const Index orig_col) const {
+    return orig_row * m_base_mapper.m_rowInputStride +
+           orig_col * m_base_mapper.m_colInputStride + m_otherIndex;
   }
 
   EIGEN_DEVICE_FUNC

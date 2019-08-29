@@ -176,6 +176,8 @@ class Node {
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
   bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+  bool IsIfNode() const { return class_ == NC_IF; }
+  bool IsWhileNode() const { return class_ == NC_WHILE; }
   // Is this node a function input
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
@@ -184,6 +186,11 @@ class Node {
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
+  }
+
+  void AddAttr(const string& name, std::vector<string>&& val) {
+    MoveAttrValue(std::move(val), AddAttrHelper(name));
     UpdateProperties();
   }
 
@@ -262,6 +269,8 @@ class Node {
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
     NC_PARTITIONED_CALL,
+    NC_IF,
+    NC_WHILE,
     NC_ARG,
     NC_RETVAL,
     NC_OTHER  // Not a special kind of node

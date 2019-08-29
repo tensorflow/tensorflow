@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,10 +32,7 @@ extern "C" void DebugLog(const char* s) {
   static bool is_initialized = false;
   if (!is_initialized) {
     DEBUG_SERIAL_OBJECT.begin(9600);
-    // Wait for serial port to connect. Only needed for some models apparently?
-    while (!DEBUG_SERIAL_OBJECT) {
-    }
     is_initialized = true;
   }
-  DEBUG_SERIAL_OBJECT.println(s);
+  DEBUG_SERIAL_OBJECT.print(s);
 }

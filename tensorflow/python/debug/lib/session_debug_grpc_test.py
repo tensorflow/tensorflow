@@ -164,7 +164,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
     self.assertAllClose(42.0, w_result)
 
     dump = debug_data.DebugDumpDir(self._dump_root)
-    self.assertEqual(5, dump.size)
+    self.assertLessEqual(5, dump.size)
     self.assertAllClose([2.1], dump.get_tensors("u", 0, "DebugIdentity"))
     self.assertAllClose([2.1], dump.get_tensors("u/read", 0, "DebugIdentity"))
     self.assertAllClose([20.0], dump.get_tensors("v", 0, "DebugIdentity"))

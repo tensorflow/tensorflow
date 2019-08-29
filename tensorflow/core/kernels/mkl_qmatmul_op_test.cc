@@ -51,7 +51,7 @@ class ConvMklToTF : public OpsTestBase {
                      .Input(FakeInput(dtype))     // Input
                      .Input(FakeInput(DT_UINT8))  // MKL second tensor
                      .Attr("T", dtype)
-                     .Attr("_kernel", "MklOp")
+                     .Attr("_kernel", "MklLayoutDependentOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(first.shape(), first.flat<T>());
@@ -444,10 +444,22 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
   // After Bias addition
   // 74+10=84, 80-20=60, 86+30=116, 92-40=52,
   // 173+10=183, 188-20=168, 203+30=233, 218-40=178
-  // After Relu and Requantize
+  // After Relu
   // 84, 60, 116, 52, 183, 168, 233, 178
+  // After Requantize
+  // requantscale = scale_int32 / scale_eightbit / static_cast<float>(1 << 23)
+  // requantscale = 2^31/255/2^23 ~= 1.00392
+  // 84 * 1.00392 ~= 84.329 ~= 84
+  // 60 * 1.00392 ~= 60.235 ~= 60
+  // 116 * 1.00392 ~= 116.454 ~= 116
+  // 52 * 1.00392 ~= 52.203 ~= 52
+  // 183 * 1.00392 ~= 183.717 ~= 184
+  // 168 * 1.00392 ~= 168.658 ~= 169
+  // 233 * 1.00392 ~= 233.913 ~= 234
+  // 178 * 1.00392 ~= 178.698 ~= 179
+
   Tensor expected(allocator(), DT_QUINT8, TensorShape({2, 4}));
-  test::FillValues<quint8>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
+  test::FillValues<quint8>(&expected, {84, 60, 116, 52, 184, 169, 234, 179});
 
   const Tensor& output = *GetOutput(0);
   const Tensor& mkl_shape_tensor = *GetOutput(3);

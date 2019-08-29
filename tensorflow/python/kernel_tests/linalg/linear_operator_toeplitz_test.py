@@ -51,17 +51,17 @@ class LinearOperatorToeplitzTest(
   def setUp(self):
     # TODO(srvasude): Lower these tolerances once specialized solve and
     # determinants are implemented.
-    self._atol[dtypes.float32] = 1e-3
-    self._rtol[dtypes.float32] = 1e-3
+    self._atol[dtypes.float32] = 5e-3
+    self._rtol[dtypes.float32] = 5e-3
     self._atol[dtypes.float64] = 1e-10
     self._rtol[dtypes.float64] = 1e-10
-    self._atol[dtypes.complex64] = 1e-3
-    self._rtol[dtypes.complex64] = 1e-3
+    self._atol[dtypes.complex64] = 5e-3
+    self._rtol[dtypes.complex64] = 5e-3
     self._atol[dtypes.complex128] = 1e-10
     self._rtol[dtypes.complex128] = 1e-10
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Skip solve tests, as these could have better stability
     # (currently exercises the base class).
     # TODO(srvasude): Enable these when solve is implemented.

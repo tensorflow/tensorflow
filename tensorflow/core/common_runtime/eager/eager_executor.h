@@ -41,8 +41,11 @@ namespace tensorflow {
 // device to another.
 class EagerNode {
  public:
-  explicit EagerNode(uint64 id);
-
+  EagerNode() {}
+  // Nodes should not do any work in their destructor. This is because if the
+  // node is being destructed by the EagerExecutor, then the node queue lock may
+  // be held. Instead opt for calling clean-up code as part of Run() or Abort(),
+  // since one of those are guaranteed to be run.
   virtual ~EagerNode() {}
 
   // Runs the computation corresponding to this node and blocks till the
@@ -54,13 +57,6 @@ class EagerNode {
   // For example, if the node would have computed some tensors in the Run(),
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
-
-  uint64 Id() const { return id_; }
-
- private:
-  // An id unique to the TFE_Context under which this node is created. Allocated
-  // monotonically.
-  const uint64 id_;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -74,30 +70,30 @@ class EagerNode {
 // TODO(agarwal): Implement optimizations over EagerNode traces.
 class EagerExecutor {
  public:
+  explicit EagerExecutor(bool async);
+
   ~EagerExecutor();
 
-  // This is called whenever async mode is enabled. Note that it may be called
-  // multiple times as different calling threads may switch async mode on or off
-  // independently.
-  void EnableAsync();
+  // Puts this in a shutdown state. In this state, Add() will return an error
+  // and not add new EagerNodes. After putting this in the shutdown state,
+  // blocks until all pendings nodes have finished running.
+  // Returns the status of executing pending nodes.
+  // If async was not enabled, aborts and destroys all pending nodes.
+  Status ShutDown();
 
-  // Helper function to create monotonically increasing ids unique to this
-  // object.
-  uint64 NextId();
+  bool Async() const;
 
-  // Schedules `node` for execution.
-  // Note that Add must be called in monotonically increasing order of node->id.
-  void Add(std::unique_ptr<EagerNode> node);
-
-  // Causes the caller to block till node with id `node_id` has finished
-  // execution.
-  Status WaitFor(uint64 node_id);
+  // Schedules `node` for execution. If an error occurs (e.g. EagerExecutor
+  // has already been shut down), the `node` is not added to this executor
+  // and its Abort() method is called.
+  Status Add(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.
+  // In particular, if EnableAsync() has not beed called, it will not return
+  // until that happens (and pendings, at the time of call, nodes finish
+  // running). If this executor has already been shut down, its final status is
+  // returned.
   Status WaitForAllPendingNodes();
-
-  // Checks if the specific node_id is queued.
-  bool IsQueued(uint64 node_id) const;
 
   // Clears all currently set errors which re-enables async execution.
   void ClearError();
@@ -106,11 +102,42 @@ class EagerExecutor {
   Status status() const;
 
  private:
+  // Possible states for this executor.
+  // Executor starts in kActive state. When Shutdown() is called, Executor
+  // is put in the kShuttingDown state. In this state, the executor thread
+  // continues to run, but no new nodes are accepted. Finally, when all nodes
+  // are drained, the executor is put in the kShutDown state, which causes the
+  // thread to exit.
+  // If this executor is destroyed without calling shutdown first, it
+  // transitions to kShutDown state immediately which causes the thread to exit
+  // without running pending nodes.
+  enum class ExecutorState {
+    kActive,
+    kShuttingDown,
+    kShutDown,
+  };
+
+  const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
   // `status_` is not ok.
   void Run();
+
+  // The impl of WaitForAllPendingNodes
+  // `lock` is the lock that holds node_queue_mutex_.
+  Status WaitForAllPendingNodesLocked(mutex_lock* lock)
+      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+
+  // If async has been enabled on this executor, just calls
+  // WaitForAllPendingNodes. Else:
+  //  - Aborts and destroys all pending nodes
+  //  - sets the status_ to an error if it does not already contain one
+  // `lock` is the lock that holds node_queue_mutex_.
+  // Precondition: state_ != kActive.
+  void WaitForOrDestroyAllPendingNodes(mutex_lock* lock)
+      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
 
@@ -130,22 +157,20 @@ class EagerExecutor {
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
   // done executing, or if an error is found in execution of any EagerNode.
-  std::multimap<uint64, condition_variable*> node_done_notifications_
+  std::multimap<EagerNode*, condition_variable*> node_done_notifications_
       GUARDED_BY(node_queue_mutex_);
 
-  // Thread object that calls the `Run` method. Currently we use only one thread
-  // for executing the EagerNodes one-by-one.
-  std::unique_ptr<Thread> thread_ GUARDED_BY(node_queue_mutex_);
+  // thread_exited_notification_ is notified by the `thread_` right before it
+  // exits.
+  Notification thread_exited_notification_;
 
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
-  bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
+  ExecutorState state_ GUARDED_BY(node_queue_mutex_) = ExecutorState::kActive;
 
-  // Indicates the id of last successfully or unsuccessfully executed node.
-  uint64 last_node_id_ GUARDED_BY(node_queue_mutex_) = 0;
-
-  mutex next_id_mutex_;
-  uint64 next_id_ GUARDED_BY(next_id_mutex_) = 1;
+  // Thread object that calls the `Run` method in async mode.This thread runs
+  // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.
+  const std::unique_ptr<Thread> thread_;
 };
 
 }  // namespace tensorflow

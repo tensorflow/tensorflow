@@ -96,7 +96,9 @@ class HloDataflowAnalysis {
   InstructionValueSet& GetInstructionValueSet(
       const HloInstruction* instruction);
 
-  HloValueSet GetFlattenedValueSet(const HloInstruction* instruction);
+  // Returns all values that are contained in the output of this instruction in
+  // a flattened set.
+  HloValueSet GetFlattenedValueSet(const HloInstruction* instruction) const;
 
   // Return the HloValueSet for the given instruction at the given index or the
   // given position.

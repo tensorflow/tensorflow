@@ -24,3 +24,6 @@ cd ${ROOT_DIR}
 pwd
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+
+# Needed to solve CI build bug triggered by files added to source tree.
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean_downloads

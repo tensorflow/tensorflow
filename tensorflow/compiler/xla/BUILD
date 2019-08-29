@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_py",
 )
 
@@ -12,6 +12,7 @@ package(
 
 package_group(
     name = "friends",
+    includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
@@ -62,6 +63,7 @@ cc_library(
     hdrs = ["bit_cast.h"],
     visibility = [":friends"],
     deps = [
+        ":types",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
@@ -220,6 +222,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )

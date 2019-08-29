@@ -31,17 +31,20 @@ import tempfile
 
 import astor
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging
 
 
-def ast_to_source(node, indentation='  '):
+def ast_to_source(node, indentation='  ', include_encoding_marker=True):
   """Return the source code of given AST.
 
   Args:
     node: The code to compile, as an AST object.
     indentation: The string to use for indentation.
+    include_encoding_marker: Bool, thether to include a comment on the first
+      line to explicitly specify UTF-8 encoding.
 
   Returns:
     code: The source code generated from the AST object
@@ -77,15 +80,25 @@ def ast_to_source(node, indentation='  '):
     generator.write = None
   del generator
 
+  if include_encoding_marker:
+    code = '# coding=utf-8\n' + code
+
   return code
 
 
 def source_to_entity(source, delete_on_exit):
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+  """Loads the given source code as a Python module."""
+  if six.PY2:
+    source = source.encode('utf-8')
+    f = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+  else:
+    f = tempfile.NamedTemporaryFile(  # pylint:disable=unexpected-keyword-arg
+        mode='w', suffix='.py', delete=False, encoding='utf-8')
+
+  with f:
     module_name = os.path.basename(f.name[:-3])
     f.write(source)
 
-  # TODO(mdan): Try flush() and delete=False instead.
   if delete_on_exit and ag_logging.get_verbosity() < 3:
     atexit.register(lambda: os.remove(f.name))
   return imp.load_source(module_name, f.name), f.name

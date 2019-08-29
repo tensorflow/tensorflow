@@ -60,7 +60,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return name_utils::DatasetDebugString(kDatasetType, start_, stop_, step_);
+    name_utils::DatasetDebugStringParams params;
+    params.set_args(start_, stop_, step_);
+    return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
   int64 Cardinality() const override {
@@ -70,6 +72,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return std::max(0LL, (start_ - stop_ - 1) / -step_ + 1);
     }
   }
+
+  Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,

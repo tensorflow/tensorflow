@@ -23,7 +23,7 @@ namespace data {
 
 class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char* const kDatasetType = "ParallelInterleaveV2";
+  static constexpr const char* const kDatasetType = "ParallelInterleave";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kOtherArguments = "other_arguments";
   static constexpr const char* const kCycleLength = "cycle_length";

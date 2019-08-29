@@ -110,14 +110,14 @@ class FingerprintOp : public OpKernel {
         // and each row contains the fingerprint value of corresponding string.
         // To compute fingerprints of multiple strings, this op fingerprints the
         // buffer containing the string fingerprints.
-        FarmhashFingerprint64(input.flat<string>(), temp.tensor<uint8, 2>());
+        FarmhashFingerprint64(input.flat<tstring>(), temp.tensor<uint8, 2>());
         FarmhashFingerprint64(static_cast<const Tensor&>(temp).shaped<uint8, 2>(
                                   {dim0, dim1 * kFingerprintSize}),
                               output->matrix<uint8>());
       } else {
         // In case dim1 == 1, each string computes into its own fingerprint
         // value. There is no need to fingerprint twice.
-        FarmhashFingerprint64(input.flat<string>(), output->matrix<uint8>());
+        FarmhashFingerprint64(input.flat<tstring>(), output->matrix<uint8>());
       }
     } else {
       auto data = input.bit_casted_shaped<uint8, 2>(

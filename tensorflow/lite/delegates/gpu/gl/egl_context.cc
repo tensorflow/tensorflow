@@ -57,7 +57,7 @@ Status CreateContext(EGLDisplay display, EGLContext shared_context,
 }
 
 bool HasExtension(EGLDisplay display, const char* name) {
-  return strstr(eglQueryString(display, EGL_EXTENSIONS), name);
+  return std::strstr(eglQueryString(display, EGL_EXTENSIONS), name);
 }
 
 }  // namespace

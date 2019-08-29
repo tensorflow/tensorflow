@@ -221,6 +221,16 @@ int IsMappingHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is considered a mapping view for the purposes of Flatten().
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsMappingViewHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "MappingView");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an instance of attrs-decorated class.
 // Returns 0 otherwise.
 int IsAttrsHelper(PyObject* o) {
@@ -257,12 +267,33 @@ int IsTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is a ResourceVariable.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsResourceVariableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "ResourceVariable");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a ResourceVariable.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsVariableHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "Variable");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 int IsSequenceHelper(PyObject* o) {
   // We treat dicts and other mappings as special cases of sequences.
   if (IsMappingHelper(o)) return true;
+  if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
   if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
     LOG(WARNING) << "Sets are not currently considered sequences, "
@@ -810,8 +841,13 @@ bool AssertSameStructureHelper(
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
+bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
+bool IsResourceVariable(PyObject* o) {
+  return IsResourceVariableHelper(o) == 1;
+}
+bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 
 // Work around a writable-strings warning with Python 2's PyMapping_Keys macro,

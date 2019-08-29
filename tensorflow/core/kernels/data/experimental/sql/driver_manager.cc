@@ -17,6 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace sql {
 
 std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
@@ -30,5 +31,6 @@ std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
 }
 
 }  // namespace sql
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

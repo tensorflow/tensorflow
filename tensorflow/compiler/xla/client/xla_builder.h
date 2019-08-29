@@ -343,9 +343,11 @@ class XlaBuilder {
             const PaddingConfig& padding_config);
 
   XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
-                absl::Span<const int64> new_sizes);
+                absl::Span<const int64> new_sizes,
+                int64 inferred_dimension = -1);
 
-  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes);
+  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes,
+                int64 inferred_dimension = -1);
 
   XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions);
 
@@ -545,11 +547,13 @@ class XlaBuilder {
 
   XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                const GatherDimensionNumbers& dimension_numbers,
-               absl::Span<const int64> slice_sizes);
+               absl::Span<const int64> slice_sizes,
+               bool indices_are_sorted = false);
 
   XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                 const XlaOp& updates, const XlaComputation& update_computation,
-                const ScatterDimensionNumbers& dimension_numbers);
+                const ScatterDimensionNumbers& dimension_numbers,
+                bool indices_are_sorted = false);
 
   void Send(const XlaOp& operand, const ChannelHandle& handle);
   XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
@@ -623,7 +627,8 @@ class XlaBuilder {
 
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
-  StatusOr<XlaOp> Reshape(const Shape& shape, const XlaOp& operand);
+  StatusOr<XlaOp> Reshape(const Shape& shape, XlaOp operand,
+                          int64 inferred_dimension = -1);
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
@@ -730,6 +735,10 @@ class XlaBuilder {
                        absl::Span<const int64> new_sizes);
 
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
+
+  friend XlaOp ReshapeWithInferredDimension(const XlaOp& operand,
+                                            absl::Span<const int64> new_sizes,
+                                            int64 inferred_dimension);
 
   friend XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
 
@@ -961,10 +970,12 @@ class XlaBuilder {
                                const int mantissa_bits);
   friend XlaOp Gather(XlaOp input, XlaOp start_indices,
                       const GatherDimensionNumbers& dimension_numbers,
-                      absl::Span<const int64> slice_sizes);
+                      absl::Span<const int64> slice_sizes,
+                      bool indices_are_sorted);
   friend XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                        const XlaComputation& update_computation,
-                       const ScatterDimensionNumbers& dimension_numbers);
+                       const ScatterDimensionNumbers& dimension_numbers,
+                       bool indices_are_sorted);
   friend void Send(XlaOp operand, const ChannelHandle& handle);
   friend XlaOp Recv(XlaBuilder* builder, const Shape& shape,
                     const ChannelHandle& handle);
@@ -1156,6 +1167,14 @@ XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
 // first to last dimension (C order), then reshapes it to the given dimension
 // sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
+
+// `inferred_dimension` represents the output dimension that's inferred by
+// upper-level framework by dividing the input element count by the known
+// output element count. While an inferred_dimension can be static, if there
+// is a dynamic dimension in the output, it must be the inferred dimension.
+XlaOp ReshapeWithInferredDimension(const XlaOp& operand,
+                                   absl::Span<const int64> new_sizes,
+                                   int64 inferred_dimension);
 
 // Wrapper for Reshape.
 // Enqueues an operation to collapse the provided dimensions; e.g. an
@@ -1787,12 +1806,14 @@ XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
 // Enqueues a Gather node onto the computation.
 XlaOp Gather(XlaOp input, XlaOp start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             absl::Span<const int64> slice_sizes);
+             absl::Span<const int64> slice_sizes,
+             bool indices_are_sorted = false);
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
               const XlaComputation& update_computation,
-              const ScatterDimensionNumbers& dimension_numbers);
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted = false);
 
 // Enqueues a Send node onto the computation for device-to-device
 // communication. This operation sends the given operand to

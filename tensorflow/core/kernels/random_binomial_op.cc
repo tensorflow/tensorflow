@@ -96,7 +96,7 @@ double stirling_approx_tail(double k) {
     return kTailValues[static_cast<int>(k)];
   }
   double kp1sq = (k + 1) * (k + 1);
-  return (1 / 12 - (1 / 360 + 1 / 1260 / kp1sq) / kp1sq) / (k + 1);
+  return (1.0 / 12 - (1.0 / 360 + 1.0 / 1260 / kp1sq) / kp1sq) / (k + 1);
 }
 
 // We use a transformation-rejection algorithm from
@@ -207,7 +207,17 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
         // Calculate normalized samples, then convert them.
         // Determine the method to use.
         double dcount = static_cast<double>(count);
-        if (prob <= T(0.5)) {
+        if (dcount <= 0.0 || prob <= T(0.0)) {
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(0.0);
+            sample++;
+          }
+        } else if (prob >= T(1.0)) {
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(dcount);
+            sample++;
+          }
+        } else if (prob <= T(0.5)) {
           double dp = static_cast<double>(prob);
           if (count * prob >= T(10)) {
             while (sample < limit_sample) {
@@ -221,7 +231,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
               sample++;
             }
           }
-        } else {
+        } else if (prob > T(0.5)) {
           T q = T(1) - prob;
           double dcount = static_cast<double>(count);
           double dq = static_cast<double>(q);
@@ -237,6 +247,14 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                   dcount - binomial_inversion(dcount, dq, &gen_copy));
               sample++;
             }
+          }
+        } else {  // prob is NaN
+          // TODO(srvasude): What should happen if prob is NaN but the output
+          // type is an integer (which doesn't have a sentinel for NaN)?  Fail
+          // the whole batch sample?  Return a specialized sentinel like -1?
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(NAN);
+            sample++;
           }
         }
       }

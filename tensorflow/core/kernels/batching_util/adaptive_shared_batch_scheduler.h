@@ -91,7 +91,7 @@ class AdaptiveSharedBatchScheduler
     // latency and therefore undergoes a random walk.  Unreasonably large values
     // for num_batch_threads allows for large in_flight_batches_limit_, which
     // will harm latency for some time once load increases again.
-    int64 num_batch_threads = port::NumSchedulableCPUs();
+    int64 num_batch_threads = port::MaxParallelism();
     // Lower bound for in_flight_batches_limit_. As discussed above, can be used
     // to minimize the damage caused by the random walk under low load.
     int64 min_in_flight_batches_limit = 1;

@@ -59,7 +59,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -81,7 +82,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)
@@ -94,6 +96,45 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     model.evaluate(ds, steps=1)
     model.predict(ds, steps=1)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_sequential_model_with_crossed_column(self):
+    feature_columns = []
+    age_buckets = fc.bucketized_column(
+        fc.numeric_column('age'),
+        boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
+    feature_columns.append(age_buckets)
+
+    # indicator cols
+    thal = fc.categorical_column_with_vocabulary_list(
+        'thal', ['fixed', 'normal', 'reversible'])
+
+    crossed_feature = fc.crossed_column([age_buckets, thal],
+                                        hash_bucket_size=1000)
+    crossed_feature = fc.indicator_column(crossed_feature)
+    feature_columns.append(crossed_feature)
+
+    feature_layer = fc.DenseFeatures(feature_columns)
+
+    model = keras.models.Sequential([
+        feature_layer,
+        keras.layers.Dense(128, activation='relu'),
+        keras.layers.Dense(128, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+    age_data = np.random.randint(10, 100, size=100)
+    thal_data = np.random.choice(['fixed', 'normal', 'reversible'], size=100)
+    inp_x = {'age': age_data, 'thal': thal_data}
+    inp_y = np.random.randint(0, 1, size=100)
+    ds = dataset_ops.Dataset.from_tensor_slices((inp_x, inp_y)).batch(5)
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'],)
+    model.fit(ds, epochs=1)
+    model.fit(ds, epochs=1)
+    model.evaluate(ds)
+    model.predict(ds)
+
   @keras_parameterized.run_all_keras_modes
   def test_subclassed_model_with_feature_columns(self):
     col_a = fc.numeric_column('a')
@@ -105,7 +146,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1)), 'b': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -126,7 +168,8 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)
@@ -254,7 +297,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
               keras.layers.Dense(1)]
 
     model = keras.models.Sequential(layers)
-    model.compile(keras.optimizers.SGD(0.1),
+    model.compile(optimizer='sgd',
                   loss=keras.losses.BinaryCrossentropy())
     model.fit(dataset)
 

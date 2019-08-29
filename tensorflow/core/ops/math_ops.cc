@@ -124,39 +124,7 @@ REGISTER_OP("BatchMatMul")
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle a_shape;
-      ShapeHandle b_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
-
-      // Determine output rows and cols.
-      bool adj_x;
-      bool adj_y;
-      TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
-      TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
-      DimensionHandle output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
-      DimensionHandle output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
-
-      // Batch dims match between inputs.
-      ShapeHandle a_batch_dims;
-      ShapeHandle b_batch_dims;
-      ShapeHandle batch_dims;
-      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
-      TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
-      TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
-
-      // Assert inner dims match.
-      DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
-                                  c->Dim(b_shape, adj_y ? -1 : -2), &unused));
-
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->Concatenate(
-          batch_dims, c->Matrix(output_rows, output_cols), &out));
-      c->set_output(0, out);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::BatchMatMulShape);
 
 REGISTER_OP("BatchMatMulV2")
     .Input("x: T")
@@ -168,6 +136,30 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+
+#ifdef INTEL_MKL
+REGISTER_OP("_MklBatchMatMul")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulShape);
+
+REGISTER_OP("_MklBatchMatMulV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 // Casting Ops
@@ -392,8 +384,6 @@ REGISTER_OP("Add")
         "complex64, complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
-// use AddV2 (b/68646025).
 REGISTER_OP("AddV2")
     .Input("x: T")
     .Input("y: T")
@@ -891,6 +881,17 @@ REGISTER_OP("MatMul")
         "T: {bfloat16, half, float, double, int32, int64, complex64, "
         "complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
+
+#ifdef INTEL_MKL
+REGISTER_OP("_MklMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::MatMulShape);
+#endif  // INTEL_MKL
 
 REGISTER_OP("SparseMatMul")
     .Input("a: Ta")
@@ -1604,6 +1605,16 @@ REGISTER_OP("Cumprod")
     .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CumulativeLogsumexp")
+    .Input("x : T")
+    .Input("axis: Tidx")
+    .Attr("exclusive: bool = false")
+    .Attr("reverse: bool = false")
+    .Output("out: T")
+    .Attr("T: {float16, float32, float64}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 

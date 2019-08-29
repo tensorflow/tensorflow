@@ -100,18 +100,20 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
 
   ~StringTfLiteTensorBuffer() override {
     LogDeallocation();
-    tensorflow::TypedAllocator::Deallocate<tensorflow::string>(
-        tensorflow::cpu_allocator(), static_cast<tensorflow::string*>(data()),
+    tensorflow::TypedAllocator::Deallocate<tensorflow::tstring>(
+        tensorflow::cpu_allocator(), static_cast<tensorflow::tstring*>(data()),
         num_strings_);
   }
 
-  size_t size() const override { return num_strings_ * sizeof(string); }
+  size_t size() const override {
+    return num_strings_ * sizeof(tensorflow::tstring);
+  }
 
  private:
   StringTfLiteTensorBuffer(const TfLiteTensor* tensor, int num_strings)
       : BaseTfLiteTensorBuffer(
             num_strings != 0
-                ? tensorflow::TypedAllocator::Allocate<tensorflow::string>(
+                ? tensorflow::TypedAllocator::Allocate<tensorflow::tstring>(
                       tensorflow::cpu_allocator(), num_strings,
                       tensorflow::AllocationAttributes())
                 : nullptr),
@@ -119,7 +121,7 @@ class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
     LogAllocation();
 
     if (data()) {
-      string* p = static_cast<string*>(data());
+      tensorflow::tstring* p = static_cast<tensorflow::tstring*>(data());
       for (size_t i = 0; i < num_strings_; ++p, ++i) {
         auto ref = GetString(tensor->data.raw, i);
         p->assign(ref.str, ref.len);

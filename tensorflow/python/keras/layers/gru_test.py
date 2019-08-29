@@ -43,6 +43,19 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_float64_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.GRU,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_dynamic_behavior_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -52,7 +65,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(layer)
     model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -100,7 +116,10 @@ class GRULayerTest(keras_parameterized.TestCase):
     output = gru_layer(inputs)
     gru_model = keras.models.Model(inputs, output)
     gru_model.compile(
-        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
@@ -115,7 +134,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):
@@ -136,8 +156,11 @@ class GRULayerTest(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer='sgd', loss='mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

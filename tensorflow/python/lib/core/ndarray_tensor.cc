@@ -168,6 +168,16 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       if (pyarray_type == Bfloat16NumpyType()) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
+      } else if (pyarray_type == NPY_ULONGLONG) {
+        // NPY_ULONGLONG is equivalent to NPY_UINT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_UINT64;
+        break;
+      } else if (pyarray_type == NPY_LONGLONG) {
+        // NPY_LONGLONG is equivalent to NPY_INT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_INT64;
+        break;
       }
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
@@ -396,6 +406,25 @@ inline void FastMemcpy(void* dst, const void* src, size_t size) {
 }
 
 }  // namespace
+
+// TODO(slebedev): revise TF_TensorToPyArray usages and switch to the
+// aliased version where appropriate.
+Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
+                                      PyObject** out_ndarray) {
+  auto dtype = TF_TensorType(tensor.get());
+  if (dtype == TF_STRING || dtype == TF_RESOURCE) {
+    return TF_TensorToPyArray(std::move(tensor), out_ndarray);
+  }
+
+  TF_Tensor* moved = tensor.release();
+  int64 nelems = -1;
+  gtl::InlinedVector<npy_intp, 4> dims =
+      GetPyArrayDimensionsForTensor(moved, &nelems);
+  return ArrayFromMemory(
+      dims.size(), dims.data(), TF_TensorData(moved),
+      static_cast<DataType>(dtype), [moved] { TF_DeleteTensor(moved); },
+      out_ndarray);
+}
 
 // Converts the given TF_Tensor to a numpy ndarray.
 // If the returned status is OK, the caller becomes the owner of *out_array.

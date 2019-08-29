@@ -178,11 +178,17 @@ def _convert_tf1_model(flags):
       converter.target_spec.supported_ops.add(lite.OpsSet(option))
 
   if flags.post_training_quantize:
-    converter.post_training_quantize = flags.post_training_quantize
+    converter.optimizations = [lite.Optimize.DEFAULT]
     if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       print("--post_training_quantize quantizes a graph of inference_type "
             "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
       converter.inference_type = lite_constants.FLOAT
+
+  if flags.quantize_to_float16:
+    converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    if not flags.post_training_quantize:
+      print("--quantize_to_float16 will only take effect with the "
+            "--post_training_quantize flag enabled.")
 
   if flags.dump_graphviz_dir:
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
@@ -390,7 +396,13 @@ def _get_tf1_parser():
           "Boolean indicating whether to quantize the weights of the "
           "converted float model. Model size will be reduced and there will "
           "be latency improvements (at the cost of accuracy). (default False)"))
-
+  parser.add_argument(
+      "--quantize_to_float16",
+      dest="quantize_to_float16",
+      action="store_true",
+      help=("Boolean indicating whether to quantize weights to fp16 instead of "
+            "the default int8 when post-training quantization "
+            "(--post_training_quantize) is enabled. (default False)"))
   # Graph manipulation flags.
   parser.add_argument(
       "--drop_control_dependency",

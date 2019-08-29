@@ -20,13 +20,13 @@ namespace sharding_builder {
 
 OpSharding Replicate() {
   OpSharding result;
-  result.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+  result.set_type(OpSharding::REPLICATED);
   return result;
 }
 
 OpSharding AssignDevice(int device) {
   OpSharding result;
-  result.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+  result.set_type(OpSharding::MAXIMAL);
   result.add_tile_assignment_dimensions(1);
   result.add_tile_assignment_devices(device);
   return result;
@@ -35,7 +35,7 @@ OpSharding AssignDevice(int device) {
 OpSharding Tile(const Shape& tile_shape,
                 const TileAssignment& tile_assignment) {
   OpSharding result;
-  result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+  result.set_type(OpSharding::OTHER);
   *result.mutable_tile_shape() = tile_shape.ToProto();
   for (int64 dim : tile_assignment.dimensions()) {
     result.add_tile_assignment_dimensions(dim);
@@ -48,7 +48,7 @@ OpSharding Tile(const Shape& tile_shape,
 
 OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles) {
   OpSharding result;
-  result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+  result.set_type(OpSharding::OTHER);
 
   CHECK_EQ(tile_shape.rank(), 1);
   std::vector<int64> dimensions(1, num_tiles);
@@ -65,7 +65,7 @@ OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles) {
 
 OpSharding Tuple(const ShapeTree<OpSharding>& shardings) {
   OpSharding result;
-  result.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+  result.set_type(OpSharding::TUPLE);
   for (const auto& index_to_sharding : shardings.leaves()) {
     *result.add_tuple_shardings() = index_to_sharding.second;
   }

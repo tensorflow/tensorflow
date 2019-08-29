@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hadoop",

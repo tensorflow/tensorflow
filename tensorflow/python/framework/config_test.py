@@ -43,9 +43,10 @@ def reset_eager(fn):
     try:
       return fn(*args, **kwargs)
     finally:
-      del context._context
-      context._context = context.Context()
-      ops.enable_eager_execution()
+      # Reset the context.
+      context._context = None
+      ops.enable_eager_execution_internal()
+      assert context._context is not None
 
   return wrapper
 

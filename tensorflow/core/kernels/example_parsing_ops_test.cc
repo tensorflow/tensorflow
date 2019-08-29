@@ -114,7 +114,7 @@ struct ExampleStore {
     Example example;
     Filler fill;
     Tensor record_string(DT_STRING, TensorShape({batch_size}));
-    auto string_t = record_string.vec<string>();
+    auto string_t = record_string.vec<tstring>();
     example.Clear();
     for (int b = 0; b < batch_size; ++b) {
       for (int k = 0; k < num_keys; ++k) {
@@ -163,7 +163,7 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     Tensor key(DT_STRING, TensorShape());
-    key.scalar<string>()() = strings::Printf("feature_%d", i);
+    key.scalar<tstring>()() = strings::Printf("feature_%d", i);
     switch (opt.benchmark_type) {
       case kDense:
         dense_keys.emplace_back(test::graph::Constant(g, key));
@@ -205,7 +205,7 @@ static Graph* ParseSingleExample(int num_keys, int feature_size) {
       Options::Store::GetSerializedExample()[std::make_tuple(1, num_keys,
                                                              feature_size)];
   Tensor serialized(DT_STRING, TensorShape());
-  serialized.scalar<string>()() = serialized_batch_1.vec<string>()(0);
+  serialized.scalar<tstring>()() = serialized_batch_1.vec<tstring>()(0);
 
   std::vector<string> sparse_keys;
   std::vector<string> dense_keys;

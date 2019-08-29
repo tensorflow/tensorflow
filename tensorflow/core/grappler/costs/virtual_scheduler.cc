@@ -183,17 +183,23 @@ void HeapReadyManager::DrainWaitingQueue() {
   waiting_queue_.clear();
 }
 
+bool FirstReadyCmp(
+    const std::unordered_map<const NodeDef*, NodeState>* node_map,
+    const NodeDef* a, const NodeDef* b) {
+  if (node_map->at(a).time_ready == node_map->at(b).time_ready) {
+    // Use Node name as tie-breaker for deterministic node scheduling.
+    return a->name().compare(b->name()) > 0;
+  } else {
+    // Note: we need a node with minimum time_ready, not maximum; hence, using
+    // a > b for comparison function.
+    return node_map->at(a).time_ready > node_map->at(b).time_ready;
+  }
+}
+
 std::function<bool(const NodeDef*, const NodeDef*)>
 FirstReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
-      // Use Node name as tie-breaker for deterministic node scheduling.
-      return a->name().compare(b->name()) > 0;
-    } else {
-      // Note: we need a node with minimum time_ready, not maximum; hence, using
-      // a > b for comparison function.
-      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
-    }
+    return FirstReadyCmp(node_map_, a, b);
   };
   return greater;
 }
@@ -201,22 +207,27 @@ FirstReadyManager::Greater() {
 std::function<bool(const NodeDef*, const NodeDef*)>
 PriorityReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    return node_priority_.at(a->name()) > node_priority_.at(b->name());
+    auto pri_a = node_priority_.at(a->name());
+    auto pri_b = node_priority_.at(b->name());
+    if (pri_a == pri_b) {
+      // Fallback to default (FirstReady) behaviour.
+      return FirstReadyCmp(node_map_, a, b);
+    }
+    return pri_a > pri_b;
   };
   return greater;
 }
 
+void PriorityReadyManager::AddNode(const NodeDef* node) {
+  if (node_priority_.count(node->name()) == 0) {
+    VLOG(3) << "Priority of node " << node->name() << " not found.";
+    node_priority_[node->name()] = 0;
+  }
+  HeapReadyManager::AddNode(node);
+}
+
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
-  // Checks each node has a unique priority.
-  std::unordered_set<int> priorities;
-  for (const auto& it : node_priority_) {
-    if (priorities.find(it.second) != priorities.end()) {
-      return errors::InvalidArgument("Non-unique priority found");
-    }
-    priorities.insert(it.second);
-  }
-
   node_priority_ = node_priority;
   return Status::OK();
 }
@@ -807,6 +818,12 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   const NodeDef* node = ready_nodes_->GetCurrNode();
   auto& node_state = node_map_[node];
+  // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
+  // Merge -- it can create a loop which may include loop-carried dependency,
+  // diverge-merge, and other complex execution patterns.
+  bool previously_executed_merge =
+      IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
+
   // If there is annotation in the graph about execution times, we use that
   // number, otherwise, we assume the node is executed once.
   node_state.execution_count = node->attr().count(kExecutionCount) == 0
@@ -876,8 +893,15 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Checks outputs, and adds ready nodes to queue.
-  AddOutputNodesToReadyQueue(node, curr_time);
+  if (previously_executed_merge) {
+    // Skip AddOutputNodesToReadyQueue; this is due to Switch-Merge.
+    VLOG(1) << "node [ " << node->name() << ", " << node->op() << " ] "
+            << "is executed more than once. "
+            << "Skip scheduling its output nodes.";
+  } else {
+    // Checks outputs, and adds ready nodes to queue.
+    AddOutputNodesToReadyQueue(node, curr_time);
+  }
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {
@@ -1162,5 +1186,23 @@ const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
   return result;
 }
 
+const std::unordered_map<string, int64>
+VirtualScheduler::GetPersistentMemoryUsage() const {
+  std::unordered_map<string, int64> result;
+  for (const auto& device : device_) {
+    const string& name = device.first;
+    const DeviceState& state = device.second;
+    int64 persistent_memory_usage = 0;
+    for (const auto& node_port : state.persistent_nodes) {
+      const auto* node = node_port.first;
+      const auto port = node_port.second;
+      const auto output_size =
+          CalculateOutputSize(node_map_.at(node).output_properties, port);
+      persistent_memory_usage += output_size;
+    }
+    result[name] = persistent_memory_usage;
+  }
+  return result;
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -26,6 +26,7 @@ import scipy.sparse
 from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -84,7 +85,7 @@ class ToSparse(Layer):
   """Create a sparse tensor based on a given dense tensor."""
 
   def call(self, inputs):
-    indices = array_ops.where(math_ops.not_equal(inputs, 0))
+    indices = array_ops.where_v2(math_ops.not_equal(inputs, 0))
     values = array_ops.gather_nd(inputs, indices)
     shape = array_ops.shape(inputs, out_type=dtypes.int64)
     return sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
@@ -152,6 +153,20 @@ def get_model_from_layers_with_input(layers,
   raise ValueError("Unknown model type {}".format(model_type))
 
 
+def get_test_mode_kwargs():
+  run_eagerly = testing_utils.should_run_eagerly()
+  # Certain things weren't supported correctly in the old path, therefore
+  # with these changes, some tests now only pass in the single code path in V2.
+  if run_eagerly or context.executing_eagerly():
+    experimental_run_tf_function = True
+  else:
+    experimental_run_tf_function = testing_utils.should_run_tf_function()
+  return {
+      "run_eagerly": run_eagerly,
+      "experimental_run_tf_function": experimental_run_tf_function
+  }
+
+
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes
 class CompositeTensorInternalTest(keras_parameterized.TestCase):
@@ -181,7 +196,6 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase):
     self.assertAllEqual(expected_output, output)
 
   def test_training_internal_ragged_tensors(self):
-
     # Create a model that implements y=Mx. This is easy to learn and will
     # demonstrate appropriate gradient passing. (We have to use RaggedTensors
     # for this test, as ToSparse() doesn't support gradient propagation through
@@ -192,10 +206,7 @@ class CompositeTensorInternalTest(keras_parameterized.TestCase):
     input_data = np.random.rand(1024, 1)
     expected_data = np.concatenate((input_data * 3, input_data * .5), axis=-1)
 
-    model.compile(
-        loss="mse",
-        optimizer="adam",
-        run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(loss="mse", optimizer="adam", **get_test_mode_kwargs())
     history = model.fit(input_data, expected_data, epochs=10, verbose=0)
 
     # If the model trained, the loss stored at history[0] should be different
@@ -212,6 +223,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
@@ -225,6 +238,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
@@ -238,6 +253,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
@@ -256,6 +273,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
@@ -281,26 +300,28 @@ def get_input_name(use_dict):
     return "test_input_name"
 
 
-def get_steps():
-  # Determine the steps arg (if appropriate)
-  if not testing_utils.should_run_eagerly():
-    # CompositeTensors in graph mode are symbolic and so require a steps arg.
-    return 1
+def get_kwargs(use_dataset, action="predict"):
+  if use_dataset or not context.executing_eagerly():
+    if action == "fit":
+      return {"steps_per_epoch": 1}
+    return {"steps": 1}
   else:
-    return None
+    return {"batch_size": 2}
 
 
 def prepare_inputs(data, use_dict, use_dataset, action, input_name):
   input_data, expected_output = data
+  batch_size = input_data.shape[0]
   # Prepare the input data.
   if use_dict:
     input_data = {input_name: input_data}
   if use_dataset:
     if action == "predict":
-      input_data = dataset_ops.Dataset.from_tensors(input_data)
+      input_data = dataset_ops.DatasetV2.from_tensor_slices(input_data).batch(
+          batch_size)
     else:
-      input_data = dataset_ops.Dataset.from_tensors(
-          (input_data, expected_output))
+      input_data = dataset_ops.DatasetV2.from_tensor_slices(
+          (input_data, expected_output)).batch(batch_size)
       expected_output = None
   return (input_data, expected_output)
 
@@ -329,8 +350,12 @@ class SparseTensorInputTest(keras_parameterized.TestCase):
         shape=(1, None), sparse=True, name=input_name, dtype=dtypes.int32)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
-    steps = get_steps()
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        **get_test_mode_kwargs())
+    kwargs = get_kwargs(use_dataset, action)
 
     # Prepare the input data
     for data_element in data:
@@ -339,15 +364,14 @@ class SparseTensorInputTest(keras_parameterized.TestCase):
                                                    input_name)
       # Perform the action.
       if action == "predict":
-        result = model.predict(input_data, steps=steps)
+        result = model.predict(input_data, **kwargs)
         self.assertAllEqual(expected_output, result)
       if action == "evaluate":
-        result = model.evaluate(input_data, expected_output, steps=steps)
+        result = model.evaluate(input_data, expected_output, **kwargs)
         self.assertAllEqual(1.0, result[-1])
       if action == "fit":
         # TODO(momernick): What's the best way of validating that fit happened?
-        _ = model.fit(
-            input_data, expected_output, shuffle=False, steps_per_epoch=steps)
+        _ = model.fit(input_data, expected_output, shuffle=False, **kwargs)
 
 
 @keras_parameterized.run_with_all_model_types
@@ -382,7 +406,11 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
     model_input = input_layer.Input(shape=(3,), sparse=True, dtype=dtypes.int64)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     input_data = scipy.sparse.coo_matrix(([1, 2, 3], ([0, 1, 1], [0, 0, 1])),
                                          shape=[2, 3])
@@ -440,7 +468,11 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
         shape=(3,), sparse=True, name=input_name, dtype=dtypes.int64)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     input_data = {
         input_name:
@@ -481,7 +513,11 @@ class RaggedTensorInputTest(keras_parameterized.TestCase,
         shape=(None, None), ragged=True, name=input_name, dtype=dtypes.int32)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        **get_test_mode_kwargs())
 
     # Prepare the input data
     for data_element in data:
@@ -521,7 +557,11 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
         shape=input_shape, ragged=True, name=input_name, dtype=dtypes.int32)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        **get_test_mode_kwargs())
 
     for data_element in data:
       input_data, expected_output = prepare_inputs(
@@ -546,11 +586,12 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
         shape=input_shape, ragged=True, name=input_name, dtype=dtypes.int32)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
-
-    # The input is a symbolic tensor in non-Eager modes, so 'steps' is required
-    # for that case only.
-    steps = get_steps()
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        **get_test_mode_kwargs())
+    kwargs = get_kwargs(use_dataset)
 
     for data_element in data:
       input_data, expected_output = prepare_inputs(
@@ -559,7 +600,7 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
           use_dataset,
           action="predict",
           input_name=input_name)
-      result = model.predict(input_data, steps=steps)
+      result = model.predict(input_data, **kwargs)
       self.assertAllEqual(expected_output, result)
 
   def test_ragged_tensor_input_with_wrong_ragged_rank_fails(
@@ -574,7 +615,11 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
         shape=input_shape, ragged=True, name=input_name, dtype=dtypes.int32)
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(optimizer="sgd", loss="mse", metrics=["accuracy"])
+    model.compile(
+        optimizer="sgd",
+        loss="mse",
+        metrics=["accuracy"],
+        **get_test_mode_kwargs())
 
     # Define some input data with the wrong ragged rank
     for data_element in data:
@@ -615,15 +660,9 @@ class SparseTensorInputValidationTest(keras_parameterized.TestCase):
     # Define some input data.
     input_data = sparse_tensor.SparseTensor([[0, 0, 0], [1, 0, 0], [1, 0, 1]],
                                             [1, 2, 3], [2, 1, 3])
-    if not testing_utils.should_run_eagerly():
-      # This ragged tensor is actually a standard tensor (as it has no ragged
-      # dimensions). Because of this, graph mode models will expect a steps
-      # arg to be passed (as SparseTensors in graph mode are symbolic).
-      steps = 1
-    else:
-      steps = None
+    kwargs = get_kwargs(use_dataset=False)
     with self.assertRaisesRegex(ValueError, ".*got array with shape.*"):
-      _ = model.predict(input_data, steps=steps)
+      _ = model.predict(input_data, **kwargs)
 
   def test_ragged_tensor_input_with_wrong_value_shape(self):
     # Create a model that accepts a ragged input and converts it to dense.
@@ -649,14 +688,14 @@ class UndefinedCompositeTensorInputsTest(keras_parameterized.TestCase):
     # back to a dense tensor.
     layers = [ToDense(default_value=-1)]
     model = testing_utils.get_model_from_layers(layers)
-    steps = get_steps()
 
     # Define some input data.
     input_data = sparse_tensor.SparseTensor([[0, 0], [1, 0], [1, 1]], [1, 2, 3],
                                             [2, 3])
+    kwargs = get_kwargs(False)
     with self.assertRaisesRegex(
         ValueError, ".*All SparseTensor and RaggedTensor inputs .*"):
-      _ = model.predict(input_data, steps=steps)
+      _ = model.predict(input_data, **kwargs)
 
   def test_subclass_implicit_sparse_scipy_inputs_fails(self):
     # Create a model that accepts a sparse input and converts the sparse tensor

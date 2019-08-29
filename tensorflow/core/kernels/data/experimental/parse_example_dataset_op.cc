@@ -22,10 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
@@ -206,6 +205,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -397,10 +400,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::size_t> elements_per_stride_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),
     ParseExampleDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

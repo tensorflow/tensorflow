@@ -762,5 +762,23 @@ class ScatterNdTensorTest(test.TestCase):
 
     self.assertAllEqual(_TestFn(), [1, 11, 1, 10, 9, 1, 1, 12])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorScatterUpdateWithStrings(self):
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant(["there", "there", "there", "12"],
+                                   dtype=dtypes.string)
+    tensor = constant_op.constant([
+        "hello", "hello", "hello", "hello", "hello", "hello", "hello", "hello"
+    ],
+                                  dtype=dtypes.string)
+    updated = array_ops.tensor_scatter_update(tensor, indices, updates)
+
+    self.assertAllEqual(
+        updated,
+        constant_op.constant([
+            "hello", "there", "hello", "there", "there", "hello", "hello", "12"
+        ]))
+
+
 if __name__ == "__main__":
   test.main()

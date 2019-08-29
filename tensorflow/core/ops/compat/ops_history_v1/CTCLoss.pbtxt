@@ -1,0 +1,150 @@
+op {
+  name: "CTCLoss"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "labels_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "labels_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "loss"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "preprocess_collapse_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "ctc_merge_repeated"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "CTCLoss"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "labels_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "labels_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "loss"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "preprocess_collapse_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "ctc_merge_repeated"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "ignore_longer_outputs_than_inputs"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "CTCLoss"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "labels_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "labels_values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sequence_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "loss"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "gradient"
+    type_attr: "T"
+  }
+  attr {
+    name: "preprocess_collapse_repeated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "ctc_merge_repeated"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "ignore_longer_outputs_than_inputs"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

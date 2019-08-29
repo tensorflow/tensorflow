@@ -159,7 +159,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // automatically true.
     if (current_subset.type == node_type_[node_index]) {
       node_epochs_[node_index] = current_epoch;
-      current_subset.nodes.push_back(node_index);
+      current_subset.nodes.push_back(info_->node_index(node_index));
       // All outputs of this node now are assigned to this epoch as
       // well.
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {

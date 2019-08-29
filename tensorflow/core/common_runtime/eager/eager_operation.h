@@ -17,19 +17,24 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 class EagerOperation {
  public:
   EagerOperation(tensorflow::EagerContext* ctx, const char* op,
-                 bool is_function, const tensorflow::AttrTypeMap* t)
+                 bool is_function, const tensorflow::AttrTypeMap* t,
+                 EagerExecutor* executor = nullptr)
       : ctx_(ctx),
         name_(op),
         attrs_(op),
         attr_types_(t),
         device_(nullptr),
-        is_function_(is_function) {}
+        is_function_(is_function),
+        executor_(executor ? *executor : *ctx->Executor()) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -61,10 +66,25 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   tensorflow::Device* Device() const { return device_; }
-  tensorflow::Status SetDevice(const char* device);
-  void SetDevice(tensorflow::Device* device) { device_ = device; }
+  void SetDevice(tensorflow::Device* device) {
+    device_ = device;
+    device_name_ = device->parsed_name();
+  }
+  const DeviceNameUtils::ParsedName& GetDeviceName() const {
+    return device_name_;
+  }
+  tensorflow::Status SetDeviceName(const char* device);
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
+
+  CancellationManager* GetCancellationManager() const {
+    return cancellation_manager_;
+  }
+  void SetCancellationManager(CancellationManager* cancellation_manager) {
+    cancellation_manager_ = cancellation_manager;
+  }
+
+  EagerExecutor* Executor() { return &executor_; }
 
   string DebugString() const;
 
@@ -75,8 +95,11 @@ class EagerOperation {
   const tensorflow::AttrTypeMap* attr_types_;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
+  DeviceNameUtils::ParsedName device_name_;
   bool use_xla_ = false;
   const bool is_function_;
+  CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
+  EagerExecutor& executor_;                              // Not owned.
 };
 }  // namespace tensorflow
 

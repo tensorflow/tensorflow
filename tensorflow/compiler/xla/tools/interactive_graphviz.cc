@@ -52,7 +52,7 @@ namespace xla {
 namespace tools {
 namespace {
 
-bool ReadLine(const char *prompt, string *line) {
+bool ReadLine(const char* prompt, string* line) {
 #if defined(PLATFORM_GOOGLE)
   return util::ReadLine(prompt, line);
 #else
@@ -168,7 +168,9 @@ void DoHelpCommand() {
     <height> is specified, the new computation contains nodes up to <height>
     nodes above the root.
   help
-    Prints this usage information.)"
+    Prints this usage information.
+  quit
+    Exit the application.)"
             << std::endl;
 }
 
@@ -628,28 +630,22 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
   }
 }
 
-void CheckFlags(const Options &opts) {
-  std::vector<string> nonempty_proto_flags;
+void CheckFlags(const Options& opts) {
+  int nonempty_flags_amount = 0;
   if (!opts.hlo_proto.empty()) {
-    nonempty_proto_flags.push_back("--hlo_proto");
+    ++nonempty_flags_amount;
   }
   if (!opts.hlo_snapshot.empty()) {
-    nonempty_proto_flags.push_back("--hlo_snapshot");
+    ++nonempty_flags_amount;
   }
   if (!opts.hlo_text.empty()) {
-    nonempty_proto_flags.push_back("--hlo_text");
+    ++nonempty_flags_amount;
   }
-  switch (nonempty_proto_flags.size()) {
-    case 1:
-      // We're good to go.
-      break;
-    case 0:
-      LOG(FATAL) << "Need one of the following options: "
-                 << absl::StrJoin(nonempty_proto_flags, ", ");
-    default:
-      LOG(FATAL) << "Can only specify one of "
-                 << absl::StrJoin(nonempty_proto_flags, ", ");
+  if (nonempty_flags_amount == 1) {
+    return;
   }
+  LOG(FATAL) << "Can only specify one and only one of '--hlo_proto', "
+                "'--hlo_snapshot', '--hlo_text' flags.";
 }
 
 void RealMain(const Options& opts) {
@@ -726,8 +722,7 @@ int main(int argc, char** argv) {
                        "Platform to compile for: CPU, CUDA, etc"),
       tensorflow::Flag("browser", &opts.browser,
                        "Path to web browser used to display produced graphs."),
-      tensorflow::Flag("help", &need_help,
-                       "Prints this help message"),
+      tensorflow::Flag("help", &need_help, "Prints this help message"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

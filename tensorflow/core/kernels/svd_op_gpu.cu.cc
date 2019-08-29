@@ -63,10 +63,10 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
-  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
-    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
+  GPU_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
+    GPU_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
       Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
-      CudaAtomicAdd(V + batch, v);
+      GpuAtomicAdd(V + batch, v);
     }
   }
 }
@@ -75,7 +75,7 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
 __global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
-  CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
 }
@@ -195,17 +195,17 @@ class SvdOpGpu : public AsyncOpKernel {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
-      Gpu2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
-      TF_CHECK_OK(CudaLaunchKernel(ComputeValueOfVKernel<Scalar>,
-                                   cfg2D.block_count, cfg2D.thread_per_block, 0,
-                                   d.stream(), cfg2D, m, full_matrices_ ? m : p,
-                                   input_copy.flat<Scalar>().data(),
-                                   outputU_ptr, outputS_ptr, outputV_ptr));
+      Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
+      TF_CHECK_OK(GpuLaunchKernel(ComputeValueOfVKernel<Scalar>,
+                                  cfg2D.block_count, cfg2D.thread_per_block, 0,
+                                  d.stream(), cfg2D, m, full_matrices_ ? m : p,
+                                  input_copy.flat<Scalar>().data(), outputU_ptr,
+                                  outputS_ptr, outputV_ptr));
       // 2. clamp V to -1 or +1
-      GpuLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
-      TF_CHECK_OK(CudaLaunchKernel(ExtractSignOfVKernel<Scalar>,
-                                   cfg1D.block_count, cfg1D.thread_per_block, 0,
-                                   d.stream(), cfg1D, outputV_ptr));
+      GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
+      TF_CHECK_OK(GpuLaunchKernel(ExtractSignOfVKernel<Scalar>,
+                                  cfg1D.block_count, cfg1D.thread_per_block, 0,
+                                  d.stream(), cfg1D, outputV_ptr));
     }
 
     if (compute_uv_) {

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * An internal wrapper that wraps native interpreter and controls model execution.
@@ -69,9 +70,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
     this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
-    if (options.useNNAPI != null) {
-      setUseNNAPI(options.useNNAPI.booleanValue());
-    }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
           interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
@@ -79,11 +77,28 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (options.allowBufferHandleOutput != null) {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
+    if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
+      optionalNnApiDelegate = new NnApiDelegate();
+      applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
+    }
     for (Delegate delegate : options.delegates) {
       applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
       delegates.add(delegate);
     }
-    allocateTensors(interpreterHandle, errorHandle);
+
+    try {
+      allocateTensors(interpreterHandle, errorHandle);
+    } catch (IllegalStateException e) {
+      // Only try flex delegate usage if allocation fails. This avoids unnecessary creation of the
+      // flex delegate, which can be expensive.
+      optionalFlexDelegate = maybeCreateFlexDelegate();
+      if (optionalFlexDelegate != null) {
+        applyDelegate(interpreterHandle, errorHandle, optionalFlexDelegate.getNativeHandle());
+        allocateTensors(interpreterHandle, errorHandle);
+      } else {
+        throw e;
+      }
+    }
     this.isMemoryAllocated = true;
   }
 
@@ -112,6 +127,18 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     outputsIndexes = null;
     isMemoryAllocated = false;
     delegates.clear();
+    if (optionalNnApiDelegate != null) {
+      optionalNnApiDelegate.close();
+      optionalNnApiDelegate = null;
+    }
+    if (optionalFlexDelegate instanceof AutoCloseable) {
+      try {
+        ((AutoCloseable) optionalFlexDelegate).close();
+      } catch (Exception e) {
+        System.err.println("Failed to close flex delegate: " + e);
+      }
+    }
+    optionalFlexDelegate = null;
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -191,6 +218,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   void modifyGraphWithDelegate(Delegate delegate) {
     applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
     delegates.add(delegate);
+  }
+
+  void resetVariableTensors() {
+    resetVariableTensors(interpreterHandle, errorHandle);
   }
 
   /** Gets index of an input given its name. */
@@ -309,6 +340,16 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputTensor;
   }
 
+  private static Delegate maybeCreateFlexDelegate() {
+    try {
+      Class<?> clazz = Class.forName("org.tensorflow.lite.flex.FlexDelegate");
+      return (Delegate) clazz.getConstructor().newInstance();
+    } catch (Exception e) {
+      // The error will propagate when tensors are allocated.
+      return null;
+    }
+  }
+
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
   private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
@@ -340,6 +381,13 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   // As the Java Delegate owns the native delegate instance, we keep a strong ref to any injected
   // delegates for safety.
   private final List<Delegate> delegates = new ArrayList<>();
+
+  // Prefer using the NnApiDelegate directly rather than the deprecated useNNNAPI() method when
+  // NNAPI is enabled via Interpreter.Options.
+  private NnApiDelegate optionalNnApiDelegate;
+
+  // Only used if 1) flex ops are used, and 2) the flex delegate is available.
+  private Delegate optionalFlexDelegate;
 
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
@@ -373,6 +421,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void applyDelegate(
       long interpreterHandle, long errorHandle, long delegateHandle);
+
+  private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

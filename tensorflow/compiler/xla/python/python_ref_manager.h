@@ -48,9 +48,9 @@ class PythonRefManager {
 
     ~ManagedPyObjects();
 
-    ManagedPyObjects(const ManagedPyObjects& other) = default;
+    ManagedPyObjects(const ManagedPyObjects& other) = delete;
     ManagedPyObjects(ManagedPyObjects&& other) = default;
-    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
+    ManagedPyObjects& operator=(const ManagedPyObjects& other) = delete;
     ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
 
    private:
@@ -61,7 +61,8 @@ class PythonRefManager {
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
   // destroyed, the reference to 'object' will be added to python_garbage_,
   // and collected next time CollectGarbage() is called.
-  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
+  std::shared_ptr<ManagedPyObjects> ManageReferences(
+      absl::Span<pybind11::object> objects);
 
   // Releases the contents of python_garbage_. Requires that the GIL is held.
   // The client calls this method during API entry points where the GIL is held
@@ -72,6 +73,11 @@ class PythonRefManager {
   absl::Mutex mu_;
   std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
 };
+
+// A global PythonRefManager. Unless `CollectGarbage()` is called before
+// shutdown, this container will hold on to Python objects and thus cause a
+// leak. This behavior is similar to `tensorflow::ClearDecRefCache()`.
+PythonRefManager* GlobalPyRefManager();
 
 }  // namespace xla
 

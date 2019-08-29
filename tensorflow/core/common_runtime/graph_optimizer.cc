@@ -90,7 +90,8 @@ void GraphOptimizer::Optimize(
     }
     if (opts_.do_function_inlining()) {
       ExpandInlineFunctionsOptions expand_inline_opts;
-      expand_inline_opts.native_options.override_device = true;
+      expand_inline_opts.native_options.inlined_function_body_placer =
+          InlinedFunctionBodyPlacer::SingleDevice();
       if (!inline_multi_device_functions) {
         // GraphOptimizer is running:
         //   (1) After partitioning when executing with a Session API.

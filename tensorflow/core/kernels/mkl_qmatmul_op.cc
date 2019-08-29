@@ -222,10 +222,10 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           bias_mem(nullptr),
           dst_mem(nullptr),
           fwd_desc(nullptr),
+          fwd_pd(nullptr),
           src_md(nullptr),
           weight_md(nullptr),
           bias_md(nullptr),
-          fwd_pd(nullptr),
           matmul_fwd(nullptr),
           fwd_stream(nullptr) {}
   };
@@ -719,6 +719,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
         context->CtxFailure(
             errors::InvalidArgument("Quantization mode must be"
                                     "either MIN_FIRST or SCALED."));
+        return nullptr;
       }
     }
   }
@@ -736,8 +737,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     output_mkl_shape.SetMklTensor(true);
     output_mkl_shape.SetMklLayout(&dst_pd);
     output_mkl_shape.SetElemType(MklDnnType<Toutput>());
-    output_mkl_shape.SetTfLayout2D(output_dims_mkl_order.size(),
-                                   output_dims_mkl_order, output_tf_format);
+    output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+                                 output_dims_mkl_order, output_tf_format, true);
 
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((dst_pd.get_size() / sizeof(Toutput)));

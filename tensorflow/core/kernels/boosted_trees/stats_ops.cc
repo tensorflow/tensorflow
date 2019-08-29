@@ -20,13 +20,19 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-const char INEQUALITY_DEFAULT_LEFT[] = "inequality_default_left";
-const char INEQUALITY_DEFAULT_RIGHT[] = "inequality_default_right";
+using Matrix =
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+using ConstMatrixMap = Eigen::Map<const Matrix>;
+using MatrixMap = Eigen::Map<Matrix>;
+
+using ConstVectorMap = Eigen::Map<const Eigen::VectorXf>;
+using VectorMap = Eigen::Map<Eigen::VectorXf>;
 
 // V1 Op. Deprecated. BoostedTreesCalculateBestFeatureSplitOp is V2.
 class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
@@ -228,6 +234,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       OpKernelConstruction* const context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context, context->GetAttr("split_type", &split_type_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -242,11 +249,13 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("stats_summary", &stats_summary_t));
     TTypes<float, 4>::ConstTensor stats_summary =
         stats_summary_t->tensor<float, 4>();
-    const int64 feature_dims = stats_summary_t->dim_size(1);
-    const int64 num_buckets = stats_summary_t->dim_size(2);
-    const int64 hessian_dim = stats_summary_t->dim_size(3) - logits_dim_;
+    const int32 feature_dims = stats_summary_t->dim_size(1);
+    // The last bucket is for default/missing value.
+    const int32 num_buckets = stats_summary_t->dim_size(2) - 1;
+    const int32 logits_dim = logits_dim_;
+    const int32 hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
     DCHECK_GT(hessian_dim, 0);
-    DCHECK_LE(hessian_dim, logits_dim_ * logits_dim_);
+    DCHECK_LE(hessian_dim, logits_dim * logits_dim);
 
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
@@ -280,76 +289,45 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     std::vector<Eigen::VectorXf> output_right_node_contribs;
     std::vector<string> output_split_types;
 
-    for (int node_id = node_id_first; node_id < node_id_last; ++node_id) {
-      std::vector<Eigen::VectorXf> cum_grad;
-      std::vector<Eigen::VectorXf> cum_hess;
-      cum_grad.reserve(num_buckets);
-      cum_hess.reserve(num_buckets);
-
+    // TODO(tanzheny) parallelize the computation.
+    // Iterate each node and find the best gain per node.
+    for (int32 node_id = node_id_first; node_id < node_id_last; ++node_id) {
       float best_gain = std::numeric_limits<float>::lowest();
-      float best_bucket = 0;
-      float best_f_dim = 0;
-      string best_split_type = INEQUALITY_DEFAULT_LEFT;
-      Eigen::VectorXf best_contrib_for_left(logits_dim_);
-      Eigen::VectorXf best_contrib_for_right(logits_dim_);
+      int32 best_bucket = 0;
+      int32 best_f_dim = 0;
+      string best_split_type;
+      Eigen::VectorXf best_contrib_for_left(logits_dim);
+      Eigen::VectorXf best_contrib_for_right(logits_dim);
       float parent_gain;
-      Eigen::VectorXf unused(logits_dim_);
-      for (int f_dim = 0; f_dim < feature_dims; ++f_dim) {
-        cum_grad.clear();
-        cum_hess.clear();
-        Eigen::VectorXf total_grad = Eigen::VectorXf::Zero(logits_dim_);
-        Eigen::VectorXf total_hess = Eigen::VectorXf::Zero(hessian_dim);
-        for (int bucket = 0; bucket < num_buckets; ++bucket) {
-          for (int i = 0; i < logits_dim_; ++i) {
-            total_grad[i] += stats_summary(node_id, f_dim, bucket, i);
-            total_hess[i] +=
-                stats_summary(node_id, f_dim, bucket, logits_dim_ + i);
-          }
-          for (int i = logits_dim_; i < hessian_dim; ++i) {
-            // Full hessian.
-            total_hess[i] +=
-                stats_summary(node_id, f_dim, bucket, logits_dim_ + i);
-          }
-          cum_grad.push_back(total_grad);
-          cum_hess.push_back(total_hess);
-        }
 
-        // Only need to check once as total_grad/total_hess will be the same for
-        // all features.
-        if (f_dim == 0) {
-          if (total_hess.norm() < min_node_weight) {
-            break;
-          }
-          CalculateWeightsAndGains(total_grad, total_hess, l1, l2, &unused,
-                                   &parent_gain);
-        }
+      // Including default bucket.
+      ConstMatrixMap stats_mat(&stats_summary(node_id, 0, 0, 0),
+                               num_buckets + 1, logits_dim + hessian_dim);
+      const Eigen::VectorXf total_grad =
+          stats_mat.leftCols(logits_dim).colwise().sum();
+      const Eigen::VectorXf total_hess =
+          stats_mat.rightCols(hessian_dim).colwise().sum();
+      if (total_hess.norm() < min_node_weight) {
+        continue;
+      }
+      Eigen::VectorXf parent_weight(logits_dim);
+      CalculateWeightsAndGains(total_grad, total_hess, l1, l2, &parent_weight,
+                               &parent_gain);
 
-        for (int bucket = 0; bucket < num_buckets; ++bucket) {
-          const Eigen::VectorXf cum_grad_bucket = cum_grad[bucket];
-          const Eigen::VectorXf cum_hess_bucket = cum_hess[bucket];
-          // Left child.
-          Eigen::VectorXf contrib_for_left(logits_dim_);
-          float gain_for_left;
-          CalculateWeightsAndGains(cum_grad_bucket, cum_hess_bucket, l1, l2,
-                                   &contrib_for_left, &gain_for_left);
-          // Right child.
-          // TODO(crawles): consider accumulating right grad/hessians when doing
-          // cum_grad/hessian (if this becomes a bottleneck).
-          const Eigen::VectorXf grad_for_right = total_grad - cum_grad_bucket;
-          const Eigen::VectorXf hess_for_right = total_hess - cum_hess_bucket;
-          Eigen::VectorXf contrib_for_right(logits_dim_);
-          float gain_for_right;
-          CalculateWeightsAndGains(grad_for_right, hess_for_right, l1, l2,
-                                   &contrib_for_right, &gain_for_right);
-          if (GainIsLarger(gain_for_left + gain_for_right, best_gain)) {
-            best_gain = gain_for_left + gain_for_right;
-            best_bucket = bucket;
-            best_f_dim = f_dim;
-            best_contrib_for_left = contrib_for_left;
-            best_contrib_for_right = contrib_for_right;
-          }
-        }  // for bucket
-      }    // for f_dim
+      if (split_type_ == "inequality") {
+        CalculateBestInequalitySplit(
+            stats_summary, node_id, feature_dims, logits_dim, hessian_dim,
+            num_buckets, min_node_weight, l1, l2, &best_gain, &best_bucket,
+            &best_f_dim, &best_split_type, &best_contrib_for_left,
+            &best_contrib_for_right);
+      } else {
+        CalculateBestEqualitySplit(
+            stats_summary, total_grad, total_hess, node_id, feature_dims,
+            logits_dim, hessian_dim, num_buckets, l1, l2, &best_gain,
+            &best_bucket, &best_f_dim, &best_split_type, &best_contrib_for_left,
+            &best_contrib_for_right);
+      }
+
       if (best_gain == std::numeric_limits<float>::lowest()) {
         // Do not add the node if not split if found.
         continue;
@@ -395,7 +373,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     // output_left_node_contribs
     Tensor* output_left_node_contribs_t;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                "left_node_contribs", {num_nodes, logits_dim_},
+                                "left_node_contribs", {num_nodes, logits_dim},
                                 &output_left_node_contribs_t));
     auto output_left_node_contribs_matrix =
         output_left_node_contribs_t->matrix<float>();
@@ -403,7 +381,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     // output_right_node_contribs
     Tensor* output_right_node_contribs_t;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                "right_node_contribs", {num_nodes, logits_dim_},
+                                "right_node_contribs", {num_nodes, logits_dim},
                                 &output_right_node_contribs_t));
     auto output_right_node_contribs_matrix =
         output_right_node_contribs_t->matrix<float>();
@@ -413,7 +391,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output("split_with_default_directions",
                                           {num_nodes}, &output_split_types_t));
-    auto output_split_types_vec = output_split_types_t->vec<string>();
+    auto output_split_types_vec = output_split_types_t->vec<tstring>();
 
     // Sets output tensors from vectors.
     for (int i = 0; i < num_nodes; ++i) {
@@ -422,7 +400,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
       output_gains_vec(i) = output_gains[i] - tree_complexity;
       output_feature_dimensions_vec(i) = output_feature_dimensions[i];
       output_thresholds_vec(i) = output_thresholds[i];
-      for (int j = 0; j < logits_dim_; ++j) {
+      for (int j = 0; j < logits_dim; ++j) {
         output_left_node_contribs_matrix(i, j) =
             output_left_node_contribs[i][j];
         output_right_node_contribs_matrix(i, j) =
@@ -433,7 +411,138 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
   }
 
  private:
+  // TODO(crawles): Simplify inequality path just like equality b/138329196
+  // Currently this is not simplify-able due to numerical instability in math
+  // i.e. gain = -g.transpose() * hessian_and_reg.colPivHouseholderQr().solve(g)
+  // It caused gain to be Inf when g is approaching 0 but not exactly 0 while
+  // there is no regularization.
+  // Calculate the best inequality split per node.
+  void CalculateBestInequalitySplit(
+      TTypes<float, 4>::ConstTensor stats_summary, const int32 node_id,
+      const int32 feature_dims, const int32 logits_dim, const int32 hessian_dim,
+      const int32 num_buckets, const float min_node_weight, const float l1,
+      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
+      Eigen::VectorXf* best_contrib_for_right) {
+    std::vector<Eigen::VectorXf> cum_grad;
+    std::vector<Eigen::VectorXf> cum_hess;
+    // get all cumulative gradients including default bucket.
+    cum_grad.reserve(num_buckets);
+    cum_hess.reserve(num_buckets);
+
+    for (int f_dim = 0; f_dim < feature_dims; ++f_dim) {
+      ConstVectorMap default_stats_vec(
+          &stats_summary(node_id, f_dim, num_buckets, 0),
+          logits_dim + hessian_dim);
+      Eigen::VectorXf missing_bucket_grad = default_stats_vec.head(logits_dim);
+      Eigen::VectorXf missing_bucket_hess = default_stats_vec.tail(hessian_dim);
+      cum_grad.clear();
+      cum_hess.clear();
+      Eigen::VectorXf total_grad = Eigen::VectorXf::Zero(logits_dim);
+      Eigen::VectorXf total_hess = Eigen::VectorXf::Zero(hessian_dim);
+      // sum all the gradients including default bucket.
+      for (int bucket = 0; bucket <= num_buckets; ++bucket) {
+        for (int i = 0; i < logits_dim; ++i) {
+          total_grad[i] += stats_summary(node_id, f_dim, bucket, i);
+        }
+        for (int i = 0; i < hessian_dim; ++i) {
+          // Full hessian.
+          total_hess[i] +=
+              stats_summary(node_id, f_dim, bucket, logits_dim + i);
+        }
+        if (bucket < num_buckets) {
+          cum_grad.push_back(total_grad);
+          cum_hess.push_back(total_hess);
+        }
+      }
+      const string kInequalityDefaultLeft =
+          boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_LEFT);
+      const string kInequalityDefaultRight =
+          boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_RIGHT);
+
+      // Iterate from left to right, excluding default bucket.
+      for (int bucket = 0; bucket < num_buckets; ++bucket) {
+        // default value goes to left node.
+        const Eigen::VectorXf total_left_grad =
+            cum_grad[bucket] + missing_bucket_grad;
+        const Eigen::VectorXf total_left_hess =
+            cum_hess[bucket] + missing_bucket_hess;
+        MaybeUpdateBestSplit(
+            total_left_grad, total_grad - total_left_grad, total_left_hess,
+            total_hess - total_left_hess, logits_dim, bucket, f_dim, l1, l2,
+            kInequalityDefaultLeft, best_gain, best_bucket, best_f_dim,
+            best_split_type, best_contrib_for_left, best_contrib_for_right);
+        // default value goes to right node.
+        MaybeUpdateBestSplit(
+            cum_grad[bucket], total_grad - cum_grad[bucket], cum_hess[bucket],
+            total_hess - cum_hess[bucket], logits_dim, bucket, f_dim, l1, l2,
+            kInequalityDefaultRight, best_gain, best_bucket, best_f_dim,
+            best_split_type, best_contrib_for_left, best_contrib_for_right);
+      }  // for bucket
+    }
+  }
+
+  // Calculate the best equality split per node.
+  void CalculateBestEqualitySplit(
+      TTypes<float, 4>::ConstTensor stats_summary,
+      const Eigen::VectorXf& total_grad, const Eigen::VectorXf& total_hess,
+      const int32 node_id, const int32 feature_dims, const int32 logits_dim,
+      const int32 hessian_dim, const int32 num_buckets, const float l1,
+      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
+      Eigen::VectorXf* best_contrib_for_right) {
+    const string kEqualityDefaultRight =
+        boosted_trees::SplitTypeWithDefault_Name(
+            boosted_trees::EQUALITY_DEFAULT_RIGHT);
+    for (int f_dim = 0; f_dim < feature_dims; ++f_dim) {
+      for (int bucket = 0; bucket < num_buckets; ++bucket) {
+        ConstVectorMap stats_vec(&stats_summary(node_id, f_dim, bucket, 0),
+                                 logits_dim + hessian_dim);
+        Eigen::VectorXf curr_grad = stats_vec.head(logits_dim);
+        Eigen::VectorXf curr_hess = stats_vec.tail(hessian_dim);
+        MaybeUpdateBestSplit(curr_grad, total_grad - curr_grad, curr_hess,
+                             total_hess - curr_hess, logits_dim, bucket, f_dim,
+                             l1, l2, kEqualityDefaultRight, best_gain,
+                             best_bucket, best_f_dim, best_split_type,
+                             best_contrib_for_left, best_contrib_for_right);
+      }
+    }
+  }
+
+  void MaybeUpdateBestSplit(const Eigen::VectorXf& grad_for_left,
+                            const Eigen::VectorXf& grad_for_right,
+                            const Eigen::VectorXf& hess_for_left,
+                            const Eigen::VectorXf& hess_for_right,
+                            const int32 logits_dim, const int32 bucket,
+                            const int32 f_dim, const float l1, const float l2,
+                            const string split_type, float* best_gain,
+                            int32* best_bucket, int32* best_f_dim,
+                            string* best_split_type,
+                            Eigen::VectorXf* best_contrib_for_left,
+                            Eigen::VectorXf* best_contrib_for_right) {
+    // Left child.
+    Eigen::VectorXf contrib_for_left(logits_dim);
+    float gain_for_left;
+    CalculateWeightsAndGains(grad_for_left, hess_for_left, l1, l2,
+                             &contrib_for_left, &gain_for_left);
+    Eigen::VectorXf contrib_for_right(logits_dim);
+    float gain_for_right;
+    CalculateWeightsAndGains(grad_for_right, hess_for_right, l1, l2,
+                             &contrib_for_right, &gain_for_right);
+    if (GainIsLarger(gain_for_left + gain_for_right, *best_gain)) {
+      *best_gain = gain_for_left + gain_for_right;
+      *best_bucket = bucket;
+      *best_f_dim = f_dim;
+      *best_contrib_for_left = contrib_for_left;
+      *best_contrib_for_right = contrib_for_right;
+      *best_split_type = split_type;
+    }
+  }
+
   int logits_dim_;
+  string split_type_;
 };
 
 // v2 op that supports multi-class.
@@ -594,7 +703,7 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output("split_with_default_directions",
                                           {num_nodes}, &output_split_types_t));
-    auto output_split_types_vec = output_split_types_t->vec<string>();
+    auto output_split_types_vec = output_split_types_t->vec<tstring>();
 
     // Sets output tensors from vectors.
     for (int i = 0; i < num_nodes; ++i) {
@@ -630,7 +739,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     float best_gain = std::numeric_limits<float>::lowest();
     float best_bucket = 0;
     float best_f_dim = 0;
-    string best_split_type = INEQUALITY_DEFAULT_LEFT;
+    string best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+        boosted_trees::INEQUALITY_DEFAULT_LEFT);
     float best_contrib_for_left = 0.0;
     float best_contrib_for_right = 0.0;
     // the sum of gradients including default bucket.
@@ -697,7 +807,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
           best_gain = gain_for_left + gain_for_right;
           best_bucket = bucket_id;
           best_f_dim = feature_dim;
-          best_split_type = INEQUALITY_DEFAULT_RIGHT;
+          best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_RIGHT);
           best_contrib_for_left = contrib_for_left[0];
           best_contrib_for_right = contrib_for_right[0];
         }
@@ -714,7 +825,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
           best_gain = gain_for_left + gain_for_right;
           best_bucket = bucket_id;
           best_f_dim = feature_dim;
-          best_split_type = INEQUALITY_DEFAULT_LEFT;
+          best_split_type = boosted_trees::SplitTypeWithDefault_Name(
+              boosted_trees::INEQUALITY_DEFAULT_LEFT);
           best_contrib_for_left = contrib_for_left[0];
           best_contrib_for_right = contrib_for_right[0];
         }
@@ -808,6 +920,7 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesMakeStatsSummary").Device(DEVICE_CPU),
                         BoostedTreesMakeStatsSummaryOp);
 
+// TODO(tanzheny): Add an option of default value into the API interface.
 class BoostedTreesAggregateStatsOp : public OpKernel {
  public:
   explicit BoostedTreesAggregateStatsOp(OpKernelConstruction* const context)
@@ -845,18 +958,22 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     const int64 feature_dims = feature_t->dim_size(1);
 
     // Allocate temporary stats tensor (Rank 4), upcasting to double.
+    // A default bucket is added to the end for missing/default values.
     Tensor temp_stats_double_t;
-    OP_REQUIRES_OK(context, context->allocate_temp(DT_DOUBLE,
-                                                   {max_splits_, feature_dims,
-                                                    num_buckets_, stats_dims},
-                                                   &temp_stats_double_t));
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(
+                     DT_DOUBLE,
+                     {max_splits_, feature_dims, num_buckets_ + 1, stats_dims},
+                     &temp_stats_double_t));
     auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
     temp_stats_double.setZero();
 
     for (int i = 0; i < batch_size; ++i) {
       const int32 node = node_ids(i);
       for (int feature_dim = 0; feature_dim < feature_dims; ++feature_dim) {
-        const int32 bucket = feature(i, feature_dim);
+        const int32 feature_value = feature(i, feature_dim);
+        const int32 bucket =
+            (feature_value == -1) ? num_buckets_ : feature_value;
         for (int stat_dim = 0; stat_dim < logits_dims; ++stat_dim) {
           temp_stats_double(node, feature_dim, bucket, stat_dim) +=
               gradients(i, stat_dim);

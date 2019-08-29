@@ -63,6 +63,8 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
+string PrintName(const string& name, bool print_ids);
+
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
  public:
@@ -88,7 +90,8 @@ class HloPrintOptions {
         print_control_dependencies_(true),
         canonicalize_instruction_names_(false),
         indent_amount_(0),
-        is_in_nested_computation_(false) {}
+        is_in_nested_computation_(false),
+        print_ids_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -116,6 +119,22 @@ class HloPrintOptions {
         .set_print_percent(false)
         .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true);
+  }
+
+  // Options to produce a fingerprint of an HLO.
+  static HloPrintOptions Fingerprint() {
+    return HloPrintOptions()
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
+        .set_print_metadata(false)
+        .set_print_backend_config(false)
+        .set_compact_operands(true)
+        .set_print_operand_names(false)
+        .set_print_operand_shape(true)
+        .set_print_program_shape(false)
+        .set_print_percent(false)
+        .set_print_control_dependencies(false)
+        .set_canonicalize_instruction_names(true)
+        .set_print_ids(false);
   }
 
   // If true, large constants will be printed out.
@@ -151,6 +170,12 @@ class HloPrintOptions {
   // If true, the operand names will be printed.
   HloPrintOptions& set_print_operand_names(bool value) {
     print_operand_names_ = value;
+    return *this;
+  }
+
+  // If true, all printed names include unique identifiers.
+  HloPrintOptions& set_print_ids(bool value) {
+    print_ids_ = value;
     return *this;
   }
 
@@ -216,6 +241,7 @@ class HloPrintOptions {
   bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
+  bool print_ids() const { return print_ids_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
   bool print_control_dependencies() const {
@@ -242,6 +268,7 @@ class HloPrintOptions {
   bool canonicalize_instruction_names_;
   int indent_amount_;
   bool is_in_nested_computation_;
+  bool print_ids_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -497,14 +524,14 @@ class HloInstruction {
   // For example, we have 4 replicas, then replica_groups={{0,2},{1,3}} means,
   // replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
   //
-  // `all_reduce_id`: for Allreduce nodes from different modules, if they have
-  // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
-  // not be applied cross modules.
+  // `channel_id`: for Allreduce nodes from different modules, if
+  // they have the same channel_id, they will be 'Allreduce'd. If
+  // empty, Allreduce will not be applied cross modules.
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& all_reduce_id);
+      const absl::optional<int64>& channel_id);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -545,7 +572,8 @@ class HloInstruction {
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64, int64>>& source_target_pairs);
+      const std::vector<std::pair<int64, int64>>& source_target_pairs,
+      const absl::optional<int64>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId();
@@ -556,6 +584,11 @@ class HloInstruction {
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
+                                                       HloInstruction* operand);
+
+  // Creates a bitcast instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcast(const Shape& shape,
                                                        HloInstruction* operand);
 
   // Creates a bitcast conversion instruction, where operand is the data to
@@ -718,8 +751,9 @@ class HloInstruction {
 
   // Creates a reshape instruction, where the operand is flattened row-major
   // order and then reshaped to the given result shape.
-  static std::unique_ptr<HloInstruction> CreateReshape(const Shape& shape,
-                                                       HloInstruction* operand);
+  static std::unique_ptr<HloInstruction> CreateReshape(
+      const Shape& shape, HloInstruction* operand,
+      int64 inferred_dimension = -1);
 
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
@@ -760,13 +794,14 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      absl::Span<const int64> slice_sizes);
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
 
   static std::unique_ptr<HloInstruction> CreateScatter(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
-      const ScatterDimensionNumbers& scatter_dim_numbers);
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted);
 
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
@@ -952,7 +987,7 @@ class HloInstruction {
       return false;
     }
 
-    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Two AllReduces are Identical if they have the same channel_id.
     // Their operands don't have to be Identical.
     if (!IsCrossModuleAllReduce()) {
       // Use an explicit loop rather than ContainerEquals, because copying
@@ -1428,8 +1463,9 @@ class HloInstruction {
   // Delegates to HloFftInstruction::fft_length.
   const std::vector<int64>& fft_length() const;
 
-  // Delegates to HloSendRecvInstruction::channel_id.
-  int64 channel_id() const;
+  // Delegates to HloChannelInstruction::channel_id.
+  absl::optional<int64> channel_id() const;
+  void set_channel_id(const absl::optional<int64>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
   virtual const std::vector<int64>& dimensions() const {
@@ -1444,6 +1480,9 @@ class HloInstruction {
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64 dimension() const;
+
+  // Delegates to HloReshapeInstruction::inferred_dimension.
+  int64 inferred_dimension() const;
 
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
@@ -1571,10 +1610,6 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::all_reduce_id.
-  absl::optional<int64> all_reduce_id() const;
-  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
-
   // Returns data on the window in a windowed operation such as
   // convolution.
   virtual const Window& window() const {
@@ -1661,7 +1696,35 @@ class HloInstruction {
   // Old methods kept for smooth subclassing transition END.
 
  protected:
-  enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+  // Indicates how an instruction uses a value (such as an operand).
+  //
+  // Does it (a) not use it, (b) use it, or (c) use it multiple times?
+  //
+  // In the kUse case (i.e. (b)) we may either (i) use the value elementwise, or
+  // (ii) use it after having permuted it somehow, e.g. through a reshape.  If
+  // the use is a permuting use, we set permutation_instr to the instruction
+  // that did the permuting.
+  struct UseKind {
+    enum Kind { kReuse, kUse, kNoUse };
+
+    // Creates a UseKind that represents a use that permutes an instruction's
+    // elements according to the given instruction.
+    static UseKind Permuting(const HloInstruction* permutation_instr) {
+      UseKind k(kUse);
+      k.permutation_instr = permutation_instr;
+      return k;
+    }
+
+    UseKind(Kind kind)  // NOLINT intentionally nonexplicit
+        : kind(kind), permutation_instr(nullptr) {}
+
+    bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
+    bool friend operator==(Kind a, UseKind b) { return b == a; }
+
+    Kind kind;
+    const HloInstruction* permutation_instr;
+  };
+
   // Helper class for computing OperandElementUse for kFusion.
   class FusionReusesParamElements;
 

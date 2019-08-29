@@ -36,7 +36,8 @@ class PruningHParamsTest(test.TestCase):
   PARAM_LIST = [
       "name=test", "threshold_decay=0.9", "pruning_frequency=10",
       "sparsity_function_end_step=100", "target_sparsity=0.9",
-      "weight_sparsity_map=[conv1:0.8,conv2/kernel:0.8]"
+      "weight_sparsity_map=[conv1:0.8,conv2/kernel:0.8]",
+      "block_dims_map=[dense1:4x4,dense2:1x4]"
   ]
   TEST_HPARAMS = ",".join(PARAM_LIST)
 
@@ -57,8 +58,6 @@ class PruningHParamsTest(test.TestCase):
     self.assertEqual(p._spec.pruning_frequency, 10)
     self.assertEqual(p._spec.sparsity_function_end_step, 100)
     self.assertAlmostEqual(p._spec.target_sparsity, 0.9)
-    self.assertEqual(p._weight_sparsity_map["conv1"], 0.8)
-    self.assertEqual(p._weight_sparsity_map["conv2/kernel"], 0.8)
 
   def testInitWithExternalSparsity(self):
     with self.cached_session():
@@ -130,7 +129,7 @@ class PruningTest(test.TestCase):
       mask_val = new_mask.eval()
       self.assertAllEqual(mask_val, expected_mask)
 
-  def testBlockMasking(self):
+  def testBlockMaskingWithNonnegativeBlockDimensions(self):
     param_list = ["block_height=2", "block_width=2", "threshold_decay=0"]
 
     weights_avg = constant_op.constant(
@@ -139,6 +138,25 @@ class PruningTest(test.TestCase):
     weights_max = constant_op.constant(
         [[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
          [0.0, -0.3, 0.0, -0.4]])
+    expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                     [1., 1., 1., 1.], [1., 1., 1., 1.]]
+
+    self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
+                       expected_mask)
+    self._blockMasking(param_list + ["block_pooling_function=AVG"], weights_avg,
+                       expected_mask)
+
+  def testBlockMaskingWithNegativeBlockDimensions(self):
+    param_list = ["block_height=1", "block_width=-1", "threshold_decay=0"]
+
+    weights_avg = constant_op.constant([[0.1, 0.1, 0.1, 0.1],
+                                        [0.2, 0.2, 0.2, 0.2],
+                                        [0.3, 0.3, 0.3, 0.3],
+                                        [0.3, 0.3, 0.4, 0.4]])
+    weights_max = constant_op.constant([[0.1, 0.0, 0.1, 0.0],
+                                        [0.0, 0.1, 0.0, 0.2],
+                                        [0.3, 0.0, 0.3, 0.0],
+                                        [0.0, -0.3, 0.0, 0.4]])
     expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                      [1., 1., 1., 1.], [1., 1., 1., 1.]]
 
@@ -247,6 +265,40 @@ class PruningTest(test.TestCase):
 
       self.assertAllClose(
           session.run(pruning.get_weight_sparsity()), [0.6, 0.75, 0.6])
+
+  def testPerLayerBlockSparsity(self):
+    param_list = [
+        "block_dims_map=[layer1/weights:1x1,layer2/weights:1x2]",
+        "block_pooling_function=AVG", "threshold_decay=0.0"
+    ]
+
+    test_spec = ",".join(param_list)
+    pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
+
+    with variable_scope.variable_scope("layer1"):
+      w1 = constant_op.constant([[-0.1, 0.1], [-0.2, 0.2]], name="weights")
+      pruning.apply_mask(w1)
+
+    with variable_scope.variable_scope("layer2"):
+      w2 = constant_op.constant([[0.1, 0.1, 0.3, 0.3], [0.2, 0.2, 0.4, 0.4]],
+                                name="weights")
+      pruning.apply_mask(w2)
+
+    sparsity = variables.VariableV1(0.5, name="sparsity")
+
+    p = pruning.Pruning(pruning_hparams, sparsity=sparsity)
+    mask_update_op = p.mask_update_op()
+    with self.cached_session() as session:
+      variables.global_variables_initializer().run()
+      session.run(mask_update_op)
+      mask1_eval = session.run(pruning.get_masks()[0])
+      mask2_eval = session.run(pruning.get_masks()[1])
+
+      self.assertAllEqual(
+          session.run(pruning.get_weight_sparsity()), [0.5, 0.5])
+
+      self.assertAllEqual(mask1_eval, [[0.0, 0.0], [1., 1.]])
+      self.assertAllEqual(mask2_eval, [[0, 0, 1., 1.], [0, 0, 1., 1.]])
 
 
 if __name__ == "__main__":

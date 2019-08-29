@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -39,7 +40,7 @@ class FullyConnectedBuffers : public NodeShader {
         ctx.node->operation.attributes);
 
     // TODO(akulik): check that input has h,w == 1,1
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"src_depth", IntegralDivideRoundUp(attr.weights.shape.i, 4)},
     };
 
@@ -64,6 +65,7 @@ class FullyConnectedBuffers : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/
         uint3(1, 1, IntegralDivideRoundUp(attr.weights.shape.o, 4)),
         /*workgroup=*/uint3(),

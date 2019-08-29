@@ -432,6 +432,27 @@ class GrowTreeEnsembleOp : public OpKernel {
       if (tree_config->nodes_size() <= 0) {
         ensemble_resource->RemoveLastTree();
       }
+
+      if ((ensemble_resource->num_trees() == 0 ||
+           ensemble_resource->LastTreeMetadata()->is_finalized()) &&
+          learner_config_.has_each_tree_start() &&
+          learner_config_.each_tree_start().nodes_size() > 0) {
+        DCHECK_GT(learner_config_.each_tree_start_num_layers(), 0);
+        // Add new dummy tree
+        boosted_trees::trees::DecisionTreeConfig* const tree_config =
+            ensemble_resource->AddNewTree(learning_rate);
+        VLOG(1) << "Adding a new forced tree";
+
+        *tree_config = learner_config_.each_tree_start();
+
+        boosted_trees::trees::DecisionTreeMetadata* const tree_metadata =
+            ensemble_resource->LastTreeMetadata();
+
+        tree_metadata->set_is_finalized(max_tree_depth <= 1);
+        tree_metadata->set_num_tree_weight_updates(1);
+        tree_metadata->set_num_layers_grown(
+            learner_config_.each_tree_start_num_layers());
+      }
     }
   }
 
@@ -447,7 +468,7 @@ class GrowTreeEnsembleOp : public OpKernel {
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
       const auto& partition_ids = partition_ids_list[handler_id].vec<int32>();
       const auto& gains = gains_list[handler_id].vec<float>();
-      const auto& splits = splits_list[handler_id].vec<string>();
+      const auto& splits = splits_list[handler_id].vec<tstring>();
       OP_REQUIRES(context, partition_ids.size() == gains.size(),
                   errors::InvalidArgument(
                       "Inconsistent partition Ids and gains tensors: ",
@@ -481,7 +502,7 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Find best split per partition going through every feature candidate.
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
       const auto& gains = gains_list[handler_id].vec<float>();
-      const auto& splits = splits_list[handler_id].vec<string>();
+      const auto& splits = splits_list[handler_id].vec<tstring>();
       OP_REQUIRES(context, gains.size() == 1,
                   errors::InvalidArgument(
                       "Gains size must be one for oblivious weak learner: ",

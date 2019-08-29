@@ -5,8 +5,8 @@
 # do not link against restricted binary blobs.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
@@ -694,6 +694,7 @@ cc_library(
         ":device_memory",
         ":device_memory_allocator",
         ":platform",
+        ":stream_executor_headers",
         "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",

@@ -243,8 +243,12 @@ class MarkForCompilationPassImpl {
   // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
   // `CreateClusters` do most of the heavy lifting.
 
-  // Initialize some internal data structures.
-  Status Initialize();
+  // Initializes some internal data structures.
+  //
+  // If this returns false then Initialize exited early (either because there is
+  // nothing to do or we saw a graph that we can't handle) and not all the
+  // fields in this MarkForCompilationPassImpl instance are set up.
+  StatusOr<bool> Initialize();
 
   // Runs through the entire cluster graph in post-order and calls `fn(from,
   // to)` on each edge.  `fn(from, to)` is expected to return true if it was
@@ -584,7 +588,7 @@ Status IgnoreResourceOpForSafetyAnalysis(
   return Status::OK();
 }
 
-Status MarkForCompilationPassImpl::Initialize() {
+StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   TF_RET_CHECK(!initialized_ && !edges_contracted_ && !clusters_created_);
   initialized_ = true;
 
@@ -592,13 +596,15 @@ Status MarkForCompilationPassImpl::Initialize() {
 
   if (compilation_candidates_.empty()) {
     VLOG(2) << "No compilable candidates";
-    return Status::OK();
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
                       CreateCycleDetectionGraph(graph_, &cycles_graph_));
   if (!cycle_detection_graph_ok) {
-    return Status::OK();
+    // TODO(sanjoy): This should be logged via the XLA activity listener.
+    VLOG(2) << "Could not form cycle detection graph";
+    return false;
   }
 
   if (!debug_options_.ignore_deadness_checks) {
@@ -609,7 +615,8 @@ Status MarkForCompilationPassImpl::Initialize() {
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
   // cluster.
-  return BuildInitialClusterSet();
+  TF_RETURN_IF_ERROR(BuildInitialClusterSet());
+  return true;
 }
 
 template <typename FnTy>
@@ -670,8 +677,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
-      !DataTypeIsInteger(dtype)) {
+  if (!TryGetNodeAttr(n->def(), "dtype", &dtype) || !DataTypeIsInteger(dtype)) {
     return false;
   }
 
@@ -688,7 +694,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+  if (!TryGetNodeAttr(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -721,6 +727,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
 
   // Phase 0: contract metadata operations with their producer.
 
+  VLOG(4) << "Running phase 0";
   TF_RETURN_IF_ERROR(
       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
         // Shape consuming operations are desirable to cluster with their
@@ -740,9 +747,10 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
         return TryToContractEdge(from, to);
       }).status());
 
-  // Phase 1: apply a heuristic to ensure that we don't mess up clusterig due to
-  // "group_deps".  After this phase most edges should have been contracted.
+  // Phase 1: apply a heuristic to ensure that we don't mess up clustering due
+  // to "group_deps".  After this phase most edges should have been contracted.
 
+  VLOG(4) << "Running phase 1";
   TF_RETURN_IF_ERROR(
       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
         // We split out this phase to get good clustering in the presence of a
@@ -798,6 +806,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   //    leaving it more contractable. That is, if we have
   //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
   //    to contract Y->Z if Y->Z was not contractible originally.
+  VLOG(4) << "Running phase 2";
   TF_RETURN_IF_ERROR(ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
                        return TryToContractEdge(from, to);
                      }).status());
@@ -806,6 +815,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // post order gives a maximal clustering) holds.  Once the linear time
   // post-order scheme has been battle tested we can move this to happen only in
   // debug builds.
+  VLOG(2) << "Checking idempotence";
   TF_ASSIGN_OR_RETURN(bool changed,
                       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
                         return TryToContractEdge(from, to);
@@ -913,20 +923,35 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
 }
 
 absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
-  // Look for an _XlaScope on both nodes.  If both nodes have a scope and the
-  // scopes do not match, do not cluster along this edge. This restriction is
-  // overridden if the global_jit_level_ is ON. If even one of the nodes lacks
-  // an _XlaScope attribute, then it is treated as a "bridge" and a cluster may
-  // be created along it.  We may want to restrict this behavior to require all
-  // nodes marked with _XlaCompile=true to also have a _XlaScope property set
-  // (and raise an error otherwise); but for now we don't do this.
-  if (global_jit_level_ != OptimizerOptions::OFF) {
-    return absl::nullopt;
-  }
+  // Look for either _XlaScope or _XlaInternalScope on both nodes to guide
+  // clustering.  If both nodes have a scope and the scopes do not match, do
+  // not cluster along this edge.  If even one of the nodes lacks a scope
+  // attribute, then it is treated as a "bridge" and a cluster may be created
+  // along it.
+  //
+  // The difference between _XlaScope and _XlaInternalScope is that _XlaScope is
+  // provided by users through jit_scope APIs, while _XlaInternalScope is
+  // automatically generated by the ClusterScopingPass when auto_jit is on.  As
+  // such, we respect _XlaScope only when auto_jit is off, while respecting
+  // _XlaInternalScope only when auto_jit is on.
+  //
+  // We may want to restrict the _XlaScope behavior to require all nodes marked
+  // with _XlaCompile=true to also have a _XlaScope property set (and raise an
+  // error otherwise); but for now we don't do this.
 
-  string scope;
-  if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
-    return scope;
+  if (global_jit_level_ != OptimizerOptions::OFF) {
+    // If global_jit_level_ is ON, respect only _XlaInternalScope.
+    const string& scope =
+        GetNodeAttrString(node->attrs(), kXlaInternalScopeAttr);
+    if (!scope.empty()) {
+      return scope;
+    }
+  } else {
+    // If global_jit_level_ is OFF, respect only _XlaScope.
+    const string& scope = GetNodeAttrString(node->attrs(), kXlaScopeAttr);
+    if (!scope.empty()) {
+      return scope;
+    }
   }
 
   return absl::nullopt;
@@ -959,8 +984,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     int effective_cluster_size =
         (node->IsIdentity() || node->IsConstant()) ? 0 : 1;
 
-    bool has_functional_control_flow =
-        node->type_string() == "While" || node->type_string() == "If";
+    bool has_functional_control_flow = node->IsWhileNode() || node->IsIfNode();
 
     absl::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {
@@ -989,7 +1013,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     bool is_xla_compile_attr_true = false;
 
     bool xla_compile_attr;
-    if (GetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr).ok()) {
+    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 
@@ -1320,7 +1344,13 @@ Status MarkForCompilationPassImpl::Run() {
   // some one-time work.
   XLA_SCOPED_LOGGING_TIMER_LEVEL("MarkForCompilationPassImpl::Run", 1);
 
-  TF_RETURN_IF_ERROR(Initialize());
+  TF_ASSIGN_OR_RETURN(bool initialized, Initialize());
+  if (!initialized) {
+    // Initialization exited early which means this instance of
+    // MarkForCompilationPassImpl is not set up to run the subsequent phases.
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
   TF_RETURN_IF_ERROR(CreateClusters());
   TF_RETURN_IF_ERROR(DumpDebugInfo());
@@ -1447,9 +1477,9 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
     }
   }
 
-  VLOG(2) << "*** Inter-Cluster edges:";
+  VLOG(4) << "*** Inter-Cluster edges:";
   if (cluster_names_to_print.empty()) {
-    VLOG(2) << "   [none]";
+    VLOG(4) << "   [none]";
   }
 
   auto print_edge_info_set_for_cluster = [&](absl::string_view cluster_name,
@@ -1457,19 +1487,19 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
                                              absl::string_view desc) {
     auto it = edge_info_map.find(cluster_name);
     if (it != edge_info_map.end()) {
-      VLOG(2) << "  " << it->second.size() << " " << desc << " edges";
+      VLOG(4) << "  " << it->second.size() << " " << desc << " edges";
       for (const auto& edge_info_count_pair : it->second) {
-        VLOG(2) << "   " << edge_info_count_pair.first.GetClusterName() << " "
+        VLOG(4) << "   " << edge_info_count_pair.first.GetClusterName() << " "
                 << edge_info_count_pair.first.node_name << " # "
                 << edge_info_count_pair.second;
       }
     } else {
-      VLOG(2) << "  No " << desc << " edges.";
+      VLOG(4) << "  No " << desc << " edges.";
     }
   };
 
   for (absl::string_view cluster_name : cluster_names_to_print) {
-    VLOG(2) << " ** Cluster " << cluster_name;
+    VLOG(4) << " ** Cluster " << cluster_name;
     print_edge_info_set_for_cluster(cluster_name, incoming_edge_infos,
                                     "incoming");
     print_edge_info_set_for_cluster(cluster_name, outgoing_edge_infos,
@@ -1532,9 +1562,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level_ != OptimizerOptions::OFF);
 
-  if (!should_compile &&
-      registration->autoclustering_policy ==
-          XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+  if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
     static std::once_flag once;
     std::call_once(once, [] {

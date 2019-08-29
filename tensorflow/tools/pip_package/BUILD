@@ -13,7 +13,7 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
@@ -80,11 +80,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/python/data/kernel_tests:filter_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:model_subclassing_test_util",
+    "//tensorflow/python/keras:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
@@ -113,7 +114,6 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/distribute/python:distribute_test_lib_pip",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
-    "//tensorflow/contrib/gan:gan",
     "//tensorflow/contrib/graph_editor:graph_editor_pip",
     "//tensorflow/contrib/keras:keras",
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
@@ -170,6 +170,7 @@ filegroup(
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft2d/readme2d.txt",
         "@flatbuffers//:LICENSE.txt",
+        "@functools32_archive//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
@@ -178,11 +179,14 @@ filegroup(
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
+        "@kissfft//:COPYING",
         "@lmdb//:LICENSE",
+        "@local_config_mlir//:LICENSE.TXT",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png_archive//:LICENSE",

@@ -25,6 +25,7 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -51,10 +52,10 @@ from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
@@ -240,6 +241,7 @@ class _SaveableView(object):
         asset_initializers_by_resource={},
         asset_filename_map={},
         asset_index={})
+
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.CapturableResource):
         # pylint: disable=protected-access
@@ -248,6 +250,20 @@ class _SaveableView(object):
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
+      elif ds_values.is_distributed_variable(obj):
+        # Put both the distributed variable and component variable handles in
+        # `captured_tensor_node_ids`.
+        # Also create a new distributed variable for `object_map` with newly
+        # created component variables.
+        new_vars = []
+        for v in obj.values:
+          new_variable = resource_variable_ops.copy_to_graph_uninitialized(v)
+          object_map[v] = new_variable
+          new_vars.append(new_variable)
+          resource_map[v.handle] = new_variable.handle
+          self.captured_tensor_node_ids[v.handle] = node_id
+        object_map[obj] = obj._clone_with_new_values(new_vars)  # pylint: disable=protected-access
+        self.captured_tensor_node_ids[obj] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(obj)
         object_map[obj] = new_variable
@@ -258,6 +274,11 @@ class _SaveableView(object):
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
     for concrete_function in self.concrete_functions:
+      if not concrete_function.graph.saveable:
+        raise ValueError(
+            ("Unable to save function {name} for the following reason(s):\n" +
+             "\n".join(concrete_function.graph.saving_errors))
+            .format(name=concrete_function.name))
       for capture in concrete_function.captured_inputs:
         if (tensor_util.is_tensor(capture)
             and capture.dtype not in _UNCOPIABLE_DTYPES
@@ -306,7 +327,7 @@ def _map_captures_to_created_tensors(
       `resource_map`.
   """
   export_captures = []
-  for exterior, interior in original_captures.items():
+  for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
       raise AssertionError(
@@ -393,13 +414,12 @@ def _call_function_with_mapped_captures(function, args, resource_map):
   """Calls `function` in the exported graph, using mapped resource captures."""
   export_captures = _map_captures_to_created_tensors(
       function.graph.captures, resource_map)
-  mapped_inputs = args + export_captures
   # Calls the function quite directly, since we have new captured resource
   # tensors we need to feed in which weren't part of the original function
   # definition.
   # pylint: disable=protected-access
-  outputs = function._build_call_outputs(
-      function._inference_function.call(context.context(), mapped_inputs))
+  outputs = function._call_flat(args, export_captures)
+  # pylint: enable=protected-access
   return outputs
 
 

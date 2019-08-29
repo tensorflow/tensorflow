@@ -181,7 +181,7 @@ class HloTestBase : public ::testing::Test {
   // Executable::ExecuteOnStreams.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64 num_replicas, bool use_threads);
+      int64 num_replicas, bool use_threads, bool run_hlo_passes = false);
 
   // Same as above, but uses specified device assignment.
   StatusOr<std::vector<Literal>> ExecuteReplicated(

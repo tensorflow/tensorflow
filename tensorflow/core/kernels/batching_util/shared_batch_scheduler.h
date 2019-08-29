@@ -109,7 +109,7 @@ class SharedBatchScheduler
 
     // The number of threads to use to process batches.
     // Must be >= 1, and should be tuned carefully.
-    int num_batch_threads = port::NumSchedulableCPUs();
+    int num_batch_threads = port::MaxParallelism();
 
     // The environment to use.
     // (Typically only overridden by test code.)

@@ -37,7 +37,12 @@ def load_data():
   """
   dirname = 'cifar-10-batches-py'
   origin = 'https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
-  path = get_file(dirname, origin=origin, untar=True)
+  path = get_file(
+      dirname,
+      origin=origin,
+      untar=True,
+      file_hash=
+      '6d958be074577803d12ecdefd02955f39262c83c16fe9348329d7fe0b5c001ce')
 
   num_train_samples = 50000
 
@@ -58,5 +63,8 @@ def load_data():
   if K.image_data_format() == 'channels_last':
     x_train = x_train.transpose(0, 2, 3, 1)
     x_test = x_test.transpose(0, 2, 3, 1)
+
+  x_test = x_test.astype(x_train.dtype)
+  y_test = y_test.astype(y_train.dtype)
 
   return (x_train, y_train), (x_test, y_test)

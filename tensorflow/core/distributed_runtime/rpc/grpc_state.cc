@@ -26,6 +26,8 @@ const char* ToString(UntypedStreamingRPCState::Tag::TagType tag_type) {
       return "kRequestWriteCompleted";
     case UntypedStreamingRPCState::Tag::TagType::kResponseReadCommpleted:
       return "kResponseReadCommpleted";
+    case UntypedStreamingRPCState::Tag::TagType::kCallFinished:
+      return "kCallFinished";
   }
 }
 
@@ -44,6 +46,9 @@ void UntypedStreamingRPCState::Tag::OnCompleted(bool ok) {
     case TagType::kResponseReadCommpleted:
       streaming_state_->ResponseReadCompleted(ok);
       break;
+    case TagType::kCallFinished:
+      streaming_state_->CallFinished(ok);
+      break;
   }
   streaming_state_->Unref();  // Ref acquired when tag was handed to grpc.
 }
@@ -54,6 +59,8 @@ void Exchange::Complete(Status status) {
       status.Update(errors::Internal("could not parse rpc response"));
     }
   }
+  VLOG(3) << "Completing exchange " << DebugString() << " with "
+          << status.ToString();
   cb_(status);
 }
 
@@ -76,12 +83,14 @@ const char* ToString(Exchange::State state) {
 }
 
 string Exchange::DebugString() const {
-  return absl::StrFormat("%p@%s", this, ToString(state_));
+  return absl::StrFormat("%p@%s_%s", this, ToString(state_), debug_string_);
 }
 
 void ExchangeQueue::Emplace(const ::grpc::ByteBuffer& request_buf,
-                            protobuf::Message* response, StatusCallback cb) {
-  exchanges_.emplace(exchanges_.end(), request_buf, response, std::move(cb));
+                            protobuf::Message* response, StatusCallback cb,
+                            string debug_string) {
+  exchanges_.emplace(exchanges_.end(), request_buf, response, std::move(cb),
+                     debug_string);
 }
 
 Exchange* ExchangeQueue::GetReadyForRequestWriting() {

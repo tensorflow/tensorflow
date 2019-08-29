@@ -22,6 +22,7 @@ from tensorflow.python import tf2
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
@@ -576,10 +577,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -594,10 +592,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `other` modulo `self`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     return other % self
 
   def __lt__(self, other):
@@ -1244,11 +1239,13 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape([Dimension(None)] * rank)
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([]).")
 def scalar():
   """Returns a shape representing a scalar."""
   return TensorShape([])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([length]).")
 def vector(length):
   """Returns a shape representing a vector.
 
@@ -1261,6 +1258,7 @@ def vector(length):
   return TensorShape([length])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([rows, cols]).")
 def matrix(rows, cols):
   """Returns a shape representing a matrix.
 

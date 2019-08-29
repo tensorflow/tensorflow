@@ -35,7 +35,7 @@ ENTRY Conv {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   HloComputation* entry_computation = module->entry_computation();
 

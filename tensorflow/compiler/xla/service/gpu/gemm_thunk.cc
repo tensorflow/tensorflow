@@ -37,12 +37,14 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
                      const BufferAllocation::Slice &output_buffer,
                      bool implements_whole_instruction,
-                     const HloInstruction *hlo_instruction)
+                     const HloInstruction *hlo_instruction,
+                     const GemmBackendConfig &backend_config)
     : Thunk(Kind::kGemm, hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
-      implements_whole_instruction_(implements_whole_instruction) {}
+      implements_whole_instruction_(implements_whole_instruction),
+      backend_config_(backend_config) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   auto get_device_address = [&](const BufferAllocation::Slice &slice) {
@@ -53,8 +55,9 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction(), lhs_data, rhs_data, output_data,
-                 params.stream, implements_whole_instruction_, params.profiler);
+  return RunGemm(hlo_instruction(), backend_config_, lhs_data, rhs_data,
+                 output_data, params.stream, implements_whole_instruction_,
+                 params.profiler);
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -66,10 +69,10 @@ struct MatrixDescriptor {
   int64 num_cols;
 };
 
-template <typename Element>
+template <typename Element, typename AlphaType>
 static bool DoGemmWithAlgorithm(
     int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, double alpha, double beta,
+    MatrixDescriptor output_matrix, AlphaType alpha, double beta,
     se::Stream *stream, absl::optional<se::blas::AlgorithmType> algorithm,
     se::blas::ProfileResult *output_profile_result) {
   DCHECK(!output_matrix.transpose);
@@ -152,8 +155,9 @@ static bool DoGemmWithAlgorithm(
       .ok();
 }
 
-Status RunGemm(const HloInstruction *gemm, se::DeviceMemoryBase lhs_buffer,
-               se::DeviceMemoryBase rhs_buffer,
+Status RunGemm(const HloInstruction *gemm,
+               const GemmBackendConfig &backend_config,
+               se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
                HloExecutionProfiler *profiler,
@@ -162,8 +166,6 @@ Status RunGemm(const HloInstruction *gemm, se::DeviceMemoryBase lhs_buffer,
   VLOG(2) << "Executing a GemmThunk";
   CHECK(IsCublasGemm(*gemm));
 
-  TF_ASSIGN_OR_RETURN(GemmBackendConfig backend_config,
-                      gemm->backend_config<GemmBackendConfig>());
   const Shape &output_shape = gemm->shape();
   const HloInstruction *lhs = gemm->operand(0);
   const HloInstruction *rhs = gemm->operand(1);
@@ -259,30 +261,43 @@ Status RunGemm(const HloInstruction *gemm, se::DeviceMemoryBase lhs_buffer,
     return backend_config.selected_algorithm();
   }();
 
-  double alpha = backend_config.alpha();
-  CHECK_NE(alpha, 0);
+  complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
   double beta = backend_config.beta();
 
-  auto fn = [&]() {
+  bool launch_ok = [&]() {
     switch (output_shape.element_type()) {
       case F16:
-        return &DoGemmWithAlgorithm<Eigen::half>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<Eigen::half, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case F32:
-        return &DoGemmWithAlgorithm<float>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<float, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case F64:
-        return &DoGemmWithAlgorithm<double>;
+        CHECK_EQ(alpha.imag(), 0);
+        return DoGemmWithAlgorithm<double, double>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+            beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case C64:
-        return &DoGemmWithAlgorithm<std::complex<float>>;
+        return DoGemmWithAlgorithm<complex64, complex64>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix,
+            static_cast<complex64>(alpha), beta, stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       case C128:
-        return &DoGemmWithAlgorithm<std::complex<double>>;
+        return DoGemmWithAlgorithm<complex128, complex128>(
+            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
+            stream, best_algorithm,
+            /*output_profile_result=*/profile_result);
       default:
         LOG(FATAL) << "Unsupported type.";
     }
   }();
-
-  bool launch_ok = fn(batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha,
-                      beta, stream, best_algorithm,
-                      /*output_profile_result=*/profile_result);
 
   if (!launch_ok) {
     return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);

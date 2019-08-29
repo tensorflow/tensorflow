@@ -193,10 +193,12 @@ class Generator(tracking.AutoTrackable):
       copy_from: a generator to be copied from.
       state: a vector of dtype STATE_TYPE representing the initial state of the
         RNG, whose length and semantics are algorithm-specific.
-      alg: the RNG algorithm. Possible values are RNG_ALG_PHILOX for the
-        Philox algorithm and RNG_ALG_THREEFRY for the ThreeFry
+      alg: the RNG algorithm. Possible values are `RNG_ALG_PHILOX` for the
+        Philox algorithm and `RNG_ALG_THREEFRY` for the ThreeFry
         algorithm (see paper 'Parallel Random Numbers: As Easy as 1, 2, 3'
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
+        Note `RNG_ALG_PHILOX` guarantees the same numbers are produced (given
+        the same random state) across all architextures (CPU, GPU, XLA etc).
     """
     if copy_from is not None:
       # All other arguments should be None
@@ -543,7 +545,7 @@ class Generator(tracking.AutoTrackable):
     # Probability of success.
     probs = [0.8, 0.9]
 
-    rng = tf.random.experimental.Generator(seed=234)
+    rng = tf.random.experimental.Generator.from_seed(seed=234)
     binomial_samples = rng.binomial(shape=[2], counts=counts, probs=probs)
     ```
 
@@ -551,15 +553,20 @@ class Generator(tracking.AutoTrackable):
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      counts: A 0/1-D Tensor or Python value`. The counts of the binomial
-        distribution.
-      probs: A 0/1-D Tensor or Python value`. The probability of success for the
-        binomial distribution.
+      counts: A 0/1-D Tensor or Python value. The counts of the binomial
+        distribution.  Must be broadcastable with the leftmost dimension
+        defined by `shape`.
+      probs: A 0/1-D Tensor or Python value. The probability of success for the
+        binomial distribution.  Must be broadcastable with the leftmost
+        dimension defined by `shape`.
       dtype: The type of the output. Default: tf.int32
       name: A name for the operation (optional).
 
     Returns:
-      A tensor of the specified shape filled with random binomial values.
+      samples: A Tensor of the specified shape filled with random binomial
+        values.  For each i, each samples[i, ...] is an independent draw from
+        the binomial distribution on counts[i] trials with probability of
+        success probs[i].
     """
     dtype = dtypes.as_dtype(dtype)
     with ops.name_scope(name, "binomial", [shape, counts, probs]) as name:

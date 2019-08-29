@@ -73,7 +73,7 @@ Status BinaryObjectParser::Parse(uint8_t** ptr,
     }
     case STRING: {
       out_tensors->emplace_back(cpu_allocator(), DT_STRING, TensorShape({}));
-      out_tensors->back().scalar<string>()() = ParseString(ptr);
+      out_tensors->back().scalar<tstring>()() = ParseString(ptr);
       break;
     }
     case DATE: {
@@ -150,7 +150,7 @@ Status BinaryObjectParser::Parse(uint8_t** ptr,
       out_tensors->emplace_back(cpu_allocator(), DT_STRING,
                                 TensorShape({length}));
       for (int32_t i = 0; i < length; i++)
-        out_tensors->back().vec<string>()(i) = ParseString(ptr);
+        out_tensors->back().vec<tstring>()(i) = ParseString(ptr);
       break;
     }
     case DATE_ARR: {

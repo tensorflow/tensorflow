@@ -41,6 +41,10 @@ class GraphInfo {
   // num_nodes().
   virtual const TfLiteNode& node(size_t index) const = 0;
 
+  // Returns an implementation-speicfic node index which may be different from
+  // index.
+  virtual size_t node_index(size_t index) const = 0;
+
   // Returns the indices of the input tensors.
   virtual const std::vector<int>& inputs() const = 0;
 

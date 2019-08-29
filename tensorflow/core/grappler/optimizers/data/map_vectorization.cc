@@ -49,6 +49,7 @@ constexpr char kCeilOp[] = "Ceil";
 constexpr char kBatchOp[] = "BatchDataset";
 constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
@@ -456,7 +457,7 @@ bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
   const NodeDef*& map_node = *map_node_output;
   const NodeDef*& input_node = *input_node_output;
 
-  if (node.op() == kExperimentalMapAndBatchOp) {
+  if (node.op() == kMapAndBatchOp || node.op() == kExperimentalMapAndBatchOp) {
     batch_node = &node;
     map_node = &node;
   } else if (node.op() == kBatchOp || node.op() == kBatchV2Op) {
@@ -559,7 +560,8 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
       original_branch.push_back(optional_prefetch_node);
       vectorized_branch.push_back(optional_new_prefetch_node);
     }
-    if (batch_node->op() != kExperimentalMapAndBatchOp) {
+    if (batch_node->op() != kMapAndBatchOp &&
+        batch_node->op() != kExperimentalMapAndBatchOp) {
       original_branch.push_back(batch_node);
     }
 

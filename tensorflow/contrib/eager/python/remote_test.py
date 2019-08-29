@@ -23,10 +23,10 @@ import os
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.contrib.eager.python import parameter_server
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -49,9 +49,8 @@ def run_sync_and_async(f):
 
   @functools.wraps(f)
   def decorator(self, *args, **kwargs):
-    # TODO(b/117110239): Re-enable.
-    # with context.execution_mode(context.ASYNC):
-    #   f(self, *args, **kwargs)
+    with context.execution_mode(context.ASYNC):
+      f(self, *args, **kwargs)
 
     with context.execution_mode(context.SYNC):
       f(self, *args, **kwargs)
@@ -102,6 +101,16 @@ class RemoteExecutionTest(test.TestCase):
                 self._cached_server1_target, self._cached_server2_target
             ],
             task_index=0))
+
+  @test_util.run_gpu_only
+  @run_sync_and_async
+  def testGpuToRemoteCopy(self):
+    with ops.device("gpu:0"):
+      x = array_ops.ones([2, 2])
+    with ops.device("job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME):
+      y = math_ops.matmul(x, x)
+
+    np.testing.assert_array_equal([[2, 2], [2, 2]], y.numpy())
 
   @run_sync_and_async
   def testDefunMatmul(self):

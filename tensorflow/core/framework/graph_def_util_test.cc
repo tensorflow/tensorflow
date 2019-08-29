@@ -35,6 +35,17 @@ Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
   return s;
 }
 
+// We can create a Graph containing a namespaced Op
+TEST(AddToGraphTest, MakeGraphDefWithNamespacedOpName) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("Project>SomeOp"), op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(NodeDefBuilder("node", "Project>SomeOp", &registry)
+                   .Finalize(graph_def.add_node()));
+}
+
 // Producer and consumer have default for an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
   OpList op_list;

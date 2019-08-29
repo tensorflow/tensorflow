@@ -32,13 +32,15 @@ class TakeDataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
 
-  const DataTypeVector& output_dtypes() const;
+  const DataTypeVector& output_dtypes() const override;
 
-  const std::vector<PartialTensorShape>& output_shapes() const;
+  const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  string DebugString() const;
+  string DebugString() const override;
 
-  int64 Cardinality() const;
+  int64 Cardinality() const override;
+
+  Status CheckExternalState() const override;
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,

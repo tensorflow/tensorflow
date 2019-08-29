@@ -215,6 +215,15 @@ StatusOr<HloInstruction*> MakeConcatHlo(
       HloInstruction::CreateConcatenate(concat_shape, operands, dimension));
 }
 
+HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
+  CHECK_NE(hlo->shape().element_type(), type);
+  Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  hlo =
+      hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo));
+  CHECK_EQ(hlo->shape().element_type(), type);
+  return hlo;
+}
+
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
                                      const DotDimensionNumbers& dim_numbers,
                                      const PrecisionConfig& precision_config) {

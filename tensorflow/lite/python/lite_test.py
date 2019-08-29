@@ -101,14 +101,14 @@ class FromConstructor(TestModels):
     self.assertTrue(converter._has_valid_tensors())
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
-class FromSessionTest(TestModels):
+class FromSessionTest(TestModels, parameterized.TestCase):
 
   def testFloat(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -135,9 +135,10 @@ class FromSessionTest(TestModels):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testString(self):
-    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
-    out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
+      out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -164,13 +165,14 @@ class FromSessionTest(TestModels):
     # interpreter API after support has been added.
 
   def testQuantization(self):
-    in_tensor_1 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess,
@@ -210,13 +212,14 @@ class FromSessionTest(TestModels):
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
   def testQuantizationInvalid(self):
-    in_tensor_1 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess,
@@ -232,11 +235,12 @@ class FromSessionTest(TestModels):
 
   def testIntermediateInputArray(self):
     """Convert a model from an intermediate input array."""
-    in_tensor_init = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    in_tensor_final = in_tensor_init + in_tensor_init
-    out_tensor = in_tensor_final + in_tensor_final
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_init = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      in_tensor_final = in_tensor_init + in_tensor_init
+      out_tensor = in_tensor_final + in_tensor_final
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor_final],
@@ -263,9 +267,10 @@ class FromSessionTest(TestModels):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testSizeNoneInvalid(self):
-    in_tensor = array_ops.placeholder(dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Test None as shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -277,9 +282,10 @@ class FromSessionTest(TestModels):
 
   def testScalarValid(self):
     # Construct a graph using a scalar (empty shape) input.
-    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Test conversion with the scalar input shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -313,10 +319,11 @@ class FromSessionTest(TestModels):
     self.assertTrue((expected_output == output_data).all())
 
   def testSizeInvalid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, None, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, None, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Test invalid shape. None after 1st dimension.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -329,10 +336,11 @@ class FromSessionTest(TestModels):
         str(error.exception))
 
   def testBatchSizeValid(self):
-    in_tensor = array_ops.placeholder(
-        shape=[None, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -357,15 +365,43 @@ class FromSessionTest(TestModels):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testBatchSizeNonZero(self):
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[None, 4], dtype=dtypes.float32, name='input1')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[4, 10], dtype=dtypes.float32, name='input2')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2)
+      sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess,
+                                                  [in_tensor_1, in_tensor_2],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEqual('input1', input_details[0]['name'])
+    self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+    self.assertEqual('input2', input_details[1]['name'])
+    self.assertTrue(([4, 10] == input_details[1]['shape']).all())
 
   def testFreezeGraph(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    var = variable_scope.get_variable(
-        'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + var
-    sess = session.Session()
-    sess.run(_global_variables_initializer())
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      var = variable_scope.get_variable(
+          'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + var
+      sess = session.Session()
+      sess.run(_global_variables_initializer())
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -391,12 +427,12 @@ class FromSessionTest(TestModels):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
-  # TODO(nupurgarg): Verify value of contents in GraphViz.
   def testGraphviz(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -405,12 +441,12 @@ class FromSessionTest(TestModels):
     graphviz_output = converter.convert()
     self.assertTrue(graphviz_output)
 
-  # TODO(nupurgarg): Verify value of contents in GraphViz.
   def testDumpGraphviz(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -441,10 +477,11 @@ class FromSessionTest(TestModels):
     self.assertTrue(num_items_graphviz_video > num_items_graphviz)
 
   def testInferenceInputType(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -472,10 +509,11 @@ class FromSessionTest(TestModels):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
 
   def testDefaultRangesStats(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -505,15 +543,16 @@ class FromSessionTest(TestModels):
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
   def testPostTrainingQuantizeDeprecatedAttribute(self):
-    in_tensor_1 = array_ops.placeholder(
-        shape=[33, 33], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = constant_op.constant(
-        np.random.uniform(low=-10., high=10., size=(33, 33)),
-        shape=[33, 33],
-        dtype=dtypes.float32,
-        name='inputB')
-    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+      sess = session.Session()
 
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
@@ -528,17 +567,18 @@ class FromSessionTest(TestModels):
 
   def testPostTrainingQuantize(self):
     np.random.seed(0)
-    # We need the tensor to have more than 1024 elements for quantize_weights
-    # to kick in. Thus, the [33, 33] shape.
-    in_tensor_1 = array_ops.placeholder(
-        shape=[33, 33], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = constant_op.constant(
-        np.random.uniform(low=-10., high=10., size=(33, 33)),
-        shape=[33, 33],
-        dtype=dtypes.float32,
-        name='inputB')
-    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      # We need the tensor to have more than 1024 elements for quantize_weights
+      # to kick in. Thus, the [33, 33] shape.
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [in_tensor_1],
@@ -574,8 +614,9 @@ class FromSessionTest(TestModels):
     return (inp, output, calibration_gen)
 
   def testPostTrainingCalibrateAndQuantize(self):
-    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
-    sess = session.Session()
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
@@ -604,8 +645,9 @@ class FromSessionTest(TestModels):
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
   def testCalibrateAndQuantizeBuiltinInt8(self):
-    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
-    sess = session.Session()
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
@@ -636,9 +678,145 @@ class FromSessionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  @parameterized.named_parameters(
+      # Quantize to Float16 even if rep data provided.
+      ('UseRepresentativeData', True, False, True, False, False),
+      # Quantize to Float16 if no rep data provided.
+      ('NoRepresentativeData', False, False, True, False, False),
+      # Post training quantization if both rep data and int8 included.
+      ('UseRepresentativeDataIncludeInt8', True, True, False, False, True),
+      # Error if no rep data and int8 included.
+      ('NoRepresentativeDataIncludeInt8', False, True, False, True, False))
+  def testQuantizeFloat16(self, use_rep_data, include_int8,
+                          is_float16_quantized, is_error,
+                          is_post_training_quantized):
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+    interpreter = Interpreter(model_content=float_tflite)
+    interpreter.allocate_tensors()
+    self.assertEqual(interpreter.get_tensor_details()[0]['name'], 'Conv2D_bias')
+    self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                     lite.constants.FLOAT)
+    # Convert model to quantized version
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    if include_int8:
+      quantized_converter.target_spec.supported_types.append(
+          lite.constants.INT8)
+    if use_rep_data:
+      quantized_converter.representative_dataset = calibration_gen
+
+    if is_error:
+      with self.assertRaises(ValueError) as error:
+        quantized_converter.convert()
+      self.assertEqual(
+          'representative_dataset is required when specifying '
+          'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+    else:
+      quantized_tflite = quantized_converter.convert()
+      self.assertTrue(quantized_tflite)
+      interpreter = Interpreter(model_content=quantized_tflite)
+      interpreter.allocate_tensors()
+      self.assertEqual(interpreter.get_tensor_details()[0]['name'],
+                       'Conv2D_bias')
+
+      if is_float16_quantized:
+        # Verify that bias constant is float16 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.FLOAT16)
+      elif is_post_training_quantized:
+        # Verify that bias constants is int32 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.INT32)
+      else:
+        raise ValueError('Invalid test options.')
+
+  def testInvalidQuantizeFloat16(self):
+    with ops.Graph().as_default():
+      inp, output, _ = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Specify float16 quantization
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    # Specifiy only int8 builtin ops
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'TFLITE_BUILTINS_INT8 requires smallest supported type to be INT8.',
+        str(error.exception))
+
+  def testInvalidPostTrainingQuantize(self):
+    np.random.seed(0)
+    with ops.Graph().as_default():
+      # We need the tensor to have more than 1024 elements for quantize_weights
+      # to kick in. Thus, the [33, 33] shape.
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+      sess = session.Session()
+
+    # Attempt to convert to quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    # Restricting to int8 type only
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    # A representative dataset is required for full fixed point quantization.
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'representative_dataset is required when specifying '
+        'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+  def testPostTrainingCalibrateAndQuantizeFloatNotAllowed(self):
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+    # Ensure that restricting supported types to int8 forces
+    # all fixed point ops/tensors in converter.
+    self.assertTrue(quantized_converter._is_int8_target_required())
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
   def testPostTrainingCalibrateAndQuantizeInt8Inputs(self):
-    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
-    sess = session.Session()
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
@@ -670,10 +848,11 @@ class FromSessionTest(TestModels):
 
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
@@ -686,9 +865,11 @@ class FromSessionTest(TestModels):
 
   def testMultipleOutputNodeNames(self):
     """Tests converting a graph with an op that have multiple outputs."""
-    input_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
-    out0, out1, out2, out3 = array_ops.split(input_tensor, [1, 1, 1, 1], axis=0)
-    sess = session.Session()
+    with ops.Graph().as_default():
+      input_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
+      out0, out1, out2, out3 = array_ops.split(
+          input_tensor, [1, 1, 1, 1], axis=0)
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [input_tensor],
@@ -757,10 +938,11 @@ class FromSessionTest(TestModels):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testInferenceInputOutputTypeFloatDefault(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -785,11 +967,12 @@ class FromSessionTest(TestModels):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
 
   def testInferenceInputOutputTypeQuantizedUint8Default(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor + in_tensor, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor + in_tensor, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -816,11 +999,12 @@ class FromSessionTest(TestModels):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
 
   def testReusingConverterWithDifferentPostTrainingQuantization(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor + in_tensor, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor + in_tensor, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -838,16 +1022,18 @@ class FromSessionTest(TestModels):
     # This is a regression test for the case where shape of dynamic output
     # tensors changes between invocations.
     # See also https://github.com/tensorflow/tensorflow/issues/26549
-    input_tensor = array_ops.placeholder(shape=[1, 1], dtype=dtypes.float32)
-    input2_tensor = array_ops.placeholder(shape=[1], dtype=dtypes.float32)
+    with ops.Graph().as_default():
+      input_tensor = array_ops.placeholder(shape=[1, 1], dtype=dtypes.float32)
+      input2_tensor = array_ops.placeholder(shape=[1], dtype=dtypes.float32)
 
-    # The bug is triggered only when dynamic tensor is intermediate. Putting
-    # some other ops around it.
-    neg = math_ops.negative(input2_tensor)
-    padding = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int32)
-    output_tensor = array_ops.pad(input_tensor, padding) + neg
+      # The bug is triggered only when dynamic tensor is intermediate. Putting
+      # some other ops around it.
+      neg = math_ops.negative(input2_tensor)
+      padding = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int32)
+      output_tensor = array_ops.pad(input_tensor, padding) + neg
 
-    sess = session.Session()
+      sess = session.Session()
+
     converter = lite.TFLiteConverter.from_session(
         sess, [input_tensor, padding, input2_tensor], [output_tensor])
     tflite_model = converter.convert()
@@ -894,14 +1080,14 @@ class FromSessionTest(TestModels):
     self.assertIn((func + 'add'), converter._debug_info.traces)
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
@@ -933,10 +1119,11 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testFloatWithShapesArray(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
@@ -959,12 +1146,13 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
 
   def testFreezeGraph(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    var = variable_scope.get_variable(
-        'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + var
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      var = variable_scope.get_variable(
+          'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + var
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
@@ -979,10 +1167,11 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
                      str(error.exception))
 
   def testPbtxt(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pbtxt')
@@ -1035,10 +1224,11 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
         str(error.exception))
 
   def testFloatTocoConverter(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
@@ -1057,10 +1247,11 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testGraphDebugInfo(self):
     """Test a frozen graph doesn't have debug info captured."""
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    _ = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      _ = in_tensor + in_tensor
+      sess = session.Session()
 
     # Write graph to file.
     graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
@@ -1165,21 +1356,21 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
         str(error.exception))
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSavedModelTest(TestModels):
 
   def _createSavedModel(self, shape):
     """Create a simple SavedModel."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
-    with session.Session() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=shape, dtype=dtypes.float32, name='inputB')
-      in_tensor_2 = array_ops.placeholder(
-          shape=shape, dtype=dtypes.float32, name='inputA')
-      out_tensor = in_tensor_1 + in_tensor_2
-      inputs = {'x': in_tensor_1, 'y': in_tensor_2}
-      outputs = {'z': out_tensor}
-      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=shape, dtype=dtypes.float32, name='inputB')
+        in_tensor_2 = array_ops.placeholder(
+            shape=shape, dtype=dtypes.float32, name='inputA')
+        out_tensor = in_tensor_1 + in_tensor_2
+        inputs = {'x': in_tensor_1, 'y': in_tensor_2}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     return saved_model_dir
 
   def testSimpleModel(self):
@@ -1334,7 +1525,6 @@ class MyAddLayer(keras.layers.Layer):
     return config
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
 class FromKerasFile(TestModels, parameterized.TestCase):
 
   def setUp(self):
@@ -1447,6 +1637,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
   def testSequentialModelInputArray(self):
     """Test a Sequential tf.keras model testing input arrays argument."""
+    ops.disable_eager_execution()
     self._getSequentialModel()
 
     # Invalid input array raises error.
@@ -1491,6 +1682,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
   def testSequentialModelOutputArray(self):
     """Test a Sequential tf.keras model testing output arrays argument."""
+    ops.disable_eager_execution()
     self._getSequentialModel()
 
     # Invalid output array raises error.
@@ -1616,12 +1808,10 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 2)
-    self.assertEqual('dense_1/BiasAdd', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
-    self.assertEqual('dropout/Identity', output_details[1]['name'])
     self.assertEqual(np.float32, output_details[1]['dtype'])
     self.assertTrue(([1, 4] == output_details[1]['shape']).all())
     self.assertEqual((0., 0.), output_details[1]['quantization'])
@@ -1669,7 +1859,6 @@ class FromKerasFile(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
-    self.assertEqual('time_distributed/Reshape_1', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1708,17 +1897,18 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       self.assertValidDebugInfo(converter._debug_info)
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
 class GrapplerTest(TestModels):
 
   def testConstantFolding(self):
+    ops.disable_eager_execution()
     # Constant folding handles the tf.broadcast_to operation which was not
     # supported by the TFLite at the time this test was added.
-    in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
-    y_const = constant_op.constant([1., 2., 3.])
-    y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
-    out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
+      y_const = constant_op.constant([1., 2., 3.])
+      y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+      out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
+      sess = session.Session()
 
     # Convert model.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],

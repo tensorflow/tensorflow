@@ -98,28 +98,6 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
-# We also need to bring in keras if available in tensorflow_core
-# Above import * doesn't import it as __all__ is updated before keras is hooked
-try:
-  from tensorflow_core import keras
-except ImportError as e:
-  pass
-
-# Similarly for estimator, but only if this file is not read via a
-# import tensorflow_estimator (same reasoning as above when forwarding estimator
-# separatedly from the rest of the top level modules)
-if not _root_estimator:
-  try:
-    from tensorflow_core import estimator
-  except ImportError as e:
-    pass
-
-# And again for tensorboard (comes as summary)
-try:
-  from tensorflow_core import summary
-except ImportError as e:
-  pass
-
 # In V1 API we need to print deprecation messages
 from tensorflow.python.util import deprecation_wrapper as _deprecation
 if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):

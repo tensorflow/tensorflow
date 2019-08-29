@@ -34,10 +34,8 @@ from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent as gradient_descent_v1
-from tensorflow.python.training import rmsprop as rmsprop_v1
 
 
 class KerasMultiWorkerOptimizerTest(test_base.IndependentWorkerTestBase,
@@ -135,17 +133,6 @@ class KerasMultiWorkerOptimizerTest(test_base.IndependentWorkerTestBase,
     self.run_optimizer_comparison_with_simple_bias_model(
         strategy_cls, gradient_descent.SGD,
         gradient_descent_v1.GradientDescentOptimizer)
-
-  @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          strategy_cls=[collective_strategy.CollectiveAllReduceStrategy],
-          required_gpus=[0, 1]))
-  def test_rmsprop_optimizer_v1_v2_comparison(self, strategy_cls):
-    self.skipTest('There is an issue in collective ops (b/127700538) that '
-                  'prevent us from running this test with rmsprop optimizers.')
-    self.run_optimizer_comparison_with_simple_bias_model(
-        strategy_cls, rmsprop.RMSprop, rmsprop_v1.RMSPropOptimizer)
 
 
 if __name__ == '__main__':

@@ -123,12 +123,14 @@ struct TopKFunctor<CPUDevice, T> {
           input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);
       // Get the indices of the maximum values.
       for (int r = 0; r < num_rows; ++r) {
+        indices(r, 0) = 0;
         for (int c = 0; c < num_cols; ++c) {
           if (values(r, 0) == input(r, c)) {
             indices(r, 0) = c;
             break;
           }
         }
+        values(r, 0) = input(r, indices(r, 0));
       }
 
       return Status::OK();

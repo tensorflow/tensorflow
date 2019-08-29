@@ -180,8 +180,9 @@ class ModelCorrectnessTest(
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           make_model=[make_image_model, make_lstm_model, make_embedding_model],
+          steps_per_epoch=[50, None],
           required_gpus=[0, 1]))
-  def test_correctness(self, strategy_cls, make_model):
+  def test_correctness(self, strategy_cls, make_model, steps_per_epoch):
 
     def _worker_fn(initial_weights=None, results_without_ds=None):
       # Make sure Session is cleared at each run
@@ -195,7 +196,7 @@ class ModelCorrectnessTest(
 
       # TODO(b/129363441): Remove `steps_per_epoch`.
       results['training'] = model.fit(
-          data, steps_per_epoch=50, epochs=2).history
+          data, steps_per_epoch=steps_per_epoch, epochs=2).history
       results['trained_weights'] = model.get_weights()
 
       eval_data = self.make_dataset(inputs, targets)

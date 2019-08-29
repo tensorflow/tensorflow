@@ -59,13 +59,13 @@ class SubstrOp : public OpKernel {
       // Do not need to do broadcasting
 
       // Reshape input
-      auto input = input_tensor.flat<string>();
+      auto input = input_tensor.flat<tstring>();
       // Allocate output
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output("output", input_tensor.shape(),
                                               &output_tensor));
-      auto output = output_tensor->flat<string>();
+      auto output = output_tensor->flat<tstring>();
       if (is_scalar) {
         // Perform Op with scalar pos/len
         const T pos =
@@ -141,8 +141,8 @@ class SubstrOp : public OpKernel {
       switch (ndims) {
         case 1: {
           // Reshape tensors according to BCast results
-          auto input = input_tensor.shaped<string, 1>(bcast.x_reshape());
-          auto output = output_tensor->shaped<string, 1>(bcast.result_shape());
+          auto input = input_tensor.shaped<tstring, 1>(bcast.x_reshape());
+          auto output = output_tensor->shaped<tstring, 1>(bcast.result_shape());
           auto pos_shaped = pos_tensor.shaped<T, 1>(bcast.y_reshape());
           auto len_shaped = len_tensor.shaped<T, 1>(bcast.y_reshape());
 
@@ -150,8 +150,8 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          TTypes<string, 1>::Tensor input_bcast =
-              input_buffer.shaped<string, 1>(bcast.result_shape());
+          TTypes<tstring, 1>::Tensor input_bcast =
+              input_buffer.shaped<tstring, 1>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<1>(bcast.x_bcast()));
 
@@ -204,8 +204,8 @@ class SubstrOp : public OpKernel {
         }
         case 2: {
           // Reshape tensors according to BCast results
-          auto input = input_tensor.shaped<string, 2>(bcast.x_reshape());
-          auto output = output_tensor->shaped<string, 2>(bcast.result_shape());
+          auto input = input_tensor.shaped<tstring, 2>(bcast.x_reshape());
+          auto output = output_tensor->shaped<tstring, 2>(bcast.result_shape());
           auto pos_shaped = pos_tensor.shaped<T, 2>(bcast.y_reshape());
           auto len_shaped = len_tensor.shaped<T, 2>(bcast.y_reshape());
 
@@ -213,8 +213,8 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          TTypes<string, 2>::Tensor input_bcast =
-              input_buffer.shaped<string, 2>(bcast.result_shape());
+          TTypes<tstring, 2>::Tensor input_bcast =
+              input_buffer.shaped<tstring, 2>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
 

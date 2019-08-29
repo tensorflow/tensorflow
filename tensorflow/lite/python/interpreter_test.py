@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import ctypes
 import io
+import sys
 import numpy as np
 import six
 
@@ -235,12 +236,17 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def _TestInterpreter(self, model_path, options=None):
     """Test wrapper function that creates an interpreter with the delegate."""
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
     delegate = interpreter_wrapper.load_delegate(self._delegate_file, options)
     return interpreter_wrapper.Interpreter(
         model_path=model_path, experimental_delegates=[delegate])
 
   def testDelegate(self):
     """Tests the delegate creation and destruction."""
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+
     interpreter = self._TestInterpreter(model_path=self._model_file)
     lib = interpreter._delegates[0]._library
 
@@ -255,6 +261,9 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_num_delegates_invoked(), 1)
 
   def testMultipleInterpreters(self):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
     lib = delegate._library
 
@@ -289,7 +298,40 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_num_delegates_destroyed(), 1)
     self.assertEqual(lib.get_num_delegates_invoked(), 2)
 
+  def testDestructionOrder(self):
+    """Make sure internal _interpreter object is destroyed before delegate."""
+    # Track which order destructions were doned in
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    destructions = []
+    def register_destruction(x):
+      destructions.append(x)
+      return 0
+    # Make a wrapper for the callback so we can send this to ctypes
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file)
+    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
+    destroy_callback = prototype(register_destruction)
+    delegate._library.set_destroy_callback(destroy_callback)
+    # Make an interpreter with the delegate
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'), experimental_delegates=[delegate])
+
+    class InterpreterDestroyCallback(object):
+
+      def __del__(self):
+        register_destruction('interpreter')
+
+    interpreter._interpreter.stuff = InterpreterDestroyCallback()
+    # Destroy both delegate and interpreter
+    del delegate
+    del interpreter
+    # check the interpreter was destroyed before the delegate
+    self.assertEqual(destructions, ['interpreter', 'test_delegate'])
+
   def testOptions(self):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
     delegate_a = interpreter_wrapper.load_delegate(self._delegate_file)
     lib = delegate_a._library
 
@@ -319,7 +361,10 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_options_counter(), 2)
 
   def testFail(self):
-    with self.assertRaisesRegexp(ValueError, 'Failed to load delegate from .*'):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    with self.assertRaisesRegexp(
+        ValueError, 'Failed to load delegate from .*\nFail argument sent.'):
       interpreter_wrapper.load_delegate(
           self._delegate_file, options={'fail': 'fail'})
 

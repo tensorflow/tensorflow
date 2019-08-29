@@ -94,11 +94,11 @@ TEST_F(RestoreOpTest, RestoreSimple) {
 
     // Input #0 is the file name
     Tensor input_0(DT_STRING, TensorShape({}));
-    input_0.scalar<string>()() = filename;
+    input_0.scalar<tstring>()() = filename;
     inputs.push_back({nullptr, &input_0});
 
     // Input #1 is the tensor names
-    Tensor input_1 = MakeInput<string>(
+    Tensor input_1 = MakeInput<tstring>(
         TensorShape({static_cast<int>(tensor_names.size())}),
         [&tensor_names](int x) -> string { return tensor_names[x]; });
     inputs.push_back({nullptr, &input_1});
@@ -149,7 +149,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
                                        [](int x) -> int64 { return x - 9; });
     inputs.push_back({nullptr, &input_11});
     // Input #12 is a 1-d string tensor
-    Tensor input_12 = MakeInput<string>(
+    Tensor input_12 = MakeInput<tstring>(
         TensorShape({2}), [](int x) -> string { return x ? "yes" : "no"; });
     inputs.push_back({nullptr, &input_12});
     // Input #13 is a 1-d complex64 tensor
@@ -188,10 +188,10 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d bool tensor
   {
     MakeRestoreOp(DT_BOOL);
-    AddInput<string>(TensorShape({}),
-                     [&filename](int x) -> string { return filename; });
-    AddInput<string>(TensorShape({}),
-                     [&](int x) -> string { return tensor_names[0]; });
+    AddInput<tstring>(TensorShape({}),
+                      [&filename](int x) -> tstring { return filename; });
+    AddInput<tstring>(TensorShape({}),
+                      [&](int x) -> tstring { return tensor_names[0]; });
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
@@ -203,7 +203,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d integer tensor
   {
     MakeRestoreOp(DT_INT32);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[1];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[1];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({10});
@@ -215,7 +215,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d float tensor
   {
     MakeRestoreOp(DT_FLOAT);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[2];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[2];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
@@ -227,7 +227,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d double tensor
   {
     MakeRestoreOp(DT_DOUBLE);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[3];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[3];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
@@ -239,7 +239,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d qint8 tensor
   {
     MakeRestoreOp(DT_QINT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[4];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[4];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({3, 2});
@@ -251,7 +251,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d qint32 tensor
   {
     MakeRestoreOp(DT_QINT32);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[5];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[5];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
@@ -264,7 +264,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d uint8 tensor
   {
     MakeRestoreOp(DT_UINT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[6];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[6];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({11});
@@ -276,7 +276,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int8 tensor
   {
     MakeRestoreOp(DT_INT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[7];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[7];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
@@ -288,7 +288,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int16 tensor
   {
     MakeRestoreOp(DT_INT16);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[8];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[8];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
@@ -300,7 +300,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int64 tensor
   {
     MakeRestoreOp(DT_INT64);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[9];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[9];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({9});
@@ -312,18 +312,18 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d string tensor
   {
     MakeRestoreOp(DT_STRING);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[10];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[10];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
-    EXPECT_EQ("no", output->flat<string>()(0));
-    EXPECT_EQ("yes", output->flat<string>()(1));
+    EXPECT_EQ("no", output->flat<tstring>()(0));
+    EXPECT_EQ("yes", output->flat<tstring>()(1));
   }
   // The 2-d complex64 tensor
   {
     MakeRestoreOp(DT_COMPLEX64);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[11];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[11];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
@@ -335,7 +335,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d half tensor
   {
     MakeRestoreOp(DT_HALF);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[12];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[12];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
@@ -348,7 +348,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d empty float tensor
   {
     MakeRestoreOp(DT_FLOAT);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[13];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[13];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 0});
@@ -398,12 +398,12 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
     // Input #0 is the file name
     Tensor input_0(DT_STRING, TensorShape({}));
-    input_0.scalar<string>()() = filename;
+    input_0.scalar<tstring>()() = filename;
     inputs.push_back({nullptr, &input_0});
 
     // Input #1 is the tensor name
     Tensor input_1(DT_STRING, TensorShape({}));
-    input_1.scalar<string>()() = tensor_name;
+    input_1.scalar<tstring>()() = tensor_name;
     inputs.push_back({nullptr, &input_1});
 
     // Input #2 is a 4x16 integer tensor.
@@ -432,13 +432,13 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   MakeRestoreSliceOp(DT_INT32);
   string shape_and_slice = "4 16 0,2:-";
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
   // Add the tensor names
-  AddInput<string>(TensorShape({}),
-                   [&tensor_name](int x) -> string { return tensor_name; });
+  AddInput<tstring>(TensorShape({}),
+                    [&tensor_name](int x) -> tstring { return tensor_name; });
   // Add the tensor shape and slice
-  AddInput<string>(TensorShape({}), [&shape_and_slice](int x) -> string {
+  AddInput<tstring>(TensorShape({}), [&shape_and_slice](int x) -> tstring {
     return shape_and_slice;
   });
 

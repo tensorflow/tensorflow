@@ -85,7 +85,7 @@ def make_decorator(target,
   """
   if decorator_name is None:
     frame = tf_stack.extract_stack(limit=2)[0]
-    decorator_name = frame[2]  # Caller's name
+    decorator_name = frame.name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
@@ -93,6 +93,8 @@ def make_decorator(target,
   # the following attributes.
   if hasattr(target, '__name__'):
     decorator_func.__name__ = target.__name__
+  if hasattr(target, '__qualname__'):
+    decorator_func.__qualname__ = target.__qualname__
   if hasattr(target, '__module__'):
     decorator_func.__module__ = target.__module__
   if hasattr(target, '__dict__'):
@@ -242,6 +244,8 @@ class TFDecorator(object):
     self._decorator_argspec = decorator_argspec
     if hasattr(target, '__name__'):
       self.__name__ = target.__name__
+    if hasattr(target, '__qualname__'):
+      self.__qualname__ = target.__qualname__
     if self._decorator_doc:
       self.__doc__ = self._decorator_doc
     elif hasattr(target, '__doc__') and target.__doc__:

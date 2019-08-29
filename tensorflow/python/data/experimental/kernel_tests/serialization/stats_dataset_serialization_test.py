@@ -44,15 +44,13 @@ class StatsDatasetSerializationTest(
       # pylint: disable=g-long-lambda
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(
-              stats_ops.bytes_produced_stats(["bytes_produced"])),
-          None, 100)
+              stats_ops.bytes_produced_stats(["bytes_produced"])), 100)
       # pylint: enable=g-long-lambda
 
   def testBytesStatsDatasetSaveableCore(self):
     num_outputs = 100
-    self.run_core_tests(
-        lambda: self._build_dataset_bytes_stats(num_outputs),
-        lambda: self._build_dataset_bytes_stats(num_outputs // 10), num_outputs)
+    self.run_core_tests(lambda: self._build_dataset_bytes_stats(num_outputs),
+                        num_outputs)
 
   def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
     return dataset_ops.Dataset.range(num_elements).apply(
@@ -72,25 +70,23 @@ class StatsDatasetSerializationTest(
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(
               stats_ops.latency_stats(["record_latency", "record_latency_2"])),
-          None, 100)
+          100)
       # pylint: enable=g-long-lambda
 
   def testLatencyStatsDatasetSaveableCore(self):
     num_outputs = 100
 
-    self.run_core_tests(
-        lambda: self._build_dataset_latency_stats(num_outputs),
-        lambda: self._build_dataset_latency_stats(num_outputs // 10),
-        num_outputs)
+    self.run_core_tests(lambda: self._build_dataset_latency_stats(num_outputs),
+                        num_outputs)
 
     self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
-                        None, num_outputs)
+                        num_outputs)
 
     tag1 = "record_latency"
     tag2 = "record_latency"
     self.run_core_tests(
         lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
-        None, num_outputs)
+        num_outputs)
 
   def _build_dataset_stats_aggregator(self):
     aggregator = stats_aggregator.StatsAggregator()
@@ -100,7 +96,7 @@ class StatsDatasetSerializationTest(
   def test_set_stats_aggregator_not_support_checkpointing(self):
     with self.assertRaisesRegexp(errors.UnimplementedError,
                                  "does not support checkpointing"):
-      self.run_core_tests(self._build_dataset_stats_aggregator, None, 10)
+      self.run_core_tests(self._build_dataset_stats_aggregator, 10)
 
 
 if __name__ == "__main__":

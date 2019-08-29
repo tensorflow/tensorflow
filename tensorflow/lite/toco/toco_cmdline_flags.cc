@@ -124,6 +124,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.allow_custom_ops.default_value(),
            "If true, allow TOCO to create TF Lite Custom operators for all the "
            "unsupported TensorFlow ops."),
+      Flag("allow_dynamic_tensors", parsed_flags.allow_dynamic_tensors.bind(),
+           parsed_flags.allow_dynamic_tensors.default_value(),
+           "Boolean flag indicating whether the converter should allow models "
+           "with dynamic Tensor shape. When set to False, the converter will "
+           "generate runtime memory offsets for activation Tensors (with 128 "
+           "bits alignment) and error out on models with undetermined Tensor "
+           "shape. (Default: True)"),
       Flag(
           "drop_control_dependency",
           parsed_flags.drop_control_dependency.bind(),

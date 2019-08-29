@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 
@@ -873,35 +874,24 @@ struct LocalResponseNormalizationParams {
 };
 
 struct HardSwishParams {
-  // uint8 inference params
-
-  // Contains input->params.zero_point
-  int32_t input_zero_point;
-
-  // when computing relu6(x+3), we scale input by using bit-shift
-  // to avoid loss of precision when doing computation in uint8 (and 6 might not
-  // be exactly representable in that scale.
-  // This flag contains number of bits to shift.
-  int32_t clip_input_shift;
-
-  // Added to the final output to bring the output's zero_point in order.
-  int32_t output_offset;
-
-  // Scale that converts x*relu6(x+3) computed in input range
-  // into output range x * relu6(x + 3) / 6.
-  // This takes into account that hardswish is quadratic
-  // so we have in_scale^2/out_scale.
-  // This is the integer nominator pat of the multiplier
-  int32_t scale;
-
-  // this is the denominator 2^shift of the multiplier
-  int shift;
-
-  // 3 in input 0-centered scale
-  int32_t three_input;
-
-  // 6 in input 0-centered scale
-  int32_t six_input;
+  // zero_point of the input activations.
+  int16_t input_zero_point;
+  // zero_point of the output activations.
+  int16_t output_zero_point;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // "relu-ish scale", which 3.0/32768.
+  // See the implementation of HardSwishPrepare.
+  int16_t reluish_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int reluish_multiplier_exponent;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // output scale.
+  // See the implementation of HardSwishPrepare.
+  int16_t output_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int output_multiplier_exponent;
 };
 
 struct LogisticParams {
@@ -996,6 +986,9 @@ struct SoftmaxParams {
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
   int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
 };
 
 struct SpaceToBatchParams {

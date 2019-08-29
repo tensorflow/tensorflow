@@ -7,7 +7,7 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_mpi_lib_defines",
     "tf_proto_library_cc",
 )
@@ -74,7 +74,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
     ],
     # TODO: Include?    alwayslink = 1,

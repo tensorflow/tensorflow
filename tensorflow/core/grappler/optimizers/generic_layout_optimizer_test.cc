@@ -17,7 +17,11 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -26,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -43,13 +48,6 @@ constexpr int kHeight = 10;
 constexpr int kDepthIn = 8;
 constexpr int kKernel = 3;
 constexpr int kDepthOut = 16;
-
-RewriterConfig_CustomGraphOptimizer CreateOptimizerConfig() {
-  RewriterConfig_CustomGraphOptimizer optimizer_config =
-      RewriterConfig_CustomGraphOptimizer();
-  optimizer_config.set_name("GenericLayoutOptimizer");
-  return optimizer_config;
-}
 
 Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
                     const string& padding, const string& device) {
@@ -121,7 +119,7 @@ Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
   return conv_backprop_input;
 }
 
-class GenericLayoutOptimizerTest : public ::testing::Test {
+class GenericLayoutOptimizerTest : public GrapplerTest {
  protected:
   void SetUp() override {
     bool gpu_available = GetNumAvailableGPUs() > 0;
@@ -193,8 +191,6 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv2DGraph) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -237,8 +233,6 @@ TEST_F(GenericLayoutOptimizerTest, PreserveFetch) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -261,8 +255,6 @@ TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -286,8 +278,6 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -310,8 +300,6 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -346,8 +334,6 @@ TEST_F(GenericLayoutOptimizerTest, Connectivity) {
   item.graph.mutable_node()->SwapElements(i1_index, i2_index);
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -373,8 +359,6 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
   TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -410,8 +394,6 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
   TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
 
   GenericLayoutOptimizer optimizer;
-  RewriterConfig_CustomGraphOptimizer config = CreateOptimizerConfig();
-  TF_ASSERT_OK(optimizer.Init(&config));
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
@@ -449,6 +431,167 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
   ASSERT_EQ(graph_output->NumRegularFanins(), 1);
   VerifyRegularFaninMatch(graph_output, 0,
                           "fill-0-0-TransposeNCHWToNHWC-LayoutOptimizer", 0);
+}
+
+TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
+#if !GOOGLE_CUDA
+  GTEST_SKIP() << "CUDA is not enabled";
+#endif  // !GOOGLE_CUDA
+  GrapplerItem item;
+  {
+    Scope scope = Scope::NewRootScope().WithDevice("/device:GPU:0");
+    auto input =
+        ops::RandomUniform(scope.WithOpName("input"),
+                           {kBatchSize, kHeight, kWidth, kDepthIn}, DT_FLOAT);
+    // NHWC -> NCHW: {0, 3, 1, 2}
+    auto input_in_transpose =
+        ops::Transpose(scope.WithOpName("input_in_transpose"), input,
+                       ops::Const(scope, {0, 3, 1, 2}, {4}));
+    // NCHW -> NHWC: {0, 2, 3, 1}
+    auto input_out_transpose = ops::Transpose(
+        scope.WithOpName("input_out_transpose"), input_in_transpose,
+        ops::Const(scope, {0, 2, 3, 1}, {4}));
+    Tensor bias_data(DT_FLOAT, TensorShape({kDepthIn}));
+    test::FillIota<float>(&bias_data, 1.0f);
+    auto bias_add = ops::BiasAdd(scope.WithOpName("bias_add"),
+                                 input_out_transpose, bias_data);
+    auto output_in_transpose =
+        ops::Transpose(scope.WithOpName("output_in_transpose"), bias_add,
+                       ops::Const(scope, {0, 3, 1, 2}, {4}));
+    auto output_out_transpose = ops::Transpose(
+        scope.WithOpName("output_out_transpose"), output_in_transpose,
+        ops::Const(scope, {0, 2, 3, 1}, {4}));
+    auto output =
+        ops::Identity(scope.WithOpName("output"), output_out_transpose);
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  }
+
+  GenericLayoutOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  Status status;
+  utils::GraphView graph_view(&output, &status);
+  TF_ASSERT_OK(status);
+
+  auto* input_node = graph_view.GetNode("input");
+  ASSERT_NE(input_node, nullptr);
+
+  auto* input_in_transpose_node = graph_view.GetNode("input_in_transpose");
+  ASSERT_NE(input_in_transpose_node, nullptr);
+  ASSERT_EQ(input_in_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(input_in_transpose_node, 0, input_node->GetName(), 0);
+
+  auto* input_out_transpose_node = graph_view.GetNode("input_out_transpose");
+  ASSERT_NE(input_out_transpose_node, nullptr);
+  ASSERT_EQ(input_out_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(input_out_transpose_node, 0,
+                          input_in_transpose_node->GetName(), 0);
+
+  auto* bias_add_in_transpose_node =
+      graph_view.GetNode("bias_add-0-TransposeNHWCToNCHW-LayoutOptimizer");
+  ASSERT_NE(bias_add_in_transpose_node, nullptr);
+  ASSERT_EQ(bias_add_in_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(bias_add_in_transpose_node, 0,
+                          input_out_transpose_node->GetName(), 0);
+
+  auto* bias_add_node = graph_view.GetNode("bias_add");
+  ASSERT_NE(bias_add_node, nullptr);
+  ASSERT_EQ(bias_add_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(bias_add_node, 0,
+                          bias_add_in_transpose_node->GetName(), 0);
+
+  auto* bias_add_out_transpose_node =
+      graph_view.GetNode("bias_add-0-0-TransposeNCHWToNHWC-LayoutOptimizer");
+  ASSERT_NE(bias_add_out_transpose_node, nullptr);
+  ASSERT_EQ(bias_add_out_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(bias_add_out_transpose_node, 0,
+                          bias_add_node->GetName(), 0);
+
+  auto* output_in_transpose_node = graph_view.GetNode("output_in_transpose");
+  ASSERT_NE(output_in_transpose_node, nullptr);
+  ASSERT_EQ(output_in_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(output_in_transpose_node, 0,
+                          bias_add_out_transpose_node->GetName(), 0);
+
+  auto* output_out_transpose_node = graph_view.GetNode("output_out_transpose");
+  ASSERT_NE(output_out_transpose_node, nullptr);
+  ASSERT_EQ(output_out_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(output_out_transpose_node, 0,
+                          output_in_transpose_node->GetName(), 0);
+
+  auto* output_node = graph_view.GetNode("output");
+  ASSERT_NE(output_node, nullptr);
+  ASSERT_EQ(output_node->NumRegularFanins(), 1);
+  VerifyRegularFaninMatch(output_node, 0, output_out_transpose_node->GetName(),
+                          0);
+}
+
+TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
+  using test::function::NDef;
+
+  GenericLayoutOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  const Tensor kPermuteNhwcToNchw = test::AsTensor<int32>({0, 3, 1, 2});
+  const Tensor kPermuteNchwToNhwc = test::AsTensor<int32>({0, 2, 3, 1});
+  const Tensor kPad = test::AsTensor<int32>({1, 2, 3, 4, 5, 6, 7, 8}, {4, 2});
+
+  GrapplerItem item;
+  item.graph = test::function::GDef({
+      NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+
+      NDef("paddings", "Const", {}, {{"dtype", DT_INT32}, {"value", kPad}}),
+      NDef("perm_nhwc_to_nchw", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermuteNhwcToNchw}}),
+      NDef("perm_nchw_to_nhwc", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermuteNchwToNhwc}}),
+
+      NDef("transpose_0", "Transpose", {"x", "perm_nhwc_to_nchw"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+      NDef("pad", "Pad", {"transpose_0", "paddings"},
+           {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
+      NDef("transpose_1", "Transpose", {"pad", "perm_nchw_to_nhwc"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+      NDef("transpose_2", "Transpose", {"pad", "perm_nchw_to_nhwc"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+  });
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  const Tensor kPermutedPaddings =
+      test::AsTensor<int32>({1, 2, 5, 6, 7, 8, 3, 4}, {4, 2});
+
+  GraphDef expected = test::function::GDef({
+      NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+
+      NDef("paddings", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermutedPaddings}}),
+      NDef("perm_nhwc_to_nchw", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermuteNhwcToNchw}}),
+      NDef("perm_nchw_to_nhwc", "Const", {},
+           {{"dtype", DT_INT32}, {"value", kPermuteNchwToNhwc}}),
+
+      // Transpose nodes replaced by Identity nodes.
+      NDef("transpose_0", "Identity", {"x"}, {{"T", DT_FLOAT}}),
+      NDef("pad", "Pad", {"transpose_0", "paddings"},
+           {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
+      NDef("transpose_1", "Identity", {"pad"}, {{"T", DT_FLOAT}}),
+      NDef("transpose_2", "Identity", {"pad"}, {{"T", DT_FLOAT}}),
+  });
+
+  CompareGraphs(expected, output);
+
+  Tensor x = GenerateRandomTensor<DT_FLOAT>({2, 6, 6, 8});
+  item.fetch = {"transpose_1", "transpose_2"};
+  item.feed.emplace_back("x", x);
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized = item.WithGraph(std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
 }
 
 // TODO(yanzha): Add more complex Graph for test.

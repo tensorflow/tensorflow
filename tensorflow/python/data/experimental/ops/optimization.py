@@ -105,7 +105,7 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._transformations = ops.convert_to_tensor(
         transformations, dtype=dtypes.string, name="transformations")
     variant_tensor = (
-        gen_experimental_dataset_ops.experimental_assert_next_dataset(
+        gen_experimental_dataset_ops.assert_next_dataset(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             self._transformations,
             **self._flat_structure))
@@ -119,7 +119,7 @@ class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
     """See `non_serializable()` for details."""
     self._input_dataset = input_dataset
     variant_tensor = (
-        gen_experimental_dataset_ops.experimental_non_serializable_dataset(
+        gen_experimental_dataset_ops.non_serializable_dataset(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             **self._flat_structure))
     super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)
@@ -156,9 +156,9 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
       A `Dataset` that has the same elements the inputs.
     """
     self._datasets = list(datasets)
-    self._structure = self._datasets[0]._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._datasets[0].element_spec
     variant_tensor = (
-        gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
+        gen_experimental_dataset_ops.choose_fastest_dataset(
             [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
             num_experiments=num_experiments,
             **self._flat_structure))
@@ -168,8 +168,8 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
     return self._datasets
 
   @property
-  def _element_structure(self):
-    return self._datasets[0]._element_structure  # pylint: disable=protected-access
+  def element_spec(self):
+    return self._element_spec
 
 
 class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
@@ -242,14 +242,13 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
-    input_structure = dataset_ops.DatasetStructure(
-        dataset_ops.get_structure(input_dataset))
+    input_structure = dataset_ops.DatasetSpec(input_dataset.element_spec)
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(
             f, "ChooseFastestV2", input_structure=input_structure)
         for f in functions
     ]
-    self._structure = self._funcs[0].output_structure._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._funcs[0].output_structure._element_spec  # pylint: disable=protected-access
 
     self._captured_arguments = []
     for f in self._funcs:
@@ -279,5 +278,5 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
                                                       variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec

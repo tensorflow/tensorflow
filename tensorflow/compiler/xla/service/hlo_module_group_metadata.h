@@ -137,9 +137,8 @@ class HloModuleGroupMetadata {
   // Returns if the given channel id exists in metadata.
   bool HasChannel(int64 channel_id) const;
 
-  // Returns the all-reduce instructions with the same all_reduce_id.
-  const std::vector<HloInstruction*>& GetAllReduceGroup(
-      int64 all_reduce_id) const;
+  // Returns the all-reduce instructions with the same channel_id.
+  const std::vector<HloInstruction*>& GetAllReduceGroup(int64 channel_id) const;
 
   // Returns the computation that contains the peer channel instructions for
   // the given instruction.
@@ -205,7 +204,7 @@ class HloModuleGroupMetadata {
   // Returns all channels in the module group.
   const std::vector<Channel>& channels() const { return channels_; }
 
-  // Returns the maximum channel id or all_reduce_id used in the module group.
+  // Returns the maximum channel id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
 
   HloAliasAnalysis* alias_analysis(HloModule* module) const {

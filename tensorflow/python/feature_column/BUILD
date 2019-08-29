@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "feature_column_py",
@@ -54,6 +53,8 @@ py_library(
 py_library(
     name = "feature_column_v2",
     srcs = [
+        "dense_features.py",
+        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -116,6 +117,15 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "dense_features_test",
+    srcs = ["dense_features_test.py"],
+    additional_deps = [
+        ":feature_column_test_main_lib",
+    ],
+    tags = ["no_pip"],
+)
+
 py_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
@@ -157,6 +167,15 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "dense_features_v2_test",
+    srcs = ["dense_features_v2_test.py"],
+    additional_deps = [
+        ":feature_column_v2_test_main_lib",
+    ],
+    tags = ["no_pip"],
+)
+
 py_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
@@ -182,7 +201,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )

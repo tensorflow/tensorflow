@@ -1,10 +1,27 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+
+# For platform specific build config
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -16,25 +33,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_cuda_library",
-)
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 cc_library(
@@ -297,6 +295,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
         "//tensorflow/core/distributed_runtime:device_resolver_distributed",
         "//tensorflow/core/distributed_runtime:graph_mgr",

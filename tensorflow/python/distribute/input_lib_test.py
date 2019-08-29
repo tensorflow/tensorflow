@@ -37,6 +37,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
@@ -158,7 +159,7 @@ class DistributedIteratorTestBase(test.TestCase):
         iterator = iter(dataset)
       else:
         if isinstance(dataset, input_lib.DistributedDatasetV1):
-          iterator = dataset.make_one_shot_iterator()
+          iterator = dataset.make_initializable_iterator()
         else:
           self.skipTest("unsupported test combination")
 
@@ -219,6 +220,31 @@ class DistributedIteratorTestBase(test.TestCase):
 
 class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                           parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ]))
+  def testMultiDeviceIterInitialize(self, distribution):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
+
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    device_map = values.ReplicaDeviceMap(devices)
+    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+
+    dist_dataset = input_lib.get_distributed_dataset(
+        dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
+
+    iterator = dataset_ops.make_one_shot_iterator(dist_dataset)
+
+    @def_function.function
+    def init_func_for_iter():
+      self.evaluate(iterator.initializer)
+
+    init_func_for_iter()
 
   @combinations.generate(
       combinations.combine(
@@ -392,22 +418,28 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
           input_type=["input_fn", "dataset"],
           api_type=["wrap_into_iterator", "wrap_into_dataset"],
           iteration_type=["get_next", "for_loop"],
+          drop_remainder=[True, False],
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.central_storage_strategy_with_gpu_and_cpu
           ]))
   def testUnevenDatasetBatches(self, input_type, api_type, iteration_type,
-                               distribution):
+                               drop_remainder, distribution):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
     if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(9).batch(2)
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(9).batch(  # pylint: disable=g-long-lambda
+          2, drop_remainder=drop_remainder)
     else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
+      dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(  # pylint: disable=g-long-lambda
+          2, drop_remainder=drop_remainder)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
     # The last global batch only contains data for one replica.
-    expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8], []]]
+    if drop_remainder:
+      expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]]]
+    else:
+      expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8], []]]
     distribution.extended.experimental_enable_get_next_as_optional = True
     self._test_input_iteration(
         input_type,
@@ -757,7 +789,6 @@ class DistributedIteratorMultiWorkerTest(
             strategy,
             sess=sess,
             input_context=input_context)
-        return True
 
     self._run_between_graph_clients(_worker_fn, self._cluster_spec, 0)
 

@@ -350,10 +350,7 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
-  GemmRewriter gemm_rewriter_pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, gemm_rewriter_pass.Run(module.get()));
-  EXPECT_TRUE(changed);
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -366,8 +363,8 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   Shape expected_shape =
       ShapeUtil::MakeShapeWithLayout(F32, {8, 8, 256, 64}, {3, 2, 1, 0});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::CustomCall(op::ShapeWithLayout(expected_shape),
-                             op::ShapeWithLayout(expected_shape)));
+              op::Dot(op::ShapeWithLayout(expected_shape),
+                      op::ShapeWithLayout(expected_shape)));
 }
 
 TEST_F(LayoutAssignmentTest, SortLayout) {
@@ -391,7 +388,7 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
@@ -418,7 +415,7 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),

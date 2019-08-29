@@ -21,11 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import re
 
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 
 # used for register_type_abbreviation and _type_repr below.
 _TYPE_ABBREVIATIONS = {}
@@ -114,7 +114,7 @@ class Sequence(_SingleArgumentType):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, collections.Sequence) and
+    return (isinstance(instance, collections_abc.Sequence) and
             all(isinstance(x, self._type) for x in instance))
 
 
@@ -130,9 +130,9 @@ class Collection(_SingleArgumentType):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, collections.Iterable) and
-            isinstance(instance, collections.Sized) and
-            isinstance(instance, collections.Container) and
+    return (isinstance(instance, collections_abc.Iterable) and
+            isinstance(instance, collections_abc.Sized) and
+            isinstance(instance, collections_abc.Container) and
             all(isinstance(x, self._type) for x in instance))
 
 
@@ -157,7 +157,7 @@ class Mapping(_TwoArgumentType):
 
   def __instancecheck__(self, instance):
     key_type, value_type = self._types  # pylint: disable=unbalanced-tuple-unpacking
-    return (isinstance(instance, collections.Mapping) and
+    return (isinstance(instance, collections_abc.Mapping) and
             all(isinstance(k, key_type) for k in instance.keys()) and
             all(isinstance(k, value_type) for k in instance.values()))
 

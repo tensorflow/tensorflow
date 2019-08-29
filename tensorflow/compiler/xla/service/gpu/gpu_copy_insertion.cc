@@ -35,7 +35,7 @@ namespace xla {
 namespace gpu {
 
 StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
-  CopyInsertion generic_copy_insertion;
+  CopyInsertion generic_copy_insertion(can_share_buffer_);
 
   TF_ASSIGN_OR_RETURN(bool changed, generic_copy_insertion.Run(module));
 

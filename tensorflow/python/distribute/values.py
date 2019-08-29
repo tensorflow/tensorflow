@@ -298,7 +298,7 @@ class WorkerDeviceMap(DeviceMap):
 
 
 class DistributedValues(object):
-  """Holds a map from device to values. Either PerReplica or Mirrored."""
+  """Holds a map from replica to values. Either PerReplica or Mirrored."""
 
   def __init__(self, device_map, values, logical_device=None):
     assert isinstance(device_map, DeviceMap)
@@ -463,7 +463,7 @@ class DistributedDelegate(DistributedValues):
 
 
 class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
-  """Holds a map from device to unsynchronized values."""
+  """Holds a map from replica to unsynchronized values."""
 
   @property
   def _type_spec(self):
@@ -536,7 +536,7 @@ class PerReplicaSpec(type_spec.TypeSpec):
 # DistributedDelegate and so can be used directly in cross-replica mode.
 # TODO(tomhennigan) Should this extend CompositeTensor?
 class Mirrored(DistributedDelegate):
-  """Holds a map from device to values which are kept in sync."""
+  """Holds a map from replica to values which are kept in sync."""
 
   def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
@@ -591,11 +591,11 @@ def _enter_or_assert_strategy(strategy):
 
 
 DistributedVarOp = collections.namedtuple(
-    "DistributedVarOp", ["name", "graph", "type"])
+    "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
-  """Holds a map from device to variables."""
+  """Holds a map from replica to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
@@ -613,6 +613,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     # We need to make _keras_initialized a member of DistributedVariable because
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
+    self._id = ops.uid()
     self._keras_initialized = False
     # Typically, a `DistributedVariable`'s initializer is composed of the
     # initializers of the components variables. However, in some cases, such as
@@ -757,6 +758,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     if distribution_strategy_context.in_cross_replica_context():
       return DistributedVarOp(self.primary.op.name,
                               self.primary.op.graph,
+                              self.primary.op.traceback,
                               self.primary.op.type)
     return self.get().op
 
@@ -774,6 +776,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
+
+  def _clone_with_new_values(self, new_values):
+    raise NotImplementedError("Must be implemented in descendents.")
 
 
 ops.register_dense_tensor_like_type(DistributedVariable)
@@ -854,8 +859,9 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map)
 
   @property
   def device(self):
@@ -885,7 +891,8 @@ class TPUVariableMixin(object):
   @property
   def op(self):
     return DistributedVarOp(
-        self.primary.op.name, self.primary.op.graph, self.primary.op.type)
+        self.primary.op.name, self.primary.op.graph, self.primary.op.traceback,
+        self.primary.op.type)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -968,7 +975,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 class MirroredVariable(DistributedVariable, Mirrored):
-  """Holds a map from device to variables whose values are kept in sync."""
+  """Holds a map from replica to variables whose values are kept in sync."""
 
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
@@ -1067,6 +1074,10 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
+
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -1079,13 +1090,20 @@ ops.register_tensor_conversion_function(MirroredVariable,
 
 
 def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  tpu_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while tpu_context is not None and not isinstance(
-      tpu_context, control_flow_ops.XLAControlFlowContext):
-    tpu_context = tpu_context.outer_context
-  return tpu_context
+  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 def is_distributed_variable(v):
@@ -1094,7 +1112,7 @@ def is_distributed_variable(v):
 
 
 class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
-  """Holds a map from device to TPU variables whose values are kept in sync."""
+  """Holds a map from replica to TPU variables whose values are kept in sync."""
 
   def _assign_func(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
@@ -1157,8 +1175,8 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class SyncOnReadVariable(DistributedVariable, PerReplica):
-  """Holds a map from device to variables whose values are reduced on save."""
+class SyncOnReadVariable(DistributedVariable):
+  """Holds a map from replica to variables whose values are reduced on save."""
 
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
@@ -1243,6 +1261,10 @@ class SyncOnReadVariable(DistributedVariable, PerReplica):
     return ops.internal_convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
+  def _clone_with_new_values(self, new_values):
+    return type(self)(self._distribute_strategy, self._device_map, new_values,
+                      self._aggregation, logical_device=self._logical_device)
+
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
 # be true.
@@ -1255,7 +1277,7 @@ ops.register_tensor_conversion_function(SyncOnReadVariable,
 
 
 class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
-  """Holds a map from device to variables whose values are reduced on save."""
+  """Holds a map from replica to variables whose values are reduced on save."""
 
   def assign_sub(self, *args, **kwargs):
     if _enclosing_tpu_context() is None:
@@ -1369,7 +1391,14 @@ def regroup(device_map, values, wrap_class=PerReplica):
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.values[replica_id] if isinstance(x, DistributedValues) else x
+    # `DistributedValues` would be sliced according to replica unless it is a
+    # `DistributedVariable` because `DistributedVariable` can be handled
+    # directly in the replica context.
+    if (isinstance(x, DistributedVariable) or
+        not isinstance(x, DistributedValues)):
+      return x
+    else:
+      return x.values[replica_id]
 
   return nest.map_structure(_get, structured)
 

@@ -37,9 +37,13 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -112,7 +116,7 @@ REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
     AvgPoolingOp<CPUDevice, Eigen::half>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
  public:
@@ -155,6 +159,12 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
 
     TensorShape output_shape = params.forward_output_shape();
 
+#if CUDNN_VERSION >= 7300
+    DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
+                             stride_, padding_, data_format_, tensor_in,
+                             output_shape,
+                             /*propagate_nans=*/false);
+#else
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
                                stride_, padding_, data_format_, tensor_in,
@@ -170,6 +180,7 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
           tensor_in.tensor<T, 4>(), params.window_rows, params.window_cols,
           params.row_stride, params.col_stride, pt);
     }
+#endif  // CUDNN_VERSION >= 7300
   }
 
  private:
@@ -205,7 +216,7 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     AvgPoolingOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The operation to compute AvgPool gradients.
 // It takes two inputs:
@@ -368,7 +379,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A CUDNN based AvgPoolingGrad implementation. It includes the padding as the
 // candidates for the pooling operation.
@@ -496,6 +507,12 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
       output_shape.AddDim(shape_vec(i));
     }
 
+#if CUDNN_VERSION >= 7300
+    DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
+                                 ksize_, stride_, padding_, data_format_,
+                                 nullptr, nullptr, out_backprop, output_shape,
+                                 /*propagate_nans=*/false);
+#else
     if (data_format_ == FORMAT_NHWC) {
       const int64 out_backprop_batch = out_backprop.dim_size(0);
       const int64 out_backprop_rows = out_backprop.dim_size(1);
@@ -552,6 +569,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                    nullptr, nullptr, out_backprop, output_shape,
                                    /*propagate_nans=*/false);
     }
+#endif  // CUDNN_VERSION >= 7300
   }
 
  private:
@@ -577,6 +595,6 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .HostMemory("orig_input_shape"),
                         AvgPoolingGradOpCustomGPUKernel<Eigen::half>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

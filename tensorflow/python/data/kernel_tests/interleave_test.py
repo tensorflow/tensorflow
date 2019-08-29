@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import multiprocessing
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -257,6 +258,17 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.interleave(interleave_fn, cycle_length=5)
 
     self.assertDatasetProduces(dataset, [4 * x for x in range(100)])
+
+  def testParallelInterleaveCached(self):
+    dataset = dataset_ops.Dataset.range(5)
+    dataset = dataset.cache(os.path.join(self.get_temp_dir(), "cache_dir"))
+
+    def interleave_fn(x):
+      return dataset_ops.Dataset.from_tensors(x)
+
+    dataset = dataset.interleave(
+        interleave_fn, cycle_length=2, num_parallel_calls=2)
+    self.assertDatasetProduces(dataset, list(range(5)))
 
 
 if __name__ == "__main__":

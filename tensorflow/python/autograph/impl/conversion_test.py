@@ -128,7 +128,9 @@ class ConversionTest(test.TestCase):
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertEqual(
-        compiler.ast_to_source(fn_node.args.defaults[0]).strip(), 'None')
+        compiler.ast_to_source(
+            fn_node.args.defaults[0], include_encoding_marker=False).strip(),
+        'None')
 
   def test_convert_entity_to_ast_call_tree(self):
 

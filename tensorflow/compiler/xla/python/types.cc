@@ -181,6 +181,9 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
       tree.leaves.reserve(tree.leaves.size() + subtree.leaves.size());
       std::move(subtree.leaves.begin(), subtree.leaves.end(),
                 std::back_inserter(tree.leaves));
+      tree.arrays.reserve(tree.arrays.size() + subtree.arrays.size());
+      std::move(subtree.arrays.begin(), subtree.arrays.end(),
+                std::back_inserter(tree.arrays));
       host_shapes[i] = std::move(subtree.shape);
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);

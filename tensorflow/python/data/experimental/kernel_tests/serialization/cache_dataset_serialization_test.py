@@ -85,24 +85,14 @@ class CacheDatasetSerializationTest(
         ds_fn, [5], 8, verify_exhausted=False, save_checkpoint_at_end=False)
     self.assertSequenceEqual(outputs, range(8))
 
-    if is_memory:
-      outputs = outputs[:5]
-      outputs.extend(
-          self.gen_outputs(
-              ds_fn, [],
-              self.num_outputs - 5,
-              ckpt_saved=True,
-              verify_exhausted=False))
-      self.assertSequenceEqual(outputs, self.expected_outputs())
-    else:
-      # Restoring from checkpoint and running GetNext should return
-      # `AlreadExistsError` now because the lockfile already exists.
-      with self.assertRaises(errors.AlreadyExistsError):
+    outputs = outputs[:5]
+    outputs.extend(
         self.gen_outputs(
             ds_fn, [],
             self.num_outputs - 5,
             ckpt_saved=True,
-            verify_exhausted=False)
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
 
   @parameterized.named_parameters(
       ('Memory', True),

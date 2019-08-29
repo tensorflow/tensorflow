@@ -44,7 +44,7 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.complex64] = 1e-4
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Cholesky not implemented.
     return ["cholesky"]
 

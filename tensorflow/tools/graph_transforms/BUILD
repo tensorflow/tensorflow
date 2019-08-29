@@ -336,4 +336,5 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
+    tags = ["v1only"],
 )

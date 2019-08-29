@@ -822,10 +822,22 @@ class ProfileResult {
 //  algorithm: the primary algorithm that should be used.
 //  algorithm_no_scratch: a secondary algorithm that should be used, if the
 //    the allocation for the scratch memory fails.
+//  scrach_size: specify the size of scratch memory in bytes needed for the
+//    algorithm used.
+//
+// On CUDA platform with CUDNN library, algorithm and algorithm_no_scratch
+// would be used. On ROCm platform with MIOpen library, algorithm and
+// scratch_size would be used. The major difference between the two platforms
+// are whether it's possible to get an algorithm without scratch memory. On
+// CUDA + CUDNN it's possible, and algorithm_no_scratch can be used to track
+// such information, whereas on ROCm + MIOpen there is no guarantee to getting
+// one without scratch memory, and scratch_size field is used to track it.
 class AlgorithmConfig {
  public:
   AlgorithmConfig() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
+      : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
@@ -836,9 +848,12 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
+  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
-           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_ &&
+           this->scratch_size_ == other.scratch_size_;
   }
   bool operator!=(const AlgorithmConfig& other) const {
     return !(*this == other);
@@ -848,6 +863,7 @@ class AlgorithmConfig {
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
+  absl::optional<size_t> scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -1223,7 +1239,28 @@ class DnnSupport {
     return false;
   }
 
-  template <typename ElementType>
+  // This is the int8 version of DoFusedConvolve.
+  // The output, bias input and scaling parameters are floats.
+  virtual bool DoFusedConvolve(
+      Stream* /*stream*/, const dnn::BatchDescriptor& /*conv_input_descriptor*/,
+      const DeviceMemory<int8>& /*conv_input_data*/, float /*conv_input_scale*/,
+      const dnn::FilterDescriptor& /*filter_descriptor*/,
+      const DeviceMemory<int8>& /*filter_data*/,
+      const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+      const DeviceMemory<float>& /*side_input_data*/,
+      float /*side_input_scale*/,
+      const dnn::BatchDescriptor& /*bias_descriptor*/,
+      const DeviceMemory<float>& /*biases*/,
+      dnn::ActivationMode /*activation_mode*/,
+      const dnn::BatchDescriptor& /*output_descriptor*/,
+      DeviceMemory<float>* /*output_data*/,
+      ScratchAllocator* /*scratch_allocator*/,
+      const dnn::AlgorithmConfig& /*algorithm_config*/,
+      dnn::ProfileResult* /*output_profile_result*/) {
+    return false;
+  }
+
+  template <typename ElementType, typename OutputType>
   port::Status PrepareForConvolution(
       ConvolutionKind kind, Stream* stream,
       const BatchDescriptor& batch_descriptor,
@@ -1231,7 +1268,7 @@ class DnnSupport {
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<ElementType> filter_data,
       const BatchDescriptor& output_descriptor,
-      DeviceMemory<ElementType> output_data,
+      DeviceMemory<OutputType> output_data,
       const ConvolutionDescriptor& convolution_descriptor,
       const AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
@@ -1278,31 +1315,32 @@ class DnnSupport {
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
   virtual port::Status DoConvolve(
-      ConvolutionKind kind, DataType element_type, Stream* stream,
-      const BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
-      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
+      ConvolutionKind kind, DataType element_type, DataType output_type,
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
       const ConvolutionDescriptor& convolution_descriptor,
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  template <typename ElementType>
+  template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<ElementType>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
                   const DeviceMemory<ElementType>& filter_data,
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<ElementType>* output_data,
+                  DeviceMemory<OutputType>* output_data,
                   const dnn::AlgorithmDesc& algorithm_desc,
                   DeviceMemory<uint8>* scratch_memory,
                   ProfileResult* output_profile_result) {
     return IsStatusOk(
         DoConvolve(ConvolutionKind::FORWARD, ToDataType<ElementType>::value,
-                   stream, input_descriptor, input_data, filter_descriptor,
-                   filter_data, output_descriptor, *output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+                   ToDataType<OutputType>::value, stream, input_descriptor,
+                   input_data, filter_descriptor, filter_data,
+                   output_descriptor, *output_data, convolution_descriptor,
+                   algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
@@ -1390,12 +1428,12 @@ class DnnSupport {
       DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) {
     return IsStatusOk(
-        DoConvolve(ConvolutionKind::BACKWARD_DATA,
-                   ToDataType<ElementType>::value, stream, input_descriptor,
-                   *backward_input_data, filter_descriptor, filter_data,
-                   output_descriptor, backward_output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+        DoConvolve(
+            ConvolutionKind::BACKWARD_DATA, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            *backward_input_data, filter_descriptor, filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
@@ -1437,12 +1475,12 @@ class DnnSupport {
       DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) {
     return IsStatusOk(
-        DoConvolve(ConvolutionKind::BACKWARD_FILTER,
-                   ToDataType<ElementType>::value, stream, input_descriptor,
-                   input_data, filter_descriptor, *backward_filter_data,
-                   output_descriptor, backward_output_data,
-                   convolution_descriptor, algorithm_desc, *scratch_memory,
-                   output_profile_result),
+        DoConvolve(
+            ConvolutionKind::BACKWARD_FILTER, ToDataType<ElementType>::value,
+            ToDataType<ElementType>::value, stream, input_descriptor,
+            input_data, filter_descriptor, *backward_filter_data,
+            output_descriptor, backward_output_data, convolution_descriptor,
+            algorithm_desc, *scratch_memory, output_profile_result),
         !output_profile_result);
   }
 
@@ -2079,6 +2117,7 @@ class DnnSupport {
   //  state_allocator: an memory allocator that will be used to store the state
   //    for dropout layer. The user has to maintain the memory until the model
   //    is no longer in use.
+  //  use_padded_io: a bool to specify whether the input is using padded IO.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
   createRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
@@ -2087,7 +2126,7 @@ class DnnSupport {
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64 seed,
-                      ScratchAllocator* state_allocator) {
+                      ScratchAllocator* state_allocator, bool use_padded_io) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "createRnnDescriptor is unimplemented");
   }

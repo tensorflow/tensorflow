@@ -13,9 +13,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 exports_files([
+    "LICENSE",
     "jni/version_script.lds",
 ])
 
@@ -59,7 +58,6 @@ LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
 
 cc_binary(
     name = "libtensorflow_inference.so",
-    srcs = [],
     copts = tf_copts() + [
         "-ffunction-sections",
         "-fdata-sections",

@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // This op defines a `Dataset` that passes through its input elements and
@@ -76,6 +77,10 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -188,6 +193,10 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -258,13 +267,19 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
-    LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("BytesProducedStatsDataset").Device(DEVICE_CPU),
+                        BytesProducedStatsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalBytesProducedStatsDataset").Device(DEVICE_CPU),
     BytesProducedStatsDatasetOp);
 
+REGISTER_KERNEL_BUILDER(Name("LatencyStatsDataset").Device(DEVICE_CPU),
+                        LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
+    LatencyStatsDatasetOp);
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

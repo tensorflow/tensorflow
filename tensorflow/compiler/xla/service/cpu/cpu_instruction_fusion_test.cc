@@ -179,7 +179,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -209,7 +209,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -240,7 +240,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -759,7 +759,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
                                    spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/examples/label_image/label_image.h"
+
 #include <fcntl.h>      // NOLINT(build/include_order)
 #include <getopt.h>     // NOLINT(build/include_order)
 #include <sys/time.h>   // NOLINT(build/include_order)
@@ -26,19 +28,22 @@ limitations under the License.
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 #define LOG(x) std::cerr
 
@@ -46,6 +51,50 @@ namespace tflite {
 namespace label_image {
 
 double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
+
+using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
+using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+
+TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
+#if defined(__ANDROID__)
+  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
+  options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
+  if (s->allow_fp16) {
+    options.compile_options.precision_loss_allowed = 1;
+  } else {
+    options.compile_options.precision_loss_allowed = 0;
+  }
+  options.compile_options.preferred_gl_object_type =
+      TFLITE_GL_OBJECT_TYPE_FASTEST;
+  options.compile_options.dynamic_batch_enabled = 0;
+
+  return evaluation::CreateGPUDelegate(s->model, &options);
+#else
+  return evaluation::CreateGPUDelegate(s->model);
+#endif
+}
+
+TfLiteDelegatePtrMap GetDelegates(Settings* s) {
+  TfLiteDelegatePtrMap delegates;
+  if (s->gl_backend) {
+    auto delegate = CreateGPUDelegate(s);
+    if (!delegate) {
+      LOG(INFO) << "GPU acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("GPU", std::move(delegate));
+    }
+  }
+
+  if (s->accel) {
+    auto delegate = evaluation::CreateNNAPIDelegate();
+    if (!delegate) {
+      LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("NNAPI", evaluation::CreateNNAPIDelegate());
+    }
+  }
+  return delegates;
+}
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -100,6 +149,7 @@ void RunInference(Settings* s) {
     LOG(FATAL) << "\nFailed to mmap model " << s->model_name << "\n";
     exit(-1);
   }
+  s->model = model.get();
   LOG(INFO) << "Loaded model " << s->model_name << "\n";
   model->error_reporter();
   LOG(INFO) << "resolved reporter\n";
@@ -112,7 +162,7 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-  interpreter->UseNNAPI(s->accel);
+  interpreter->UseNNAPI(s->old_accel);
   interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
 
   if (s->verbose) {
@@ -153,6 +203,16 @@ void RunInference(Settings* s) {
     LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
   }
 
+  auto delegates_ = GetDelegates(s);
+  for (const auto& delegate : delegates_) {
+    if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
+        kTfLiteOk) {
+      LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+    } else {
+      LOG(INFO) << "Applied " << delegate.first << " delegate.";
+    }
+  }
+
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     LOG(FATAL) << "Failed to allocate tensors!";
   }
@@ -184,10 +244,17 @@ void RunInference(Settings* s) {
       exit(-1);
   }
 
-  profiling::Profiler* profiler = new profiling::Profiler();
-  interpreter->SetProfiler(profiler);
+  auto profiler =
+      absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
+  interpreter->SetProfiler(profiler.get());
 
   if (s->profiling) profiler->StartProfiling();
+  if (s->loop_count > 1)
+    for (int i = 0; i < s->number_of_warmup_runs; i++) {
+      if (interpreter->Invoke() != kTfLiteOk) {
+        LOG(FATAL) << "Failed to invoke tflite!\n";
+      }
+    }
 
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, nullptr);
@@ -255,8 +322,10 @@ void display_usage() {
   LOG(INFO)
       << "label_image\n"
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 not\n"
+      << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
+      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "--gl_backend, -g: use GL GPU Delegate on Android\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
       << "--image, -i: image_name.bmp\n"
@@ -266,6 +335,7 @@ void display_usage() {
       << "--num_results, -r: number of results to show\n"
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
+      << "--warmup_runs, -w: number of warmup runs\n"
       << "\n";
 }
 
@@ -276,6 +346,7 @@ int Main(int argc, char** argv) {
   while (1) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
+        {"old_accelerated", required_argument, nullptr, 'd'},
         {"allow_fp16", required_argument, nullptr, 'f'},
         {"count", required_argument, nullptr, 'c'},
         {"verbose", required_argument, nullptr, 'v'},
@@ -287,12 +358,16 @@ int Main(int argc, char** argv) {
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
+        {"max_profiling_buffer_entries", required_argument, nullptr, 'e'},
+        {"warmup_runs", required_argument, nullptr, 'w'},
+        {"gl_backend", required_argument, nullptr, 'g'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv, "a:b:c:f:i:l:m:p:r:s:t:v:", long_options,
+    c = getopt_long(argc, argv,
+                    "a:b:c:d:e:f:g:i:l:m:p:r:s:t:v:w:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -309,8 +384,20 @@ int Main(int argc, char** argv) {
         s.loop_count =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
+      case 'd':
+        s.old_accel =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'e':
+        s.max_profiling_buffer_entries =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
       case 'f':
         s.allow_fp16 =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'g':
+        s.gl_backend =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'i':
@@ -339,6 +426,10 @@ int Main(int argc, char** argv) {
         break;
       case 'v':
         s.verbose =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'w':
+        s.number_of_warmup_runs =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'h':

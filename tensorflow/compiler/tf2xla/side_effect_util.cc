@@ -26,6 +26,8 @@ const char kXlaTokenArgNodeName[] = "_xla_token_arg_node";
 
 const char kXlaHasHostTransferAttrName[] = "_xla_has_host_transfer";
 
+const char kXlaReplicaIdAttrName[] = "_xla_replica_id";
+
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
     return errors::InvalidArgument("Node ", node->DebugString(),
@@ -37,31 +39,31 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
       node->type_string() == "_XlaSendFromHost") {
     node->ClearAttr("device_ordinal");
     node->AddAttr("device_ordinal", device_ordinal);
-  } else if (node->type_string() == "If") {
+  } else if (node->IsIfNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
     for (const string& attr_name :
          std::vector<string>{"then_branch", "else_branch"}) {
       NameAttrList branch_func;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
-      (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+      (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
     }
-  } else if (node->type_string() == "While") {
+  } else if (node->IsWhileNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
     for (const string& attr_name : std::vector<string>{"cond", "body"}) {
       NameAttrList branch_func;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
-      (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+      (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
     }
-  } else if (HasNodeAttr(node->def(), "device_ordinal")) {
+  } else if (HasNodeAttr(node->def(), "_device_ordinal")) {
     // Function call node containing outside compilation.
-    node->ClearAttr("device_ordinal");
-    node->AddAttr("device_ordinal", device_ordinal);
+    node->ClearAttr("_device_ordinal");
+    node->AddAttr("_device_ordinal", device_ordinal);
   } else {
     return errors::Internal("Unknown node type to set 'device_ordinal': ",
                             node->DebugString());

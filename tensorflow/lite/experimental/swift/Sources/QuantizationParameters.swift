@@ -15,13 +15,12 @@
 /// Parameters that determine the mapping of quantized values to real values. Quantized values can
 /// be mapped to float values using the following conversion:
 /// `realValue = scale * (quantizedValue - zeroPoint)`.
-public struct QuantizationParameters {
-
-  /// Difference between real values corresponding to consecutive quantized values differing by 1.
-  /// For example, the range of quantized values for `UInt8` data type is [0, 255].
+public struct QuantizationParameters: Equatable, Hashable {
+  /// The difference between real values corresponding to consecutive quantized values differing by
+  /// 1. For example, the range of quantized values for `UInt8` data type is [0, 255].
   public let scale: Float
 
-  /// Quantized value that corresponds to the real 0 value.
+  /// The quantized value that corresponds to the real 0 value.
   public let zeroPoint: Int
 
   /// Creates a new quantization parameters instance.

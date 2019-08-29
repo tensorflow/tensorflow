@@ -1,0 +1,2 @@
+This package contains a Python wrapper around Tensorflow Python APIs that are
+used to profile Cloud TPU.

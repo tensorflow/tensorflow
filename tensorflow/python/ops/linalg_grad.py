@@ -510,6 +510,7 @@ def _TridiagonalSolveGrad(op, grad):
   """Gradient for TridiagonalSolveGrad."""
   diags = op.inputs[0]
   x = op.outputs[0]
+  partial_pivoting = op.get_attr("partial_pivoting")
 
   # Transposing the matrix within tridiagonal_solve kernel by interchanging
   # superdiagonal and subdiagonal wouldn't work on GPU due to mismatch with
@@ -517,7 +518,8 @@ def _TridiagonalSolveGrad(op, grad):
   # So constructing the transposed matrix in Python.
   diags_transposed = _TransposeTridiagonalMatrix(diags)
 
-  grad_rhs = linalg_ops.tridiagonal_solve(diags_transposed, grad)
+  grad_rhs = linalg_ops.tridiagonal_solve(diags_transposed, grad,
+                                          partial_pivoting=partial_pivoting)
   grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, x)
   return grad_diags, grad_rhs
 

@@ -300,18 +300,16 @@ std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
 std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
     llvm::IRBuilder<>* b, llvm::Value* value_64bits);
 
-// Checks whether a global variable is already created to represent a
-// state passed between RNG calls implemented with Philox algorithm. If not,
-// creates such a variable. Returns the global variable.
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b);
+// Checks whether a global variable is already created to represent the state
+// of a random number generator. If not, creates such a variable. Returns the
+// global variable.
+llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
+                                                  llvm::IRBuilder<>* b);
 
-// Adds a value to the global state variable each time when a RNG hlo is
-// executed. The value of this global state variable is added to the seed
-// of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
-// should rarely produce the same result.
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* b);
+// Adds a delta value to the global state variable and return the old value of
+// the variable.
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* b);
 
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).

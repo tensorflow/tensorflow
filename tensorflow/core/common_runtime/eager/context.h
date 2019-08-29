@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -37,8 +38,10 @@ limitations under the License.
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -61,6 +64,13 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+namespace eager {
+// We need this forward declaration because we have circular dependency:
+// Context -> RemoteMgr -> TensorHandle -> Context.
+// TODO(fishx): Remove this once we remove Context dependency in TensorHandle.
+class RemoteMgr;
+}  // namespace eager
 
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
@@ -97,15 +107,23 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
-  EagerContext(
-      const SessionOptions& opts,
-      ContextDevicePlacementPolicy default_device_placement_policy,
-      ContextMirroringPolicy default_mirroring_policy, bool async,
-      const DeviceMgr* device_mgr, bool device_mgr_owned,
-      Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
-      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr,
-      const DeviceMgr* remote_device_mgr = nullptr);
+  static const uint64 kInvalidContextId = 0;
+
+  static uint64 NewContextId() {
+    uint64 context_id = random::New64();
+    while (context_id == kInvalidContextId) {
+      context_id = random::New64();
+    }
+    return context_id;
+  }
+
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_device_placement_policy,
+               ContextMirroringPolicy default_mirroring_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous,
+               const CustomKernelCreator* custom_kernel_creator,
+               DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   ~EagerContext() override;
 
@@ -116,15 +134,10 @@ class EagerContext : public core::RefCounted {
 
   ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
 
-  // True if running in asynchronous mode.
-  bool Async() const;
-
-  EagerExecutor* Executor() { return &executor_; }
-
   std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
-  // Sets whether this thread should run in synchronous or asynchronous mode.
-  Status SetAsyncForThread(bool async);
+  // Specify a executor for this thread.
+  void SetExecutorForThread(EagerExecutor* executor);
 
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
@@ -154,12 +167,6 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  Status AsyncWait() { return executor_.WaitForAllPendingNodes(); }
-
-  Status GetStatus() { return executor_.status(); }
-
-  void ClearAsyncError() { executor_.ClearError(); }
-
   bool FindFunctionByName(const string& name);
 
   Status FindFunctionOpData(const string& name,
@@ -170,14 +177,13 @@ class EagerContext : public core::RefCounted {
   Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
+  Device* CanonicalDevice(Device* d) const {
+    return HostCPU() == d ? nullptr : d;
+  }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  uint64 NextId() { return executor_.NextId(); }
-
-  void ExecutorAdd(std::unique_ptr<EagerNode> node) {
-    executor_.Add(std::move(node));
-  }
+  EagerExecutor* Executor();
 
   Status AddFunctionDef(const FunctionDef& fdef);
 
@@ -188,6 +194,7 @@ class EagerContext : public core::RefCounted {
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
+  bool AllowSoftPlacement() const { return allow_soft_placement_; }
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
@@ -236,16 +243,10 @@ class EagerContext : public core::RefCounted {
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
-  bool ShouldStoreStepStats() LOCKS_EXCLUDED(metadata_mu_);
-  void SetShouldStoreStepStats(bool value);
   bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
-
-  Status RegisterRunMetadataListener(RunMetadataListener* listener)
-      LOCKS_EXCLUDED(metadata_mu_);
-  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -254,13 +255,18 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetClientAndContextID(Device* device, eager::EagerClient** client,
-                               uint64* context_id);
+  Status GetClient(Device* device, eager::EagerClient** client);
+  Status GetClient(const DeviceNameUtils::ParsedName& device_name,
+                   eager::EagerClient** client);
+
+  uint64 GetContextId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
   //
-  // Enables the eager context to communicate with remote devices.
+  // Enables the eager context to communicate with remote devices. When
+  // initializing with this method, this context will be the master context,
+  // which will kill all its slaves in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
@@ -268,43 +274,67 @@ class EagerContext : public core::RefCounted {
   // communicate with remote eager services.
   // - remote_device_mgr: A DeviceMgr* which contains all remote devices
   // (should contain no local devices).
-  // - remote_contexts: A map containing task name to remote context ID.
-  Status InitializeRemote(
+  // - remote_contexts: A vector containing task names.
+  Status InitializeRemoteMaster(
       std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
-      const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+      DistributedFunctionLibraryRuntime* cluster_flr,
+      std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+          remote_mgr);
 
-  bool HasActiveRemoteContext(uint64 context_id) {
-    return active_remote_contexts_.find(context_id) !=
-           active_remote_contexts_.end();
-  }
+  // Similar with InitializeRemoteMaster but this context will not kill remote
+  // contexts in shutdown.
+  Status InitializeRemoteWorker(
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      const DeviceMgr* remote_device_mgr,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+          remote_mgr);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
       CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
-#endif  // IS_MOBILE_PLATFORM
+
+  // TODO(fishx): Remove the custom deleter once we remove forward declaration.
+  const std::unique_ptr<eager::RemoteMgr,
+                        std::function<void(eager::RemoteMgr*)>>&
+  RemoteMgr() {
+    return remote_mgr_;
+  }
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
+#endif  // IS_MOBILE_PLATFORM
+
+  // Closes remote eager contexts, waits for all RPCs to finish, and
+  // destroys the EagerClientCache. No RPCs can be made through this context
+  // after this method has been called.
+  // This method exists to aid a clean shutdown. It causes all RPCs to finish
+  // and remote TensorHandles to release their references to this context.
+  // To avoid deadlocks, this method must not be called on the thread
+  // processing RPCs because it makes RPCs and waits for their completion.
+  //
+  // On mobile, it just cleans the caches.
+  void WaitForAndCloseRemoteContexts();
+
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  // All child threads will be reset() when destructing EagerContext.
-  void AddChildThread(std::unique_ptr<Thread> thread);
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  bool IsLocal(const Device* d) const;
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
+  bool IsLocalDeviceName(const DeviceNameUtils::ParsedName& device_name) const;
 
  private:
   void InitDeviceMapAndAsync();
@@ -328,7 +358,7 @@ class EagerContext : public core::RefCounted {
   // Only one of the below is set. remote_unowned_device_manager_ is set on
   // remote worker to allow running multi-device function on remote worker.
   std::unique_ptr<DeviceMgr> remote_device_manager_;
-  const DeviceMgr* remote_unowned_device_manager_;
+  const DeviceMgr* remote_unowned_device_manager_ = nullptr;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
@@ -338,9 +368,7 @@ class EagerContext : public core::RefCounted {
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
 
-  mutex functions_mu_;
-  FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
-      OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
@@ -365,26 +393,23 @@ class EagerContext : public core::RefCounted {
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_step_stats_{false};
   std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
-  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
+  // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
-  // EagerExecutor for async execution.
-  EagerExecutor executor_;
+  const bool allow_soft_placement_;
 
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
   std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
 
-  // True if the default value for execution mode is async. Note that this value
-  // can be overridden per thread based on `thread_local_async` overrides.
-  const bool async_default_;
-  mutable mutex async_map_mu_;
-  std::unordered_map<std::thread::id, bool> thread_local_async_
-      GUARDED_BY(async_map_mu_);
+  EagerExecutor default_executor_;
+  mutable mutex executor_map_mu_;
+  // Not owned.
+  std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
+      GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
 
@@ -406,10 +431,8 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  gtl::FlatMap<string, uint64> remote_contexts_;
-  gtl::FlatSet<uint64> active_remote_contexts_;
-  gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
-      device_to_client_cache_;
+  uint64 context_id_ GUARDED_BY(remote_state_mu_);
+  std::vector<string> remote_contexts_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;
@@ -418,11 +441,14 @@ class EagerContext : public core::RefCounted {
   mutex keep_alive_thread_shutdown_mu_;
   condition_variable keep_alive_thread_cv_;
   bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
+
+  std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+      remote_mgr_;
+  bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
-  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow

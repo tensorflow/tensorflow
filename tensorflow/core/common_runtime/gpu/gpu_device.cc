@@ -1542,7 +1542,7 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 #endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_ROCM
-std::vector<int> supported_amdgpu_isa_versions = {803, 900, 906};
+std::vector<int> supported_amdgpu_isa_versions = {803, 900, 906, 908};
 
 std::vector<int> GetSupportedAMDGPUISAVersions() {
   return supported_amdgpu_isa_versions;
@@ -1909,4 +1909,4 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

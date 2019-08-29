@@ -1,0 +1,32 @@
+op {
+  name: "SendTPUEmbeddingGradients"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "learning_rates"
+    type: DT_FLOAT
+    number_attr: "NN"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "NN"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}

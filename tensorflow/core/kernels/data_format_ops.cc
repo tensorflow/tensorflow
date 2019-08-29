@@ -157,6 +157,16 @@ TF_CALL_int64(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #define REGISTER_KERNEL(T)                             \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatDimMap")     \
+                              .Device(DEVICE_CPU)      \
+                              .Label("host")           \
+                              .TypeConstraint<T>("T"), \
+                          DataFormatDimMapOp<CPUDevice, T>);
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_int64(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+
+#define REGISTER_KERNEL(T)                             \
   REGISTER_KERNEL_BUILDER(Name("DataFormatVecPermute") \
                               .Device(DEVICE_CPU)      \
                               .Label("host")           \

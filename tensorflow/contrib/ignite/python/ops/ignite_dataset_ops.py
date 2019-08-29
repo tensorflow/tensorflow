@@ -754,7 +754,7 @@ class IgniteDataset(dataset_ops.DatasetSource):
         self.cache_type.to_permutation(),
         dtype=dtypes.int32,
         name="permutation")
-    self._structure = structure.convert_legacy_structure(
+    self._element_spec = structure.convert_legacy_structure(
         self.cache_type.to_output_types(), self.cache_type.to_output_shapes(),
         self.cache_type.to_output_classes())
 
@@ -766,5 +766,5 @@ class IgniteDataset(dataset_ops.DatasetSource):
                                           self.schema, self.permutation)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec

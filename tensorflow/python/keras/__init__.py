@@ -38,6 +38,7 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.keras import ops
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import premade
 from tensorflow.python.keras import preprocessing
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import utils

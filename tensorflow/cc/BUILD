@@ -18,6 +18,17 @@ package(
 )
 
 filegroup(
+    name = "srcs_no_runtime",
+    srcs = [
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "//tensorflow/cc/saved_model:loader.h",
+    ],
+)
+
+filegroup(
     name = "srcs",
     srcs = [
         "framework/gradients.h",
@@ -485,6 +496,7 @@ tf_gen_op_wrappers_cc(
 tf_gen_op_wrappers_cc(
     name = "array_ops",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    extra_gen_deps = ["//tensorflow/c/kernels:bitcast_op_lib"],
     op_lib_names = [
         "array_ops",
     ],
@@ -619,7 +631,6 @@ tf_gen_op_wrappers_cc(
         "tpu_replication_ops",
     ],
     pkg = "//tensorflow/core",
-    visibility = ["//tensorflow:internal"],
 )
 
 cc_library(
@@ -638,7 +649,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -656,7 +666,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

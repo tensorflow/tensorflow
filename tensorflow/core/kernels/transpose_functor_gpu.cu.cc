@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -37,7 +37,7 @@ __global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
   const int32* in_strides = buf;
   const int32* out_strides = buf + ndims;
   const int32* perm = buf + ndims * 2;
-  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+  GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
     int32 i_idx = 0;
     int32 t = o_idx;
     for (int32 i = 0; i < ndims; ++i) {
@@ -73,14 +73,14 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Copies the input strides, output strides and permutation to the device.
   auto num_bytes = sizeof(int64) * host_buf.size();
   auto dev_buf = d.allocate(num_bytes);
-  // NOTE: host_buf is not allocated by CudaHostAllocator, and
+  // NOTE: host_buf is not allocated by GpuHostAllocator, and
   // therefore we are doing a sync copy effectively.
   d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
-  TF_CHECK_OK(CudaLaunchKernel(
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
+  TF_CHECK_OK(GpuLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,
       reinterpret_cast<const int32*>(dev_buf), ndims, q));
@@ -201,7 +201,7 @@ struct Transpose<GPUDevice, T, conjugate> {
 #undef HANDLE_DIM
 
 template <bool conjugate>
-struct Transpose<GPUDevice, string, conjugate> {
+struct Transpose<GPUDevice, tstring, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     LOG(FATAL) << "Transpose of DT_STRING tensor not supported on GPU.";
@@ -209,7 +209,7 @@ struct Transpose<GPUDevice, string, conjugate> {
 };
 
 // Explicit instantiation.
-template struct Transpose<GPUDevice, string, false>;
+template struct Transpose<GPUDevice, tstring, false>;
 
 template <>
 Status DoTranspose(const GPUDevice& device, const Tensor& in,
@@ -233,4 +233,4 @@ Status DoConjugateMatrixTranspose(const GPUDevice& device, const Tensor& in,
 }
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

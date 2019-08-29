@@ -25,8 +25,13 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import nest
 
@@ -369,6 +374,40 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     gc.collect()
     for ref in refs:
       self.assertIsNone(ref())
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      ('IndexedSlicesNoDenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]))),
+      ('IndexedSlicesInt32DenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]),
+          constant_op.constant([10], dtypes.int32))),
+      ('IndexedSlicesInt64DenseShape', lambda: ops.IndexedSlices(
+          constant_op.constant([[1, 2], [3, 4]]), constant_op.constant([2, 8]),
+          constant_op.constant([10, 2], dtypes.int64))),
+      ('RaggedTensorRaggedRank1',
+       lambda: ragged_factory_ops.constant([[1, 2], [3]])),
+      ('RaggedTensorRaggedRank2',
+       lambda: ragged_factory_ops.constant([[[1, 2], [3]], [[6, 7, 8]]])),
+      ('SparseTensor',
+       lambda: sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])),
+      ('Nested structure', lambda: {
+          'a':
+              ops.IndexedSlices(
+                  constant_op.constant([1, 2, 3]),
+                  constant_op.constant([2, 8, 4])),
+          'b': [
+              ragged_factory_ops.constant([[1, 2], [3]]),
+              sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])
+          ]
+      }),
+  ])
+  def testAssertSameStructureWithValueAndTypeSpec(self, value_func):
+    value = value_func()
+    spec = nest.map_structure(type_spec.type_spec_from_value, value,
+                              expand_composites=False)
+    nest.assert_same_structure(value, spec, expand_composites=True)
+
 
 if __name__ == '__main__':
   googletest.main()

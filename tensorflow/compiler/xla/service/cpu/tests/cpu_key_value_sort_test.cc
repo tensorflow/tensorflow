@@ -44,7 +44,7 @@ CHECK: call void @__xla_cpu_runtime_KeyValueSort
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnUnverifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64", /*cpu_name=*/"", /*features=*/"",

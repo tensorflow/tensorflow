@@ -19,12 +19,11 @@ from __future__ import print_function
 import numbers
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 
 
 def alpha_dropout(x, keep_prob, noise_shape=None, seed=None, name=None): # pylint: disable=invalid-name
@@ -61,7 +60,7 @@ def alpha_dropout(x, keep_prob, noise_shape=None, seed=None, name=None): # pylin
     keep_prob = ops.convert_to_tensor(keep_prob,
                                       dtype=x.dtype,
                                       name="keep_prob")
-    keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+    keep_prob.get_shape().assert_has_rank(0)
 
     # Do nothing if we know keep_prob == 1
     if tensor_util.constant_value(keep_prob) == 1:

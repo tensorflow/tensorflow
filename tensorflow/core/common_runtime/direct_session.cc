@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -278,7 +278,7 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
   if (num_intra_threads == 0) {
     num_intra_threads = options.config.intra_op_parallelism_threads();
     if (num_intra_threads == 0) {
-      num_intra_threads = port::NumSchedulableCPUs();
+      num_intra_threads = port::MaxParallelism();
     }
   }
 
@@ -353,7 +353,10 @@ DirectSession::DirectSession(const SessionOptions& options,
     } else {
       printf("Device mapping:\n%s", mapping_str.c_str());
     }
-    LOG(INFO) << "Device mapping:\n" << mapping_str;
+    string msg = strings::StrCat("Device mapping:\n", mapping_str);
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);
@@ -380,9 +383,6 @@ DirectSession::~DirectSession() {
   callables_.clear();
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
-  }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->ClearResourceMgr();
   }
   functions_.clear();
   delete cancellation_manager_;
@@ -492,11 +492,22 @@ Status DirectSession::RunInternal(
     RunMetadata* run_metadata,
     const thread::ThreadPoolOptions& threadpool_options) {
   const uint64 start_time_usecs = options_.env->NowMicros();
-  profiler::TraceMe activity(
-      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
-      profiler::TraceMeLevel::kInfo);
-
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
+  RunState run_state(step_id, &devices_);
+
+  profiler::TraceMe activity(
+      [&] {
+        if (options_.config.experimental().has_session_metadata()) {
+          const auto& model_metadata =
+              options_.config.experimental().session_metadata();
+          return strings::StrCat("SessionRun #id=", step_id,
+                                 ",model_id=", model_metadata.name(), ":",
+                                 model_metadata.version(), "#");
+        } else {
+          return strings::StrCat("SessionRun #id=", step_id, "#");
+        }
+      },
+      profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
   if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
@@ -506,8 +517,6 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  // Create a run state and start execution.
-  RunState run_state(step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
@@ -591,7 +600,7 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
+    profiler_session = ProfilerSession::Create();
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -1270,15 +1279,16 @@ Status DirectSession::CreateExecutors(
   const auto& optimizer_opts =
       options_.config.graph_options().optimizer_options();
 
-  int graph_def_version;
-  {
-    mutex_lock l(graph_state_lock_);
-    graph_def_version =
-        execution_state_->original_graph_def().versions().producer();
-  }
+  int graph_def_version = graphs.begin()->second->versions().producer();
+
+  const auto* session_metadata =
+      options_.config.experimental().has_session_metadata()
+          ? &options_.config.experimental().session_metadata()
+          : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
-      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
+      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
+      nullptr, nullptr, session_metadata));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1298,10 +1308,7 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
-    params.session_metadata =
-        options_.config.experimental().has_session_metadata()
-            ? &options_.config.experimental().session_metadata()
-            : nullptr;
+    params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
@@ -1489,12 +1496,15 @@ Status DirectSession::GetOrCreateExecutors(
 
   // Reacquire the lock, try to insert into the map.
   mutex_lock l(executor_lock_);
-  functions_.push_back(std::move(func_info));
 
   // Another thread may have created the entry before us, in which case we will
   // reuse the already created one.
   auto insert_result = executors_.emplace(
       sorted_key, std::shared_ptr<ExecutorsAndKeys>(std::move(ek)));
+  if (insert_result.second) {
+    functions_.push_back(std::move(func_info));
+  }
+
   // Insert the value under the original key, so the fast path lookup will work
   // if the user uses the same order of inputs, outputs, and targets again.
   executors_.emplace(key, insert_result.first->second);
@@ -1524,8 +1534,7 @@ Status DirectSession::CreateGraphs(
     prune_options.stateful_placements = stateful_placements_;
     prune_options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
-        execution_state_->original_graph_def().library(), prune_options,
-        execution_state_->original_graph_def(), subgraph_options,
+        *execution_state_, prune_options, subgraph_options,
         &temp_exec_state_holder, &client_graph));
     execution_state = temp_exec_state_holder.get();
   } else {
@@ -1617,15 +1626,15 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
-                                              device_graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        device_opts, std::move(partition.second), device_graph.get()));
     outputs->emplace(partition.first, std::move(device_graph));
   }
 

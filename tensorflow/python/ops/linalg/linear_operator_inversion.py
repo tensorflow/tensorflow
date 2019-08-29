@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = []
@@ -129,37 +130,27 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     # The congruency of is_non_singular and is_self_adjoint was checked in the
     # base operator.  Other hints are, in this special case of inversion, ones
     # that must be the same for base/derived operator.
-    def _combined_hint(hint_str, provided_hint_value, message):
-      """Get combined hint in the case where operator.hint should equal hint."""
-      op_hint = getattr(operator, hint_str)
-      if op_hint is False and provided_hint_value:
-        raise ValueError(message)
-      if op_hint and provided_hint_value is False:
-        raise ValueError(message)
-      return (op_hint or provided_hint_value) or None
+    combine_hint = (
+        linear_operator_util.use_operator_or_provided_hint_unless_contradicting)
 
-    is_square = _combined_hint(
-        "is_square", is_square,
+    is_square = combine_hint(
+        operator, "is_square", is_square,
         "An operator is square if and only if its inverse is square.")
 
-    is_non_singular = _combined_hint(
-        "is_non_singular", is_non_singular,
+    is_non_singular = combine_hint(
+        operator, "is_non_singular", is_non_singular,
         "An operator is non-singular if and only if its inverse is "
         "non-singular.")
 
-    is_self_adjoint = _combined_hint(
-        "is_self_adjoint", is_self_adjoint,
+    is_self_adjoint = combine_hint(
+        operator, "is_self_adjoint", is_self_adjoint,
         "An operator is self-adjoint if and only if its inverse is "
         "self-adjoint.")
 
-    is_positive_definite = _combined_hint(
-        "is_positive_definite", is_positive_definite,
+    is_positive_definite = combine_hint(
+        operator, "is_positive_definite", is_positive_definite,
         "An operator is positive-definite if and only if its inverse is "
         "positive-definite.")
-
-    is_square = _combined_hint(
-        "is_square", is_square,
-        "An operator is square if and only if its inverse is square.")
 
     # Initialization.
     if name is None:

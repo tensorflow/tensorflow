@@ -5070,7 +5070,7 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
 
 class SobelEdgesTest(test_util.TensorFlowTestCase):
 
-  def testSobelEdges1x2x3x1(self):
+  def disabled_testSobelEdges1x2x3x1(self):
     img = constant_op.constant([[1, 3, 6], [4, 1, 5]],
                                dtype=dtypes.float32, shape=[1, 2, 3, 1])
     expected = np.reshape([[[0, 0], [0, 12], [0, 0]],

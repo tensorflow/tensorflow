@@ -187,7 +187,9 @@ XLA_TEST_F(PrngTest, Uniformity256) {
   EXPECT_LT(UniformChiSquared(256, 512), 293.248);
 }
 
-XLA_TEST_F(PrngTest, MapUsingRng) {
+// TODO(b/134770669): May remove this test if we decide not to support map
+//                    computations with kRng instructions.
+XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(MapUsingRng))) {
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");

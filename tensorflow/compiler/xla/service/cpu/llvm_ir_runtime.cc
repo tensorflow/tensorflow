@@ -180,9 +180,8 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   //   e^a * 2^n = e^a * 2^(n1 + n2)
   //             = (2^n1 * e^a) * 2^n2.
   //
-  // But it turns out this approach is quite slow.  It's not clear why; our
-  // hypothesis is that the integer operations on the exponent `n` have nonlocal
-  // effects on the pipeline.
+  // But it turns out this approach is quite slow, probably because it
+  // manipulates subnormal values.
   //
   // The approach we use instead is to clamp n to [-127, 127]. Let n' be the
   // value of n clamped to [-127, 127]. In the case where n' = 127, `a` can grow

@@ -275,6 +275,21 @@ int NumNonControlInputs(const NodeDef& node) {
   return num_inputs;
 }
 
+int NumControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  int num_outputs = 0;
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& node_as_input : output->input()) {
+      if (!IsControlInput(node_as_input)) continue;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        ++num_outputs;
+      }
+    }
+  }
+  return num_outputs;
+}
+
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {

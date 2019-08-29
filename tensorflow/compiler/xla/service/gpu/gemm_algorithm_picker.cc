@@ -39,8 +39,8 @@ namespace gpu {
 
 using tensorflow::AutotuneResult;
 
-using GemmCacheKey = std::tuple<se::StreamExecutor*, Shape, Shape, Shape,
-                                double, double, std::string>;
+using GemmCacheKey =
+    std::tuple<se::StreamExecutor*, Shape, Shape, Shape, std::string>;
 
 static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
 static auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
@@ -58,11 +58,15 @@ static int64 cache_misses GUARDED_BY(autotune_cache_mu) = 0;
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     const HloInstruction* gemm, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase reference_result_buffer,
-    se::DeviceMemoryBase output_ref_buffer, se::Stream* stream,
+    se::DeviceMemoryBase reference_result_buffer, se::Stream* stream,
     const se::cuda::RedzoneAllocator& allocator,
     const BufferComparator& comparator, bool crash_on_checking_failure) {
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    return InternalError("Failed to synchronize GPU for autotuning.");
+  }
+
+  GemmBackendConfig backend_config =
+      gemm->backend_config<GemmBackendConfig>().ValueOrDie();
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
@@ -73,15 +77,21 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   std::vector<AutotuneResult> profile_results;
 
   for (se::blas::AlgorithmType algorithm : algorithms) {
-    // Output buffer always starts with an initial value of output_ref_buffer.
-    stream->ThenMemcpy(&output_buffer, output_ref_buffer, output_buffer.size());
+    // Make sure the output buffer always has the same value if we use
+    // the bias parameter.
+    if (backend_config.beta() != 0) {
+      int64 rng_state = 0;
+      InitializeFloatBuffer(stream, gemm->shape().element_type(), &rng_state,
+                            output_buffer);
+    }
     se::blas::ProfileResult profile_result;
 
     // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will fail
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    CHECK(RunGemm(gemm, lhs_buffer, rhs_buffer, output_buffer, stream,
+    CHECK(RunGemm(gemm, backend_config, lhs_buffer, rhs_buffer, output_buffer,
+                  stream,
                   /*implements_whole_instruction=*/true,
                   /*profiler=*/nullptr,
                   /*profile_result=*/&profile_result, algorithm)
@@ -104,7 +114,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
     TF_ASSIGN_OR_RETURN(
         se::cuda::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-        allocator.CheckRedzones(stream));
+        allocator.CheckRedzones());
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
       *result.mutable_failure()->mutable_msg() =
@@ -143,7 +153,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     *log.add_results() = profile;
   }
   if (!crash_on_checking_failure) {
-    tensorflow::Logger::Singleton()->LogProto(log);
+    tensorflow::Logger::GetSingleton()->LogProto(log);
   }
 
   // Choose fastest correct GEMM, but allow for incorrect results (since the
@@ -177,8 +187,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* instr, const HloInstruction* lhs,
     const HloInstruction* rhs, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase reference_result_buffer,
-    se::DeviceMemoryBase output_ref_buffer, se::Stream* stream,
+    se::DeviceMemoryBase reference_result_buffer, se::Stream* stream,
     bool crash_on_checking_failure, const se::cuda::RedzoneAllocator& allocator,
     const BufferComparator& comparator) {
   // Don't run autotuning concurrently on the same GPU.
@@ -189,8 +198,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   GemmCacheKey key =
       std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                      instr->shape(), gemm_config.alpha(), gemm_config.beta(),
-                      gemm_config.dot_dimension_numbers().SerializeAsString());
+                      instr->shape(), gemm_config.SerializeAsString());
 
   tensorflow::mutex_lock cache_lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);
@@ -218,10 +226,10 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     result = absl::nullopt;
   } else {
     TF_ASSIGN_OR_RETURN(
-        result, DoUncachedGemmAutotune(instr, lhs_buffer, rhs_buffer,
-                                       output_buffer, reference_result_buffer,
-                                       output_ref_buffer, stream, allocator,
-                                       comparator, crash_on_checking_failure));
+        result,
+        DoUncachedGemmAutotune(instr, lhs_buffer, rhs_buffer, output_buffer,
+                               reference_result_buffer, stream, allocator,
+                               comparator, crash_on_checking_failure));
   }
 
   CHECK(autotune_cache.emplace(key, result).second);
@@ -231,17 +239,22 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
                                        se::StreamExecutor* executor,
                                        se::DeviceMemoryAllocator* allocator) {
-  se::Stream stream{executor};
-  stream.Init();
-
   if (allocator == nullptr) {
     allocator = executor->GetAllocator();
   }
+  absl::optional<se::Stream> stream_opt;
+  se::Stream* stream = [&]() {
+    if (allocator->GetStream()) {
+      return allocator->GetStream();
+    }
+    stream_opt.emplace(executor);
+    stream_opt->Init();
+    return &stream_opt.value();
+  }();
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   se::cuda::RedzoneAllocator input_output_allocator(
-      executor->device_ordinal(), allocator,
-      PtxOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
 
   BufferComparator comparator(instr->shape(), hlo_module_config);
 
@@ -250,8 +263,8 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
       [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
                         input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(op->shape())));
-    InitializeFloatBuffer(&stream, op->shape().element_type(), &rng_state,
+                            ShapeUtil::ByteSizeOf(op->shape())));
+    InitializeFloatBuffer(stream, op->shape().element_type(), &rng_state,
                           buffer);
     return buffer;
   };
@@ -265,12 +278,10 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
                       get_initialized_buffer(lhs));
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
                       get_initialized_buffer(rhs));
-  TF_ASSIGN_OR_RETURN(  // FIXME initialization not necessary
-      se::DeviceMemoryBase output_buffer, get_initialized_buffer(instr));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                      get_initialized_buffer(instr));
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
                       get_initialized_buffer(instr));
-  TF_ASSIGN_OR_RETURN(  // FIXME initialization not necessary
-      se::DeviceMemoryBase output_ref_buffer, get_initialized_buffer(instr));
 
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
@@ -281,9 +292,8 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(
       absl::optional<se::blas::AlgorithmType> gemm_algorithm,
       DoGemmAutotune(instr, lhs, rhs, lhs_buffer, rhs_buffer, output_buffer,
-                     reference_result_buffer, output_ref_buffer, &stream,
-                     crash_on_checking_failure, input_output_allocator,
-                     comparator));
+                     reference_result_buffer, stream, crash_on_checking_failure,
+                     input_output_allocator, comparator));
 
   // We update instruction->backend_config(); if no algorithms are supported,
   // a different API is used, which does not require specifying an algorithm.

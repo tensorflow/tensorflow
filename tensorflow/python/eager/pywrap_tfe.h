@@ -51,18 +51,24 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
+// Execute a cancelable TensorFlow operation.
+//
+// Arguments as above (for TFE_Py_Execute), with the addition of:
+// 'cancellation_manager': A pointer to a TFE_CancellationManager that can be
+//                         used to cancel execution of the given operation.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status);
+
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
-
-// Registers e as the type of the ResourceVariable class.
-// Returns Py_None if registration succeeds, else throws a TypeError and returns
-// NULL.
-//
-// This function is not thread-safe.
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 
 // Registers e as the VSpace to use.
 // `vspace` must be a imperative_grad.py:VSpace named tuple.
@@ -85,6 +91,14 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
+
+// Registers e as the forward_gradient_function.  The registered function takes
+// (op_name, attrs, inputs, outputs, tangents) and returns the output
+// tangents. This function is used only for operations, not for custom gradients
+// or functional ops.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -148,6 +162,13 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 PyObject* TFE_Py_TapeSetIsEmpty();
 
 PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+
+// Like TFE_Py_TapeSetShouldRecord but with a ternary return:
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecord is false)
+//   - 1 if first-order gradients may be requested
+//   - 2 if higher-order gradients may be requested
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
+
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
@@ -167,9 +188,10 @@ PyObject* TFE_Py_TapeSetIsStopped();
 // operation. backward_function should be the function to be called during
 // backprop to, given the gradients of the output tensors, produce the gradients
 // of the input tensors.
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensor_ids,
-                                   PyObject* backward_function);
+PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
+                                        PyObject* output_tensors,
+                                        PyObject* input_tensors,
+                                        PyObject* backward_function);
 
 // Notifies all tapes that a variable has been accessed.
 void TFE_Py_TapeVariableAccessed(PyObject* variable);
@@ -234,6 +256,36 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // `accumulator`. Returns None if no JVP is available.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 
+// Temporarily push or pop transient state for accumulators in the active set.
+//
+// Allows an accumulator which is currently processing an operation to
+// temporarily reset its state. This is useful when building forwardprop
+// versions of functions, where an accumulator will trigger function building
+// and then must process captured symbolic tensors while building it. Without
+// pushing and poping, accumulators ignore operations executed as a direct
+// result of their own jvp computations.
+PyObject* TFE_Py_ForwardAccumulatorPushState();
+PyObject* TFE_Py_ForwardAccumulatorPopState();
+
+// Collects state from all current forward accumulators related to `tensors`.
+//
+// This is useful for packing JVPs as function inputs before executing a
+// function which computes primals and JVPs at the same time.
+//
+// Does not include accumulators which are currently in the process of computing
+// a jvp (and so appear somewhere on the current execution stack) or any
+// accumulators more deeply nested.
+//
+// Includes JVPs for `tensors` and any higher-order JVPs for those
+// (recursively). Returns a two-element tuple (indices, jvps):
+//   indices: A sequence of sequences of two-element tuples. Each forward
+//       accumulator is represented as a sequence of tuples with (primal_index,
+//       jvp_index). Both integers index into the concatenated `tensors + jvps`
+//       array.
+//   jvps: A flat list of Tensors. Best interpreted as a sequence to be
+//       appended to `tensors`.
+PyObject* TFE_Py_PackForwardGradients(PyObject* tensors);
+
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
 // TFE_Py_TensorShapeSlice takes a slice of dimensions of tensors in
@@ -258,5 +310,21 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
 
 void TFE_Py_EnableInteractivePythonLogging();
+
+// Sets `python_context` as the current eager Context object (defined
+// in eager/context.py). This function must be called at least once before
+// eager tensors are created.
+// If an error is encountered, sets python error and returns NULL. Else, returns
+// Py_None.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+
+// Returns the current eager Context object (defined in eager/context.py)
+// that was last set using TFE_Py_SetEagerContext.
+// If an error is encountered, sets python error and returns NULL.
+// The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
+// some point.
+PyObject* GetPyEagerContext();
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

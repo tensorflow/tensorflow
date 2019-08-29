@@ -33,9 +33,7 @@ from tensorflow.python.util import compat
 
 prefix_path = "third_party/tensorflow/core/lib"
 
-# pylint: disable=invalid-name
 TFRecordCompressionType = tf_record.TFRecordCompressionType
-# pylint: enable=invalid-name
 
 # Edgar Allan Poe's 'Eldorado'
 _TEXT = b"""Gaily bedight,
@@ -69,6 +67,7 @@ _TEXT = b"""Gaily bedight,
 
 
 class TFCompressionTestCase(test.TestCase):
+  """TFCompression Test"""
 
   def setUp(self):
     super(TFCompressionTestCase, self).setUp()
@@ -132,6 +131,7 @@ class TFCompressionTestCase(test.TestCase):
 
 
 class TFRecordWriterTest(TFCompressionTestCase):
+  """TFRecordWriter Test"""
 
   def _AssertFilesEqual(self, a, b, equal):
     for an, bn in zip(a, b):
@@ -173,6 +173,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
     return os.path.getsize(fn_a) - os.path.getsize(fn_b)
 
   def testWriteReadZLibFiles(self):
+    """test Write Read ZLib Files"""
     # Write uncompressed then compress manually.
     options = tf_record.TFRecordOptions(TFRecordCompressionType.NONE)
     files = self._CreateFiles(options, prefix="uncompressed")
@@ -195,6 +196,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
     self._AssertFilesEqual(uncompressed_files, files, True)
 
   def testWriteReadGzipFiles(self):
+    """test Write Read Gzip Files"""
     # Write uncompressed then compress manually.
     options = tf_record.TFRecordOptions(TFRecordCompressionType.NONE)
     files = self._CreateFiles(options, prefix="uncompressed")
@@ -219,6 +221,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
     self._AssertFilesEqual(uncompressed_files, files, True)
 
   def testNoCompressionType(self):
+    """test No Compression Type"""
     self.assertEqual(
         "",
         tf_record.TFRecordOptions.get_compression_type_string(
@@ -236,6 +239,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
       tf_record.TFRecordOptions("BZ2")
 
   def testZlibCompressionType(self):
+    """test Zlib Compression Type"""
     zlib_t = tf_record.TFRecordCompressionType.ZLIB
 
     self.assertEqual(
@@ -254,7 +258,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
             tf_record.TFRecordOptions(tf_record.TFRecordOptions(zlib_t))))
 
   def testCompressionOptions(self):
-    # Create record with mix of random and repeated data to test compression on.
+    """Create record with mix of random and repeated data to test compression on."""
     rnd = random.Random(123)
     random_record = compat.as_bytes(
         "".join(rnd.choice(string.digits) for _ in range(10000)))
@@ -290,8 +294,10 @@ class TFRecordWriterTest(TFCompressionTestCase):
 
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):
+  """TFRecordWriter Zlib test"""
 
   def testZLibFlushRecord(self):
+    """test ZLib Flush Record"""
     original = [b"small record"]
     fn = self._WriteRecordsToFile(original, "small_record")
     with open(fn, "rb") as h:
@@ -354,12 +360,14 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
 
 
 class TFRecordIteratorTest(TFCompressionTestCase):
+  """TFRecordIterator test"""
 
   def setUp(self):
     super(TFRecordIteratorTest, self).setUp()
     self._num_records = 7
 
   def testIterator(self):
+    """test Iterator"""
     records = [self._Record(0, i) for i in range(self._num_records)]
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     fn = self._WriteRecordsToFile(records, "compressed_records", options)
@@ -420,7 +428,9 @@ class TFRecordIteratorTest(TFCompressionTestCase):
 
 
 class TFRecordWriterCloseAndFlushTests(test.TestCase):
+  """TFRecordWriter close and flush tests"""
 
+  # pylint: disable=arguments-differ
   def setUp(self, compression_type=TFRecordCompressionType.NONE):
     super(TFRecordWriterCloseAndFlushTests, self).setUp()
     self._fn = os.path.join(self.get_temp_dir(), "tf_record_writer_test.txt")
@@ -468,14 +478,14 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
 
 
 class TFRecordWriterCloseAndFlushGzipTests(TFRecordWriterCloseAndFlushTests):
-
+  # pylint: disable=arguments-differ
   def setUp(self):
     super(TFRecordWriterCloseAndFlushGzipTests,
           self).setUp(TFRecordCompressionType.GZIP)
 
 
 class TFRecordWriterCloseAndFlushZlibTests(TFRecordWriterCloseAndFlushTests):
-
+  # pylint: disable=arguments-differ
   def setUp(self):
     super(TFRecordWriterCloseAndFlushZlibTests,
           self).setUp(TFRecordCompressionType.ZLIB)
