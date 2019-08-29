@@ -608,16 +608,17 @@ class FFTShiftTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testPlaceholder(self):
-      x = array_ops.placeholder(shape=[None, None, None], dtype='float32')
-      axes_to_test = [None, 1, [1, 2]]
-      for axes in axes_to_test:
-        y_fftshift = fft_ops.fftshift(x, axes=axes)
-        y_ifftshift = fft_ops.ifftshift(x, axes=axes)
-        with self.session() as sess:
-            x_np = np.random.rand(16, 256, 256)
-            y_fftshift_res, y_ifftshift_res = sess.run([y_fftshift, y_ifftshift], feed_dict={x: x_np})
-            self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
-            self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
+    x = array_ops.placeholder(shape=[None, None, None], dtype='float32')
+    axes_to_test = [None, 1, [1, 2]]
+    for axes in axes_to_test:
+      y_fftshift = fft_ops.fftshift(x, axes=axes)
+      y_ifftshift = fft_ops.ifftshift(x, axes=axes)
+      with self.session() as sess:
+        x_np = np.random.rand(16, 256, 256)
+        y_fftshift_res, y_ifftshift_res = sess.run([y_fftshift, y_ifftshift],
+                                                   feed_dict={x: x_np},)
+        self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
+        self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
 
 if __name__ == "__main__":
   test.main()
