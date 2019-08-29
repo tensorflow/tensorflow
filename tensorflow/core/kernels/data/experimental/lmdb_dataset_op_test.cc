@@ -12,8 +12,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/lmdb_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
-
-#include "tensorflow/core/platform/posix/posix_file_system.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace data {
@@ -108,14 +108,16 @@ string MaybeCopyDataFile() {
   string src_loc = io::JoinPath(kDataFileLoc, kDataFileName);
   string dest_loc = io::JoinPath(testing::TmpDir(), kDataFileName);
 
-  PosixFileSystem fs;
-  // PosixFileSystem::FileExists currently returns Status::OK() if the file
+  FileSystem* fs;  // Pointer to singleton
+  TF_EXPECT_OK(Env::Default()->GetFileSystemForFile(src_loc, &fs));
+
+  // FileSystem::FileExists currently returns Status::OK() if the file
   // exists and errors::NotFound() if the file doesn't exist. There's no
   // indication in the code or docs about whether other error codes may be
   // added in the future, so we code defensively here.
-  Status exists_status = fs.FileExists(dest_loc);
+  Status exists_status = fs->FileExists(dest_loc);
   if (exists_status.code() == error::NOT_FOUND) {
-    TF_EXPECT_OK(fs.CopyFile(src_loc, dest_loc));
+    TF_EXPECT_OK(fs->CopyFile(src_loc, dest_loc));
   } else {
     TF_EXPECT_OK(exists_status);
   }
