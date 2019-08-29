@@ -800,6 +800,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["random_ops_test.py"],
     shard_count = 5,
+    tags = [
+        "notsan",  # b/140243598
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
