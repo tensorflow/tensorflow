@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 
 namespace mlir {
@@ -60,6 +62,10 @@ std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
+// Creates a pass that forms clusters from operations of the same
+// `_tpu_replicate` attribute.
+std::unique_ptr<FunctionPassBase> CreateTPUClusterFormationPass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops
 std::unique_ptr<ModulePassBase> CreateTPURewritePass();

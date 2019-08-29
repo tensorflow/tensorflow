@@ -132,6 +132,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
