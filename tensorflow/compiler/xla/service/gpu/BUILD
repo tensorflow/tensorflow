@@ -1141,6 +1141,7 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
+        ":cublas_gemm_pad_for_tensor_cores",
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
