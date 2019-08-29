@@ -104,6 +104,12 @@ def sequence_loss(logits,
   if average_across_batch and sum_over_batch:
     raise ValueError("average_across_batch and sum_over_batch cannot be set "
                      "to True at same time.")
+  if average_across_batch and sum_over_timesteps:
+    raise ValueError("average_across_batch and sum_over_timesteps cannot be "
+                     "set to True at same time because of ambiguous order.")
+  if sum_over_batch and average_across_timesteps:
+    raise ValueError("sum_over_batch and average_across_timesteps cannot be "
+                     "set to True at same time because of ambiguous order.")
   with ops.name_scope(name, "sequence_loss", [logits, targets, weights]):
     num_classes = array_ops.shape(logits)[2]
     logits_flat = array_ops.reshape(logits, [-1, num_classes])

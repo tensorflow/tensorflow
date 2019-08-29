@@ -267,6 +267,18 @@ class LossTest(test.TestCase):
       compare_total = np.zeros((self.batch_size, self.sequence_length))
       self.assertAllClose(compare_total, res)
 
+  def testAmbiguousOrder(self):
+    with self.assertRaisesRegexp(ValueError, 'because of ambiguous order'):
+      with self.cached_session(use_gpu=True):
+        self.setup()
+        seq_loss = loss.SequenceLoss(
+            average_across_timesteps=False,
+            average_across_batch=True,
+            sum_over_timesteps=True,
+            sum_over_batch=False)
+        self.evaluate(
+            seq_loss(self.targets, self.logits, self.weights))
+
 
 if __name__ == '__main__':
   test.main()
