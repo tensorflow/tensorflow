@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -644,7 +645,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, b"abc", b"xyz")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/138741991")
   def test_variable(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: variables.Variable(3.0)
@@ -792,7 +793,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_false = lambda: ta.read(1)
     self._testShape(fn_true, fn_false, shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/138741991")
   def test_list(self):
     shape = [tensor_shape.TensorShape([]), tensor_shape.TensorShape([]),
              tensor_shape.TensorShape([])]
@@ -1082,6 +1083,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.disable_xla("Wants RunMetadata")
   def testParallelExecution(self):
     """Verify disjoint branches across while iterations are run in parallel."""
+    if control_flow_v2_toggles.control_flow_v2_enabled():
+      self.skipTest("b/138870290")
     if test.is_built_with_rocm():
       self.skipTest(
           "Disable subtest on ROCm due to missing Cholesky op support")
@@ -1186,7 +1189,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def make_func(bi):
       return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
 
-    branches = {array_ops.constant(i): make_func(i) for i in range(5)}
+    branches = [(array_ops.constant(i), make_func(i)) for i in range(5)]
     with self.assertRaisesRegexp(TypeError, "must be a Python `int`"):
       control_flow_ops.switch_case(array_ops.constant(1), branches)
 
@@ -1259,10 +1262,8 @@ class CaseTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testCase_dict(self):
     x = constant_op.constant(2)
-    conditions = {
-        math_ops.equal(x, 1): lambda: constant_op.constant(2),
-        math_ops.equal(x, 2): lambda: constant_op.constant(4)
-    }
+    conditions = [(math_ops.equal(x, 1), lambda: constant_op.constant(2)),
+                  (math_ops.equal(x, 2), lambda: constant_op.constant(4))]
     output = control_flow_ops.case(conditions, exclusive=True)
     self.assertEqual(4, self.evaluate(output))
 
@@ -1288,7 +1289,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Expect a tuple since that is what the body returns.
     self.assertEqual(self.evaluate(r), (10,))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Unsupported in cfv2")
   def testWhileLoopSameReturnShape_False(self):
     i = constant_op.constant(0)
     c = lambda i, _: math_ops.less(i, 10)

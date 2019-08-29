@@ -142,14 +142,9 @@ def assert_listed_tensors(tst,
   attr_segs = out.font_attr_segs
   line_counter = 0
 
-  num_tensors = len(expected_tensor_names)
-
-  if tensor_filter_name is None:
-    tst.assertEqual("%d dumped tensor(s):" % num_tensors, next(line_iter))
-  else:
-    tst.assertEqual("%d dumped tensor(s) passing filter \"%s\":" %
-                    (num_tensors, tensor_filter_name), next(line_iter))
+  num_dumped_tensors = int(next(line_iter).split(" ")[0])
   line_counter += 1
+  tst.assertGreaterEqual(num_dumped_tensors, len(expected_tensor_names))
 
   if op_type_regex is not None:
     tst.assertEqual("Op type regex filter: \"%s\"" % op_type_regex,

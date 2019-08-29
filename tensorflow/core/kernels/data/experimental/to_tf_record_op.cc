@@ -50,13 +50,13 @@ class ToTFRecordOp : public AsyncOpKernel {
     // thread pool thread, so we issue the call using a background thread.
     background_worker_.Schedule(std::bind(
         [this, ctx](std::function<void()>& done) {
-          string filename;
+          tstring filename;
           OP_REQUIRES_OK_ASYNC(
-              ctx, ParseScalarArgument<string>(ctx, "filename", &filename),
+              ctx, ParseScalarArgument<tstring>(ctx, "filename", &filename),
               done);
-          string compression_type;
+          tstring compression_type;
           OP_REQUIRES_OK_ASYNC(ctx,
-                               ParseScalarArgument<string>(
+                               ParseScalarArgument<tstring>(
                                    ctx, "compression_type", &compression_type),
                                done);
           std::unique_ptr<WritableFile> file;
@@ -122,7 +122,7 @@ class ToTFRecordOp : public AsyncOpKernel {
 
             if (!end_of_sequence) {
               OP_REQUIRES_OK_ASYNC(
-                  ctx, writer->WriteRecord(components[0].scalar<string>()()),
+                  ctx, writer->WriteRecord(components[0].scalar<tstring>()()),
                   done);
             }
             components.clear();

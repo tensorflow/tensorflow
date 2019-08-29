@@ -356,10 +356,10 @@ class MomentumWOptimizer(DecoupledWeightDecayExtension,
 class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
   """Optimizer that implements the Adam algorithm with weight decay.
 
-  This is an implementation of the AdamW optimizer described in "Fixing
-  Weight Decay Regularization in Adam" by Loshchilov & Hutter
+  This is an implementation of the AdamW optimizer described in ["Fixing
+  Weight Decay Regularization in Adam" by Loshchilov & Hutter]
   (https://arxiv.org/abs/1711.05101)
-  ([pdf])(https://arxiv.org/pdf/1711.05101.pdf).
+  ([pdf](https://arxiv.org/pdf/1711.05101.pdf)).
 
   It computes the update step of `train.AdamOptimizer` and additionally decays
   the variable. Note that this is different from adding L2 regularization on

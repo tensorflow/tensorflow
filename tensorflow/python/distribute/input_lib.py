@@ -481,7 +481,9 @@ class DistributedDataset(_IterableInput):
     # pipeline and only receive its own shard of the dataset.
     if split_batch_by:
       try:
-        dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        with ops.colocate_with(dataset._variant_tensor):
+          dataset = distribute._RebatchDataset(dataset, split_batch_by)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
           six.reraise(
@@ -495,23 +497,27 @@ class DistributedDataset(_IterableInput):
         else:
           raise
 
+    # TODO(b/138745411): Remove once stateful transformations are supported.
+    options = dataset_ops.Options()
+    options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+    dataset = dataset.with_options(options)
+
     self._cloned_datasets = []
     if input_context:
       # Between-graph where we rely on the input_context for sharding
       assert input_workers.num_workers == 1
-      dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
-          dataset, input_context.num_input_pipelines,
-          input_context.input_pipeline_id)
+      dataset = input_ops.auto_shard_dataset(dataset,
+                                             input_context.num_input_pipelines,
+                                             input_context.input_pipeline_id)
       self._cloned_datasets.append(dataset)
     else:
+      replicated_ds = distribute.replicate(dataset,
+                                           input_workers.worker_devices)
       for i, worker in enumerate(input_workers.worker_devices):
         with ops.device(worker):
-          cloned_dataset = dataset
-          if not context.executing_eagerly():
-            cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
-            cloned_dataset = cloned_dataset.with_options(dataset.options())
-          # TODO(b/129506833): Figure out between graph cases
-          cloned_dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
+          cloned_dataset = replicated_ds[worker]
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
+          cloned_dataset = input_ops.auto_shard_dataset(
               cloned_dataset, len(input_workers.worker_devices), i)
           self._cloned_datasets.append(cloned_dataset)
 
@@ -887,7 +893,7 @@ class _SingleWorkerDatasetIterator(object):
     Returns:
       A list of any initializer ops that should be run.
     """
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       self._iterator._eager_reset()  # pylint: disable=protected-access
       return []
     else:
@@ -963,6 +969,10 @@ def _create_iterators_per_worker_with_input_context(input_contexts,
     worker = input_workers.worker_devices[i]
     with ops.device(worker):
       dataset = dataset_fn(ctx)
+      # TODO(b/138745411): Remove once stateful transformations are supported.
+      options = dataset_ops.Options()
+      options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+      dataset = dataset.with_options(options)
       devices = input_workers.compute_devices_for_worker(i)
       iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
       iterators.append(iterator)

@@ -245,6 +245,20 @@ static Status ApplyAdagradShapeFn(InferenceContext* c, bool sparse) {
   return Status::OK();
 }
 
+static Status ApplyAdagradV2ShapeFn(InferenceContext* c, bool sparse) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 4 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyAdagrad")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")
@@ -268,6 +282,33 @@ REGISTER_OP("ResourceApplyAdagrad")
     .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
+    });
+
+REGISTER_OP("ApplyAdagradV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradV2ShapeFn(c, false /* sparse */);
+    });
+
+REGISTER_OP("ResourceApplyAdagradV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradV2ShapeFn(c, false /* sparse */);
     });
 
 static Status ApplyProximalAdagradShapeFn(InferenceContext* c, bool sparse) {
@@ -339,6 +380,37 @@ REGISTER_OP("ResourceSparseApplyAdagrad")
     .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
+    });
+
+REGISTER_OP("SparseApplyAdagradV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradV2ShapeFn(c, true /* sparse */);
+    });
+
+REGISTER_OP("ResourceSparseApplyAdagradV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradV2ShapeFn(c, true /* sparse */);
     });
 
 static Status ApplyAdagradDAShapeFn(InferenceContext* c, bool sparse) {

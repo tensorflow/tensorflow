@@ -177,8 +177,8 @@ func @switch_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<
   return %result : tensor<*xf32>
 }
 
-// CHECK-LABEL: func @switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-func @switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: func @switchN(
+func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
 // CHECK: %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
@@ -232,6 +232,43 @@ func @switch_merge_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> t
     tf_executor.fetch %value : tensor<*xf32>
   }
   return %result : tensor<*xf32>
+}
+
+// Verify that long form printing is used when operand types do not match the
+// result type and then it can be parsed again correctly.
+// CHECK-LABEL: func @merge_different_operand_types
+func @merge_different_operand_types(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = tf_executor.Merge %arg0, %arg1  : (tensor<*xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<4xf32>
+  }
+  return %result : tensor<4xf32>
+}
+
+// Verify that long form printing is used when there is only one data operand
+// and then it can be parsed again correctly.
+// CHECK-LABEL: func @merge_one_data_operand
+func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = tf_executor.Merge %arg0  : (tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<*xf32>
+  }
+  return %result : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @merge_with_variant_type
+func @merge_with_variant_type(%arg0: tensor<!tf.variant>, %arg1: tensor<!tf.variant<tensor<4xi32>>>) -> tensor<!tf.variant<tensor<8xf32>>> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<!tf.variant<tensor<8xf32>>>
+  }
+  return %result : tensor<!tf.variant<tensor<8xf32>>>
 }
 
 // CHECK-LABEL: func @enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {

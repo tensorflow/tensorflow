@@ -37,7 +37,9 @@ class GPU_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class GPU_IndexOp<string mnemonic, list<OpTrait> traits = []> :
     GPU_Op<mnemonic, !listconcat(traits, [NoSideEffect])>,
-    Arguments<(ins StrAttr:$dimension)>, Results<(outs Index)>;
+    Arguments<(ins StrAttr:$dimension)>, Results<(outs Index)> {
+  let verifier = [{ return ::verifyIndexOp(*this); }];
+}
 
 def gpu_BlockDim : GPU_IndexOp<"block_dim">;
 def gpu_BlockId : GPU_IndexOp<"block_id">;

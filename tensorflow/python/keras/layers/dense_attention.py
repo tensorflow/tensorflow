@@ -192,6 +192,11 @@ class BaseDenseAttention(Layer):
           'If {} layer\'s dropout > 0.0, it must be called with explicit '
           '\'training\' (boolean).'.format(class_name))
 
+  def get_config(self):
+    config = {'causal': self.causal}
+    base_config = super(BaseDenseAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
 
 @keras_export('keras.layers.Attention')
 class Attention(BaseDenseAttention):
@@ -320,6 +325,11 @@ class Attention(BaseDenseAttention):
     if self.scale is not None:
       scores *= self.scale
     return scores
+
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(Attention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.layers.AdditiveAttention')
@@ -461,6 +471,11 @@ class AdditiveAttention(BaseDenseAttention):
       scale = 1.
     return math_ops.reduce_sum(
         scale * math_ops.tanh(q_reshaped + k_reshaped), axis=-1)
+
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(AdditiveAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 def _lower_triangular_mask(shape):

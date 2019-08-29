@@ -42,13 +42,13 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
-%rename("%s") TFE_ContextAsyncWait;
-%rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
+%rename("%s") TFE_ExecutorIsAsync;
 %rename("%s") TFE_ExecutorWaitForAllPendingNodes;
+%rename("%s") TFE_ExecutorClearError;
 %rename("%s") TFE_ContextSetExecutorForThread;
-%rename("%s") TFE_ContextClearExecutorForThread;
+%rename("%s") TFE_ContextGetExecutorForThread;
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
@@ -75,10 +75,12 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
 %rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
-%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetShouldRecordBackprop;
 %rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetRecordOperationBackprop;
+%rename("%s") TFE_Py_TapeSetRecordOperationForwardprop;
 %rename("%s") TFE_Py_TapeGradient;
 %rename("%s") TFE_Py_TapeVariableAccessed;
 %rename("%s") TFE_Py_TapeWatch;
@@ -88,6 +90,9 @@ limitations under the License.
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
+%rename("%s") TFE_Py_ForwardAccumulatorPushState;
+%rename("%s") TFE_Py_ForwardAccumulatorPopState;
+%rename("%s") TFE_Py_PackForwardGradients;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -167,9 +172,11 @@ limitations under the License.
 %rename("%s") TFE_CancellationManagerStartCancel;
 %rename("%s") TFE_DeleteCancellationManager;
 %rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%rename("%s") TFE_ClearScalarCache;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/util/util.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -193,6 +200,16 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
 }
 %}
 static PyObject* TF_ListPhysicalDevices(TF_Status* status);
+
+%{
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
+
+static PyObject* TFE_ClearScalarCache() {
+  tensorflow::TFE_TensorHandleCache::Get()->Clear();
+  Py_RETURN_NONE;
+}
+%}
+static PyObject* TFE_ClearScalarCache();
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -222,6 +239,7 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 }
 
 %typemap(in, numinputs=0) unsigned char* is_list (unsigned char tmp) {
+  tmp = 0;
   $1 = &tmp;
 }
 

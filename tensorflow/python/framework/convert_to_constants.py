@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_shape_pb2
@@ -29,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import object_identity
 from tensorflow.python.training.saver import export_meta_graph
 
 
@@ -177,10 +180,12 @@ def _get_tensor_data(func):
     Dict
   """
   tensor_data = {}
-  map_index_to_variable = {
-      func.captured_inputs.index(var.handle): var
-      for var in func.graph.variables
-  }
+  map_index_to_variable = {}
+  for var in func.graph.variables:
+    for idx, captured_input in enumerate(func.captured_inputs):
+      if var.handle is captured_input:  # pylint: disable=protected-access
+        map_index_to_variable[idx] = var
+        break
 
   # Iterates through all captures which are represented as Placeholders.
   for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures):
@@ -353,9 +358,10 @@ def _construct_concrete_function(func, output_graph_def,
   """
   # Create a ConcreteFunction from the new GraphDef.
   input_tensors = func.graph.internal_captures
-  converted_inputs = set(
+  converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = set(func.inputs).difference(converted_inputs)
+  not_converted_inputs = object_identity.ObjectIdentitySet(
+      func.inputs).difference(converted_inputs)
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
@@ -393,7 +399,6 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   Returns:
     ConcreteFunction containing a simplified version of the original.
   """
-  # TODO(nupurgarg): Replace ResourceGather with Gather.
   # Inline the graph in order to remove functions when possible.
   graph_def = _run_inline_graph_optimization(func, lower_control_flow)
 
@@ -463,10 +468,10 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
       # Get dtype and data for non-variable Placeholders (ex. values for 1.X
       # Const ops that are loaded as Placeholders in 2.0)
       _save_placeholder(node.name, node.attr["dtype"])
-    elif node.op == "ReadVariableOp":
-      # Get dtype and data for Placeholder ops associated with ReadVariableOp.
-      # There can be an Identity in between the ReadVariableOp and Placeholder.
-      # Store the dtype for the Identity ops.
+    elif node.op in ["ReadVariableOp", "ResourceGather"]:
+      # Get dtype and data for Placeholder ops associated with ReadVariableOp
+      # and ResourceGather ops. There can be an Identity in between the
+      # resource op and Placeholder. Store the dtype for the Identity ops.
       input_name = _get_tensor_name(node.input[0])
       while name_to_node[input_name].op == "Identity":
         resource_identities[input_name] = node.attr["dtype"]
@@ -499,6 +504,26 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     # Convert ReadVariableOps to Identity ops.
     elif input_node.op == "ReadVariableOp":
       _populate_identity_op(output_node, input_node)
+    # Convert ResourceGather to Gather ops with a Const axis feeding into it.
+    elif input_node.op == "ResourceGather":
+      if input_node.attr["batch_dims"].i != 0:
+        raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
+      output_axis_node = output_graph_def.node.add()
+      axis_node_name = input_node.name + "/axis"
+      axis_dtype = input_node.attr["Tindices"]
+      axis_data = np.array(input_node.attr["batch_dims"].i)
+      _populate_const_op(output_axis_node, axis_node_name, axis_dtype,
+                         axis_data, axis_data.shape)
+
+      output_node.op = "GatherV2"
+      output_node.name = input_node.name
+      output_node.input.extend(
+          [input_node.input[0], input_node.input[1], axis_node_name])
+      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
+      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
+      output_node.attr["Taxis"].CopyFrom(axis_dtype)
+      if "_class" in input_node.attr:
+        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
     # Update the function names and argument types for the conditional ops.
     elif input_node.op in _CONDITIONAL_OPS:
       _populate_if_op(output_node, input_node, function_data)

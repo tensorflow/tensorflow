@@ -71,8 +71,8 @@ class IgniteDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string cache_name = "";
-    string host = "";
+    tstring cache_name = "";
+    tstring host = "";
     int32 port = -1;
     bool local = false;
     int32 part = -1;
@@ -96,17 +96,17 @@ class IgniteDatasetOp : public DatasetOpKernel {
     const char* env_cert_password = std::getenv("IGNITE_DATASET_CERT_PASSWORD");
 
     if (env_cache_name) {
-      cache_name = string(env_cache_name);
+      cache_name = env_cache_name;
     } else {
-      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<string>(ctx, "cache_name",
-                                                            &cache_name));
+      OP_REQUIRES_OK(ctx, data::ParseScalarArgument<tstring>(ctx, "cache_name",
+                                                             &cache_name));
     }
 
     if (env_host) {
-      host = string(env_host);
+      host = env_host;
     } else {
       OP_REQUIRES_OK(ctx,
-                     data::ParseScalarArgument<string>(ctx, "host", &host));
+                     data::ParseScalarArgument<tstring>(ctx, "host", &host));
     }
 
     if (env_port) {
@@ -145,13 +145,13 @@ class IgniteDatasetOp : public DatasetOpKernel {
           ctx, data::ParseScalarArgument<int32>(ctx, "page_size", &page_size));
     }
 
-    if (env_username) username = string(env_username);
+    if (env_username) username = env_username;
 
-    if (env_password) password = string(env_password);
+    if (env_password) password = env_password;
 
-    if (env_certfile) certfile = string(env_certfile);
+    if (env_certfile) certfile = env_certfile;
 
-    if (env_keyfile) keyfile = string(env_keyfile);
+    if (env_keyfile) keyfile = env_keyfile;
 
     if (env_cert_password) cert_password = string(env_cert_password);
 

@@ -43,6 +43,8 @@ namespace eager {
 //   successfully. At this point, the tensor to be sent is in the local
 //   Rendezvous, hence, remote _Recv op will not deadlock waiting for the tensor
 //   to appear.
+//   When ctx->UseSendTensorRPC() is true, we use EagerService::Enqueue
+//   SendTensor instead of _Send/_Recv.
 //
 // - Remote -> Remote:
 //   We could issue both remote ops asynchronously, but if remote _Send (or some
@@ -56,26 +58,33 @@ namespace eager {
 //   current partially synchronous approach seems fine.
 //
 // To copy a tensor within a host, please use copy_to_device_node instead.
-class RemoteCopyNode : public EagerNode {
+class RemoteCopyNode : public AsyncEagerNode {
  public:
   RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor, TensorHandle* src,
                  TensorHandle* dst, Device* recv_device, uint64 recv_op_id);
 
-  ~RemoteCopyNode() override {}
+  ~RemoteCopyNode() override;
 
-  Status Run() override;
+  void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override;
 
+  string DebugString() const override {
+    string out = "[RemoteCopyNode]";
+    strings::StrAppend(&out, " send_device: ", send_device_->name());
+    strings::StrAppend(&out, ", recv_device: ", recv_device_->name());
+    strings::StrAppend(&out, ", send_tensor: ", src_->DebugString());
+    strings::StrAppend(
+        &out, ", recv_tensor: ", captured_state_->dst()->DebugString());
+    return out;
+  }
+
  private:
   // Runs the _Send operation locally or remotely.
-  // An error return value indicates that _Send did not run successfully.
-  // An OK return value does NOT necessarily indicate that _Send has completed
-  // successfully. It might still fail after this method returns.
   // StartSend() makes sure that captured_state_->send_status_ is set to the
   // final _Send status after captured_state->send_done_.WaitForNotification()
   // returns.
-  Status StartSend();
+  void StartSend();
 
   // Synchronously runs local send `op` and returns its status.
   Status RunLocalSend(EagerOperation* op);
@@ -90,7 +99,7 @@ class RemoteCopyNode : public EagerNode {
   // (potentially after this methods returns); a tensor is set in the local
   // case, a remote shape is set in the remote case, the dst_ handle is
   // poisoned in either case if there is an error.
-  Status StartRecv();
+  void StartRecv(StatusCallback done);
 
   // Synchronously runs local receive `op` and returns its status.
   // Does not wait for the send to complete before running receive.
@@ -98,7 +107,17 @@ class RemoteCopyNode : public EagerNode {
 
   // Waits for send to complete, then issues remote receive `op` and
   // returns its status.
-  Status RunRemoteRecv(EagerOperation* op);
+  void RunRemoteRecv(EagerOperation* op, StatusCallback done);
+
+  // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
+  // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
+  // sender* (Rendezvous::RecvAsync() invoked by the _Recv kernel).
+  //
+  // However, in some configurations the node that has the tensor to be copied
+  // isn't running a server (WorkerService RPC interface). For such cases,
+  // this function enables sending tensors using the EagerService.Enqueue
+  // SendTensor RPC *on the receiver*.
+  void StartRemoteSendTensor(StatusCallback done);
 
   // State that is captured by Send and/or Recv callbacks (depending on which
   // one(s) is remote) and outlives this node in the case of remote->remote
@@ -118,6 +137,11 @@ class RemoteCopyNode : public EagerNode {
       return send_status_;
     }
 
+    // src_shape_ is not thread-safe. It should only be set in one thread.
+    void SetSrcShape(const TensorShape& shape) { src_shape_ = shape; }
+
+    const TensorShape& GetSrcShape() { return src_shape_; }
+
     TensorHandle* dst() { return dst_; }
     CancellationManager* recv_cancellation() { return &recv_cancellation_; }
 
@@ -128,6 +152,7 @@ class RemoteCopyNode : public EagerNode {
     // has returned.
     Status send_status_;
     Notification send_done_;
+    TensorShape src_shape_;
   };
 
   TensorHandle* const src_;

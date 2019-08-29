@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 
 from absl.testing import parameterized
 import numpy as np
@@ -251,6 +252,45 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       second_epoch.append(elem.numpy())
 
     self.assertEqual(first_epoch == second_epoch, not reshuffle)
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testShuffleV2ResourceCapture(self):
+
+    def make_dataset():
+      ids = dataset_ops.Dataset.range(10)
+      ids = ids.shuffle(1)
+
+      def interleave_fn(dataset, _):
+        return dataset
+
+      dataset = dataset_ops.Dataset.range(1)
+      dataset = dataset.interleave(functools.partial(interleave_fn, ids))
+      return dataset
+
+    results = []
+    for elem in make_dataset():
+      results.append(elem.numpy())
+
+    self.assertAllEqual(results, range(10))
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          combinations.combine(reshuffle=[True, False], seed=[None, 42])))
+  def testReshuffleSeparateTransformations(self, reshuffle, seed):
+    dataset = dataset_ops.Dataset.range(10)
+
+    first_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      first_epoch.append(elem.numpy())
+
+    second_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      second_epoch.append(elem.numpy())
+
+    self.assertEqual(first_epoch != second_epoch, seed is None)
 
 
 if __name__ == "__main__":

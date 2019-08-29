@@ -69,7 +69,7 @@ void TestAllCombinations(CompressionOptions input_options,
       for (auto output_buf_size : OutputBufferSizes()) {
         std::unique_ptr<WritableFile> file_writer;
         TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
-        string result;
+        tstring result;
 
         ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                              output_options);
@@ -142,7 +142,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
                      input_options);
 
   for (int i = 0; i < num_writes; i++) {
-    string decompressed_output;
+    tstring decompressed_output;
     TF_ASSERT_OK(in.ReadNBytes(data.size(), &decompressed_output));
     strings::StrAppend(&actual_result, decompressed_output);
   }
@@ -171,7 +171,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   string data = GenTestString(10);
   std::unique_ptr<WritableFile> file_writer;
   TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
-  string result;
+  tstring result;
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
   TF_ASSERT_OK(out.Init());
@@ -229,8 +229,8 @@ void TestTell(CompressionOptions input_options,
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
                            input_options);
 
-        string first_half(data, 0, data.size() / 2);
-        string bytes_read;
+        tstring first_half(string(data, 0, data.size() / 2));
+        tstring bytes_read;
 
         // Read the first half of the uncompressed file and expect that Tell()
         // returns half the uncompressed length of the file.
@@ -240,7 +240,7 @@ void TestTell(CompressionOptions input_options,
 
         // Read the remaining half of the uncompressed file and expect that
         // Tell() points past the end of file.
-        string second_half;
+        tstring second_half;
         TF_ASSERT_OK(
             in.ReadNBytes(data.size() - first_half.size(), &second_half));
         EXPECT_EQ(in.Tell(), data.size());
@@ -283,7 +283,7 @@ void TestSkipNBytes(CompressionOptions input_options,
 
         // Expect that second half is read correctly and Tell() returns past
         // end of file after reading complete file.
-        string bytes_read;
+        tstring bytes_read;
         TF_ASSERT_OK(in.ReadNBytes(second_half.size(), &bytes_read));
         EXPECT_EQ(bytes_read, second_half);
         EXPECT_EQ(in.Tell(), data.size());

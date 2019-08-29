@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OPS_H_
 
 #include "tensorflow/core/framework/dataset.h"
 
@@ -22,6 +22,9 @@ namespace data {
 
 class CacheDatasetOp : public UnaryDatasetOpKernel {
  public:
+  class FileDataset;
+  class MemoryDataset;
+
   static constexpr const char* const kDatasetType = "Cache";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kFileName = "filename";
@@ -35,11 +38,13 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  class FileDataset;
-  class MemoryDataset;
+  class FileDatasetV2;
+  class MemoryDatasetV2;
+
+  int op_version_;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_CACHE_DATASET_OPS_H_

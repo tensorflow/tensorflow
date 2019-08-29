@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OPTIONS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OPTIONS_H_
 
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 
 namespace tflite {

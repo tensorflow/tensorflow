@@ -197,7 +197,7 @@ public:
 /// An iterator over all uses of a ValueBase.
 template <typename OperandType>
 class ValueUseIterator
-    : public std::iterator<std::forward_iterator_tag, IROperand> {
+    : public std::iterator<std::forward_iterator_tag, OperandType> {
 public:
   ValueUseIterator() = default;
   explicit ValueUseIterator(OperandType *current) : current(current) {}

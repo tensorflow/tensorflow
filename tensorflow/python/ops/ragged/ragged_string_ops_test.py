@@ -62,6 +62,35 @@ class RaggedStringOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           'truth_shape': [2],
       },
       {
+          'input_array': [[
+              b'this', b'is', b'a', b'test', b'for', b'ragged', b'tensors'
+          ], [b'please', b'do', b'not', b'panic', b'!']],
+          'axis': 1,
+          'keepdims': False,
+          'truth': [
+              b'this|is|a|test|for|ragged|tensors', b'please|do|not|panic|!'
+          ],
+          'truth_shape': [2],
+          'separator': '|',
+      },
+      {
+          'input_array': [[[b'a', b'b'], [b'b', b'c']], [[b'dd', b'ee']]],
+          'axis': -1,
+          'keepdims': False,
+          'truth': [[b'a|b', b'b|c'], [b'dd|ee']],
+          'truth_shape': [2, None],
+          'separator': '|',
+      },
+      {
+          'input_array': [[[[b'a', b'b', b'c'], [b'dd', b'ee']]],
+                          [[[b'f', b'g', b'h'], [b'ii', b'jj']]]],
+          'axis': -2,
+          'keepdims': False,
+          'truth': [[[b'a|dd', b'b|ee', b'c']], [[b'f|ii', b'g|jj', b'h']]],
+          'truth_shape': [2, None, None],
+          'separator': '|',
+      },
+      {
           'input_array': [[[b't', b'h', b'i', b's'], [b'i', b's'], [b'a'],
                            [b't', b'e', b's', b't']],
                           [[b'p', b'l', b'e', b'a', b's', b'e'],

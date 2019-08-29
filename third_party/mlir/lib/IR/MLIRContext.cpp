@@ -34,6 +34,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -332,18 +333,26 @@ Dialect *MLIRContext::getRegisteredDialect(StringRef name) {
 /// takes ownership of the heap allocated dialect.
 void Dialect::registerDialect(MLIRContext *context) {
   auto &impl = context->getImpl();
+  std::unique_ptr<Dialect> dialect(this);
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
+
+  // Get the correct insertion position sorted by namespace.
+  auto insertPt =
+      llvm::lower_bound(impl.dialects, dialect,
+                        [](const std::unique_ptr<Dialect> &lhs,
+                           const std::unique_ptr<Dialect> &rhs) {
+                          return lhs->getNamespace() < rhs->getNamespace();
+                        });
+
   // Abort if dialect with namespace has already been registered.
-  if (llvm::any_of(impl.dialects, [this](std::unique_ptr<Dialect> &dialect) {
-        return dialect->getNamespace() == getNamespace();
-      })) {
-    llvm::report_fatal_error("a dialect with namespace '" +
-                             Twine(getNamespace()) +
+  if (insertPt != impl.dialects.end() &&
+      (*insertPt)->getNamespace() == getNamespace()) {
+    llvm::report_fatal_error("a dialect with namespace '" + getNamespace() +
                              "' has already been registered");
   }
-  impl.dialects.push_back(std::unique_ptr<Dialect>(this));
+  impl.dialects.insert(insertPt, std::move(dialect));
 }
 
 /// Return information about all registered operations.  This isn't very
@@ -567,12 +576,10 @@ StorageUniquer &MLIRContext::getAffineUniquer() {
   return getImpl().affineUniquer;
 }
 
-AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> results) {
-  // The number of results can't be zero.
-  assert(!results.empty());
-
-  auto &impl = results[0].getContext()->getImpl();
+AffineMap AffineMap::getImpl(unsigned dimCount, unsigned symbolCount,
+                             ArrayRef<AffineExpr> results,
+                             MLIRContext *context) {
+  auto &impl = context->getImpl();
   auto key = std::make_tuple(dimCount, symbolCount, results);
 
   // Safely get or create an AffineMap instance.
@@ -583,9 +590,20 @@ AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
     results = copyArrayRefInto(impl.affineAllocator, results);
 
     // Initialize the memory using placement new.
-    new (res) detail::AffineMapStorage{dimCount, symbolCount, results};
+    new (res) detail::AffineMapStorage{dimCount, symbolCount, results, context};
     return AffineMap(res);
   });
+}
+
+AffineMap AffineMap::get(MLIRContext *context) {
+  return getImpl(/*dimCount=*/0, /*symbolCount=*/0, /*results=*/{}, context);
+}
+
+AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
+                         ArrayRef<AffineExpr> results) {
+  // The number of results can't be zero.
+  assert(!results.empty());
+  return getImpl(dimCount, symbolCount, results, results[0].getContext());
 }
 
 //===----------------------------------------------------------------------===//

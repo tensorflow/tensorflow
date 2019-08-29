@@ -60,8 +60,7 @@ public:
 
 void StorageCastOp::getCanonicalizationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
-  patterns.push_back(
-      llvm::make_unique<RemoveRedundantStorageCastsRewrite>(context));
+  patterns.insert<RemoveRedundantStorageCastsRewrite>(context);
 }
 
 QuantizationDialect::QuantizationDialect(MLIRContext *context)

@@ -40,12 +40,13 @@ class FunctionScope(object):
         conversion options;
   """
 
-  def __init__(self, function_name, options):
+  def __init__(self, function_name, scope_name, options):
+    self.name = scope_name
     self.options = options
 
     if options.user_requested:
-      self.autograph_ctx = ag_ctx.ControlStatusCtx(
-          ag_ctx.Status.ENABLED, options)
+      self.autograph_ctx = ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED,
+                                                   options)
     self.callopts = options.call_options()
 
     use_name_scope = options.uses(converter.Feature.NAME_SCOPES)
@@ -101,7 +102,7 @@ class FunctionScope(object):
     return value
 
 
-def with_function_scope(thunk, options):
+def with_function_scope(thunk, scope_name, options):
   """Inline version of the FunctionScope context manager."""
-  with FunctionScope('lambda_', options) as scope:
+  with FunctionScope('lambda_', scope_name, options) as scope:
     return thunk(scope)

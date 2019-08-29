@@ -145,8 +145,8 @@ void RaiseTFControlFlow::rewriteOps() {
 
 }  // namespace
 
-FunctionPassBase *CreateRaiseTFControlFlowPass() {
-  return new RaiseTFControlFlow();
+std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass() {
+  return std::make_unique<RaiseTFControlFlow>();
 }
 
 static PassRegistration<RaiseTFControlFlow> pass(

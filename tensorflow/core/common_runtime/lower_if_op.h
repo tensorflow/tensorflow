@@ -22,8 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Replaces If node `n` with its lowered form that uses Switch and Merge nodes.
-Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
-                     bool keep_node_fetchable);
+Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable);
 
 }  // namespace tensorflow
 

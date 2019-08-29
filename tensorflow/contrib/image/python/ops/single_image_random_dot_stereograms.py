@@ -48,7 +48,7 @@ def single_image_random_dot_stereograms(depth_values,
   corrupt the encode 3-D data within the image.
 
   Based upon [this
-  paper](http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper).
+  paper](https://www.cs.waikato.ac.nz/~ihw/papers/94-HWT-SI-IHW-SIRDS-paper.pdf).
 
   This outputs a SIRDS image as picture_out.png:
 

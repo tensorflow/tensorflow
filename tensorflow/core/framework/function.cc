@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/function.pb_text.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -621,7 +621,7 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   strings::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!GetNodeAttr(n, "T", &dt).ok()) {
+    if (!TryGetNodeAttr(n, "T", &dt)) {
       dt = DT_INVALID;
     }
     if (!n.device().empty()) {
@@ -920,11 +920,6 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   for (int i = 0; i < options.output_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
         "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
-  }
-  for (const auto& iter : options.input_tensor_shapes) {
-    entries.push_back(
-        strings::StrCat("_input_tensor_shape", iter.first, "=",
-                        absl::CEscape(iter.second.DebugString())));
   }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
     entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
@@ -1226,6 +1221,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   // the duration of the function could lead to deadlock).
   FunctionLibraryDefinition clone(other);
   mutex_lock l(mu_);
+  mutex_lock l2(clone.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
@@ -1388,7 +1384,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttr(ndef, kFuncAttr, &forward_func_attrs).ok()) {
+  if (!TryGetNodeAttr(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1433,7 +1429,7 @@ template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+  if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
     return Status::OK();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");

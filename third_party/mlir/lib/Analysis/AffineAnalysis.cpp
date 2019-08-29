@@ -21,15 +21,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -548,8 +548,8 @@ static Block *getCommonBlock(const MemRefAccess &srcAccess,
                              unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
     auto *block = srcAccess.opInst->getBlock();
-    while (!llvm::isa<FuncOp>(block->getContainingOp())) {
-      block = block->getContainingOp()->getBlock();
+    while (!llvm::isa<FuncOp>(block->getParentOp())) {
+      block = block->getParentOp()->getBlock();
     }
     return block;
   }

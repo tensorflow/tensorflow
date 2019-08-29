@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core
@@ -135,6 +136,18 @@ class BaseDenseAttentionTest(test.TestCase):
     # Expected Tensor of shape `[batch_size, Tq, dim]`.
     expected_shape = [batch_size, Tq, dim]
     self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
+  def test_serialization(self):
+    # Test serialization with causal
+    layer = dense_attention.BaseDenseAttention(causal=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.causal, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.BaseDenseAttention.from_config(config)
+    self.assertEqual(new_layer.causal, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -444,6 +457,18 @@ class AttentionTest(test.TestCase):
     actual = attention_layer([q, v])
     self.assertAllClose([[[0], [1]]], actual)
 
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.Attention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.Attention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class AdditiveAttentionTest(test.TestCase):
@@ -677,6 +702,18 @@ class AdditiveAttentionTest(test.TestCase):
     # pylint:enable=line-too-long
     expected = np.array([[[1.15497245968], [0.]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.AdditiveAttention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.AdditiveAttention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes

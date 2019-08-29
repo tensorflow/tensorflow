@@ -16,12 +16,12 @@ cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",
-        "nvptx_backend_lib.cc",
+        "gpu_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
         "dump_ir_pass.h",
-        "nvptx_backend_lib.h",
+        "gpu_backend_lib.h",
         "utils.h",
     ],
     deps = [

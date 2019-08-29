@@ -20,14 +20,14 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/metadata_generated.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/calculator.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/default_calculator.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups_generated.h"
-
-#include "absl/memory/memory.h"
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
-#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 #endif  // TFLITE_GPU_BINARY_RELEASE
 

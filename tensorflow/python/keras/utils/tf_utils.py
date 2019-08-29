@@ -253,10 +253,7 @@ def convert_inner_node_data(nested, wrap=False):
     Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
-  def _is_atomic_nested(nested):
-    """Returns `True` if `nested` is a list representing node data."""
-    if isinstance(nested, ListWrapper):
-      return True
+  def _is_serialized_node_data(nested):
     # Node data can be of form `[layer_name, node_id, tensor_id]` or
     # `[layer_name, node_id, tensor_id, kwargs]`.
     if (isinstance(nested, list) and (len(nested) in [3, 4]) and
@@ -264,12 +261,22 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     return False
 
+  def _is_atomic_nested(nested):
+    """Returns `True` if `nested` is a list representing node data."""
+    if isinstance(nested, ListWrapper):
+      return True
+    if _is_serialized_node_data(nested):
+      return True
+    return not nest.is_sequence(nested)
+
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""
     if wrap:
       if isinstance(nested, ListWrapper):
         return nested
-      return ListWrapper(nested)
+      if _is_serialized_node_data(nested):
+        return ListWrapper(nested)
+      return nested
     else:
       if isinstance(nested, ListWrapper):
         return nested.as_list()

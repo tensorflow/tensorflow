@@ -25,30 +25,36 @@ namespace eager {
 
 // DestroyTensorHandleNode is an implementation of EagerNode which enqueues a
 // request to destroy a remote tensor handle.
-class DestroyTensorHandleNode : public tensorflow::EagerNode {
+class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
                           EagerClient* eager_client)
-      : tensorflow::EagerNode(),
+      : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client) {}
 
-  Status Run() override {
-    EnqueueResponse response;
-    Status status;
-    // TODO(b/136025146): Remove wait for notification
-    Notification n;
-    eager_client_->EnqueueAsync(request_.get(), &response,
-                                [&n, &status](const tensorflow::Status& s) {
-                                  status.Update(s);
-                                  n.Notify();
-                                });
-    n.WaitForNotification();
-
-    return status;
+  void RunAsync(StatusCallback done) override {
+    EnqueueResponse* response = new EnqueueResponse;
+    eager_client_->StreamingEnqueueAsync(
+        request_.get(), response,
+        [response, done](const tensorflow::Status& s) {
+          if (!s.ok()) {
+            LOG(WARNING) << "Ignoring an error encountered when deleting "
+                            "remote tensors handles: "
+                         << s.ToString();
+          }
+          done(Status::OK());
+          delete response;
+        });
   }
 
   void Abort(Status status) override {}
+
+  string DebugString() const override {
+    string out = "[DestroyTensorHandleNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    return out;
+  }
 
  private:
   std::unique_ptr<EnqueueRequest> request_;

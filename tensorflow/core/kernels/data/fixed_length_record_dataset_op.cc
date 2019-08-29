@@ -93,6 +93,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -141,7 +143,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
             // Produce the record as output.
             Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-            record_tensor.scalar<string>()() = record;
+            record_tensor.scalar<tstring>()() = record;
             out_tensors->emplace_back(std::move(record_tensor));
             *end_of_sequence = false;
             return Status::OK();
@@ -256,7 +258,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           if (dataset()->compression_type_.empty()) {
             DCHECK_GE(file_pos_limit_, 0);
             if (current_pos < file_pos_limit_) {
-              string record;
+              tstring record;
               TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
                   dataset()->record_bytes_, &record));
               metrics::RecordTFDataBytesRead(kDatasetType,
@@ -264,25 +266,27 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-              record_tensor.scalar<string>()() = std::move(record);
+              record_tensor.scalar<tstring>()() = std::move(record);
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
               return Status::OK();
             }
           } else {
-            string record;
+            tstring record;
             Status s = buffered_input_stream_->ReadNBytes(
                 dataset()->record_bytes_, &record);
             if (s.ok()) {
               metrics::RecordTFDataBytesRead(kDatasetType,
                                              dataset()->record_bytes_);
               lookahead_cache_.append(record);
-              record = lookahead_cache_.substr(0, dataset()->record_bytes_);
-              lookahead_cache_ =
-                  lookahead_cache_.substr(dataset()->record_bytes_);
+              StringPiece lookahead_cache_view(lookahead_cache_);
+              record = tstring(
+                  lookahead_cache_view.substr(0, dataset()->record_bytes_));
+              lookahead_cache_ = tstring(
+                  lookahead_cache_view.substr(dataset()->record_bytes_));
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-              record_tensor.scalar<string>()() = std::move(record);
+              record_tensor.scalar<tstring>()() = std::move(record);
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
               return Status::OK();
@@ -431,7 +435,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
         GUARDED_BY(mu_);
     int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
-    string lookahead_cache_ GUARDED_BY(mu_);
+    tstring lookahead_cache_ GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;
@@ -439,7 +443,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
   const int64 record_bytes_;
   const int64 footer_bytes_;
   const int64 buffer_size_;
-  const string compression_type_;
+  const tstring compression_type_;
   const int op_version_;
 };
 
@@ -459,7 +463,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   std::vector<string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-    filenames.push_back(filenames_tensor->flat<string>()(i));
+    filenames.push_back(filenames_tensor->flat<tstring>()(i));
   }
 
   int64 header_bytes = -1;
@@ -488,10 +492,10 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   if (buffer_size == 0) {
     buffer_size = 256 << 10;  // 256 kB as default.
   }
-  string compression_type;
+  tstring compression_type;
   if (op_version_ > 1) {
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kCompressionType,
-                                                    &compression_type));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
+                                                     &compression_type));
     OP_REQUIRES(ctx,
                 compression_type.empty() || compression_type == kZLIB ||
                     compression_type == kGZIP,

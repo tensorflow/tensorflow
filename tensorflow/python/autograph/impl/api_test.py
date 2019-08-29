@@ -510,8 +510,7 @@ class ApiTest(test.TestCase):
     opts = converter.ConversionOptions(internal_convert_user_code=False)
 
     # f should not be converted, causing len to error out.
-    with self.assertRaisesRegexp(Exception,
-                                 'object of type \'Tensor\' has no len()'):
+    with self.assertRaisesRegexp(Exception, 'len is not well defined'):
       api.converted_call(f, opts, (constant_op.constant([0]),), {})
 
     # len on the other hand should work fine.
@@ -921,6 +920,17 @@ class ApiTest(test.TestCase):
 
     # Just check that the output is parseable Python code.
     self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+
+  def test_to_code_with_wrapped_function(self):
+
+    @def_function.function
+    def test_fn(x, s):
+      while tf.reduce_sum(x) > s:
+        x /= 2
+      return x
+
+    with self.assertRaisesRegex(Exception, 'try passing.*python_function'):
+      api.to_code(test_fn)
 
   def test_tf_convert_direct(self):
 

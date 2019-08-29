@@ -333,6 +333,11 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
+  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
+    # Tensor implements __array__ only so it can inform the user that it is not
+    # a valid array.
+    return False
+
   # TODO(slebedev): an object could also implement C-level array interface.
   if (callable(getattr(obj, "__array__", None)) or
       isinstance(getattr(obj, "__array_interface__", None), dict)):
@@ -732,6 +737,21 @@ def _ConstantValue(tensor, partial):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Unpack":
+    # We can't handle axis != 0 Unpacks at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
+    value = constant_value(tensor.op.inputs[0], partial)
+    if value is None:
+      return None
+    return value[tensor.value_index]
+  elif tensor.op.type == "Split":
+    dim = constant_value(tensor.op.inputs[0])
+    value = constant_value(tensor.op.inputs[1], partial)
+    if value is None or dim is None:
+      return None
+    split = np.split(value, tensor.op.get_attr("num_split"), dim)
+    return split[tensor.value_index]
   elif tensor.op.type == "Fill":
     fill_shape = tensor.shape
     fill_value = constant_value(tensor.op.inputs[1])
@@ -755,6 +775,8 @@ def _ConstantValue(tensor, partial):
     if value2 is None:
       return None
     return np.not_equal(value1, value2)
+  elif tensor.op.type == "StopGradient":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -905,18 +927,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       pass
     except TypeError:  # Could come from slicing prev.
       pass
-  elif tensor.op.type == "Placeholder" and tensor.op.graph.building_function:
+  elif (tensor.op.type == "Placeholder" and
+        tensor.op.graph.building_function and
+        hasattr(tensor.op.graph, "internal_captures")):
     # If we are inside a FuncGraph try to lookup the constant value of the
     # corresponding external capture. Note that we only look at captures and
     # not the fed inputs because those can be fed different values in different
     # instantiations of the function call or different iterations of a
     # tf.while_loop.
-    try:
-      external_capture = tensor.op.graph.external_captures[
-          tensor.op.graph.internal_captures.index(tensor)]
-      return constant_value_as_shape(external_capture)
-    except ValueError:  # `tensor` not in `internal_captures`.
-      pass
+    for i, capture in enumerate(tensor.op.graph.internal_captures):
+      if capture is tensor:
+        external_capture = tensor.op.graph.external_captures[i]
+        return constant_value_as_shape(external_capture)
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
@@ -959,10 +981,40 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
+# DO NOT USE: For testing only.
+_ENABLE_MAYBE_SET_STATIC_SHAPE = True
+
+
 def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
-  if (not context.executing_eagerly() and
+  """Sets the shape of `tensor` to the `shape`'s constant value, if inferrable.
+
+  This is a temporary workaround to fix shape inference across functional op
+  boundaries. E.g.
+
+  ```python
+  shape = tf.constant([3])
+  @tf.function
+  def f():
+    u = tf.random_uniform(shape)
+    return u
+  ```
+
+  If we were to rely solely on C++ shape inference, the shape of `u` inside
+  `f` would be unknown because C++ shape inference is not aware of the outer
+  graph and all it sees is a Placeholder node when backtracing the captured
+  tensor for `shape`. `maybe_set_static_shape` computes the static shape value
+  of `shape` by traversing the `FuncGraph` boundaries and sets the correct
+  shape.
+
+  A longer term solution would be to fix C++ shape inference.
+
+  Args:
+    tensor: A tensor.
+    shape: A shape tensor.
+  """
+  if (_ENABLE_MAYBE_SET_STATIC_SHAPE and not context.executing_eagerly() and
       ops.get_default_graph().building_function and
-      not tensor.shape.is_fully_defined()):
+      not tensor.shape.is_fully_defined() and is_tensor(shape)):
     shape = shape_tensor(shape)
     const_shape = constant_value_as_shape(shape)
     tensor.set_shape(const_shape)

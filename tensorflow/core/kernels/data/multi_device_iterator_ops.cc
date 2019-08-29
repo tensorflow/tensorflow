@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -107,6 +106,7 @@ class MultiDeviceIterator : public ResourceBase {
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+    params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &cancellation_manager_;
     std::function<void()> deregister_fn;
     OP_REQUIRES_OK_ASYNC(ctx,
@@ -204,7 +204,9 @@ class MultiDeviceIterator : public ResourceBase {
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
       if (incarnation_id_ != incarnation_id) {
-        elem.status = errors::InvalidArgument("Invalid incarnation id");
+        elem.status = errors::InvalidArgument(
+            "Invalid incarnation id. Provided: ", incarnation_id,
+            "; Expected: ", incarnation_id_);
         callback(elem);
         return;
       }
@@ -390,7 +392,6 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
-  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
@@ -643,7 +644,7 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &string_handle_t));
-    string_handle_t->scalar<string>()() =
+    string_handle_t->scalar<tstring>()() =
         resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
   }
 };
@@ -674,7 +675,7 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
     ResourceHandle resource_handle;
     OP_REQUIRES(
         ctx,
-        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
         errors::InvalidArgument(
             "Could not parse string_handle as a valid ResourceHandle"));
 

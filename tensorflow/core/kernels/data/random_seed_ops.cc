@@ -33,9 +33,7 @@ const char kSeed2[] = "seed2";
 
 }  // namespace
 
-string RandomSeedGenerator::DebugString() const {
-  return "RandomSeedGenerator";
-}
+string RandomSeedGenerator::DebugString() const { return kRandomSeedGenerator; }
 
 void RandomSeedGenerator::GenerateRandomSeeds(int64* seed1, int64* seed2) {
   mutex_lock l(mu_);
@@ -83,8 +81,16 @@ AnonymousRandomSeedGeneratorHandleOp::AnonymousRandomSeedGeneratorHandleOp(
     : AnonymousResourceOp<RandomSeedGenerator>(ctx) {}
 
 void AnonymousRandomSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed_));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2_));
+  int64 seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
+  int64 seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  if (seed == 0 && seed2 == 0) {
+    seed = random::New64();
+    seed2 = random::New64();
+  }
+  seed_ = seed;
+  seed2_ = seed2;
   AnonymousResourceOp<RandomSeedGenerator>::Compute(ctx);
 }
 

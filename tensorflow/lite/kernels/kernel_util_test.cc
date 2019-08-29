@@ -356,6 +356,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   TfLiteTensorFree(&output);
 }
 
+#ifndef __APPLE__  // Some Apple toolchains don't support std::ldexp
 TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   // Create input.
   TfLiteTensor input;
@@ -389,15 +390,9 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   filter_params->scale = TfLiteFloatArrayCreate(3);
-  int32_t two_pow_neg_31 = 0x30000000;  // 2^-31 so shift = -30.
-  int32_t two_pow_neg_32 = 0x2F800000;  // 2^-32 so shift = -31.
-  int32_t two_pow_neg_33 = 0x2F000000;  // 2^-33 so shift = -32.
-  float* scale_date = reinterpret_cast<float*>(&two_pow_neg_31);
-  filter_params->scale->data[0] = *scale_date;
-  scale_date = reinterpret_cast<float*>(&two_pow_neg_32);
-  filter_params->scale->data[1] = *scale_date;
-  scale_date = reinterpret_cast<float*>(&two_pow_neg_33);
-  filter_params->scale->data[2] = *scale_date;
+  filter_params->scale->data[0] = std::ldexp(1.0f, -31);
+  filter_params->scale->data[1] = std::ldexp(1.0f, -32);
+  filter_params->scale->data[2] = std::ldexp(1.0f, -33);
   filter_params->zero_point = TfLiteIntArrayCreate(3);
   filter_params->zero_point->data[0] = 0;
   filter_params->zero_point->data[1] = 0;
@@ -416,9 +411,9 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   bias_params->scale = TfLiteFloatArrayCreate(3);
-  bias_params->scale->data[0] = 4.6566129e-10;  // 2^-31
-  bias_params->scale->data[1] = 2.3283064e-10;  // 2^-32
-  bias_params->scale->data[2] = 1.1641532e-10;  // 2^-33
+  bias_params->scale->data[0] = std::ldexp(1.0f, -31);
+  bias_params->scale->data[1] = std::ldexp(1.0f, -32);
+  bias_params->scale->data[2] = std::ldexp(1.0f, -33);
   bias_params->zero_point = TfLiteIntArrayCreate(3);
   bias_params->zero_point->data[0] = 11;
   bias_params->zero_point->data[1] = 12;
@@ -467,6 +462,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   TfLiteTensorFree(&bias);
   TfLiteTensorFree(&output);
 }
+#endif
 
 TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   // Create input.

@@ -69,7 +69,7 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
 
 
 def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
-                  xs):
+                  xs_set):
   """Initialize the pending count for ops between two lists of Operations.
 
   'pending_count[op]' indicates the number of backprop inputs
@@ -83,7 +83,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
       these functions if they capture from_ops or any reachable ops. This is
       useful if to_ops occur in a function and from_ops are in an outer function
       or graph.
-    xs: list of Tensors.
+    xs_set: ObjectIdentitySet of Tensors.
 
   Returns:
     A tuple containing: (1) the subset of to_ops reachable from from_ops by a
@@ -113,7 +113,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
       between_op_list.append(op)
       # Clear the boolean so we won't add the inputs again.
       reached_ops.remove(op)
-      for inp in _NonEagerInputs(op, xs):
+      for inp in _NonEagerInputs(op, xs_set):
         queue.append(inp.op)
   # X in between_ops iff X is on a path of zero or more backpropagatable tensors
   # between from_ops and to_ops
@@ -125,7 +125,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
   # Initialize pending count for between ops.
   pending_count = collections.defaultdict(int)
   for op in between_op_list:
-    for x in _NonEagerInputs(op, xs):
+    for x in _NonEagerInputs(op, xs_set):
       if x.op in between_ops:
         pending_count[x.op] += 1
 
@@ -257,14 +257,15 @@ def _VerifyGeneratedGradients(grads, op):
   """
   # While ops have inputs added to them during the gradient computation, so we
   # skip the below check. See while_v2 for details.
-  if op.type == "While": return
+  if op.type == "While" or op.type == "StatelessWhile":
+    return
 
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
 
 
-def _StopOps(from_ops, stop_gradient_ops, pending_count, xs):
+def _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set):
   """The set of ops that terminate the gradient computation.
 
   This computes the frontier of the forward graph *before* which backprop
@@ -280,7 +281,7 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs):
     from_ops: list of Operations.
     stop_gradient_ops: list of Operations never to backprop through.
     pending_count: mapping from operation to number of backprop inputs.
-    xs: list of Tensors.
+    xs_set: ObjectIdentitySet of Tensors.
 
   Returns:
     The set of operations.
@@ -288,7 +289,7 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs):
   stop_ops = set()
   for op in from_ops:
     is_stop_op = True
-    for inp in _NonEagerInputs(op, xs):
+    for inp in _NonEagerInputs(op, xs_set):
       if pending_count[inp.op] > 0:
         is_stop_op = False
         break
@@ -368,7 +369,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
     return grad_fn()
 
 
-def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
+def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
   """Raises an error if we backprop through a loop var."""
   # Find the nearest 'to_op' reachable from 'op' to provide a more helpful error
   # message.
@@ -382,7 +383,7 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
     if curr_op in from_ops:
       target_op = curr_op
       break
-    queue.extend(t.op for t in _NonEagerInputs(curr_op, xs))
+    queue.extend(t.op for t in _NonEagerInputs(curr_op, xs_set))
   assert target_op
   raise ValueError(
       "Cannot compute gradient inside while loop with respect to op '%s'. "
@@ -424,7 +425,7 @@ def _MaybeCaptured(t):
   return t
 
 
-def _NonEagerInputs(op, xs):
+def _NonEagerInputs(op, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
@@ -432,29 +433,28 @@ def _NonEagerInputs(op, xs):
 
   Args:
     op: Operation
-    xs: list of Tensors we are differentiating w.r.t.
+    xs_set: ObjectIdentitySet of Tensors we are differentiating w.r.t.
 
   Returns:
     A list of tensors. The tensors may be from multiple Graph/FuncGraphs if op
     is in a FuncGraph and has captured inputs.
   """
-  return [t for t in _Inputs(op, xs) if not isinstance(t, ops.EagerTensor)]
+  return [t for t in _Inputs(op, xs_set) if not isinstance(t, ops.EagerTensor)]
 
 
 # TODO(skyewm): plumbing xs through everywhere is ugly, consider making
 # _GradientsHelper a class with xs as a member variable.
-def _Inputs(op, xs):
+def _Inputs(op, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Args:
     op: Operation
-    xs: list of Tensors we are differentiating w.r.t.
+    xs_set: ObjectIdentitySet of Tensors we are differentiating w.r.t.
 
   Returns:
     A list of tensors. The tensors may be from multiple Graph/FuncGraphs if op
     is in a FuncGraph and has captured inputs.
   """
-  tensors = object_identity.ObjectIdentitySet(xs)
   if _IsFunction(op.graph):  # pylint: disable=protected-access
     inputs = []
     for t in op.inputs:
@@ -463,7 +463,7 @@ def _Inputs(op, xs):
       # even if it's a function input for a captured value, whereas usually we'd
       # like to traverse through these closures as if the captured value was the
       # direct input to op.
-      if t not in tensors:
+      if t not in xs_set:
         t = _MaybeCaptured(t)
       inputs.append(t)
     return inputs
@@ -545,6 +545,7 @@ def _GradientsHelper(ys,
     ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
+    xs_set = object_identity.ObjectIdentitySet(xs)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops,
                              gradient_uid)
 
@@ -561,7 +562,7 @@ def _GradientsHelper(ys,
     from_ops = [t.op for t in xs]
     stop_gradient_ops = [t.op for t in stop_gradients]
     reachable_to_ops, pending_count, loop_state = _PendingCount(
-        to_ops, from_ops, colocate_gradients_with_ops, func_graphs, xs)
+        to_ops, from_ops, colocate_gradients_with_ops, func_graphs, xs_set)
 
     # Iterate over the collected ops.
     #
@@ -595,7 +596,7 @@ def _GradientsHelper(ys,
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
-    stop_ops = _StopOps(from_ops, stop_gradient_ops, pending_count, xs)
+    stop_ops = _StopOps(from_ops, stop_gradient_ops, pending_count, xs_set)
     while queue:
       # generate gradient subgraph for op.
       op = queue.popleft()
@@ -648,7 +649,7 @@ def _GradientsHelper(ys,
             op._control_flow_context.IsWhileContext() and
             op._control_flow_context ==
             ops.get_default_graph()._get_control_flow_context()):
-          _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs)
+          _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set)
         # pylint: enable=protected-access
 
         if (grad_fn or is_func_call) and has_out_grads:
@@ -695,10 +696,10 @@ def _GradientsHelper(ys,
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
-          in_grads = [None] * len(_Inputs(op, xs))
+          in_grads = [None] * len(_Inputs(op, xs_set))
         # Note: we don't filter out eager inputs here because the inputs need to
         # line up with in_grads.
-        for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs), in_grads)):
+        for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs_set), in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
@@ -718,7 +719,7 @@ def _GradientsHelper(ys,
 
       # Update pending count for the inputs of op and enqueue ready ops.
       _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
-                                    xs)
+                                    xs_set)
 
   if loop_state:
     loop_state.PostProcessing()
@@ -738,9 +739,9 @@ def _HasAnyNotNoneGrads(grads, op):
 
 
 def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
-                                  xs):
+                                  xs_set):
   """Update pending count for the inputs of op and enqueue ready ops."""
-  for x in _NonEagerInputs(op, xs):
+  for x in _NonEagerInputs(op, xs_set):
     pending_count[x.op] -= 1
     ready = (pending_count[x.op] == 0)
     if loop_state and not ready:
@@ -797,7 +798,11 @@ def _GetGrad(grads, t, unconnected_gradients):
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
       t_dtype = default_gradient.get_zeros_dtype(t)
-      return array_ops.zeros_like(t, dtype=t_dtype)
+      if t.dtype == dtypes.resource:
+        return array_ops.zeros(
+            resource_variable_ops.variable_shape(t), dtype=t_dtype)
+      else:
+        return array_ops.zeros_like(t, dtype=t_dtype)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:
@@ -897,19 +902,12 @@ class AggregationMethod(object):
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
-  * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
-    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the
-    overall sum in a single buffer that is shared across threads.
-    This method of summing gradients can result in a lower memory footprint
-    and lower latency at the expense of higher CPU/GPU utilization.
-    For gradients of types that "AccumulateN" does not support, this
-    summation method falls back on the behavior of `EXPERIMENTAL_TREE`
   """
   ADD_N = 0
   DEFAULT = ADD_N
   # The following are experimental and may not be supported in future releases.
   EXPERIMENTAL_TREE = 1
-  EXPERIMENTAL_ACCUMULATE_N = 2
+  EXPERIMENTAL_ACCUMULATE_N = 2  # An alias for EXPERIMENTAL_ADD_N = 1
 
 
 def _AggregatedGrads(grads,
@@ -969,19 +967,7 @@ def _AggregatedGrads(grads,
         out_grads[i] = out_grad[0]
       elif all(isinstance(g, ops.Tensor) for g in out_grad if g is not None):
         tensor_shape = _AccumulatorShape(out_grad)
-        if (aggregation_method == AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
-            and len(out_grad) > 2 and tensor_shape.is_fully_defined()):
-          # The benefit of using AccumulateN is that its inputs can be combined
-          # in any order and this can allow the expression to be evaluated with
-          # a smaller memory footprint.  When used with gpu_allocator_retry,
-          # it is possible to compute a sum of terms which are much larger than
-          # total GPU memory.
-          # AccumulateN can currently only be used if we know the shape for
-          # an accumulator variable.  If this is not known, or if we only have
-          # 2 grads then we fall through to the "tree" case below.
-          used = "accumulate_n"
-          out_grads[i] = math_ops.accumulate_n(out_grad)
-        elif aggregation_method in [
+        if aggregation_method in [
             AggregationMethod.EXPERIMENTAL_TREE,
             AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
         ]:

@@ -272,8 +272,7 @@ port::Status ROCMFftPlan::Initialize(
       // TODO(yangzihao): refactor this code and the one with the same function
       // in the batch mode.
       if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
+        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
         if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
           LOG(ERROR) << "failed to allocate work area.";
           return allocated.status();
@@ -328,8 +327,7 @@ port::Status ROCMFftPlan::Initialize(
                             "Failed to make rocFFT bacthed plan."};
       }
       if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
+        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
         if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
           LOG(ERROR) << "failed to allocate work area.";
           return allocated.status();

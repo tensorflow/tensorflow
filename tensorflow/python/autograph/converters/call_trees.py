@@ -174,14 +174,15 @@ class CallTreeTransformer(converter.Base):
           keywords=ast_util.keywords_to_dict(normal_keywords))
 
     template = """
-      ag__.converted_call(func, options, args, kwargs)
+      ag__.converted_call(func, options, args, kwargs, function_ctx)
     """
     new_call = templates.replace_as_expression(
         template,
         func=func,
         options=parser.parse_expression(function_context_name + '.callopts'),
         args=args,
-        kwargs=kwargs)
+        kwargs=kwargs,
+        function_ctx=function_context_name)
 
     return new_call
 

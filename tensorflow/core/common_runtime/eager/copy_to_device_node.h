@@ -45,6 +45,14 @@ class CopyToDeviceNode : public EagerNode {
 
   void Abort(Status status) override { dst_->Poison(status); }
 
+  string DebugString() const override {
+    string out = "[CopyToDeviceNode]";
+    strings::StrAppend(&out, " src_tensor: ", src_->DebugString());
+    strings::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
+    strings::StrAppend(&out, ", dst_device: ", dstd_->name());
+    return out;
+  }
+
   TensorHandle* dst() { return dst_; }
 
  private:

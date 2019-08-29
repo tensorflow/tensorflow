@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import string
 
+from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
@@ -800,12 +802,63 @@ class RegisterPFor(object):
     ...
 
   The above will register conversion function `_foo_converter` for handling
-  conversion of `foo_op_type`. During conversion, the registered functin will be
-  called with a single argument of type `PForInput` which will contain state
-  needed for the conversion.  This registered function should output a list of
-  WrappedTensor object with the same length as the number of outputs of op being
-  converted. If the op had zero outputs, then it should return a ops.Operation
-  object.
+  conversion of `foo_op_type`. These converters are called during vectorization
+  of a `pfor` loop body. For each operation node in this loop body,
+  the vectorization process will call the converter corresponding to the
+  operation type of the node.
+
+  During conversion, the registered function will be called with a single
+  argument `pfor_input`, of type `PForInput`, which will contain state needed
+  for the conversion.  When the converter is called for a node, all its inputs
+  should already have been converted and these converted values are stored in
+  `pfor_input.inputs`.  This registered function should output a list of
+  WrappedTensor objects with the same length as the number of outputs of the
+  node being converted. If the node had zero outputs, then it should return an
+  ops.Operation object.  These new sets of nodes should implement the
+  functionality of running that operation for the number of iterations specified
+  by `pfor_input.pfor.loop_len_vector[0]` where the inputs of the node for each
+  iteration are picked from `pfor_inputs.inputs()`.
+
+  One tricky aspect of the conversion process is keeping track of, and
+  leveraging loop invariance of computation. Each converted input is a
+  WrappedTensor which indicates whether the input was loop invariant or not. If
+  the converted value is loop invariant, its rank should match the rank of the
+  corresponding tensor in the loop body, else its rank is larger by 1. The
+  converter should look at the loop invariance of the inputs and generate new
+  nodes based on that. Note that the converter will not be called if all inputs
+  are loop invariant and the operation is not stateful. The converter should
+  determine if its own output is loop invariant and `wrap` its output
+  accordingly.
+
+  Example:
+
+  Here, the converter is trying to convert a Reshape node in the loop body. This
+  node will have two inputs: the tensor to reshape, and the new shape.  The
+  example here only handles the case where the shape is loop invariant.
+
+  @RegisterPFor("Reshape")
+  def _convert_reshape(pfor_input):
+    # We assume that input is not loop invariant. Call to `stacked_input`
+    # asserts that and returns the converted value. This value will have a rank
+    # larger by 1 compared to the rank of the input in the loop body.
+    t = pfor_input.stacked_input(0)
+
+    # We assume that shape input is loop invariant. Call to `unstacked_input`
+    # asserts that and returns the converted value.
+    shape = pfor_input.unstacked_input(1)
+
+    # We compute `new_shape` by prepending the number of iterations to the
+    # original shape.
+    new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape],
+                                 axis=0)
+
+    # The vectorized output involves reshaping the converted input `t` using
+    # `new_shape`.
+    new_output = array_ops.reshape(t, new_shape)
+
+    # The converted output is marked as not loop invariant using the call to
+    # wrap.
+    return wrap(new_output, True)
   """
 
   def __init__(self, op_type):
@@ -927,9 +980,9 @@ class PForConfig(object):
     # This may be set to the number of iterations.
     self._maybe_iters = None
     # Map from output placeholder to the unvectorized tensor.
-    self._reduce_concat_map = {}
+    self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
     # Reverse map of `self._reduce_concat_map`.
-    self._reverse_reduce_concat_map = {}
+    self._reverse_reduce_concat_map = object_identity.ObjectIdentityDictionary()
 
   def _has_reductions(self):
     """True if some reductions where performed by loop body."""
@@ -1330,7 +1383,7 @@ class PFor(object):
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
-          if y == y_op:
+          if y is y_op:
             new_outputs = new_op
           else:
             new_outputs = [wrap(x, False) for x in new_op.outputs]
@@ -1400,6 +1453,10 @@ class PFor(object):
       may be active.
     """
     return self._all_indices_partitioned
+
+
+# The code below defines converters for different operations. Please see comment
+# for RegisterPFor to see how converters should be defined.
 
 # nn_ops
 
@@ -1477,7 +1534,7 @@ def _channel_flatten_input(x, data_format):
   """
 
   graph = ops.get_default_graph()
-  cache_key = (graph, x, data_format)
+  cache_key = (graph, x.experimental_ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
     if data_format == b"NCHW":
@@ -1968,6 +2025,19 @@ def _convert_gather(pfor_input):
     return wrap(output, True)
 
 
+@RegisterPFor("GatherNd")
+def _convert_gather_nd(pfor_input):
+  # TODO(jmenick): Add support for unstacked params.
+  pfor_input.stack_inputs(stack_indices=[1])
+  params = pfor_input.stacked_input(0)
+  indices = pfor_input.stacked_input(1)
+  stacked_result = array_ops.gather_nd(
+      params,
+      indices,
+      batch_dims=1)
+  return wrap(stacked_result, True)
+
+
 @RegisterPFor("ConcatV2")
 def _convert_concatv2(pfor_input):
   n = pfor_input.num_inputs
@@ -2049,7 +2119,6 @@ def _convert_strided_slice_grad(pfor_input):
 
 
 # math_ops
-
 
 @RegisterPFor("MatMul")
 def _convert_matmul(pfor_input):
@@ -2219,6 +2288,82 @@ def _convert_unsortedsegmentsum(pfor_input):
   return wrap(output, True)
 
 
+def _flatten_array_with_offset(ids, offset_delta, num_rows):
+  """Flattens a rank 2 tensor, adding an offset to each row."""
+  # Note that if `ids` is rank 1, it is broadcast to rank 2.
+  offset_delta = math_ops.cast(offset_delta, ids.dtype)
+  n = math_ops.cast(num_rows, dtype=ids.dtype)
+  offsets = math_ops.range(
+      start=0, limit=n * offset_delta, delta=offset_delta, dtype=ids.dtype)
+  offsets = array_ops.expand_dims(offsets, -1)
+  ids += offsets
+  return array_ops.reshape(ids, [-1])
+
+
+@RegisterPForWithArgs("SparseSegmentSum", math_ops.sparse_segment_sum_v2)
+@RegisterPForWithArgs("SparseSegmentMean", math_ops.sparse_segment_mean_v2)
+@RegisterPForWithArgs("SparseSegmentSqrtN", math_ops.sparse_segment_sqrt_n_v2)
+@RegisterPForWithArgs("SparseSegmentSumWithNumSegments",
+                      math_ops.sparse_segment_sum_v2)
+@RegisterPForWithArgs("SparseSegmentMeanWithNumSegments",
+                      math_ops.sparse_segment_mean_v2)
+@RegisterPForWithArgs("SparseSegmentSqrtNWithNumSegments",
+                      math_ops.sparse_segment_sqrt_n_v2)
+def _convert_sparse_segment(pfor_input, _, op_func):
+  _, segment_ids_stacked, _ = pfor_input.input(2)
+  if segment_ids_stacked:
+    pfor_input.stack_inputs([1])
+  data, data_stacked, _ = pfor_input.input(0)
+  indices, _, _ = pfor_input.input(1)
+  num_inputs = len(pfor_input.inputs)
+  assert num_inputs in (3, 4)
+  if num_inputs == 3:
+    # `segment_ids` needs to be unstacked since otherwise output sizes could
+    # differ across pfor iterations.
+    segment_ids = pfor_input.unstacked_input(2)
+    num_segments = nn_ops.relu(math_ops.reduce_max(segment_ids) + 1)
+  else:
+    segment_ids, _, _ = pfor_input.input(2)
+    num_segments = pfor_input.unstacked_input(3)
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  if data_stacked:
+    indices = _flatten_array_with_offset(indices, array_ops.shape(data)[1], n)
+    data = _flatten_first_two_dims(data)
+  else:
+    indices = array_ops.reshape(indices, [-1])
+  segment_ids = _flatten_array_with_offset(segment_ids, num_segments, n)
+
+  if num_inputs == 3:
+    num_segments = None
+  else:
+    num_segments *= n
+  output = op_func(data, indices, segment_ids, num_segments=num_segments)
+  output = _unflatten_first_dim(output, [n])
+  return wrap(output, True)
+
+
+@RegisterPForWithArgs("SparseSegmentMeanGrad",
+                      math_ops.sparse_segment_mean_grad)
+@RegisterPForWithArgs("SparseSegmentSqrtNGrad",
+                      math_ops.sparse_segment_sqrt_n_grad)
+def _convert_sparse_segment_grad(pfor_input, _, op_func):
+  grad = pfor_input.stacked_input(0)
+  indices = pfor_input.unstacked_input(1)
+  segment_ids = pfor_input.unstacked_input(2)
+  dim0 = pfor_input.unstacked_input(3)
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  indices = _flatten_array_with_offset(indices, dim0, n)
+  num_segments = nn_ops.relu(math_ops.reduce_max(segment_ids) + 1)
+  segment_ids = _flatten_array_with_offset(segment_ids, num_segments, n)
+  grad = _flatten_first_two_dims(grad)
+  dim0 *= n
+  output = op_func(grad, indices, segment_ids, dim0)
+  output = _unflatten_first_dim(output, [n])
+  return wrap(output, True)
+
+
 @RegisterPFor("Cast")
 def _convert_cast(pfor_input):
   inp = pfor_input.stacked_input(0)
@@ -2372,6 +2517,14 @@ def _convert_addn(pfor_input):
   # AddN does not support broadcasting.
   pfor_input.stack_inputs()
   return wrap(math_ops.add_n([x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("Cross")
+def _convert_cross(pfor_input):
+  pfor_input.stack_inputs()
+  a = pfor_input.stacked_input(0)
+  b = pfor_input.stacked_input(1)
+  return wrap(math_ops.cross(a, b), True)
 
 
 @RegisterPFor("BiasAddGrad")
@@ -2538,6 +2691,44 @@ def _convert_multinomial(pfor_input):
 
 
 # linalg_ops
+
+# TODO(jmenick) - the same logic applies to other einsums. Generalize this
+# in a future CL.
+@RegisterPFor("XlaEinsum")
+def _convert_einsum(pfor_input):
+  first_input, first_input_stacked, _ = pfor_input.input(0)
+  second_input, second_input_stacked, _ = pfor_input.input(1)
+
+  # Parse the einsum equation.
+  equation = pfor_input.get_attr("equation").decode("utf-8")
+  input_expr, output_expr = equation.split("->")
+  input_a_expr, input_b_expr = input_expr.split(",")
+
+  # pick a placeholder symbol to use for the new axis
+  chosen_symbol = None
+  for s in string.ascii_letters:
+    if s in equation:
+      continue
+    else:
+      chosen_symbol = s
+      break
+
+  if chosen_symbol is None:
+    raise ValueError("Could not figure out what symbol to use for new axis.")
+
+  assert first_input_stacked or second_input_stacked
+  if first_input_stacked:
+    input_a_expr = "{}{}".format(chosen_symbol, input_a_expr)
+  if second_input_stacked:
+    input_b_expr = "{}{}".format(chosen_symbol, input_b_expr)
+  output_expr = "{}{}".format(chosen_symbol, output_expr)
+
+  new_equation = "{},{}->{}".format(input_a_expr, input_b_expr, output_expr)
+  result = xla.einsum(
+      equation=new_equation,
+      a=first_input,
+      b=second_input)
+  return wrap(result, True)
 
 
 @RegisterPFor("Cholesky")

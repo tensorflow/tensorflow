@@ -209,7 +209,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
     return strings::StrCat(
-        "<Invalid TensorProto: ", ProtoShortDebugString(tensor_proto), ">");
+        "<Invalid TensorProto: ", tensor_proto.ShortDebugString(), ">");
   }
   return t.DebugString();
 }
@@ -489,6 +489,13 @@ void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
+void MoveAttrValue(std::vector<string>&& value, AttrValue* out) {
+  out->mutable_list()->Clear();  // Create list() even if value empty.
+  for (auto& v : value) {
+    out->mutable_list()->add_s(std::move(v));
   }
 }
 

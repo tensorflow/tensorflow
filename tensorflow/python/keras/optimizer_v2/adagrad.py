@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend_config
@@ -29,6 +30,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -67,9 +69,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     Args:
       learning_rate: A `Tensor` or a floating point value.  The learning rate.
       initial_accumulator_value: A floating point value.
-        Starting value for the accumulators, must be positive.
-      epsilon: A floating point value.
-        Starting value for the accumulators, must be positive.
+        Starting value for the accumulators, must be non-negative.
+      epsilon: A small floating point value to avoid zero denominator.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adagrad".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
@@ -152,6 +153,15 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          use_locking=self._use_locking)
+
     acc_t = state_ops.assign_add(
         acc, math_ops.square(grad), use_locking=self._use_locking)
     var_update = state_ops.assign_sub(
@@ -165,6 +175,15 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_sparse_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          indices,
+          use_locking=self._use_locking)
     with ops.control_dependencies([
         resource_variable_ops.resource_scatter_add(acc.handle, indices,
                                                    math_ops.square(grad))

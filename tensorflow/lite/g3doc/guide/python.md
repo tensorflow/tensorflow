@@ -26,8 +26,9 @@ Note: If you need access to other Python APIs, such as the [TensorFlow Lite
 Converter](../convert/python_api.md), you must install the [full TensorFlow
 package](https://www.tensorflow.org/install/).
 
-To install, download the appropriate Python wheel for your system from the
-following table, and then install it with with `pip install` command.
+To install just the interpreter, download the appropriate Python wheel for your
+system from the following table, and then install it with the `pip install`
+command.
 
 For example, if you're setting up a Raspberry Pi (using Raspbian Buster, which
 has Python 3.7), install the Python wheel as follows (after you click to

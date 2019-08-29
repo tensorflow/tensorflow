@@ -64,15 +64,6 @@ constexpr char kIsTraining[] = "is_training";
 
 constexpr int kMissingIndex = -1;
 
-// TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
-// contractions with non-default contraction output kernels.
-bool EigenSupportsContractionOutputKernel() {
-#if defined(EIGEN_USE_LIBXSMM)
-  return false;
-#endif
-  return true;
-}
-
 struct RemapperContext {
   explicit RemapperContext(GrapplerItem* item, Status* status)
       : nodes_to_preserve(item->NodesToPreserve()),
@@ -353,8 +344,6 @@ inline bool HasAtMostOneFanoutAtPort0(const utils::MutableNodeView& node_view) {
 bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
                              ContractionWithBiasAdd* matched,
                              bool check_device_compatible = true) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be a BiasAdd.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -394,8 +383,6 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 bool FindContractionWithBiasAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be an activation node.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -431,8 +418,6 @@ bool FindContractionWithBiasAndActivation(
 
 bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
                                   ContractionWithSqueezeAndBiasAdd* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -456,7 +441,7 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
   // Squeeze must not squeeze output channel dimension.
   std::vector<int32> dims;
-  if (!GetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims).ok()) return false;
+  if (!TryGetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims)) return false;
   for (auto dim : dims) {
     if (dim == 3) return false;
   }
@@ -488,8 +473,6 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
 bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
                              ContractionWithBatchNorm* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
   // Root of the pattern must be a FusedBatchNorm.
@@ -531,7 +514,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   // We successfully found a Conv2D+FusedBatchNorm pattern.
   matched->contraction = conv2d_node_view->node_index();
   matched->fused_batch_norm = node_index;
-  if (!GetNodeAttr(*node_def, "epsilon", &matched->epsilon).ok()) return false;
+  if (!TryGetNodeAttr(*node_def, "epsilon", &matched->epsilon)) return false;
 
   return true;
 }
@@ -539,8 +522,6 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
 bool FindConv2DWithBatchNormAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBatchNormAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -684,7 +665,7 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
 
   // Check that the node is in inference mode.
   bool is_training = true;
-  if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+  if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
   if (is_training) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -1477,7 +1458,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
     bool is_training = true;
-    if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+    if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
     if (is_training) return false;
 
     return true;
@@ -1634,7 +1615,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
       const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-      // TODO(rmlarsen): Get rid of tensor value copies.
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           assume_valid_feeds,
           /*aggressive_shape_inference=*/false,

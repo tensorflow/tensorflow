@@ -62,11 +62,13 @@ public:
   FunctionPassExecutor(const FunctionPassExecutor &rhs);
 
   /// Run the executor on the given function.
-  LogicalResult run(FuncOp function, FunctionAnalysisManager &fam);
+  LogicalResult run(FuncOp function, AnalysisManager am);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
-  void addPass(FunctionPassBase *pass) { passes.emplace_back(pass); }
+  void addPass(std::unique_ptr<FunctionPassBase> pass) {
+    passes.push_back(std::move(pass));
+  }
 
   /// Returns the number of passes held by this executor.
   size_t size() const { return passes.size(); }
@@ -90,11 +92,13 @@ public:
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
   /// Run the executor on the given module.
-  LogicalResult run(ModuleOp module, ModuleAnalysisManager &mam);
+  LogicalResult run(ModuleOp module, AnalysisManager am);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
-  void addPass(ModulePassBase *pass) { passes.emplace_back(pass); }
+  void addPass(std::unique_ptr<ModulePassBase> pass) {
+    passes.push_back(std::move(pass));
+  }
 
   static bool classof(const PassExecutor *pe) {
     return pe->getKind() == Kind::ModuleExecutor;

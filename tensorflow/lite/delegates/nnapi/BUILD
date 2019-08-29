@@ -22,7 +22,10 @@ cc_library(
             "quant_lstm_sup.cc",
         ],
     }),
-    hdrs = ["nnapi_delegate.h"],
+    hdrs = [
+        "nnapi_delegate.h",
+        "nnapi_delegate_kernel.h",
+    ],
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:kernel_api",
@@ -31,6 +34,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_util",
     ],
 )
 

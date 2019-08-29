@@ -48,6 +48,10 @@ Type getElementTypeOrSelf(Value &val);
 /// handles storage concerns, which is tricky to do in tablegen.
 SmallVector<Type, 10> getFlattenedTypes(TupleType t);
 
+/// Return true if the specified type is an opaque type with the specified
+/// dialect and typeData.
+bool isOpaqueTypeWithName(Type type, StringRef dialect, StringRef typeData);
+
 //===----------------------------------------------------------------------===//
 // Utility Iterators
 //===----------------------------------------------------------------------===//

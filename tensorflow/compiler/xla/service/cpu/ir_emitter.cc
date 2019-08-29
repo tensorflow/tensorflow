@@ -1739,6 +1739,16 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     return false;
   }
 
+  int vector_register_size_in_elements =
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
+  if (vector_register_size_in_elements == 0) {
+    // Either we don't know the vector register width for the target or the
+    // vector register is smaller than the size of the primitive type.
+    return false;
+  }
+
   int vectorization_factor_in_bytes =
       target_machine_features_.vectorization_factor_in_bytes();
 

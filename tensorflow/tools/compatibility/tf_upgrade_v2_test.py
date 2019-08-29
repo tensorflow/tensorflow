@@ -2069,6 +2069,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testNnDilation2d(self):
+    text = "tf.nn.dilation2d(v, k, s, r, p)"
+    expected_text = "tf.nn.dilation2d(v, k, s, r, p, data_format='NHWC')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testPywrapTensorflowWarning(self):
     text = "tf.pywrap_tensorflow.foo()"
     expected = "tf.pywrap_tensorflow.foo()"

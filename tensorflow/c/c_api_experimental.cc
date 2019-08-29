@@ -1053,8 +1053,12 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
   delete[] shape_list_array;
 }
 
+namespace tensorflow {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+}  // namespace tensorflow
+
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
-                     TF_Tensor** input_tensors, int num_input_tensors,
+                     TF_Tensor** input_tensors,
                      TF_ShapeAndTypeList* input_tensors_as_shapes,
                      TF_ShapeAndTypeList** input_resource_shapes_and_types,
                      TF_ShapeAndTypeList** output_shapes,
@@ -1082,10 +1086,30 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
       tensorflow::OpRegistry::Global()->LookUp(node_def.op(), &op_reg_data);
   if (!status->status.ok()) return;
 
+  // Initialize a input_tensor vector with `nullptr` values.
+  std::vector<const Tensor*> input_tensors_vector(num_inputs, nullptr);
+  // A vector to keep track of newly created `tf::Tensor` objects.
+  std::vector<Tensor> all_input_tensors;
+  // Update the vector with information from `input_tensors` if provided.
+  if (input_tensors != nullptr) {
+    // Note that we take the address of the elements in `all_input_tensors`
+    // below. Allocate enough space so that no reallocation happens, which will
+    // make the pointers invalid.
+    all_input_tensors.reserve(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      if (input_tensors[i] == nullptr) continue;
+      all_input_tensors.emplace_back();
+      Tensor& input_tensor = all_input_tensors.back();
+      status->status = TF_TensorToTensor(input_tensors[i], &input_tensor);
+      if (!status->status.ok()) return;
+      input_tensors_vector[i] = &input_tensor;
+    }
+  }
+
   // Create an inference context with dummy values, which will be updated later.
   InferenceContext c(TF_GRAPH_DEF_VERSION, &node_def, op_reg_data->op_def,
-                     std::vector<ShapeHandle>(num_inputs),
-                     std::vector<const Tensor*>(num_inputs, nullptr), {},
+                     std::vector<ShapeHandle>(num_inputs), input_tensors_vector,
+                     {},
                      std::vector<std::unique_ptr<std::vector<ShapeAndType>>>());
 
   // Set input_shapes.
@@ -1102,7 +1126,6 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
     c.SetInput(i, c.MakeShape(dims));
   }
 
-  // TODO(bgogul): Handle input_tensors.
   // TODO(bgogul): Handle input_tensors_as_shapes.
   // TODO(bgogul): Handle input_resource_shapes_and_types.
 

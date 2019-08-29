@@ -2192,25 +2192,6 @@ inline void BroadcastPow(const T* input1_data, const Dims<4>& input1_dims,
                      DimsToShape(output_dims), output_data);
 }
 
-inline void Logical(const bool* input1_data, const Dims<4>& input1_dims,
-                    const bool* input2_data, const Dims<4>& input2_dims,
-                    bool* output_data, const Dims<4>& output_dims,
-                    const std::function<bool(bool, bool)>& func) {
-  Logical(DimsToShape(input1_dims), input1_data, DimsToShape(input2_dims),
-          input2_data, DimsToShape(output_dims), output_data, func);
-}
-
-inline void BroadcastLogical(const bool* input1_data,
-                             const Dims<4>& input1_dims,
-                             const bool* input2_data,
-                             const Dims<4>& input2_dims, bool* output_data,
-                             const Dims<4>& output_dims,
-                             const std::function<bool(bool, bool)>& func) {
-  BroadcastLogical4DSlow(DimsToShape(input1_dims), input1_data,
-                         DimsToShape(input2_dims), input2_data,
-                         DimsToShape(output_dims), output_data, func);
-}
-
 // R: Result type. T1: Input 1 type. T2: Input 2 type.
 template <typename R, typename T1, typename T2>
 inline void BroadcastBinaryFunction(const T1* input1_data,

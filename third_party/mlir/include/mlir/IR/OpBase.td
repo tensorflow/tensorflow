@@ -334,6 +334,10 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class OpaqueType<string dialect, string name, string description>
+  : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
+         description>;
+
 // Function Type
 
 // Any function type.
@@ -381,6 +385,15 @@ class StaticShapeTensorOf<list<Type> allowedTypes>
 
 def AnyStaticShapeTensor : StaticShapeTensorOf<[AnyType]>;
 
+// Whether a type is a ranked tensor type.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a type is a ranked tensor type with one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
 def I1Tensor   : TensorOf<[I1]>;
 def I8Tensor   : TensorOf<[I8]>;
 def I16Tensor  : TensorOf<[I16]>;
@@ -412,6 +425,13 @@ def BF16MemRef : MemRefOf<[BF16]>;
 def F16MemRef  : MemRefOf<[F16]>;
 def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
+
+// TODO(b/130064155) Have an easy way to add another constraint to a type.
+class StaticShapeMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
+           "statically shaped " # MemRefOf<allowedTypes>.description>;
+
+def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
 
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
@@ -585,11 +605,12 @@ def BoolAttr : Attr<CPred<"$_self.isa<BoolAttr>()">, "bool attribute"> {
 
 // Base class for integer attributes of fixed width.
 class IntegerAttrBase<I attrValType, string descr> :
-    TypedAttrBase<attrValType, "IntegerAttr",
-              And<[CPred<"$_self.isa<IntegerAttr>()">,
-                     CPred<"$_self.cast<IntegerAttr>().getType()."
-                           "isInteger(" # attrValType.bitwidth # ")">]>,
-              descr> {
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[CPred<"$_self.isa<IntegerAttr>()">,
+           CPred<"$_self.cast<IntegerAttr>().getType()."
+                 "isInteger(" # attrValType.bitwidth # ")">]>,
+      descr> {
   let returnType = [{ APInt }];
 }
 
@@ -599,8 +620,40 @@ def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
   let returnType = [{ APInt }];
 }
 
+def I1Attr  : IntegerAttrBase<I1,  "1-bit integer attribute">;
+def I8Attr  : IntegerAttrBase<I8,  "8-bit integer attribute">;
+def I16Attr : IntegerAttrBase<I16, "16-bit integer attribute">;
 def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
 def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
+
+class NonNegativeIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"!$_self.cast<IntegerAttr>().getValue().isNegative()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def NonNegativeI32Attr : NonNegativeIntAttrBase<
+    I32, "non-negative 32-bit integer attribute">;
+def NonNegativeI64Attr : NonNegativeIntAttrBase<
+    I64, "non-negative 64-bit integer attribute">;
+
+class PositiveIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"$_self.cast<IntegerAttr>().getValue()"
+                 ".isStrictlyPositive()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def PositiveI32Attr : PositiveIntAttrBase<
+    I32, "positive 32-bit integer attribute">;
+def PositiveI64Attr : PositiveIntAttrBase<
+    I64, "positive 64-bit integer attribute">;
 
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
@@ -785,6 +838,13 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
+def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+                          "dictionary of named attribute values"> {
+  let storageType = [{ DictionaryAttr }];
+  let returnType = [{ DictionaryAttr }];
+  let convertFromStorage = "$_self";
+}
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
@@ -842,12 +902,30 @@ def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
 }
 
+def I32ElementsAttr : Attr<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(32)">,
+  "32-bit integer elements attribute"> {
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+  let constBuilderCall = "$_builder.getDenseElementsAttr("
+    "$_builder.getTensorType({}, $_builder.getIntegerType(32)), "
+      "{$_builder.getI32IntegerAttr($0)})";
+  let convertFromStorage = "$_self";
+}
+
 // Attributes containing symbol references.
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {
   let storageType = [{ SymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+}
+
+def SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "symbol ref array attribute"> {
+  let constBuilderCall = ?;
 }
 
 //===----------------------------------------------------------------------===//
@@ -969,7 +1047,7 @@ class OpTrait;
 // purpose to wrap around C++ symbol string with this class is to make
 // traits specified for ops in TableGen less alien and more integrated.
 class NativeOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // ParamNativeOpTrait corresponds to the template-parameterized traits in the
@@ -985,7 +1063,7 @@ class ParamNativeOpTrait<string prop, string params>
 // affects op definition generator internals, like how op builders and
 // operand/attribute/result getters are generated.
 class GenInternalOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // PredOpTrait is an op trait implemented by way of a predicate on the op.
@@ -995,19 +1073,25 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 }
 
 // Op supports operand broadcast behavior.
-def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
+def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
-def Commutative      : NativeOpTrait<"IsCommutative">;
+def Commutative  : NativeOpTrait<"IsCommutative">;
+// Op is isolated from above.
+def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
-def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+def NoSideEffect : NativeOpTrait<"HasNoSideEffect">;
 // Op has the same operand type.
-def SameTypeOperands  : NativeOpTrait<"SameTypeOperands">;
+def SameTypeOperands : NativeOpTrait<"SameTypeOperands">;
+// Op has same shape for all operands.
+def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 // Op has same operand and result shape.
-def SameOperandsAndResultShape   : NativeOpTrait<"SameOperandsAndResultShape">;
+def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
-def SameOperandsAndResultType    : NativeOpTrait<"SameOperandsAndResultType">;
+def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
+// Op has the same element type for all operands.
+def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type.
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
@@ -1043,11 +1127,54 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 
 //===----------------------------------------------------------------------===//
-// Op definitions
+// OpInterface definitions
 //===----------------------------------------------------------------------===//
 
-// Marker used to identify the argument list for an op.
+// Marker used to identify the argument list for an op or interface method.
 def ins;
+
+// OpInterfaceTrait corresponds to a specific 'OpInterface' class defined in
+// C++. The purpose to wrap around C++ symbol string with this class is to make
+// interfaces specified for ops in TableGen less alien and more integrated.
+class OpInterfaceTrait<string name> : NativeOpTrait<""> {
+  let trait = name # "::Trait";
+}
+
+// This class represents a single, optionally static, interface method.
+// Note: non-static interface methods have an implicit 'op' parameter
+// corresponding to an instance of the derived operation.
+class InterfaceMethod<string retTy, string methodName,
+                      dag args = (ins), code methodBody = [{}]> {
+  /// The name of the interface method.
+  string name = methodName;
+
+  /// The c++ type-name of the return type.
+  string returnType = retTy;
+
+  /// A dag of string that correspond to the arguments of the method.
+  dag arguments = args;
+
+  /// An optional body to the method.
+  code body = methodBody;
+}
+
+// This class represents a single static interface method.
+class StaticInterfaceMethod<string retTy, string methodName,
+                            dag args = (ins), code methodBody = [{}]>
+    : InterfaceMethod<retTy, methodName, args, methodBody>;
+
+// OpInterface represents an interface regarding an op.
+class OpInterface<string name> : OpInterfaceTrait<name> {
+  // The name given to the c++ interface class.
+  string cppClassName = name;
+
+  /// The list of methods defined by this interface.
+  list<InterfaceMethod> methods = [];
+}
+
+//===----------------------------------------------------------------------===//
+// Op definitions
+//===----------------------------------------------------------------------===//
 
 // Marker used to identify the result list for an op.
 def outs;
@@ -1174,8 +1301,16 @@ class Results<dag rets> {
 }
 
 //===----------------------------------------------------------------------===//
+// Common value constraints
+//===----------------------------------------------------------------------===//
+
+def HasNoUseOf: Constraint<
+    CPred<"$_self->use_begin() == $_self->use_end()">, "has no use">;
+
+//===----------------------------------------------------------------------===//
 // Common op type constraints
 //===----------------------------------------------------------------------===//
+
 // These traits are for verifying properties of an op that require knowledge of
 // multiple arguments or results. For verifying properties of a single argument
 // or result, prefer operand type constraints.
@@ -1406,11 +1541,5 @@ class NativeCodeCall<string expr> {
 // Directive used in result pattern to indicate that no new op are generated,
 // so to replace the matched DAG with an existing SSA value.
 def replaceWithValue;
-
-// Directive used in result pattern to indicate that no replacement is generated
-// for the current result. Predicates are generated to make sure the
-// corresponding result in source pattern is unused.
-//   syntax: (verifyUnusedValue)
-def verifyUnusedValue;
 
 #endif // OP_BASE

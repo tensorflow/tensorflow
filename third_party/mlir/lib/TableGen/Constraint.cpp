@@ -63,6 +63,7 @@ llvm::StringRef Constraint::getDescription() const {
   return doc;
 }
 
-AppliedConstraint::AppliedConstraint(Constraint &&c,
-                                     std::vector<std::string> &&e)
-    : constraint(c), entities(std::move(e)) {}
+AppliedConstraint::AppliedConstraint(Constraint &&constraint,
+                                     llvm::StringRef self,
+                                     std::vector<std::string> &&entities)
+    : constraint(constraint), self(self), entities(std::move(entities)) {}

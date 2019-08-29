@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -243,6 +244,44 @@ TEST_F(ExportTest, Export) {
               ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:MyCrazyOp",
                           "builtin:SUB"));
   EXPECT_THAT(ExportAndGetOperatorIndices(params), ElementsAre(1, 0, 2, 3));
+}
+
+TEST_F(ExportTest, ExportMinRuntime) {
+  AddOperatorsByName({"Conv", "Add", "Sub"});
+
+  ExportParams params;
+  params.allow_custom_ops = true;
+  params.enable_select_tf_ops = false;
+  params.quantize_weights = QuantizedBufferType::NONE;
+
+  string output;
+  auto status = Export(input_model_, &output, params);
+  auto* model = ::tflite::GetModel(output.data());
+  EXPECT_EQ(model->metadata()->size(), 1);
+  EXPECT_EQ(model->metadata()->Get(0)->name()->str(), "min_runtime_version");
+  auto buf = model->metadata()->Get(0)->buffer();
+  auto* buffer = (*model->buffers())[buf];
+  auto* array = buffer->data();
+  string version(reinterpret_cast<const char*>(array->data()), array->size());
+  EXPECT_EQ(version, "1.6.0");
+}
+
+TEST_F(ExportTest, ExportEmptyMinRuntime) {
+  AddOperatorsByName({"Switch", "MyCustomOp", "Assert"});
+
+  ExportParams params;
+  params.allow_custom_ops = true;
+
+  string output;
+  auto status = Export(input_model_, &output, params);
+  auto* model = ::tflite::GetModel(output.data());
+  EXPECT_EQ(model->metadata()->size(), 1);
+  EXPECT_EQ(model->metadata()->Get(0)->name()->str(), "min_runtime_version");
+  auto buf = model->metadata()->Get(0)->buffer();
+  auto* buffer = (*model->buffers())[buf];
+  auto* array = buffer->data();
+  string version(reinterpret_cast<const char*>(array->data()), array->size());
+  EXPECT_EQ(version, "");
 }
 
 TEST_F(ExportTest, UnsupportedControlFlowErrors) {
@@ -532,7 +571,7 @@ class VersionedOpExportTest : public ::testing::Test {
       auto* op = new ConvOperator;
       op->inputs.push_back("input");
       op->inputs.push_back("filter");
-      op->inputs.push_back("output");
+      op->outputs.push_back("output");
 
       op->padding.type = PaddingType::kSame;
       op->stride_width = 1;

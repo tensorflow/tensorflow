@@ -56,18 +56,20 @@ class FunctionBodyTransformer(converter.Base):
       return node
 
     scope = anno.getanno(node, anno.Static.SCOPE)
-    function_context_name = self.ctx.namer.new_symbol(
-        'lambda_scope', scope.referenced)
+    function_context_name = self.ctx.namer.new_symbol('lambda_scope',
+                                                      scope.referenced)
     self.state[_Function].context_name = function_context_name
     anno.setanno(node, 'function_context_name', function_context_name)
 
     template = """
-      ag__.with_function_scope(lambda function_context_name: body, options)
+      ag__.with_function_scope(
+          lambda function_context: body, function_context_name, options)
     """
     node.body = templates.replace_as_expression(
         template,
         options=self.ctx.program.options.to_ast(),
-        function_context_name=function_context_name,
+        function_context=function_context_name,
+        function_context_name=gast.Str(function_context_name),
         body=node.body)
 
     self.state[_Function].exit()
@@ -93,14 +95,16 @@ class FunctionBodyTransformer(converter.Base):
         node.body = node.body[1:]
 
     template = """
-      with ag__.FunctionScope(function_name, options) as function_context_name:
+      with ag__.FunctionScope(
+      function_name, context_name, options) as function_context:
         body
     """
     wrapped_body = templates.replace(
         template,
         function_name=gast.Str(node.name),
+        context_name=gast.Str(function_context_name),
         options=self.ctx.program.options.to_ast(),
-        function_context_name=function_context_name,
+        function_context=function_context_name,
         body=node.body)
 
     if docstring_node is not None:

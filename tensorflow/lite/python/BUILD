@@ -33,6 +33,7 @@ py_test(
     ],
     deps = [
         ":interpreter",
+        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
@@ -141,7 +142,6 @@ py_test(
     srcs = ["lite_mlir_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -280,19 +280,5 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-py_binary(
-    name = "create_custom_op",
-    srcs = ["create_custom_op.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/flags",
     ],
 )

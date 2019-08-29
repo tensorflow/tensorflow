@@ -22,9 +22,11 @@ from __future__ import print_function
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -34,8 +36,10 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -103,6 +107,14 @@ def _get_element_from_tensor_info(tensor_info, graph):
         graph.get_tensor_by_name(tensor_info.coo_sparse.values_tensor_name),
         graph.get_tensor_by_name(
             tensor_info.coo_sparse.dense_shape_tensor_name))
+  elif encoding == "composite_tensor":
+    struct_coder = nested_structure_coder.StructureCoder()
+    spec_proto = struct_pb2.StructuredValue(
+        type_spec_value=tensor_info.composite_tensor.type_spec)
+    spec = struct_coder.decode_proto(spec_proto)
+    components = [graph.get_tensor_by_name(component.name) for component in
+                  tensor_info.composite_tensor.components]
+    return spec._from_components(components)  # pylint: disable=protected-access
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
 
@@ -150,8 +162,9 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.GLOBAL_VARIABLES)
     local_collection_variables = ops.get_collection(
         ops.GraphKeys.LOCAL_VARIABLES)
-    existing_captures = set(graph.internal_captures)
-    lifted_variables = {}
+    existing_captures = object_identity.ObjectIdentitySet(
+        graph.internal_captures)
+    lifted_variables = object_identity.ObjectIdentityDictionary()
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
@@ -241,15 +254,16 @@ class WrappedFunction(function.ConcreteFunction):
     """
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
-    feeds = nest.map_structure(self.graph.as_graph_element, feeds)
-    flat_feeds = nest.flatten(feeds)
+    flat_feeds = nest.flatten(feeds, expand_composites=True)
+    flat_feeds = [self.graph.as_graph_element(t) for t in flat_feeds]
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
         raise ValueError("Feeds must be tensors.")
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
-    internal_captures = self.graph.internal_captures
+    internal_captures = object_identity.ObjectIdentitySet(
+        self.graph.internal_captures)
     flat_feeds = [f for f in flat_feeds if f not in internal_captures]
 
     operation_fetches = []
@@ -275,12 +289,13 @@ class WrappedFunction(function.ConcreteFunction):
       elif isinstance(fetch, meta_graph_pb2.TensorInfo):
         tensor_infos.append(fetch)
         decoded = _get_element_from_tensor_info(fetch, self._func_graph)
-        if tensor_util.is_tensor(decoded):
+        if (tensor_util.is_tensor(decoded) or
+            isinstance(decoded, composite_tensor.CompositeTensor)):
           tensor_fetches.append(decoded)
         else:
           operation_fetches.append(decoded)
         return decoded
-      elif isinstance(fetch, ops.Tensor):
+      elif isinstance(fetch, (ops.Tensor, composite_tensor.CompositeTensor)):
         tensor_fetches.append(fetch)
         return fetch
       else:
@@ -302,7 +317,7 @@ class WrappedFunction(function.ConcreteFunction):
     lift_map = lift_to_graph.lift_to_graph(
         operation_fetches + tensor_fetches,
         pruned_graph,
-        sources=flat_feeds + internal_captures)
+        sources=flat_feeds + self.graph.internal_captures)
 
     # Note that we add the component tensors of any composite tensors to the
     # returned function's outputs list; the list must contain these component

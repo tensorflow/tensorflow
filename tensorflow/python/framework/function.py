@@ -38,6 +38,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -710,7 +711,7 @@ class _FuncGraph(ops.Graph):
     # _FuncGraph.
     self.outputs = []
     # Maps external tensor -> internal tensor (e.g. input placeholder).
-    self._captured = {}
+    self._captured = object_identity.ObjectIdentityDictionary()
     # The external tensors that have been captured as inputs and must be passed
     # to this function (empty if capturing by value, otherwise these are the
     # keys of _captured).
@@ -799,12 +800,12 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
+  def _create_op_internal(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs,
-                                             dtypes=dtypes, **kwargs)
+    return super(_FuncGraph, self)._create_op_internal(
+        op_type, inputs, dtypes=dtypes, **kwargs)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
@@ -863,7 +864,7 @@ class _FuncGraph(ops.Graph):
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
 
-    captured_op = self.create_op(
+    captured_op = self._create_op_internal(
         op.type,
         captured_inputs, [o.dtype for o in op.outputs],
         name=op.name,
@@ -1057,7 +1058,7 @@ def _call(sig, *inputs, **kwargs):
     name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  op = g.create_op(
+  op = g._create_op_internal(  # pylint: disable=protected-access
       func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:

@@ -71,39 +71,41 @@ class StagingError(AutoGraphError):
 class _ErrorMetadata(errors.ErrorMetadataBase):
   """AutoGraph-specific error metadata. See base class."""
 
-  def create_exception(self, preferred_type):
-    if preferred_type == errors_impl.OpError:
+  def create_exception(self, source_error):
+    preferred_type = type(source_error)
+    if issubclass(preferred_type, errors_impl.OpError):
       # Best-effort unpacking of OpError exceptions.
       # TODO(mdan): Use a mechanism that is more future-proof.
-      t = type(self.cause)
-      init_argspec = tf_inspect.getfullargspec(t.__init__)
+      init_argspec = tf_inspect.getfullargspec(preferred_type.__init__)
       message = self.get_message()
-      init_args = tuple(init_argspec.argspec)
+      init_args = tuple(init_argspec.args)
       # At the time of this writing, TF errors either take 3 or 4 arguments,
       # with the fourth being error_code.
       if init_args == ('self', 'node_def', 'op', 'message', 'error_code'):
-        return t(
-            node_def=self.cause.node_def,
-            op=self.cause.op,
+        return preferred_type(
+            node_def=source_error.node_def,
+            op=source_error.op,
             message=message,
             error_code=self.error_code)
       elif init_args == ('self', 'node_def', 'op', 'message'):
         if 'error_code' in init_argspec.kwonlyargs:
-          return t(
-              node_def=self.cause.node_def,
-              op=self.cause.op,
+          return preferred_type(
+              node_def=source_error.node_def,
+              op=source_error.op,
               message=message,
               errro_code=self.error_code)
         else:
-          return t(
-              node_def=self.cause.node_def, op=self.cause.op, message=message)
+          return preferred_type(
+              node_def=source_error.node_def,
+              op=source_error.op,
+              message=message)
 
     elif preferred_type in (AutoGraphError, ConversionError, StagingError,
                             errors_impl.InaccessibleTensorError,
                             errors_impl.OperatorNotAllowedInGraphError):
       return preferred_type(self.get_message())
 
-    exc = super(_ErrorMetadata, self).create_exception(preferred_type)
+    exc = super(_ErrorMetadata, self).create_exception(source_error)
     if exc is not None:
       return exc
 
@@ -232,7 +234,7 @@ def convert(recursive=False, optional_features=None, user_requested=True):
         return converted_call(f, options, args, kwargs)
       except Exception as e:  # pylint:disable=broad-except
         if hasattr(e, 'ag_error_metadata'):
-          raise e.ag_error_metadata.to_exception(type(e))
+          raise e.ag_error_metadata.to_exception(e)
         else:
           raise
 
@@ -360,8 +362,23 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
-def converted_call(f, options, args, kwargs):
-  """Compiles a function call inline. For internal use only."""
+def converted_call(f, options, args, kwargs, caller_fn_scope=None):
+  """Compiles a function call inline.
+
+  For internal use only.
+
+  Args:
+    f: The function to convert.
+    options: converter.ConversionOptions
+    args: Tuple, the original positional arguments of f
+    kwargs: Dict, the original keyword arguments of f
+    caller_fn_scope: Optional[function_wrappers.FunctionScope], the function
+      scope of the converted function in which this call was originally made.
+
+  Returns:
+    Any, the result of executing a possibly-converted `f` with the given
+      arguments.
+  """
   logging.log(1, 'Converted call: %s\n    args: %s\n    kwargs: %s\n', f, args,
               kwargs)
 
@@ -370,9 +387,9 @@ def converted_call(f, options, args, kwargs):
 
   if inspect_utils.isbuiltin(f):
     if f is eval:
-      return py_builtins.eval_in_original_context(f, args, 1)
+      return py_builtins.eval_in_original_context(f, args, caller_fn_scope)
     if f is super:
-      return py_builtins.super_in_original_context(f, args, 1)
+      return py_builtins.super_in_original_context(f, args, caller_fn_scope)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:

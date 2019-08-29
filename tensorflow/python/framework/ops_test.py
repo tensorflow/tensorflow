@@ -29,6 +29,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -187,6 +188,130 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
           r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
+  def testNumpyArray(self):
+    with ops.Graph().as_default():
+      x = array_ops.ones((3, 4), name="test_ones")
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 r"Cannot convert a symbolic.+test_ones"):
+      np.array(x)
+
+    with self.assertRaisesRegexp(TypeError, "not well defined.+test_ones"):
+      len(x)
+
+    # EagerTensors should still behave as numpy arrays.
+    with context.eager_mode():
+      x = array_ops.ones((3, 4))
+
+    self.assertAllEqual(x, np.ones((3, 4)))
+    self.assertAllEqual(np.array(x), np.ones((3, 4)))
+    self.assertEqual(len(x), 3)
+
+  def testRef(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x1.experimental_ref())
+    self.assertEqual(x2.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(y.experimental_ref(), y.experimental_ref())
+    self.assertEqual(z.experimental_ref(), z.experimental_ref())
+    self.assertEqual(w.experimental_ref(), w.experimental_ref())
+
+    self.assertNotEqual(x1.experimental_ref(), y.experimental_ref())
+    self.assertNotEqual(x1.experimental_ref(), z.experimental_ref())
+    self.assertNotEqual(x1.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(y.experimental_ref(), z.experimental_ref())
+    self.assertNotEqual(y.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(z.experimental_ref(), w.experimental_ref())
+
+  def testRefDeref(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertIs(x1, x1.experimental_ref().deref())
+    self.assertIs(x2, x2.experimental_ref().deref())
+    self.assertIs(x1, x2.experimental_ref().deref())
+    self.assertIs(x2, x1.experimental_ref().deref())
+    self.assertIs(y, y.experimental_ref().deref())
+    self.assertIs(z, z.experimental_ref().deref())
+
+    self.assertIsNot(x1, y.experimental_ref().deref())
+    self.assertIsNot(x1, z.experimental_ref().deref())
+    self.assertIsNot(x1, w.experimental_ref().deref())
+    self.assertIsNot(y, z.experimental_ref().deref())
+    self.assertIsNot(y, w.experimental_ref().deref())
+    self.assertIsNot(z, w.experimental_ref().deref())
+
+  def testRefInSet(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+
+    tensor_set = {
+        x1.experimental_ref(),
+        x2.experimental_ref(),
+        y.experimental_ref(),
+        z.experimental_ref(),
+        w.experimental_ref(),
+    }
+
+    self.assertEqual(len(tensor_set), 4)
+    self.assertIn(x1.experimental_ref(), tensor_set)
+    self.assertIn(x2.experimental_ref(), tensor_set)
+    self.assertIn(y.experimental_ref(), tensor_set)
+    self.assertIn(z.experimental_ref(), tensor_set)
+    self.assertIn(w.experimental_ref(), tensor_set)
+
+  def testRefInDict(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+
+    tensor_dict = {
+        x1.experimental_ref(): "x1",
+        y.experimental_ref(): "y",
+        z.experimental_ref(): "z",
+        w.experimental_ref(): "w",
+    }
+
+    self.assertEqual(len(tensor_dict), 4)
+
+    # Overwriting x1
+    tensor_dict[x2.experimental_ref()] = "x2"
+    self.assertEqual(len(tensor_dict), 4)
+
+    self.assertEqual(tensor_dict[x1.experimental_ref()], "x2")
+    self.assertEqual(tensor_dict[x2.experimental_ref()], "x2")
+    self.assertEqual(tensor_dict[y.experimental_ref()], "y")
+    self.assertEqual(tensor_dict[z.experimental_ref()], "z")
+    self.assertEqual(tensor_dict[w.experimental_ref()], "w")
+
+  def testTensorRefStrong(self):
+    x = constant_op.constant(1.)
+    x_ref = x.experimental_ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
+
+  def testVariableRefStrong(self):
+    x = variables.Variable(1.)
+    x_ref = x.experimental_ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
@@ -366,13 +491,6 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("None", "bar")
     self.assertProtoEquals("op: 'None' name: 'bar'", nodedef)
 
-  def testArgs(self):
-    nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
-                           nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
-
 
 def _apply_op(g, *args, **kwargs):
   op = g.create_op(*args, **kwargs)
@@ -450,12 +568,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op:'Foo2' name:'myop3'
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
-
-  def testDeviceFromNodeDef(self):
-    op = ops.Operation(
-        ops._NodeDef("None", "myop", device="/job:goo/device:GPU:0"),
-        ops.Graph(), [], [])
-    self.assertEqual("/job:goo/device:GPU:0", op.device)
 
   def testDeviceObject(self):
     op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
@@ -580,6 +692,13 @@ class OperationTest(test_util.TensorFlowTestCase):
       # Forcing an invalid dtype should fail with a type error.
       values = [1.23]
       ops.convert_to_tensor(values, dtype=dtypes.int64)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToLongLongTensorType(self):
+    tensor = ops.convert_to_tensor(
+        # Get a numpy array of dtype NPY_LONGLONG
+        np.prod(constant_op.constant([1])._shape_tuple()))
+    self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):
@@ -793,33 +912,34 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.enable_control_flow_v2
   @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
-    @eager_function.defun
-    def test():
-      output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
-                                           [1])
-      while_op = output.op.inputs[0].op
-      self.assertEqual(while_op.type, "While")
-      orig_num_inputs = len(while_op.inputs)
+    if forward_compat.forward_compatible(2019, 8, 23):
+      @eager_function.defun
+      def test():
+        output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
+                                             [1])
+        while_op = output.op.inputs[0].op
+        self.assertEqual(while_op.type, "StatelessWhile")
+        orig_num_inputs = len(while_op.inputs)
 
-      # Make sure we can handle the while op having a control input.
-      while_op._add_control_input(constant_op.constant(0).op)
+        # Make sure we can handle the while op having a control input.
+        while_op._add_control_input(constant_op.constant(0).op)
 
-      new_input1 = constant_op.constant(1.0)
-      new_input2 = constant_op.constant(True)
+        new_input1 = constant_op.constant(1.0)
+        new_input2 = constant_op.constant(True)
 
-      # Clear output shapes to bypass shape checking.
-      while_op._set_shape_list_attr("output_shapes", [])
-      while_op._set_type_list_attr("T",
-                                   [t.dtype for t in while_op.inputs] +
-                                   [new_input1.dtype, new_input2.dtype])
+        # Clear output shapes to bypass shape checking.
+        while_op._set_shape_list_attr("output_shapes", [])
+        while_op._set_type_list_attr("T",
+                                     [t.dtype for t in while_op.inputs] +
+                                     [new_input1.dtype, new_input2.dtype])
 
-      while_op._add_while_inputs([new_input1, new_input2])
-      # Can't add an edge beyond what's specified by "T"
-      with self.assertRaises(errors.OutOfRangeError):
-        while_op._add_while_inputs([new_input2])
-      self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
+        while_op._add_while_inputs([new_input1, new_input2])
+        # Can't add an edge beyond what's specified by "T"
+        with self.assertRaises(errors.OutOfRangeError):
+          while_op._add_while_inputs([new_input2])
+        self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
 
-    test()
+      test()
 
   @test_util.run_deprecated_v1
   def testOpDef(self):
@@ -3228,28 +3348,6 @@ class NameScopeTest(test_util.TensorFlowTestCase):
             pass
 
     self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
-
-
-class TracebackTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testTracebackWithStartLines(self):
-    with self.cached_session() as sess:
-      a = constant_op.constant(2.0)
-      sess.run(
-          a,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assertTrue(sess.graph.get_operations())
-
-      # Tests that traceback_with_start_lines is the same as traceback
-      # but includes one more element at the end.
-      for op in sess.graph.get_operations():
-        self.assertEquals(len(op.traceback), len(op.traceback_with_start_lines))
-        for frame, frame_with_start_line in zip(
-            op.traceback, op.traceback_with_start_lines):
-          self.assertEquals(5, len(frame_with_start_line))
-          self.assertEquals(frame, frame_with_start_line[:-1])
 
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):

@@ -1515,13 +1515,21 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto two = ops::Const(s.WithOpName("two"), 2LL);
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
-    NameAttrList fn;
-    fn.set_name("Mul");
-    (*fn.mutable_attr())["T"].set_type(DT_FLOAT);
+    NameAttrList fn0;
+    fn0.set_name("Mul");
+    (*fn0.mutable_attr())["T"].set_type(DT_FLOAT);
     auto func1 = ops::SymbolicGradient(
         s.WithOpName("Func/_1"), std::initializer_list<Input>{x, scale, func0},
-        {DT_FLOAT, DT_FLOAT}, fn);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1[0], 0);
+        {DT_FLOAT, DT_FLOAT}, fn0);
+    NameAttrList fn1;
+    fn1.set_name("Cast");
+    (*fn1.mutable_attr())["SrcT"].set_type(DT_INT64);
+    (*fn1.mutable_attr())["DstT"].set_type(DT_FLOAT);
+    (*fn1.mutable_attr())["Truncate"].set_b(false);
+    auto func2 = ops::SymbolicGradient(
+        s.WithOpName("Func/_2"),
+        std::initializer_list<Input>{two, func1.output[1]}, {DT_INT64}, fn1);
+    auto func3 = ops::_Retval(s.WithOpName("Func/_3"), func1[0], 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1552,7 +1560,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
         ops::Sum(s.WithOpName("Func/_1/sum_gx"), func1_gx, func1_rx.r0);
     auto func1_dx =
         ops::Reshape(s.WithOpName("Func/_1/dx"), func1_sum_gx, func1_sx);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1_dx, 0);
+    auto func2 = ops::_Retval(s.WithOpName("Func/_3"), func1_dx, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1755,20 +1763,23 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
         std::initializer_list<Input>{grad0_z, grad0_indices, func2},
         {DT_FLOAT, DT_INT32}, sum);
 
-    auto grad0_func2 = ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_r);
+    auto grad0_func2 =
+        ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_zero);
+    auto grad0_func3 = ops::ZerosLike(s.WithOpName("grad0/Func/_3"), grad0_r);
+    auto grad0_func4 = ops::ZerosLike(s.WithOpName("grad0/Func/_4"), grad0_one);
 
     NameAttrList add;
     add.set_name("Add");
     (*add.mutable_attr())["T"].set_type(DT_FLOAT);
-    auto grad0_func3 = ops::SymbolicGradient(
-        s.WithOpName("grad0/Func/_3"),
+    auto grad0_func5 = ops::SymbolicGradient(
+        s.WithOpName("grad0/Func/_5"),
         std::initializer_list<Input>{func0, func1, grad0_func1[0]},
         {DT_FLOAT, DT_FLOAT}, add);
 
     auto func3 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func3[0]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func5[0]);
     auto func4 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func3[1]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func5[1]);
     auto dx = ops::Identity(s.WithOpName("dx"), func3);
     auto dy = ops::Identity(s.WithOpName("dy"), func4);
     auto dx_retval = ops::_Retval(s.WithOpName("dx_RetVal"), dx, 0);
@@ -1848,17 +1859,17 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
   TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.rendezvous->Unref();
 }
 

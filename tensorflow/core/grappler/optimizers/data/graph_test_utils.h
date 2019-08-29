@@ -23,6 +23,11 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+// Creates a test NodeDef for ShuffleDatasetV2.
+NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece filename_node_name,
+                        StringPiece cache_node_name);
+
 // Creates a test NodeDef for FilterDataset.
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name = "IsZero");

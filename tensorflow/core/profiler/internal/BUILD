@@ -370,7 +370,8 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
-        "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//perftools/accelerators/xprof/xprofilez/cpu:__pkg__",  # host_tracer
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",  # traceme_test
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
@@ -433,6 +434,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:annotation",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -442,7 +444,40 @@ tf_cuda_library(
     hdrs = ["python_traceme.h"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cuda_library(
+    name = "python_scoped_annotation",
+    hdrs = ["python_scoped_annotation.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "//tensorflow/core/platform:annotation",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )

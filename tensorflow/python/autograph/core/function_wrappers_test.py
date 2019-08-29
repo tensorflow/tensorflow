@@ -33,7 +33,7 @@ class FunctionWrappersTest(test.TestCase):
       self.skipTest('Tensor names are disabled in eager')
 
     with function_wrappers.FunctionScope(
-        'test_name',
+        'test_name', None,
         converter.ConversionOptions(
             optional_features=converter.Feature.NAME_SCOPES)):
       t = constant_op.constant(1)
@@ -42,7 +42,7 @@ class FunctionWrappersTest(test.TestCase):
   def test_auto_cotrol_deps(self):
     v = variables.Variable(1)
     with function_wrappers.FunctionScope(
-        '_',
+        '_', None,
         converter.ConversionOptions(
             optional_features=converter.Feature.AUTO_CONTROL_DEPS)) as scope:
       v.assign(2)
@@ -51,9 +51,11 @@ class FunctionWrappersTest(test.TestCase):
     self.assertEqual(self.evaluate(v.read_value()), 2)
 
   def test_all_disabled(self):
-    with function_wrappers.FunctionScope(None, converter.STANDARD_OPTIONS):
+    with function_wrappers.FunctionScope(None, None,
+                                         converter.STANDARD_OPTIONS):
       t = constant_op.constant(1)
     self.assertEqual(self.evaluate(t), 1)
+
 
 if __name__ == '__main__':
   test.main()

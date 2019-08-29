@@ -29,7 +29,7 @@ class MLIRContext;
 class RewritePattern;
 
 // Owning list of rewriting patterns.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 
 /// Collect a set of patterns to lower from loop.for, loop.if, and
 /// loop.terminator to CFG operations within the Standard dialect, in particular

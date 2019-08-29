@@ -1526,6 +1526,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "'merge_repeated' argument and behaves as if merge_repeated=False. "
             "This call site specifies something other than "
             "merge_repeated=False, so it was converted to compat.v1."),
+        "tf.nn.dilation2d": functools.partial(
+            _add_argument_transformer,
+            arg_name="data_format",
+            arg_value_ast=ast.Str("NHWC")),
         "tf.nn.erosion2d": functools.partial(
             _add_argument_transformer,
             arg_name="data_format",

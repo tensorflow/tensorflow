@@ -21,6 +21,9 @@ from __future__ import print_function
 import os
 import sys
 
+from google.protobuf import text_format
+
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -140,6 +143,22 @@ class SaveTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "a_tensor"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
                 signatures=root.f)
+
+  def test_unsaveable_func_graph(self):
+    root = module.Module()
+
+    @def_function.function(input_signature=[])
+    def nested_f():
+      ops.get_default_graph().mark_as_unsaveable("ERROR MSG")
+      return 1
+
+    @def_function.function(input_signature=[])
+    def f():
+      return nested_f()
+
+    root.f = f
+    with self.assertRaisesRegexp(ValueError, "ERROR MSG"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
@@ -373,6 +392,28 @@ class SaveTest(test.TestCase):
             tensor_spec.TensorSpec(None, dtypes.int64)))
     self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
                         _import_and_infer(save_dir, {"x": 3}))
+
+
+class SavingOptionsTest(test.TestCase):
+
+  def testOpNameSpace(self):
+    # TODO(kathywu): Add test that saves out SavedModel with a custom op when
+    # the ">" character is allowed in op names.
+    graph_def = graph_pb2.GraphDef()
+    text_format.Merge("node { name: 'A' op: 'Test>CustomOp' }",
+                      graph_def)
+    with self.assertRaisesRegexp(
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+      save._verify_ops(graph_def, [])
+    save._verify_ops(graph_def, ["Test"])
+
+    # Test with multiple carrots in op name.
+    text_format.Merge("node { name: 'A' op: 'Test>>A>CustomOp' }",
+                      graph_def)
+    with self.assertRaisesRegexp(
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+      save._verify_ops(graph_def, [])
+    save._verify_ops(graph_def, ["Test"])
 
 
 class AssetTests(test.TestCase):

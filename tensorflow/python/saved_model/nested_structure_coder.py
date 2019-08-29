@@ -484,18 +484,24 @@ class _TypeSpecCodec(object):
     encoded_type_spec = struct_pb2.StructuredValue()
     encoded_type_spec.type_spec_value.CopyFrom(
         struct_pb2.TypeSpecProto(
-            type_spec_class=type_spec_class, type_state=encode_fn(type_state)))
+            type_spec_class=type_spec_class,
+            type_state=encode_fn(type_state),
+            type_spec_class_name=type(type_spec_value).__name__))
     return encoded_type_spec
 
   def can_decode(self, value):
-    return (
-        value.HasField("type_spec_value") and
-        value.type_spec_value.type_spec_class in self.TYPE_SPEC_CLASS_FROM_PROTO
-    )
+    return value.HasField("type_spec_value")
 
   def do_decode(self, value, decode_fn):
+    """Returns the `tf.TypeSpec` encoded by the proto `value`."""
     type_spec_proto = value.type_spec_value
     type_spec_class_enum = type_spec_proto.type_spec_class
+    if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
+      raise ValueError(
+          "The type '%s' is not supported by this version of TensorFlow. "
+          "(The object you are loading must have been created with a newer "
+          "version of TensorFlow.)" % type_spec_proto.type_spec_class_name)
+
     type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
     # pylint: disable=protected-access
     return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))

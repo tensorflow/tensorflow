@@ -19,12 +19,12 @@
 #include "mlir/Dialect/QuantOps/QuantOps.h"
 #include "mlir/Dialect/QuantOps/QuantizeUtils.h"
 #include "mlir/Dialect/QuantOps/UniformSupport.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::quant;
@@ -108,12 +108,12 @@ void ConvertConstPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto *context = &getContext();
-  patterns.push_back(llvm::make_unique<QuantizedConstRewrite>(context));
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<QuantizedConstRewrite>(context);
+  applyPatternsGreedily(func, patterns);
 }
 
-FunctionPassBase *mlir::quant::createConvertConstPass() {
-  return new ConvertConstPass();
+std::unique_ptr<FunctionPassBase> mlir::quant::createConvertConstPass() {
+  return std::make_unique<ConvertConstPass>();
 }
 
 static PassRegistration<ConvertConstPass>

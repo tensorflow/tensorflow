@@ -22,9 +22,11 @@ import sys
 import tempfile
 
 import numpy as np
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 def main(_):

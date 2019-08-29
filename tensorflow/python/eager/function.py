@@ -29,10 +29,12 @@ import weakref
 
 import numpy as np
 import six
+from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
@@ -76,12 +78,28 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
+def _make_input_signature_hashable(elem):
+  """Ensure elem is hashable even if a Variable is nested in it."""
+  # TODO(slebedev): consider using nest.
+  if isinstance(elem, tuple):
+    return tuple(map(_make_input_signature_hashable, elem))
+
+  # If the element is not hashable, assume it is a weakref to a variable
+  # and return the dtype & shape. Else, simply return the element
+  try:
+    hash(elem)
+  except TypeError:
+    assert isinstance(elem, weakref.ReferenceType)
+    v = elem()
+    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype)
+
+  return elem
+
+
 CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions", "colocation_stack",
     "in_cross_replica_context"
 ])
-
-CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
 
 def _flat_shape_list(*params):
@@ -356,9 +374,11 @@ class _EagerDefinedFunction(object):
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
     graph_output_names = graph._output_names  # pylint: disable=protected-access
-    if (graph_output_names is not None
-        and all(t in graph_output_names for t in outputs)):
-      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+    if (graph_output_names is not None and
+        all(ops.tensor_id(t) in graph_output_names for t in outputs)):
+      output_names = [
+          compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+      ]
       if len(set(output_names)) != len(output_names):
         # There are duplicate names for some reason, probably an invalid
         # signature. Revert to auto-naming.
@@ -450,7 +470,8 @@ class _EagerDefinedFunction(object):
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
-          "Arguments and signature arguments do not match: %s %s " %
+          "Arguments and signature arguments do not match. "
+          "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
 
     function_call_options = ctx.function_call_options
@@ -636,10 +657,12 @@ class _DelayedRewriteGradientFunctions(object):
       custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
-    capture_mapping = dict(zip(self._func_graph.outputs, op.outputs))
-    remapped_captures = []
-    for capture in backwards_function.captured_inputs:
-      remapped_captures.append(capture_mapping.get(capture, capture))
+    capture_mapping = dict(
+        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+    remapped_captures = [
+        capture_mapping.get(ops.tensor_id(capture), capture)
+        for capture in backwards_function.captured_inputs
+    ]
 
     # Replace Nones with zeros since we're calling a graph function which
     # expects numeric inputs.
@@ -695,7 +718,7 @@ class _DelayedRewriteGradientFunctions(object):
     def _backward_function(*args):
       call_op = outputs[0].op
       return self._rewrite_forward_and_call_backward(call_op, *args)
-    return _backward_function
+    return _backward_function, outputs
 
 
 class _TapeGradientFunctions(object):
@@ -829,9 +852,15 @@ class _TapeGradientFunctions(object):
     variant_zeros_like = {}
     backward_function_inputs = (
         len(self._backward.inputs) - len(self._backward.captured_inputs))
+    recorded_outputs = []
+    trainable_recorded_outputs = 0
     skip_positions = []
     for output_index, output in enumerate(outputs):
-      if not gradients_util.IsTrainable(output):
+      if trainable_recorded_outputs < backward_function_inputs:
+        recorded_outputs.append(output)
+      if gradients_util.IsTrainable(output):
+        trainable_recorded_outputs += 1
+      else:
         skip_positions.append(output_index)
       if output.dtype == dtypes.variant:
         variant_zeros_like[output_index] = default_gradient.zeros_like(output)
@@ -863,7 +892,7 @@ class _TapeGradientFunctions(object):
       return self._backward._call_flat(  # pylint: disable=protected-access
           processed_args, remapped_captures)
 
-    return _backward_function_wrapper
+    return _backward_function_wrapper, recorded_outputs
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -1114,6 +1143,11 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
+    # Copy saveable status of function's graph to current FuncGraph.
+    default_graph = ops.get_default_graph()
+    if default_graph.building_function and not self._func_graph.saveable:
+      default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
+
     if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
@@ -1179,9 +1213,9 @@ class ConcreteFunction(object):
     if isinstance(flat_outputs, ops.Operation) or flat_outputs is None:
       # We only record function calls which have outputs.
       return self._build_call_outputs(flat_outputs)
-    backward_function = forward_backward.backward(flat_outputs)
+    backward_function, to_record = forward_backward.backward(flat_outputs)
     tape.record_operation(forward_function.signature.name,
-                          flat_outputs, args, backward_function)
+                          to_record, args, backward_function)
     return self._build_call_outputs(flat_outputs)
 
   def _experimental_with_cancellation_manager(self, cancellation_manager):
@@ -1364,8 +1398,8 @@ class ConcreteFunction(object):
     return ret
 
 
-pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
-pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1646,7 +1680,7 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
                                             flat_input_signature)):
-    if not pywrap_tensorflow.IsTensor(value):
+    if not _pywrap_utils.IsTensor(value):
       try:
         flatten_inputs[index] = ops.convert_to_tensor(
             value, dtype_hint=spec.dtype)
@@ -1954,8 +1988,12 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
-    return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack, in_cross_replica_context)
+    return CacheKey(
+        _make_input_signature_hashable(input_signature),
+        parent_graph,
+        device_functions,
+        colocation_stack,
+        in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -2073,7 +2111,9 @@ class Function(object):
                    args,
                    kwargs)
 
-      call_context_key = cache_key.replace(input_signature=None)
+      # pylint: disable=protected-access
+      call_context_key = cache_key._replace(input_signature=None)
+      # pylint: disable=protected-access
 
       ag_status = (
           ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)

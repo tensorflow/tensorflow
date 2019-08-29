@@ -206,12 +206,37 @@ void NoActivation() {
                                               kQuantizedTolerance)));
 }
 
+template <TensorType tensor_type, typename integer_dtype>
+void NoActivationLargeMultiplier() {
+  // TODO(b/138722124): Remove this after setting the appropriate op version (3)
+  // for dependent tests.
+  if (SingleOpModel::GetForceUseNnapi()) {
+    // NNAPI doesn't currently support Mul with multiplier>1.
+    return;
+  }
+  // Intentionally pathological output range much narrower than needed
+  // to represent input values to exercise the multiplier>1 case.
+  QuantizedMulOpModel m({tensor_type, {1, 2, 2, 1}, -100, 100},
+                        {tensor_type, {1, 2, 2, 1}, -100, 100},
+                        {tensor_type, {}, -10, 10},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<integer_dtype>(m.input1(), {-4, 2, 3, 1});
+  m.QuantizeAndPopulate<integer_dtype>(m.input2(), {-1, -3, 4, 2});
+  m.Invoke();
+  // Note the large tolerance. This computation is inherently inaccurate.
+  const float kTolerance = 1.4f;
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear({4, -6, 10, 2}, kTolerance)));
+}
+
 TEST(QuantizedMulOpTest, NoActivationUInt8) {
   NoActivation<TensorType_UINT8, uint8_t>();
+  NoActivationLargeMultiplier<TensorType_UINT8, uint8_t>();
 }
 
 TEST(QuantizedMulOpTest, NoActivationInt8) {
   NoActivation<TensorType_INT8, int8_t>();
+  NoActivationLargeMultiplier<TensorType_INT8, int8_t>();
 }
 
 TEST(QuantizedMulOpTest, NoActivationInt16) {

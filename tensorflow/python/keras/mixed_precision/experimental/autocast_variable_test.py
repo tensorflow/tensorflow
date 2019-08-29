@@ -123,6 +123,22 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
   @parameterized.named_parameters(*TESTCASES)
+  def test_dtype_is_not_string(self, distribute):
+    with get_distribute_scope(distribute):
+      x = get_var(1., dtypes.float32)
+      x = get_autocast_var(x, distribute)
+      self.assertEqual(x.dtype, dtypes.float32)
+      self.assertIsInstance(x.dtype, dtypes.DType)
+      self.assertEqual(x.true_dtype, dtypes.float32)
+      self.assertIsInstance(x.true_dtype, dtypes.DType)
+
+      with ops.get_default_graph()._enable_auto_casting_variables('float16'):
+        self.assertEqual(x.dtype, dtypes.float16)
+        self.assertIsInstance(x.dtype, dtypes.DType)
+        self.assertEqual(x.true_dtype, dtypes.float32)
+        self.assertIsInstance(x.true_dtype, dtypes.DType)
+
+  @parameterized.named_parameters(*TESTCASES)
   def test_operator_overloads(self, distribute):
     with get_distribute_scope(distribute):
       for read_dtype in (dtypes.float32, dtypes.float16):

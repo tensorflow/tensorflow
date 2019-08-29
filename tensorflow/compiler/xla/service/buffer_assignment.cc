@@ -1317,6 +1317,10 @@ Status BufferAssigner::AssignPresetBuffers(
     assigned_buffers->emplace(&buffer);
   }
 
+  // Upon consumption of the preset assignments, delete it so that if this
+  // method is called again, it does not assign the same buffers multiple times.
+  preset_assignments_ = {};
+
   return Status::OK();
 }
 

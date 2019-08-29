@@ -26,7 +26,8 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +42,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -1080,7 +1082,11 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     setattr(cls, operator, _run_op)
 
   def __hash__(self):
-    return id(self)
+    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+      raise TypeError("Variable is unhashable if Tensor equality is enabled. "
+                      "Instead, use tensor.experimental_ref() as the key.")
+    else:
+      return id(self)
 
   # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
   def __eq__(self, other):
@@ -1210,6 +1216,59 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def _get_save_slice_info(self):
     return self._save_slice_info
 
+  def experimental_ref(self):
+    # tf.Tensor also has the same experimental_ref() API.  If you update the
+    # documenation here, please update tf.Tensor.experimental_ref() as well.
+    """Returns a hashable reference object to this Variable.
+
+    Warning: Experimental API that could be changed or removed.
+
+    The primary usecase for this API is to put variables in a set/dictionary.
+    We can't put variables in a set/dictionary as `variable.__hash__()` is no
+    longer available starting Tensorflow 2.0.
+
+    ```python
+    import tensorflow as tf
+
+    x = tf.Variable(5)
+    y = tf.Variable(10)
+    z = tf.Variable(10)
+
+    # The followings will raise an exception starting 2.0
+    # TypeError: Variable is unhashable if Variable equality is enabled.
+    variable_set = {x, y, z}
+    variable_dict = {x: 'five', y: 'ten'}
+    ```
+
+    Instead, we can use `variable.experimental_ref()`.
+
+    ```python
+    variable_set = {x.experimental_ref(),
+                    y.experimental_ref(),
+                    z.experimental_ref()}
+
+    print(x.experimental_ref() in variable_set)
+    ==> True
+
+    variable_dict = {x.experimental_ref(): 'five',
+                     y.experimental_ref(): 'ten',
+                     z.experimental_ref(): 'ten'}
+
+    print(variable_dict[y.experimental_ref()])
+    ==> ten
+    ```
+
+    Also, the reference object provides `.deref()` function that returns the
+    original Variable.
+
+    ```python
+    x = tf.Variable(5)
+    print(x.experimental_ref().deref())
+    ==> <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
+    ```
+    """
+    return object_identity.Reference(self)
+
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
 
@@ -1293,7 +1352,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
 
 Variable._OverloadAllOperators()  # pylint: disable=protected-access
-pywrap_tensorflow.RegisterType("Variable", Variable)
+_pywrap_utils.RegisterType("Variable", Variable)
 
 
 @tf_export(v1=["Variable"])
@@ -1779,6 +1838,10 @@ class RefVariable(VariableV1):
           self._variable = state_ops.variable_op_v2(
               shape, self._initial_value.dtype.base_dtype, name=name)
 
+        # Cache the name in `self`, because some APIs call `Variable.name` in a
+        # tight loop, and this halves the cost.
+        self._name = self._variable.name
+
         # Manually overrides the variable's shape with the initial value's.
         if validate_shape:
           initial_value_shape = self._initial_value.get_shape()
@@ -1824,6 +1887,7 @@ class RefVariable(VariableV1):
     self._variable = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._name = self._variable.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
@@ -2481,7 +2545,7 @@ class RefVariable(VariableV1):
   @property
   def name(self):
     """The name of this variable."""
-    return self._variable.name
+    return self._name
 
   @property
   def initializer(self):
@@ -2704,7 +2768,7 @@ def _safe_initial_value_from_op(name, op, op_cache):
   """
   op_type = op.node_def.op
   if op_type in ("IsVariableInitialized", "VarIsInitializedOp",
-                 "ReadVariableOp"):
+                 "ReadVariableOp", "If"):
     return op
 
   # Attempt to find the initialized_value of any variable reference / handles.
@@ -2771,7 +2835,7 @@ class PartitionedVariable(object):
   eager execution.  Use `tf.Variable` instead which is compatible
   with both eager execution and graph construction.  See [the
   TensorFlow Eager Execution
-  guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
+  guide](https://www.tensorflow.org/guide/eager#variables_and_optimizers)
   for details on how variables work in eager execution.
   @end_compatibility
   """

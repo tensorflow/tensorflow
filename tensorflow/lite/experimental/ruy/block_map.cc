@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/block_map.h"
 
+#include <algorithm>
+#include <cstdint>
+
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"

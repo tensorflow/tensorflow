@@ -130,7 +130,7 @@ static void emitSerializationFunction(const Record *attrClass,
     auto argument = op.getArg(i);
     os << "  {\n";
     if (argument.is<NamedTypeConstraint *>()) {
-      os << "    for (auto arg : op.getODSOperands(" << i << ")) {\n";
+      os << "    for (auto arg : op.getODSOperands(" << operandNum << ")) {\n";
       os << "      auto argID = findValueID(arg);\n";
       os << "      if (!argID) {\n";
       os << "        emitError(op.getLoc(), \"operand " << operandNum
@@ -307,22 +307,21 @@ static void emitDeserializationFunction(const Record *attrClass,
      << op.getQualCppClassName()
      << ", only \") << wordIndex << \" of \" << words.size() << \" "
         "processed\";\n";
-  os << "  }\n";
+  os << "  }\n\n";
+
+  // Import decorations parsed
+  if (op.getNumResults() == 1) {
+    os << "  if (decorations.count(valueID)) {\n"
+       << "    auto attrs = decorations[valueID].getAttrs();\n"
+       << "    attributes.append(attrs.begin(), attrs.end());\n"
+       << "  }\n";
+  }
+
   os << formatv("  auto op = opBuilder.create<{0}>(unknownLoc, resultTypes, "
                 "operands, attributes); (void)op;\n",
                 op.getQualCppClassName());
   if (hasResult) {
     os << "  valueMap[valueID] = op.getResult();\n\n";
-  }
-
-  // Import decorations parsed
-  if (op.getNumResults() == 1) {
-    os << "  if (decorations.count(valueID)) {\n";
-    os << "    auto decorationAttrs = decorations[valueID];\n";
-    os << "    for (auto attr : decorationAttrs.getAttrs()) {\n";
-    os << "      op.setAttr(attr.first, attr.second);\n";
-    os << "    }\n";
-    os << "  }\n";
   }
 
   os << "  return success();\n";
