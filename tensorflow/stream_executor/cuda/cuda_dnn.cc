@@ -2946,20 +2946,6 @@ port::Status CudnnSupport::DoConvolve(
             "This configuration potentially produces incorrect results.");
       }
     }
-    // According to the cuDNN documentation algorithm 1 only supports NHWC
-    // convolutions when using INT8. It doesn't seem to check that before
-    // accessing memory though, leading to unaligned accesses.
-    // TODO(b/138726848): File nvidia bug and restrict this to broken versions.
-    if (algorithm_desc.algo_id() ==
-            CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM &&
-        filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
-        ToCudnnDataType(element_type) != CUDNN_DATA_INT8 &&
-        ToCudnnDataType(element_type) != CUDNN_DATA_INT8x4 &&
-        ToCudnnDataType(element_type) != CUDNN_DATA_UINT8x4) {
-      return port::Status(
-          port::error::FAILED_PRECONDITION,
-          "Data type not supported by algorithm configuration.");
-    }
     return port::Status::OK();
   };
 
