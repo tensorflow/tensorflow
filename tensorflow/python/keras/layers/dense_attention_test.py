@@ -23,7 +23,11 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import dense_attention
+
+
+# from tensorflow.python.keras.layers import dense_attention
+import dense_attention
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -119,6 +123,22 @@ class BaseDenseAttentionTest(test.TestCase):
     # expected100 = softmax(scores)[1, 0] * 2.6 = 2.6
     expected = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_shape_with_dropout(self):
+    # scores: Scores float tensor of shape `[batch_size, Tq, Tv]`.
+    # value: Value tensor of shape `[batch_size, Tv, dim]`.
+    batch_size = 4
+    Tq = 5
+    Tv = 6
+    dim = 7
+    scores = np.ones((batch_size, Tq, Tv))
+    value = np.ones((batch_size, Tv, dim))
+    actual = dense_attention.BaseDenseAttention(dropout_rate=0.1)._apply_scores(
+        scores=scores, value=value, training=False)
+
+    # Expected Tensor of shape `[batch_size, Tq, dim]`.
+    expected_shape = [batch_size, Tq, dim]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
 
 
 @test_util.run_all_in_graph_and_eager_modes
