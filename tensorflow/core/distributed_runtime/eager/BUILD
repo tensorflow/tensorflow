@@ -16,8 +16,8 @@ cc_library(
     name = "remote_tensor_handle",
     hdrs = ["remote_tensor_handle.h"],
     deps = [
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -124,7 +124,6 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":remote_tensor_handle",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:eager_executor",
@@ -138,7 +137,6 @@ tf_cc_test(
     srcs = ["remote_mgr_test.cc"],
     deps = [
         ":remote_mgr",
-        "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -251,6 +251,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
+    "protobuf/remote_tensor_handle.proto",
     "protobuf/saved_model.proto",
     "protobuf/saved_object_graph.proto",
     "protobuf/struct.proto",
