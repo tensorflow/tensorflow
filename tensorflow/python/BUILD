@@ -2319,7 +2319,6 @@ tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
-        "//tensorflow/contrib/tpu:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
