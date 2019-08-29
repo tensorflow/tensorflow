@@ -377,13 +377,13 @@ TfLiteStatus PopulateQuantizedLstmParams(
   // TODO(jianlijianli): add support for cifg.
   // 10000 is used to make sure the kernel logic does not overflow.
   quantized_lstm_param->inv_large_value[0] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_input_scale));
   quantized_lstm_param->inv_large_value[1] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_forget_scale));
   quantized_lstm_param->inv_large_value[2] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_cell_scale));
   quantized_lstm_param->inv_large_value[3] =
-      std::max(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
+      std::min(1, static_cast<int32_t>(10000 * layer_norm_output_scale));
 
   return kTfLiteOk;
 }
