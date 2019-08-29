@@ -23,6 +23,7 @@
 #define MLIR_IR_BLOCK_H
 
 #include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
@@ -289,20 +290,20 @@ public:
 
   /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.
-  void walk(llvm::function_ref<void(Operation *)> callback);
-
-  /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy> void walk(llvm::function_ref<void(OpTy)> callback) {
-    walk([&](Operation *opInst) {
-      if (auto op = dyn_cast<OpTy>(opInst))
-        callback(op);
-    });
+  /// See Operation::walk for more details.
+  template <typename FnT> void walk(FnT &&callback) {
+    return walk(begin(), end(), std::forward<FnT>(callback));
   }
 
   /// Walk the operations in the specified [begin, end) range of this block in
-  /// postorder, calling the callback for each operation.
-  void walk(Block::iterator begin, Block::iterator end,
-            llvm::function_ref<void(Operation *)> callback);
+  /// postorder, calling the callback for each operation. This method is invoked
+  /// for void return callbacks.
+  /// See Operation::walk for more details.
+  template <typename FnT>
+  void walk(Block::iterator begin, Block::iterator end, FnT &&callback) {
+    for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
+      detail::walkOperations(&op, std::forward<FnT>(callback));
+  }
 
   //===--------------------------------------------------------------------===//
   // Other

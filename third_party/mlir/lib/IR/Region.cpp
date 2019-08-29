@@ -168,13 +168,6 @@ bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
   return isIsolatedAbove(*this, *this, noteLoc);
 }
 
-/// Walk the operations in this block in postorder, calling the callback for
-/// each operation.
-void Region::walk(llvm::function_ref<void(Operation *)> callback) {
-  for (auto &block : *this)
-    block.walk(callback);
-}
-
 Region *llvm::ilist_traits<::mlir::Block>::getParentRegion() {
   size_t Offset(
       size_t(&((Region *)nullptr->*Region::getSublistAccess(nullptr))));

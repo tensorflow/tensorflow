@@ -105,7 +105,7 @@ void TrimFunctionsPass::Verify() {
   SymbolTable symbol_table = SymbolTable(getModule());
   llvm::SetVector<FuncOp> reachable_funcs;
   for (auto func : getModule().getOps<FuncOp>()) {
-    func.walk<CallOp>([&](CallOp op) {
+    func.walk([&](CallOp op) {
       if (!symbol_table.lookup<FuncOp>(op.getCallee())) {
         getModule().emitError()
             << func.getName() << " is not in the funcs whitelist";

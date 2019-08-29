@@ -64,6 +64,7 @@ cc_library(
         "lib/IR/TypeUtilities.cpp",
         "lib/IR/Types.cpp",
         "lib/IR/Value.cpp",
+        "lib/IR/Visitors.cpp",
     ],
     hdrs = [
         "include/mlir/IR/AffineExpr.h",
@@ -102,6 +103,7 @@ cc_library(
         "include/mlir/IR/Types.h",
         "include/mlir/IR/UseDefLists.h",
         "include/mlir/IR/Value.h",
+        "include/mlir/IR/Visitors.h",
     ],
     copts = ["-std=c++14"],
     includes = ["include"],

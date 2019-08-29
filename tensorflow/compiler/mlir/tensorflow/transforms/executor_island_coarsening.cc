@@ -293,7 +293,7 @@ bool ExecutorIslandCoarsening::MergeIslandWithResult(IslandOp parent) {
 }
 
 void ExecutorIslandCoarsening::runOnFunction() {
-  getFunction().walk<GraphOp>([this](GraphOp graph) {
+  getFunction().walk([this](GraphOp graph) {
     Block& graph_body = graph.GetBody();
 
     bool updated = false;

@@ -121,7 +121,7 @@ void ClusterOutliningPass::runOnModule() {
   ModuleOp m = getModule();
   ModuleManager module_manager(m);
   OpBuilder builder(m.getContext());
-  m.walk<tf_device::LaunchOp>([&](tf_device::LaunchOp launch) {
+  m.walk([&](tf_device::LaunchOp launch) {
     OutlineLaunch(launch, &module_manager, &builder);
   });
 }

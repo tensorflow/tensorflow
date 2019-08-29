@@ -165,8 +165,7 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(FuncOp f) {
   // Gathers all innermost loops through a post order pruned walk.
-  f.walk<AffineForOp>(
-      [](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
+  f.walk([](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
 }
 
 /// Generates a 'affine.for' op with the specified lower and upper bounds

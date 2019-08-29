@@ -240,7 +240,7 @@ void LoopInvariantCodeMotion::runOnFunction() {
   // Walk through all loops in a function in innermost-loop-first order.  This
   // way, we first LICM from the inner loop, and place the ops in
   // the outer loop, which in turn can be further LICM'ed.
-  getFunction().walk<AffineForOp>([&](AffineForOp op) {
+  getFunction().walk([&](AffineForOp op) {
     LLVM_DEBUG(op.getOperation()->print(llvm::dbgs() << "\nOriginal loop\n"));
     runOnAffineForOp(op);
   });
