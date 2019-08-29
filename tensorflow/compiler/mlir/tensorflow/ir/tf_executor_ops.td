@@ -272,8 +272,8 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
   );
 
   let results = (outs
-    AnyType: $trueOutput,
     AnyType: $falseOutput,
+    AnyType: $trueOutput,
     TfeControlType: $control
   );
 
