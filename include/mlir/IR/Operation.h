@@ -491,16 +491,15 @@ public:
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk this operation in postorder, calling the callback for each operation
-  /// including this one.
-  void walk(llvm::function_ref<void(Operation *)> callback);
-
-  /// Specialization of walk to only visit operations of 'T'.
-  template <typename T> void walk(llvm::function_ref<void(T)> callback) {
-    walk([&](Operation *op) {
-      if (auto derivedOp = dyn_cast<T>(op))
-        callback(derivedOp);
-    });
+  /// Walk the operation in postorder, calling the callback for each nested
+  /// operation(including this one). The callback method can take any of the
+  /// following forms:
+  ///   (void)(Operation*) : Walk all operations opaquely.
+  ///     * op->walk([](Operation *nestedOp) { ...});
+  ///   (void)(OpT) : Walk all operations of the given derived type.
+  ///     * op->walk([](ReturnOp returnOp) { ...});
+  template <typename FnT> void walk(FnT &&callback) {
+    detail::walkOperations(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//

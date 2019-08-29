@@ -239,8 +239,7 @@ static void fuseLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
 
   // 1. Record the linalg ops so we can traverse them in reverse order.
   SmallVector<Operation *, 8> linalgOps;
-  f.walk<LinalgOp>(
-      [&](LinalgOp op) { linalgOps.push_back(op.getOperation()); });
+  f.walk([&](LinalgOp op) { linalgOps.push_back(op.getOperation()); });
 
   // 2. Setup the dependences graph, aliases are populated lazily.
   Aliases aliases;

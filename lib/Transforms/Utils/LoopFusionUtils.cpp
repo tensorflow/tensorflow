@@ -258,7 +258,7 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
 /// returns false otherwise.
 bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
   bool ret = true;
-  forOpRoot.getOperation()->walk<AffineForOp>([&](AffineForOp forOp) {
+  forOpRoot.walk([&](AffineForOp forOp) {
     auto *childForOp = forOp.getOperation();
     auto *parentForOp = forOp.getOperation()->getParentOp();
     if (!llvm::isa<FuncOp>(parentForOp)) {

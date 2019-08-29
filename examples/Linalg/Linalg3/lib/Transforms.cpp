@@ -36,7 +36,7 @@ using namespace linalg;
 using namespace linalg::intrinsics;
 
 void linalg::composeSliceOps(mlir::FuncOp f) {
-  f.walk<SliceOp>([](SliceOp sliceOp) {
+  f.walk([](SliceOp sliceOp) {
     auto *sliceResult = sliceOp.getResult();
     auto viewOp = emitAndReturnFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());

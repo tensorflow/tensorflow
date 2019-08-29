@@ -104,7 +104,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
   //  CHECK-NEXT: linalg.dot({{.*}}, {{.*}}, {{.*}}) : !linalg.view<f32>
   // clang-format on
 
-  f.walk<SliceOp>([](SliceOp slice) {
+  f.walk([](SliceOp slice) {
     auto *sliceResult = slice.getResult();
     auto viewOp = emitAndReturnFullyComposedView(sliceResult);
     sliceResult->replaceAllUsesWith(viewOp.getResult());
