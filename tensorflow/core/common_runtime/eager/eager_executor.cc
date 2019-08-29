@@ -269,7 +269,8 @@ void EagerExecutor::Run() {
       {
         tensorflow::mutex_lock l(node_queue_mutex_);
         // If false, NodeDone has been called.
-        if (curr_node_raw == node_queue_.front().get()) {
+        if (!node_queue_.empty() &&
+            curr_node_raw == node_queue_.front().get()) {
           node_queue_.front().release();
           node_queue_.pop();
           unfinished_nodes_.emplace(curr_node_raw);
