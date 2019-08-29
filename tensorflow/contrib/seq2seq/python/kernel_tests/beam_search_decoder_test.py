@@ -218,6 +218,27 @@ class TestArrayShapeChecks(test.TestCase):
         (8, 4), (None, None), 4, 5, is_valid=False)
 
 
+  def test_array_shape_static_checks(self):
+    self.assertTrue(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([None, None, None]), 3, 5))
+    self.assertTrue(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([15, None, None]), 3, 5))
+    self.assertFalse(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([16, None, None]), 3, 5))
+    self.assertTrue(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([3, 5, None]), 3, 5))
+    self.assertFalse(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([3, 6, None]), 3, 5))
+    self.assertFalse(
+        beam_search_decoder._check_static_batch_beam_maybe(
+            tf.TensorShape([5, 3, None]), 3, 5))
+
+
 class TestEosMasking(test.TestCase):
   """Tests EOS masking used in beam search."""
 
