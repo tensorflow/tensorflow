@@ -162,3 +162,39 @@ func @launch_func_kernel_operand_types(%sz : index, %arg : f32) {
       : (index, index, index, index, index, index, f32) -> ()
   return
 }
+
+// -----
+
+func @illegal_dimension() {
+  // expected-error@+1 {{dimension "o" is invalid}}
+  %tIdX = "gpu.thread_id"() {dimension = "o"} : () -> (index)
+
+  return
+}
+
+// -----
+
+func @illegal_dimension() {
+  // expected-error@+1 {{dimension "o" is invalid}}
+  %bDimX = "gpu.block_dim"() {dimension = "o"} : () -> (index)
+
+  return
+}
+
+// -----
+
+func @illegal_dimension() {
+  // expected-error@+1 {{dimension "o" is invalid}}
+  %bIdX = "gpu.block_id"() {dimension = "o"} : () -> (index)
+
+  return
+}
+
+// -----
+
+func @illegal_dimension() {
+  // expected-error@+1 {{dimension "o" is invalid}}
+  %gDimX = "gpu.grid_dim"() {dimension = "o"} : () -> (index)
+
+  return
+}
