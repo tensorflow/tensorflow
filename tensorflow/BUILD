@@ -310,12 +310,6 @@ config_setting(
 )
 
 config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_numa_support",
     define_values = {"with_numa_support": "true"},
     visibility = ["//visibility:public"],

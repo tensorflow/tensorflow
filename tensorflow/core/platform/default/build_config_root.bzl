@@ -40,14 +40,6 @@ def tf_additional_license_deps():
         "//conditions:default": [],
     })
 
-def tf_additional_gdr_deps():
-    return select({
-        str(Label("//tensorflow:with_gdr_support")): [
-            str(Label("//tensorflow/contrib/gdr:gdr_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
 # dependency list is used when using the framework_shared_object config

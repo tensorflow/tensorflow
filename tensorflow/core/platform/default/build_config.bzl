@@ -731,12 +731,6 @@ def tf_lib_proto_compiler_deps():
         "@com_google_protobuf//:protoc_lib",
     ]
 
-def tf_additional_gdr_lib_defines():
-    return select({
-        "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
-        "//conditions:default": [],
-    })
-
 def tf_additional_numa_lib_defines():
     return select({
         "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
