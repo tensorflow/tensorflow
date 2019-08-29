@@ -75,7 +75,7 @@ class GrpcEagerClient : public EagerClient {
     if (it != enqueue_dispatchers_.end()) {
       it->second.CancelCall();
       enqueue_dispatchers_.erase(request->context_id());
-    } else {
+    } else if (EnableStreaming()) {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
                  << " does not seem to exist.";
     }
