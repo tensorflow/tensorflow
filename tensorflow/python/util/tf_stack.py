@@ -40,13 +40,6 @@ else:
   _get_thread_key = thread.get_ident
 
 
-# Names for indices into TF traceback tuples.
-TB_FILENAME = 0
-TB_LINENO = 1
-TB_FUNCNAME = 2
-TB_CODEDICT = 3  # Dictionary of Python interpreter state.
-
-
 _source_mapper_stacks = collections.defaultdict(list)
 _source_filter_stacks = collections.defaultdict(list)
 
