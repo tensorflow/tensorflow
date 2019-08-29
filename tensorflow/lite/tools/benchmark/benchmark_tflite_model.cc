@@ -23,10 +23,9 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/nnapi/nnapi_util.h"
-
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -296,6 +295,7 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer") << "]";
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
+#if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
   if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(INFO) << "nnapi execution preference: ["
@@ -308,7 +308,6 @@ void BenchmarkTfLiteModel::LogParams() {
     std::string log_string = "nnapi accelerator name: [" +
                              params_.Get<string>("nnapi_accelerator_name") +
                              "]";
-
     std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
     // Print available devices when possible
     if (!string_device_names_list.empty()) {
@@ -316,6 +315,7 @@ void BenchmarkTfLiteModel::LogParams() {
     }
     TFLITE_LOG(INFO) << log_string;
   }
+#endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
