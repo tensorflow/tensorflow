@@ -440,7 +440,7 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
     return xla::InlinedVectorToVector(
         absl::get<TensorShape>(shape).dim_sizes());
   } else {
-    return absl::get<xla::Shape>(shape).dimensions();
+    return xla::SpanToVector(absl::get<xla::Shape>(shape).dimensions());
   }
 }
 
