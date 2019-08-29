@@ -23,11 +23,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core
-
-
-# from tensorflow.python.keras.layers import dense_attention
-import dense_attention
-
+from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
