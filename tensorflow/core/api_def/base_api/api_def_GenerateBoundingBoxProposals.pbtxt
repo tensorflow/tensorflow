@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "scores"
     description: <<END
-A 4-D float tensor of shape `[num_images, height, width, num_achors]` containing scores of the boxes for given anchors.
+A 4-D float tensor of shape `[num_images, height, width, num_achors]` containing scores of the boxes for given anchors, can be unsorted.
 END
   }
   in_arg {
@@ -63,12 +63,6 @@ END
 An integer. Maximum number of rois in the output.
 END
   }
-  attr {
-    name: "use_detectron_offset"
-    description: <<END
-Boolean to decide whether apply +1 offset used in detectron like networks.
-END
-  }
   summary: "This op produces Region of Interests from given bounding boxes(bbox_deltas) encoded wrt anchors according to eq.2 in arXiv:1506.01497"
   description: <<END
       The op selects top `pre_nms_topn` scoring boxes, decodes them with respect to anchors,
@@ -81,6 +75,6 @@ END
       `anchors`: A 1D tensor of shape [4 x Num Anchors], representing the anchors.
       Outputs:
       `rois`: output RoIs, a 3D tensor of shape [Batch, post_nms_topn, 4], padded by 0 if less than post_nms_topn candidates found.
-      `roi_probabilities`: probability scores of each roi in 'rois', a 2D tensor of shape [Batch,post_nms_topn], padded with 0 if needed.
+      `roi_probabilities`: probability scores of each roi in 'rois', a 2D tensor of shape [Batch,post_nms_topn], padded with 0 if needed, sorted by scores.
 END
 }
