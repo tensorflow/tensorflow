@@ -37,7 +37,6 @@
 /tensorflow/contrib/hadoop @yongtang
 /tensorflow/contrib/hvx/ @satok16
 /tensorflow/contrib/integrate/ @shoyer
-/tensorflow/contrib/kafka @yongtang
 /tensorflow/contrib/kernel_methods/ @petrosmol
 /tensorflow/contrib/kinesis @yongtang
 /tensorflow/contrib/ios_examples/ @petewarden

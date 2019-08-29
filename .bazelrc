@@ -99,7 +99,6 @@ build:numa --define=with_numa_support=true
 build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
 build:nohdfs --define=no_hdfs_support=true
-build:nokafka --define=no_kafka_support=true
 build:noignite --define=no_ignite_support=true
 build:nonccl --define=no_nccl_support=true
 

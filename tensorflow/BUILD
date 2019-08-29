@@ -274,12 +274,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],

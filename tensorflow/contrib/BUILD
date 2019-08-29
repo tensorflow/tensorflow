@@ -112,15 +112,6 @@ py_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kinesis",
@@ -179,15 +170,6 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka:dataset_kernels",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kinesis:dataset_kernels",
@@ -215,15 +197,6 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka:dataset_ops_op_lib",
-        ],
-    }) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],

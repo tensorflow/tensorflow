@@ -93,8 +93,6 @@ tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/icu/udata.patch
 tensorflow/third_party/jsoncpp.BUILD
-tensorflow/third_party/kafka/BUILD
-tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/llvm/BUILD
