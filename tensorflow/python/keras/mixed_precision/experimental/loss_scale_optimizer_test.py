@@ -32,6 +32,7 @@ from tensorflow.python.keras.mixed_precision.experimental import test_util as mp
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -116,13 +117,23 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(5.)))
+    loss = ops.convert_to_tensor(5.)
+    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
+    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
+    loss = ops.convert_to_tensor(5., dtype='float16')
+    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
+    self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
   @test_util.run_in_graph_and_eager_modes
   def testGetUnscaledGradients(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
-    grads = opt.get_unscaled_gradients([3., None, -4.])
+    scaled_grads = [
+        ops.convert_to_tensor(3.),
+        None,
+        ops.convert_to_tensor(-4., dtype='float16')
+    ]
+    grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
     self.assertEqual([1.5, None, -2.], grads)
 
@@ -190,6 +201,28 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(var), [-1.0, 0.0])
       # Loss scale should half due to NaN gradients.
       self.assertEqual(2., self.evaluate(opt.loss_scale()))
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def testDynamicLossScaleWithFloat16Loss(self, strategy_fn):
+    strategy = strategy_fn()
+    learning_rate = 2.
+    with strategy.scope():
+      var = variables.Variable([5.0])
+      opt = gradient_descent.SGD(learning_rate)
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=2, increment_period=1, multiplier=2)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+
+      def loss():
+        return math_ops.cast(var / strategy.num_replicas_in_sync, 'float16')
+      run_fn = lambda: opt.minimize(loss, var_list=[var])
+      run_op = strategy.experimental_run(run_fn)
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
+      # The loss is the identity of the variable. Therefore the gradient is 1,
+      # and so the variable will be init_val - grad * lr == 5 - 1 * 2 == 3
+      self.assertAllClose([3.], self.evaluate(var))
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes

@@ -279,7 +279,7 @@ public:
                          Args... args) {
     static_assert(std::is_convertible<T *, CAGConstraintNode *>(),
                   "T must be a CAGConstraingNode");
-    T *constraintNode = addNode(llvm::make_unique<T>(args...));
+    T *constraintNode = addNode(std::make_unique<T>(args...));
     for (auto *anchor : anchors)
       anchor->addOutgoing(constraintNode);
     return constraintNode;
@@ -292,7 +292,7 @@ public:
                                  Args... args) {
     static_assert(std::is_convertible<T *, CAGConstraintNode *>(),
                   "T must be a CAGConstraingNode");
-    T *constraintNode = addNode(llvm::make_unique<T>(args...));
+    T *constraintNode = addNode(std::make_unique<T>(args...));
     fromAnchor->addOutgoing(constraintNode);
     for (auto *toAnchor : toAnchors) {
       constraintNode->addOutgoing(toAnchor);
@@ -312,7 +312,7 @@ public:
     T *constraintNode;
     if (cluster.empty()) {
       // Create new.
-      constraintNode = addNode(llvm::make_unique<T>());
+      constraintNode = addNode(std::make_unique<T>());
     } else {
       // Merge existing.
       constraintNode = cluster[0];

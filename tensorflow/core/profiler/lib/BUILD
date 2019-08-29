@@ -2,10 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
 )
-load(
-    "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_additional_profiler_lib_deps",
-)
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = [
@@ -26,6 +23,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_utils",
         "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/strings",
     ] + select({
@@ -45,7 +43,11 @@ tf_cuda_library(
 tf_cuda_library(
     name = "profiler_lib",
     visibility = ["//tensorflow:internal"],
-    deps = tf_additional_profiler_lib_deps(),
+    deps = [
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ] + if_cuda([
+        "//tensorflow/core/profiler/internal/gpu:device_tracer",
+    ]),
     alwayslink = 1,
 )
 
@@ -59,6 +61,14 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "profiler_utils",
+    srcs = ["profiler_utils.cc"],
+    hdrs = ["profiler_utils.h"],
+    visibility = ["//tensorflow:internal"],
+    alwayslink = 1,
 )
 
 filegroup(

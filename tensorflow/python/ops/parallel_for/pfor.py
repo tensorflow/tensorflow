@@ -978,9 +978,9 @@ class PForConfig(object):
     # This may be set to the number of iterations.
     self._maybe_iters = None
     # Map from output placeholder to the unvectorized tensor.
-    self._reduce_concat_map = {}
+    self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
     # Reverse map of `self._reduce_concat_map`.
-    self._reverse_reduce_concat_map = {}
+    self._reverse_reduce_concat_map = object_identity.ObjectIdentityDictionary()
 
   def _has_reductions(self):
     """True if some reductions where performed by loop body."""
@@ -1381,7 +1381,7 @@ class PFor(object):
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)
-          if y == y_op:
+          if y is y_op:
             new_outputs = new_op
           else:
             new_outputs = [wrap(x, False) for x in new_op.outputs]
@@ -1532,7 +1532,7 @@ def _channel_flatten_input(x, data_format):
   """
 
   graph = ops.get_default_graph()
-  cache_key = (graph, x, data_format)
+  cache_key = (graph, x.experimental_ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
     if data_format == b"NCHW":
@@ -2023,6 +2023,19 @@ def _convert_gather(pfor_input):
     return wrap(output, True)
 
 
+@RegisterPFor("GatherNd")
+def _convert_gather_nd(pfor_input):
+  # TODO(jmenick): Add support for unstacked params.
+  pfor_input.stack_inputs(stack_indices=[1])
+  params = pfor_input.stacked_input(0)
+  indices = pfor_input.stacked_input(1)
+  stacked_result = array_ops.gather_nd(
+      params,
+      indices,
+      batch_dims=1)
+  return wrap(stacked_result, True)
+
+
 @RegisterPFor("ConcatV2")
 def _convert_concatv2(pfor_input):
   n = pfor_input.num_inputs
@@ -2274,6 +2287,82 @@ def _convert_unsortedsegmentsum(pfor_input):
   return wrap(output, True)
 
 
+def _flatten_array_with_offset(ids, offset_delta, num_rows):
+  """Flattens a rank 2 tensor, adding an offset to each row."""
+  # Note that if `ids` is rank 1, it is broadcast to rank 2.
+  offset_delta = math_ops.cast(offset_delta, ids.dtype)
+  n = math_ops.cast(num_rows, dtype=ids.dtype)
+  offsets = math_ops.range(
+      start=0, limit=n * offset_delta, delta=offset_delta, dtype=ids.dtype)
+  offsets = array_ops.expand_dims(offsets, -1)
+  ids += offsets
+  return array_ops.reshape(ids, [-1])
+
+
+@RegisterPForWithArgs("SparseSegmentSum", math_ops.sparse_segment_sum_v2)
+@RegisterPForWithArgs("SparseSegmentMean", math_ops.sparse_segment_mean_v2)
+@RegisterPForWithArgs("SparseSegmentSqrtN", math_ops.sparse_segment_sqrt_n_v2)
+@RegisterPForWithArgs("SparseSegmentSumWithNumSegments",
+                      math_ops.sparse_segment_sum_v2)
+@RegisterPForWithArgs("SparseSegmentMeanWithNumSegments",
+                      math_ops.sparse_segment_mean_v2)
+@RegisterPForWithArgs("SparseSegmentSqrtNWithNumSegments",
+                      math_ops.sparse_segment_sqrt_n_v2)
+def _convert_sparse_segment(pfor_input, _, op_func):
+  _, segment_ids_stacked, _ = pfor_input.input(2)
+  if segment_ids_stacked:
+    pfor_input.stack_inputs([1])
+  data, data_stacked, _ = pfor_input.input(0)
+  indices, _, _ = pfor_input.input(1)
+  num_inputs = len(pfor_input.inputs)
+  assert num_inputs in (3, 4)
+  if num_inputs == 3:
+    # `segment_ids` needs to be unstacked since otherwise output sizes could
+    # differ across pfor iterations.
+    segment_ids = pfor_input.unstacked_input(2)
+    num_segments = nn_ops.relu(math_ops.reduce_max(segment_ids) + 1)
+  else:
+    segment_ids, _, _ = pfor_input.input(2)
+    num_segments = pfor_input.unstacked_input(3)
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  if data_stacked:
+    indices = _flatten_array_with_offset(indices, array_ops.shape(data)[1], n)
+    data = _flatten_first_two_dims(data)
+  else:
+    indices = array_ops.reshape(indices, [-1])
+  segment_ids = _flatten_array_with_offset(segment_ids, num_segments, n)
+
+  if num_inputs == 3:
+    num_segments = None
+  else:
+    num_segments *= n
+  output = op_func(data, indices, segment_ids, num_segments=num_segments)
+  output = _unflatten_first_dim(output, [n])
+  return wrap(output, True)
+
+
+@RegisterPForWithArgs("SparseSegmentMeanGrad",
+                      math_ops.sparse_segment_mean_grad)
+@RegisterPForWithArgs("SparseSegmentSqrtNGrad",
+                      math_ops.sparse_segment_sqrt_n_grad)
+def _convert_sparse_segment_grad(pfor_input, _, op_func):
+  grad = pfor_input.stacked_input(0)
+  indices = pfor_input.unstacked_input(1)
+  segment_ids = pfor_input.unstacked_input(2)
+  dim0 = pfor_input.unstacked_input(3)
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  indices = _flatten_array_with_offset(indices, dim0, n)
+  num_segments = nn_ops.relu(math_ops.reduce_max(segment_ids) + 1)
+  segment_ids = _flatten_array_with_offset(segment_ids, num_segments, n)
+  grad = _flatten_first_two_dims(grad)
+  dim0 *= n
+  output = op_func(grad, indices, segment_ids, dim0)
+  output = _unflatten_first_dim(output, [n])
+  return wrap(output, True)
+
+
 @RegisterPFor("Cast")
 def _convert_cast(pfor_input):
   inp = pfor_input.stacked_input(0)
@@ -2427,6 +2516,14 @@ def _convert_addn(pfor_input):
   # AddN does not support broadcasting.
   pfor_input.stack_inputs()
   return wrap(math_ops.add_n([x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("Cross")
+def _convert_cross(pfor_input):
+  pfor_input.stack_inputs()
+  a = pfor_input.stacked_input(0)
+  b = pfor_input.stacked_input(1)
+  return wrap(math_ops.cross(a, b), True)
 
 
 @RegisterPFor("BiasAddGrad")

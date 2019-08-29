@@ -259,6 +259,9 @@ bool HasControlInputs(const NodeDef& node);
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
+// Number of connected control outputs.
+int NumControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
 

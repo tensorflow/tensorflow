@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -287,7 +287,7 @@ class BoundedTensorSpec(TensorSpec):
     return (self._shape, self._dtype, self._minimum, self._maximum, self._name)
 
 
-pywrap_tensorflow.RegisterType("TensorSpec", TensorSpec)
+_pywrap_utils.RegisterType("TensorSpec", TensorSpec)
 
 
 # Note: we do not include Tensor names when constructing TypeSpecs.

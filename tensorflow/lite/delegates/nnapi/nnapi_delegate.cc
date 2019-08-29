@@ -191,6 +191,7 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToBatchNd:
     case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinDepthToSpace:
     case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
@@ -1845,6 +1846,21 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
         };
       }
     } break;
+    case kTfLiteBuiltinDepthToSpace: {
+      const TfLiteType input_type =
+          context->tensors[node->inputs->data[0]].type;
+      if (version <= 1 &&
+          (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+           input_type == kTfLiteInt8)) {
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+          return ANEURALNETWORKS_DEPTH_TO_SPACE;
+        };
+      }
+    } break;
     case kTfLiteBuiltinSvdf:
       // NNAPI only support float32 weights.
       // Only delegate to NNAPI 1.1, as SVDF does not support rank > 1
@@ -2313,7 +2329,7 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinTopkV2: {
       if (version <= 2 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
         const auto& input = context->tensors[node->outputs->data[0]];
-        const auto& k_param = context->tensors[node->outputs->data[1]];
+        const auto& k_param = context->tensors[node->inputs->data[1]];
         if ((input.type == kTfLiteFloat32 || input.type == kTfLiteInt32 ||
              input.type == kTfLiteUInt8 || input.type == kTfLiteInt8) &&
             (k_param.type == kTfLiteInt32 &&

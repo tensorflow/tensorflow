@@ -243,16 +243,10 @@ class EagerContext : public core::RefCounted {
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
-  bool ShouldStoreStepStats() LOCKS_EXCLUDED(metadata_mu_);
-  void SetShouldStoreStepStats(bool value);
   bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
-
-  Status RegisterRunMetadataListener(RunMetadataListener* listener)
-      LOCKS_EXCLUDED(metadata_mu_);
-  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -399,11 +393,9 @@ class EagerContext : public core::RefCounted {
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_step_stats_{false};
   std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
-  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
   GraphCollector graph_collector_;
   // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
@@ -439,7 +431,7 @@ class EagerContext : public core::RefCounted {
 
   mutex remote_state_mu_;
 
-  uint64 context_id_;
+  uint64 context_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);

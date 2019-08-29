@@ -40,22 +40,12 @@ LogicalResult serializeModule(ModuleOp module, StringRef outputFilename) {
   bool done = false;
   auto result = failure();
 
-  // TODO(antiagainst): we are checking there is only one SPIR-V ModuleOp in
-  // this module and serialize it. This is due to the restriction of the current
-  // translation infrastructure; we must take in a MLIR module here. So we are
-  // wrapping the SPIR-V ModuleOp inside a MLIR module. This should be changed
-  // to take in the SPIR-V ModuleOp directly after module and function are
-  // migrated to be general ops.
-  for (auto fn : module.getOps<FuncOp>()) {
-    fn.walk<spirv::ModuleOp>([&](spirv::ModuleOp spirvModule) {
-      if (done) {
-        spirvModule.emitError("found more than one 'spv.module' op");
-        return;
-      }
+  for (auto spirvModule : module.getOps<spirv::ModuleOp>()) {
+    if (done)
+      return spirvModule.emitError("found more than one 'spv.module' op");
 
-      done = true;
-      result = spirv::serialize(spirvModule, binary);
-    });
+    done = true;
+    result = spirv::serialize(spirvModule, binary);
   }
 
   if (failed(result))

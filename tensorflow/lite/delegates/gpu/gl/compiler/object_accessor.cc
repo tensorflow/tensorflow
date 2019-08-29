@@ -63,7 +63,7 @@ void MaybeConvertFromHalf(DataType data_type, absl::string_view value,
 }
 
 struct ReadFromTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -103,7 +103,7 @@ struct ReadFromTextureGenerator {
 };
 
 struct ReadFromBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -180,7 +180,7 @@ RewriteStatus GenerateReadAccessor(
 }
 
 struct WriteToBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -236,7 +236,7 @@ struct WriteToBufferGenerator {
 };
 
 struct WriteToTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -314,7 +314,7 @@ std::string ToBufferType(DataType data_type) {
 }
 
 struct TextureImageTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
@@ -355,7 +355,7 @@ struct TextureImageTypeGetter {
 };
 
 struct TextureSamplerTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
@@ -438,7 +438,7 @@ std::string ToImagePrecision(DataType type) {
 }
 
 struct SizeParametersAdder {
-  void operator()(uint32_t) const {}
+  void operator()(size_t) const {}
 
   void operator()(const uint2& size) const {
     variable_accessor->AddUniformParameter(

@@ -470,6 +470,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",

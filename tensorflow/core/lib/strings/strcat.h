@@ -22,9 +22,9 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
@@ -124,6 +124,12 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
+  AlphaNum(const tensorflow::tstring &str)  // NOLINT(runtime/explicit)
+      : piece_(str) {}
+#endif
   template <typename A>
   AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
       : piece_(str) {}  // NOLINT(runtime/explicit)

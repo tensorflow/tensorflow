@@ -173,3 +173,12 @@ py_library(
         "//tensorflow/python:platform",
     ],
 )
+
+py_library(
+    name = "scoped_annotation",
+    srcs = ["scoped_annotation.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
+)

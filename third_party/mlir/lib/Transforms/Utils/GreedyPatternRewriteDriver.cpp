@@ -19,9 +19,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
@@ -204,9 +204,8 @@ bool GreedyPatternRewriteDriver::simplify(Operation *op, int maxIterations) {
       // Make sure that any new operations are inserted at this point.
       setInsertionPoint(op);
 
-      // Try to match one of the canonicalization patterns. The rewriter is
-      // automatically notified of any necessary changes, so there is nothing
-      // else to do here.
+      // Try to match one of the patterns. The rewriter is automatically
+      // notified of any necessary changes, so there is nothing else to do here.
       changed |= matcher.matchAndRewrite(op, *this);
     }
   } while (changed && ++i < maxIterations);

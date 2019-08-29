@@ -305,6 +305,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -343,6 +345,7 @@ cc_library(
         "xla_kernel_creator.cc",
         "xla_kernel_creator.h",
     ],
+    hdrs = ["xla_kernel_creator.h"],
     deps = [
         ":common",
         ":compilability_check_util",
@@ -511,6 +514,7 @@ cc_library(
     srcs = [
         "build_xla_ops_pass.cc",
         "clone_constants_for_better_clustering.cc",
+        "cluster_scoping_pass.cc",
         "deadness_analysis.cc",
         "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
@@ -526,6 +530,7 @@ cc_library(
     hdrs = [
         "build_xla_ops_pass.h",
         "clone_constants_for_better_clustering.h",
+        "cluster_scoping_pass.h",
         "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
@@ -690,6 +695,7 @@ tf_cc_test(
     srcs = [
         "build_xla_ops_pass_test.cc",
         "clone_constants_for_better_clustering_test.cc",
+        "cluster_scoping_pass_test.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",

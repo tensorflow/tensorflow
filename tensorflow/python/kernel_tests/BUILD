@@ -234,7 +234,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_gpu",  # TODO(b/131773093): Re-enable.
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
@@ -861,6 +860,8 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
+    # TODO(b/128347673): Re-enable.
+    tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1625,6 +1626,21 @@ cuda_py_test(
     name = "batch_matmul_op_test",
     size = "small",
     srcs = ["batch_matmul_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+    ],
+    shard_count = 20,
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "batch_gemm_op_test",
+    size = "small",
+    srcs = ["batch_gemm_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -2974,7 +2990,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -3130,7 +3145,8 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    shard_count = 10,
+    shard_count = 15,
+    tags = ["no_windows"],  # b/139739217
     xla_enable_strict_auto_jit = True,
 )
 

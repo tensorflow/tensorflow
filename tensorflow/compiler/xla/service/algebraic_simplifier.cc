@@ -220,6 +220,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleMinimum(HloInstruction* minimum) override;
 
+  Status HandleClamp(HloInstruction* clamp) override;
+
   Status HandleMultiply(HloInstruction* multiply) override;
 
   Status HandleNegate(HloInstruction* negate) override;
@@ -1999,6 +2001,21 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
     }
   }
 
+  HloInstruction* clamp_lower_bound;
+  HloInstruction* clamp_upper_bound;
+  HloInstruction* max_operand;
+  HloInstruction* clamp;
+  if (Match(maximum,
+            m::MaximumAnyOrder(
+                m::Op(&max_operand),
+                m::Clamp(&clamp, m::Op(&clamp_lower_bound), m::Op(&to_clamp),
+                         m::Op(&clamp_upper_bound))))) {
+    if (max_operand == clamp_lower_bound &&
+        ReplaceInstructionIfSameShape(maximum, clamp)) {
+      return Status::OK();
+    }
+  }
+
   return Status::OK();
 }
 
@@ -2022,6 +2039,23 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
     if (clamp) {
       return ReplaceWithNewInstruction(minimum, std::move(clamp));
     }
+  }
+
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
+  HloInstruction* clamp_lower_bound;
+  HloInstruction* clamp_upper_bound;
+  HloInstruction* to_clamp;
+  CHECK(Match(clamp, m::Clamp(m::Op(&clamp_lower_bound), m::Op(&to_clamp),
+                              m::Op(&clamp_upper_bound))));
+
+  // clamp(a, clamp(a, x, b), b) -> clamp(a, x, b)
+  if (Match(to_clamp, m::Clamp(m::Op().Is(clamp_lower_bound), m::Op(),
+                               m::Op().Is(clamp_upper_bound))) &&
+      ReplaceInstructionIfSameShape(clamp, to_clamp)) {
+    return Status::OK();
   }
 
   return Status::OK();

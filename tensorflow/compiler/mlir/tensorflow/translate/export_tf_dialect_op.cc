@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringSet.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -65,7 +68,7 @@ Status SetAttribute(absl::string_view name, ContainerT types,
 // definitions and isn't a header file.
 #include "tensorflow/compiler/mlir/tensorflow/translate/derived_attr_populator.inc"
 
-static StatusOr<string> getTensorFlowOpName(llvm::StringRef op_name) {
+StatusOr<string> getTensorFlowOpName(llvm::StringRef op_name) {
   if (!op_name.consume_front("tf.")) {
     return errors::FailedPrecondition("op name not prefixed with 'tf.': " +
                                       op_name.str());
@@ -73,12 +76,54 @@ static StatusOr<string> getTensorFlowOpName(llvm::StringRef op_name) {
   return op_name.str();
 }
 
+// Collect all the unregistered attributes for an TF dialect operation.
+// Attributes "name" and "device" are not included because they are not part
+// of an TF op attributes.
+Status GetUnregisteredAttrs(
+    mlir::Operation* inst,
+    absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
+  TF_ASSIGN_OR_RETURN(auto op_name,
+                      getTensorFlowOpName(inst->getName().getStringRef()));
+
+  const tensorflow::OpRegistrationData* op_reg_data;
+  auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  if (!status.ok()) {
+    // This is likely a function call node, so we should continue.
+    VLOG(1) << status.ToString();
+    return Status::OK();
+  }
+
+  // Collect all the registered attributes.
+  llvm::DenseSet<llvm::StringRef> registered_attrs;
+  registered_attrs.insert("name");
+  registered_attrs.insert("device");
+  for (const auto& attr_def : op_reg_data->op_def.attr()) {
+    registered_attrs.insert(attr_def.name());
+  }
+  // Attributes are not in the registered attributes set will be ignored.
+  for (auto& attr : inst->getAttrs()) {
+    auto attr_name = attr.first.c_str();
+    if (registered_attrs.find(attr_name) == registered_attrs.end()) {
+      attrs_to_ignore->insert(attr_name);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
-    mlir::Operation* inst, llvm::StringRef name) {
-  TF_ASSIGN_OR_RETURN(auto node_def,
-                      GetOperationNodeDef(inst, name, getTensorFlowOpName));
+    mlir::Operation* inst, llvm::StringRef name,
+    bool ignore_unregistered_attrs) {
+  // The elements are owned by the MLIRContext.
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore;
+  if (ignore_unregistered_attrs) {
+    TF_RETURN_IF_ERROR(GetUnregisteredAttrs(inst, &attrs_to_ignore));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto node_def,
+      GetOperationNodeDef(attrs_to_ignore, inst, name, getTensorFlowOpName));
 
   // Use auto generated function to populate derived attribute.
   //

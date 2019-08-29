@@ -148,9 +148,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:portable",
-        "//third_party/opencl_headers",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@opencl_headers",
     ],
 )
 

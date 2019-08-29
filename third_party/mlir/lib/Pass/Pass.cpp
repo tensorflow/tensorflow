@@ -264,44 +264,44 @@ void PassManager::disableMultithreading(bool disable) {
 
 /// Add an opaque pass pointer to the current manager. This takes ownership
 /// over the provided pass pointer.
-void PassManager::addPass(Pass *pass) {
+void PassManager::addPass(std::unique_ptr<Pass> pass) {
   switch (pass->getKind()) {
   case Pass::Kind::FunctionPass:
-    addPass(cast<FunctionPassBase>(pass));
+    addPass(cast<FunctionPassBase>(std::move(pass)));
     break;
   case Pass::Kind::ModulePass:
-    addPass(cast<ModulePassBase>(pass));
+    addPass(cast<ModulePassBase>(std::move(pass)));
     break;
   }
 }
 
 /// Add a module pass to the current manager. This takes ownership over the
 /// provided pass pointer.
-void PassManager::addPass(ModulePassBase *pass) {
+void PassManager::addPass(std::unique_ptr<ModulePassBase> pass) {
   nestedExecutorStack.clear();
-  mpe->addPass(pass);
+  mpe->addPass(std::move(pass));
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    mpe->addPass(new ModuleVerifierPass());
+    mpe->addPass(std::make_unique<ModuleVerifierPass>());
 }
 
 /// Add a function pass to the current manager. This takes ownership over the
 /// provided pass pointer. This will automatically create a function pass
 /// executor if necessary.
-void PassManager::addPass(FunctionPassBase *pass) {
+void PassManager::addPass(std::unique_ptr<FunctionPassBase> pass) {
   detail::FunctionPassExecutor *fpe;
   if (nestedExecutorStack.empty()) {
     /// Create an executor adaptor for this pass.
     if (disableThreads || !llvm::llvm_is_multithreaded()) {
       // If multi-threading is disabled, then create a synchronous adaptor.
-      auto *adaptor = new ModuleToFunctionPassAdaptor();
-      addPass(adaptor);
+      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptor>();
       fpe = &adaptor->getFunctionExecutor();
+      addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
     } else {
-      auto *adaptor = new ModuleToFunctionPassAdaptorParallel();
-      addPass(adaptor);
+      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptorParallel>();
       fpe = &adaptor->getFunctionExecutor();
+      addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
     }
 
     /// Add the executor to the stack.
@@ -309,11 +309,11 @@ void PassManager::addPass(FunctionPassBase *pass) {
   } else {
     fpe = cast<detail::FunctionPassExecutor>(nestedExecutorStack.back());
   }
-  fpe->addPass(pass);
+  fpe->addPass(std::move(pass));
 
   // Add a verifier run if requested.
   if (verifyPasses)
-    fpe->addPass(new FunctionVerifierPass());
+    fpe->addPass(std::make_unique<FunctionVerifierPass>());
 }
 
 /// Add the provided instrumentation to the pass manager. This takes ownership
@@ -393,40 +393,40 @@ PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
 PassInstrumentor::~PassInstrumentor() {}
 
 /// See PassInstrumentation::runBeforePass for details.
-void PassInstrumentor::runBeforePass(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runBeforePass(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforePass(pass, ir);
+    instr->runBeforePass(pass, op);
 }
 
 /// See PassInstrumentation::runAfterPass for details.
-void PassInstrumentor::runAfterPass(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runAfterPass(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterPass(pass, ir);
+    instr->runAfterPass(pass, op);
 }
 
 /// See PassInstrumentation::runAfterPassFailed for details.
-void PassInstrumentor::runAfterPassFailed(Pass *pass, const llvm::Any &ir) {
+void PassInstrumentor::runAfterPassFailed(Pass *pass, Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterPassFailed(pass, ir);
+    instr->runAfterPassFailed(pass, op);
 }
 
 /// See PassInstrumentation::runBeforeAnalysis for details.
 void PassInstrumentor::runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                                         const llvm::Any &ir) {
+                                         Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforeAnalysis(name, id, ir);
+    instr->runBeforeAnalysis(name, id, op);
 }
 
 /// See PassInstrumentation::runAfterAnalysis for details.
 void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                                        const llvm::Any &ir) {
+                                        Operation *op) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : llvm::reverse(impl->instrumentations))
-    instr->runAfterAnalysis(name, id, ir);
+    instr->runAfterAnalysis(name, id, op);
 }
 
 /// Add the given instrumentation to the collection. This takes ownership over

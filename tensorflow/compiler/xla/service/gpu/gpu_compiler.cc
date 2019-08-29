@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
@@ -147,9 +147,7 @@ Status GpuCompiler::OptimizeHloModule(
       return false;
     };
     pipeline.AddPass<DotDecomposer>();
-    pipeline.AddPass<ConvolutionGroupConverter>(
-        cost_model,
-        /*convert_batch_groups_only=*/true);
+    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can

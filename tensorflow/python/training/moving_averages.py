@@ -28,6 +28,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -368,7 +369,7 @@ class ExponentialMovingAverage(object):
     self._num_updates = num_updates
     self._zero_debias = zero_debias
     self._name = name
-    self._averages = {}
+    self._averages = object_identity.ObjectIdentityDictionary()
 
   @property
   def name(self):
@@ -426,25 +427,25 @@ class ExponentialMovingAverage(object):
         # For variables: to lower communication bandwidth across devices we keep
         # the moving averages on the same device as the variables. For other
         # tensors, we rely on the existing device allocation mechanism.
-        with ops.init_scope():
-          if isinstance(var, variables.Variable):
-            avg = slot_creator.create_slot(
-                var,
-                var.initialized_value(),
-                self.name,
-                colocate_with_primary=True)
-            # NOTE(mrry): We only add `tf.Variable` objects to the
-            # `MOVING_AVERAGE_VARIABLES` collection.
-            ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
+        if isinstance(var, variables.Variable):
+          if ops.executing_eagerly_outside_functions():
+            init_value = var.read_value()
           else:
-            avg = slot_creator.create_zeros_slot(
-                var,
-                self.name,
-                colocate_with_primary=(var.op.type in [
-                    "Variable", "VariableV2", "VarHandleOp"
-                ]))
-            if self._zero_debias:
-              zero_debias_true.add(avg)
+            init_value = var.initialized_value()
+          avg = slot_creator.create_slot(
+              var, init_value, self.name, colocate_with_primary=True)
+          # NOTE(mrry): We only add `tf.Variable` objects to the
+          # `MOVING_AVERAGE_VARIABLES` collection.
+          ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
+        else:
+          avg = slot_creator.create_zeros_slot(
+              var,
+              self.name,
+              colocate_with_primary=(var.op.type in [
+                  "Variable", "VariableV2", "VarHandleOp"
+              ]))
+          if self._zero_debias:
+            zero_debias_true.add(avg)
         self._averages[var] = avg
 
     with ops.name_scope(self.name) as scope:
@@ -456,7 +457,7 @@ class ExponentialMovingAverage(object):
                                  (1.0 + num_updates) / (10.0 + num_updates))
       updates = []
       for var in var_list:
-        zero_debias = self._averages[var] in zero_debias_true
+        zero_debias = any(self._averages[var] is v for v in zero_debias_true)
         updates.append(
             assign_moving_average(
                 self._averages[var], var, decay, zero_debias=zero_debias))

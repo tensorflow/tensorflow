@@ -270,6 +270,56 @@ class TFETest(test_util.TensorFlowTestCase):
       else:
         ops.disable_tensor_equality()
 
+  def testEqualityBroadcast(self):
+    default = ops.Tensor._USE_EQUALITY
+
+    try:
+      tf_a = constant_op.constant([1, 1])
+      tf_b = constant_op.constant([1, 1])
+      tf_c = constant_op.constant([[1, 1], [1, 1]])
+      tf_d = constant_op.constant([[1, 2], [1, 2]])
+      tf_e = constant_op.constant([1, 1, 1])
+      np_a = np.array([1, 1])
+      np_b = np.array([1, 1])
+      np_c = np.array([[1, 1], [1, 1]])
+      np_d = np.array([[1, 2], [1, 2]])
+      np_e = np.array([1, 1, 1])
+
+      ops.disable_tensor_equality()
+      # We don't do element-wise comparison
+      self.assertNotEqual(tf_a, tf_b)
+      self.assertNotEqual(tf_a, tf_c)
+      self.assertNotEqual(tf_a, tf_d)
+
+      ops.enable_tensor_equality()
+      # We do element-wise comparison but can't convert results array to bool
+      with self.assertRaises(ValueError):
+        bool(tf_a == tf_b)
+      self.assertAllEqual(tf_a == tf_b, [True, True])
+      with self.assertRaises(ValueError):
+        bool(tf_a == tf_c)
+      self.assertAllEqual(tf_a == tf_c, [[True, True], [True, True]])
+      with self.assertRaises(ValueError):
+        bool(tf_a == tf_d)
+      self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
+      # TODO(b/120678848): If shapes do not match we should instead return False
+      with self.assertRaises(errors.InvalidArgumentError):
+        bool(tf_a != tf_e)
+
+      with self.assertRaises(ValueError):
+        bool(np_a == np_b)
+      self.assertAllEqual(np_a == np_b, [True, True])
+      with self.assertRaises(ValueError):
+        bool(np_a == np_c)
+      self.assertAllEqual(np_a == np_c, [[True, True], [True, True]])
+      self.assertAllEqual(np_a == np_d, [[True, False], [True, False]])
+      bool(np_a != np_e)
+    finally:
+      if default:
+        ops.enable_tensor_equality()
+      else:
+        ops.disable_tensor_equality()
+
   def testContext(self):
     ctx = context.Context()
     self.assertTrue(ctx.executing_eagerly())
@@ -322,19 +372,6 @@ class TFETest(test_util.TensorFlowTestCase):
       has_cpu_device = has_cpu_device or 'CPU' in x
     self.assertTrue(has_cpu_device)
     del ctx
-
-  def testRunMetadata(self):
-    context.enable_run_metadata()
-    t = constant_op.constant(1.0)
-    _ = t + t  # Runs an operation which will be in the RunMetadata
-    run_metadata = context.export_run_metadata()
-    context.disable_run_metadata()
-    step_stats = run_metadata.step_stats
-    self.assertGreater(len(step_stats.dev_stats), 0)
-    cpu_stats = step_stats.dev_stats[0]
-    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
-                     cpu_stats.device)
-    self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
 
   def testMultiCpuPlacement(self):
     with ops.device('cpu:1'):
@@ -1029,10 +1066,10 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
   def testCacheSkipsTensorsTooLarge(self):
     cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
     cache.put('1', array_ops.zeros((2, 2)))
-    self.assertEqual(cache.get('1'), None)
+    self.assertIsNone(cache.get('1'))
 
     cache.put('2', array_ops.zeros((2)))
-    self.assertNotEqual(cache.get('2'), None)
+    self.assertIsNotNone(cache.get('2'))
 
 
 if __name__ == '__main__':

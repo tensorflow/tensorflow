@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -213,7 +214,9 @@ void LegalizeTF::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-FunctionPassBase* CreateLegalizeTFPass() { return new LegalizeTF(); }
+std::unique_ptr<FunctionPassBase> CreateLegalizeTFPass() {
+  return std::make_unique<LegalizeTF>();
+}
 
 static PassRegistration<LegalizeTF> pass(
     "tfl-legalize-tf", "Legalize from TensorFlow to TensorFlow Lite dialect");

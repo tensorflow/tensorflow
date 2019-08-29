@@ -14,6 +14,7 @@ load("@local_config_mlir//:tblgen.bzl", "gentbl")
 cc_library(
     name = "IRProducingAPITest",
     hdrs = ["APITest.h"],
+    copts = ["-std=c++14"],
     includes = ["."],
 )
 
@@ -52,6 +53,7 @@ cc_library(
     hdrs = [
         "lib/TestDialect/TestDialect.h",
     ],
+    copts = ["-std=c++14"],
     includes = ["lib/TestDialect"],
     deps = [
         ":TestOpsIncGen",
@@ -74,6 +76,7 @@ cc_library(
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
+    copts = ["-std=c++14"],
     deps = [
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",

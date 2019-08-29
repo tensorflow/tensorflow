@@ -20,14 +20,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
@@ -40,16 +41,10 @@ namespace {
 constexpr const char *kCubinAnnotation = "nvvm.cubin";
 constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
 constexpr const char *kCubinGetterSuffix = "_cubin";
-constexpr const char *kMallocHelperName = "malloc";
+constexpr const char *kCubinStorageSuffix = "_cubin_cst";
 
-/// A pass generating getter functions for all cubin blobs annotated on
-/// functions via the nvvm.cubin attribute.
-///
-/// The functions allocate memory using the system malloc call with signature
-/// void *malloc(size_t size). This function has to be provided by the actual
-/// runner that executes the generated code.
-///
-/// This is a stop-gap measure until MLIR supports global constants.
+/// A pass generating global strings and getter functions for all cubin blobs
+/// annotated on functions via the nvvm.cubin attribute.
 class GpuGenerateCubinAccessorsPass
     : public ModulePass<GpuGenerateCubinAccessorsPass> {
 private:
@@ -59,79 +54,53 @@ private:
     return LLVM::LLVMType::getIntNTy(llvmDialect, bits);
   }
 
-  FuncOp getMallocHelper(Location loc, Builder &builder) {
-    FuncOp result = getModule().lookupSymbol<FuncOp>(kMallocHelperName);
-    if (!result) {
-      result = FuncOp::create(
-          loc, kMallocHelperName,
-          builder.getFunctionType(ArrayRef<Type>{getIndexType()},
-                                  LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
-      getModule().push_back(result);
-    }
-    return result;
-  }
-
-  // Generates a function that returns a char array at runtime that contains the
-  // data from blob. As there are currently no global constants, this uses a
-  // sequence of store operations.
-  // TODO(herhut): Use global constants instead.
-  FuncOp generateCubinAccessor(Builder &builder, FuncOp &orig,
-                               StringAttr blob) {
+  // Inserts a global constant string containing `blob` into the parent module
+  // of `orig` and generates the function that returns the address of the first
+  // character of this string.
+  // TODO(herhut): consider fusing this pass with launch-func-to-cuda.
+  void generate(FuncOp orig, StringAttr blob) {
     Location loc = orig.getLoc();
     SmallString<128> nameBuffer(orig.getName());
+    auto module = orig.getParentOfType<ModuleOp>();
+    assert(module && "function must belong to a module");
+
+    // Insert the getter function just after the original function.
+    OpBuilder moduleBuilder(module.getBody(), module.getBody()->begin());
+    moduleBuilder.setInsertionPoint(orig.getOperation()->getNextNode());
+    auto getterType = moduleBuilder.getFunctionType(
+        llvm::None, LLVM::LLVMType::getInt8PtrTy(llvmDialect));
     nameBuffer.append(kCubinGetterSuffix);
-    // Generate a function that returns void*.
-    FuncOp result = FuncOp::create(
-        loc, mlir::Identifier::get(nameBuffer, &getContext()),
-        builder.getFunctionType(ArrayRef<Type>{},
-                                LLVM::LLVMType::getInt8PtrTy(llvmDialect)));
-    // Insert a body block that just returns the constant.
-    OpBuilder ob(result.getBody());
-    ob.createBlock(&result.getBody());
-    auto sizeConstant = ob.create<LLVM::ConstantOp>(
-        loc, getIndexType(),
-        builder.getIntegerAttr(builder.getIndexType(), blob.getValue().size()));
-    auto memory =
-        ob.create<LLVM::CallOp>(
-              loc, ArrayRef<Type>{LLVM::LLVMType::getInt8PtrTy(llvmDialect)},
-              builder.getSymbolRefAttr(getMallocHelper(loc, builder)),
-              ArrayRef<Value *>{sizeConstant})
-            .getResult(0);
-    for (auto byte : llvm::enumerate(blob.getValue().bytes())) {
-      auto index = ob.create<LLVM::ConstantOp>(
-          loc, LLVM::LLVMType::getInt32Ty(llvmDialect),
-          builder.getI32IntegerAttr(byte.index()));
-      auto gep =
-          ob.create<LLVM::GEPOp>(loc, LLVM::LLVMType::getInt8PtrTy(llvmDialect),
-                                 memory, ArrayRef<Value *>{index});
-      auto value = ob.create<LLVM::ConstantOp>(
-          loc, LLVM::LLVMType::getInt8Ty(llvmDialect),
-          builder.getIntegerAttr(builder.getIntegerType(8), byte.value()));
-      ob.create<LLVM::StoreOp>(loc, value, gep);
-    }
-    ob.create<LLVM::ReturnOp>(loc, ArrayRef<Value *>{memory});
+    auto result = moduleBuilder.create<FuncOp>(
+        loc, StringRef(nameBuffer), getterType, ArrayRef<NamedAttribute>());
+    Block *entryBlock = result.addEntryBlock();
+
+    // Drop the getter suffix before appending the storage suffix.
+    nameBuffer.resize(orig.getName().size());
+    nameBuffer.append(kCubinStorageSuffix);
+
+    // Obtain the address of the first character of the global string containing
+    // the cubin and return from the getter.
+    OpBuilder builder(entryBlock);
+    Value *startPtr = LLVM::createGlobalString(
+        loc, builder, StringRef(nameBuffer), blob.getValue(), llvmDialect);
+    builder.create<LLVM::ReturnOp>(loc, startPtr);
+
     // Store the name of the getter on the function for easier lookup.
     orig.setAttr(kCubinGetterAnnotation, builder.getSymbolRefAttr(result));
-    return result;
   }
 
 public:
-  // Run the dialect converter on the module.
+  // Perform the conversion on the module.  This may insert globals, so it
+  // cannot be done on multiple functions in parallel.
   void runOnModule() override {
     llvmDialect =
         getModule().getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-    auto module = getModule();
-    Builder builder(&getContext());
 
-    auto functions = module.getOps<FuncOp>();
-    for (auto it = functions.begin(); it != functions.end();) {
-      // Move iterator to after the current function so that potential insertion
-      // of the accessor is after the kernel with cubin iself.
-      FuncOp orig = *it++;
-      StringAttr cubinBlob = orig.getAttrOfType<StringAttr>(kCubinAnnotation);
+    for (auto func : getModule().getOps<FuncOp>()) {
+      StringAttr cubinBlob = func.getAttrOfType<StringAttr>(kCubinAnnotation);
       if (!cubinBlob)
         continue;
-      module.insert(it, generateCubinAccessor(builder, orig, cubinBlob));
+      generate(func, cubinBlob);
     }
   }
 
@@ -141,8 +110,8 @@ private:
 
 } // anonymous namespace
 
-ModulePassBase *createGenerateCubinAccessorPass() {
-  return new GpuGenerateCubinAccessorsPass();
+std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass() {
+  return std::make_unique<GpuGenerateCubinAccessorsPass>();
 }
 
 static PassRegistration<GpuGenerateCubinAccessorsPass>

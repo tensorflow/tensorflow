@@ -17,12 +17,20 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 
-TfAllocatorAdapter::TfAllocatorAdapter(const Platform *platform,
-                                       tensorflow::Allocator *wrapped)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped) {}
+TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
+                                       Stream *stream)
+    : DeviceMemoryAllocator(stream->parent()->platform()),
+      wrapped_(wrapped),
+      stream_(stream) {}
+
+TfAllocatorAdapter::TfAllocatorAdapter(tensorflow::Allocator *wrapped,
+                                       Platform *platform)
+    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 

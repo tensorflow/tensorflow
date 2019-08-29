@@ -174,7 +174,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # we don't have duplicates or name collisions.
     meta_graph_def.graph_def.library.Clear()
     for function in functions.values():
-      meta_graph_def.graph_def.library.function.append(function.function_def)
+      meta_graph_def.graph_def.library.function.add().CopyFrom(
+          function.function_def)
     # We've renamed functions and shared names. We need the same operation on
     # the GraphDef itself for consistency.
     for node_def in meta_graph_def.graph_def.node:

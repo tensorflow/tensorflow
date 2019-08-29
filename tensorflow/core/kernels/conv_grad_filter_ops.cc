@@ -970,14 +970,15 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
         common_padding_cols}},             // padding_cols
       dtype,                               // tensor datatype
       device_id,                           // device_id
+      conv_desc.group_count()              // group_count
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
     se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                       se::cuda::PtxCompilationOptions());
 

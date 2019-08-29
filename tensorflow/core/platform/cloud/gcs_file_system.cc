@@ -624,17 +624,31 @@ class GcsWritableFile : public WritableFile {
       StringPiece range_piece(received_range);
       absl::ConsumePrefix(&range_piece,
                           "bytes=");  // May or may not be present.
-      std::vector<int64> range_parts;
-      if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
-          range_parts.size() != 2) {
+
+      auto return_error = [this](string error_message) {
         return errors::Internal("Unexpected response from GCS when writing ",
-                                GetGcsPath(), ": Range header '",
-                                received_range, "' could not be parsed.");
+                                GetGcsPath(), ": ", error_message);
+      };
+
+      std::vector<string> range_strs = str_util::Split(range_piece, '-');
+      std::vector<int64> range_parts;
+      for (const string& range_str : range_strs) {
+        int64 tmp;
+        if (strings::safe_strto64(range_str, &tmp)) {
+          range_parts.push_back(tmp);
+        } else {
+          return return_error("Range header '" + received_range +
+                              "' could not be parsed.");
+        }
       }
+      if (range_parts.size() != 2) {
+        return return_error("Range header '" + received_range +
+                            "' could not be parsed.");
+      }
+
       if (range_parts[0] != 0) {
-        return errors::Internal("Unexpected response from GCS when writing to ",
-                                GetGcsPath(), ": the returned range '",
-                                received_range, "' does not start at zero.");
+        return return_error("The returned range '" + received_range +
+                            "' does not start at zero.");
       }
       // If GCS returned "Range: 0-10", this means 11 bytes were uploaded.
       *uploaded = range_parts[1] + 1;

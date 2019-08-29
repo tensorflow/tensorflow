@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -23,21 +24,20 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace XLA {
+namespace xla_hlo {
 namespace {
 struct LegalizeControlFlow : public mlir::FunctionPass<LegalizeControlFlow> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
 
-bool LowerWhileOp(mlir::XLA::WhileOp while_op) {
+bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   // Converts an xla while loop into control flow. This mostly generates the
   // right MLIR boilerplate for calling the body / condition functions, then
   // branching on their results appropriately. The operation should look similar
@@ -147,13 +147,14 @@ void LegalizeControlFlow::runOnFunction() {
   }
 }
 }  // namespace
-}  // namespace XLA
+}  // namespace xla_hlo
 }  // namespace mlir
 
-mlir::FunctionPassBase* mlir::XLA::createLegalizeControlFlowPass() {
-  return new LegalizeControlFlow();
+std::unique_ptr<mlir::FunctionPassBase>
+mlir::xla_hlo::createLegalizeControlFlowPass() {
+  return std::make_unique<LegalizeControlFlow>();
 }
 
-static PassRegistration<mlir::XLA::LegalizeControlFlow> legalize_cf_pass(
+static PassRegistration<mlir::xla_hlo::LegalizeControlFlow> legalize_cf_pass(
     "xla-legalize-control-flow",
     "Legalize from XLA control flow to MLIR control flow");

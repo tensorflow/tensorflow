@@ -1,0 +1,7 @@
+path: "tensorflow.mixed_precision.experimental"
+tf_module {
+  member {
+    name: "LossScalingGradientTape"
+    mtype: "<type \'type\'>"
+  }
+}

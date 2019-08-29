@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
@@ -74,8 +74,8 @@ void TestConstantFold::runOnFunction() {
 }
 
 /// Creates a constant folding pass.
-FunctionPassBase *mlir::createTestConstantFoldPass() {
-  return new TestConstantFold();
+std::unique_ptr<FunctionPassBase> mlir::createTestConstantFoldPass() {
+  return std::make_unique<TestConstantFold>();
 }
 
 static PassRegistration<TestConstantFold>

@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -373,9 +373,15 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const auto canonical_hlo =
       std::get<1>(AutotuneCacheKeyfromInstruction(&instr, stream_exec_));
 
+  string blas_version;
+  if (auto* blas = stream_exec_->AsBlas()) {
+    (void)blas->GetVersion(&blas_version);
+  }
+
   absl::Span<const AlgorithmDesc> blacklisted_algos =
-      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
-                               GetCudnnVersion(stream_exec_), canonical_hlo);
+      GetBlacklistedConvAlgorithms(GetComputeCapability(stream_exec_),
+                                   GetCudnnVersion(stream_exec_), blas_version,
+                                   canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -433,11 +439,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
-      CudnnConvolutionList proto;
+      AlgorithmBlacklist proto;
       auto entry = proto.add_entries();
       entry->set_hlo(canonical_hlo);
       *entry->mutable_cc() = GetComputeCapability(stream_exec_);
-      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      *entry->mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
+      entry->set_blas_version(blas_version);
       auto algo = entry->add_algos();
       algo->set_id(alg.algo_id());
       algo->set_tensor_ops(alg.tensor_ops_enabled());
@@ -446,8 +453,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
           << "To blacklist this algorithm for this convolution, "
              "copy-paste the following "
              "proto to the blacklist file pointed by XLA_FLAGS "
-             "--xla_gpu_cudnn_conv_blacklist_path="
-          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+             "--xla_gpu_algorithm_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_algorithm_blacklist_path()
           << " : " << proto.ShortDebugString();
       continue;
     }
@@ -470,8 +477,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         LOG(ERROR)
             << "Results mismatch between different convolution algorithms. "
                "This is likely a bug/unexpected loss of precision in cudnn.\n"
-            << instr.ToString() << " for " << AlgorithmToString(first_algorithm)
-            << " vs " << AlgorithmToString(alg);
+            << instr.ToString() << " for "
+            << AlgorithmToString(first_algorithm) << " vs "
+            << AlgorithmToString(alg);
         PrintPlatformInfo(stream);
         VLOG(1) << "Full module on failure: \n"
                 << instr.GetModule()->ToString();
@@ -518,14 +526,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    {
-      string blas_version;
-      if (auto* blas = stream_exec_->AsBlas()) {
-        if (blas->GetVersion(&blas_version).ok()) {
-          log.set_blas_version(blas_version);
-        }
-      }
-    }
+    log.set_blas_version(blas_version);
     VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.

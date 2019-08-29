@@ -271,6 +271,10 @@ typedef struct {
 } TfLiteSpaceToDepthParams;
 
 typedef struct {
+  int block_size;
+} TfLiteDepthToSpaceParams;
+
+typedef struct {
   TfLiteType in_data_type;
   TfLiteType out_data_type;
 } TfLiteCastParams;

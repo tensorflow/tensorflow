@@ -1711,15 +1711,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
+  if (batch_group_count > 1 && kernel_output_features != batch_group_count) {
     return InvalidArgument(
-        "Expected input batch (value %d) to be divisible by output feature "
-        "dimension size (value %d) for batch group count %d; "
-        "got <conv>(%s, %s)\n"
+        "Expected output feature dimension size (value %d) to be equal to "
+        "batch group count %d; got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_batch, kernel_output_features, batch_group_count,
-        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
-        dnums.DebugString());
+        kernel_output_features, batch_group_count, ShapeUtil::HumanString(lhs),
+        ShapeUtil::HumanString(rhs), dnums.DebugString());
   }
 
   if (input_features % feature_group_count != 0 ||

@@ -23,7 +23,7 @@ def tflite_copts():
             "-msse4.1",
         ],
         str(Label("//tensorflow:windows")): [
-            "/DTF_COMPILE_LIBRARY",
+            "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
@@ -247,6 +247,7 @@ def generated_test_models():
         "conv_to_depthwiseconv_with_shared_weights",
         "cos",
         "depthwiseconv",
+        "depth_to_space",
         "div",
         "elu",
         "equal",

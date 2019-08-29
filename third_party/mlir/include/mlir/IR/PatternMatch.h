@@ -422,7 +422,7 @@ public:
     // FIXME: In c++17 this can be simplified by using 'fold expressions'.
     using dummy = int[];
     (void)dummy{
-        0, (patterns.emplace_back(llvm::make_unique<Ts>(arg, args...)), 0)...};
+        0, (patterns.emplace_back(std::make_unique<Ts>(arg, args...)), 0)...};
   }
 
 private:
@@ -456,6 +456,8 @@ private:
 /// work-list driven manner. Return true if no more patterns can be matched in
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
+/// Note: This method also performs folding and simply dead-code elimination
+///       before attempting to match any of the provided patterns.
 ///
 bool applyPatternsGreedily(Operation *op,
                            const OwningRewritePatternList &patterns);

@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 // The cmd line flag to specify the whitelist of functions. Rest are trimmed
@@ -119,9 +119,9 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
-ModulePassBase *CreateTrimFunctionsPass(
+std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
-  return new TrimFunctionsPass(trim_funcs_whitelist);
+  return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }
 
 static PassRegistration<TrimFunctionsPass> pass(

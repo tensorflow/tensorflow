@@ -65,6 +65,11 @@ cc_binary(
     srcs = [
         "main.cc",
     ],
+    copts = [
+        "-Werror",
+        "-Wdouble-promotion",
+        "-Wsign-compare",
+    ],
     deps = [
         ":constants",
         ":output_handler",

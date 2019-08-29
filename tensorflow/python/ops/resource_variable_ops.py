@@ -24,6 +24,7 @@ import functools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -540,9 +541,6 @@ class BaseResourceVariable(variables.VariableV1):
     return self._initial_value
 
   @property
-  @deprecated(
-      None,
-      "Apply a constraint manually following the optimizer update step.")
   def constraint(self):
     """Returns the constraint function associated with this variable.
 
@@ -1784,7 +1782,7 @@ class UninitializedVariable(BaseResourceVariable):
         synchronization=synchronization, aggregation=aggregation)
 
 
-pywrap_tensorflow.RegisterType("ResourceVariable", ResourceVariable)
+_pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
 math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
 
 

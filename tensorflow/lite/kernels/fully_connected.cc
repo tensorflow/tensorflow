@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -251,7 +252,7 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
                                           output->data.f);
   } else {
-    tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
+    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
   }
 
   // Compute output += weight * input
@@ -285,7 +286,7 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::VectorBatchVectorAssign(bias->data.f, num_units, batch_size,
                                           output->data.f);
   } else {
-    tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
+    std::fill_n(output->data.f, batch_size * num_units, 0.0f);
   }
 
   // Save matrix multiplication computation for all zero input.

@@ -26,7 +26,6 @@
 #include "mlir/Support/MlirOptMain.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -60,7 +59,6 @@ static cl::opt<bool>
 static std::vector<const PassRegistryEntry *> *passList;
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.

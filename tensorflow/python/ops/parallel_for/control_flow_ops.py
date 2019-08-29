@@ -335,20 +335,6 @@ def vectorized_map(fn, elems):
     - The shape and dtype of any intermediate or output tensors in the
       computation of `fn` should not depend on the input to `fn`.
 
-  Args:
-    fn: The callable to be performed. It accepts one argument, which will have
-      the same (possibly nested) structure as `elems`, and returns a possibly
-      nested structure of Tensors and Operations, which may be different than
-      the structure of `elems`.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which will
-      be unpacked along their first dimension. The nested sequence of the
-      resulting slices will be mapped over by `fn`.
-
-  Returns:
-    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
-    results of applying fn to tensors unpacked from elems along the first
-    dimension, from first to last.
-
   Examples:
   ```python
   def outer_product(a):
@@ -382,6 +368,20 @@ def vectorized_map(fn, elems):
   assert per_example_gradients[0].shape == (batch_size, num_features, 1)
   assert per_example_gradients[1].shape == (batch_size, 1)
   ```
+
+  Args:
+    fn: The callable to be performed. It accepts one argument, which will have
+      the same (possibly nested) structure as `elems`, and returns a possibly
+      nested structure of Tensors and Operations, which may be different than
+      the structure of `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension. The nested sequence of the
+      resulting slices will be mapped over by `fn`.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
+    results of applying fn to tensors unpacked from elems along the first
+    dimension, from first to last.
   """
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)

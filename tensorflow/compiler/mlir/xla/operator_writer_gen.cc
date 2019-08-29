@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Main.h"
@@ -63,7 +63,7 @@ static std::string BuildOperator(const Operator& op) {
 
   // Signature.
   os << "static xla::XlaOp " << GetOperatorBuilderName(op_name)
-     << "(mlir::XLA::" << op_name.str() << " xla_op, "
+     << "(mlir::xla_hlo::" << op_name.str() << " xla_op, "
      << "llvm::DenseMap<mlir::Value*, xla::XlaOp>* "
         "value_lowering) {\n";
 
@@ -148,7 +148,7 @@ static void EmitBuilder(const std::vector<Record*>& defs,
     StringRef op_name = def->getName().drop_front(4);
 
     // Try to cast to each op and call the corresponding op builder.
-    os << "  if (auto xla_op = llvm::dyn_cast<mlir::XLA::" << op_name
+    os << "  if (auto xla_op = llvm::dyn_cast<mlir::xla_hlo::" << op_name
        << ">(op))\n     return " << GetOperatorBuilderName(op_name)
        << "(xla_op, value_lowering);\n";
   }
@@ -163,17 +163,17 @@ static void EmitBuilder(const std::vector<Record*>& defs,
 static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   emitSourceFileHeader("MLIR XLA Builders", os);
 
-  // Retrieve all the definitions derived from XLA_Op and sort by record name.
-  std::vector<Record*> defs = records.getAllDerivedDefinitions("XLA_Op");
+  // Retrieve all the definitions derived from HLO_Op and sort by record name.
+  std::vector<Record*> defs = records.getAllDerivedDefinitions("HLO_Op");
   llvm::sort(defs, LessRecord());
 
   for (const auto* def : defs) {
     // XLA ops in the .td file are expected to follow the naming convention:
-    // XLA_<OpName>Op.
-    // The generated XLA op C++ class should be XLA::<OpName>Op.
-    if (!def->getName().startswith("XLA_"))
+    // HLO_<OpName>Op.
+    // The generated XLA op C++ class should be HLO::<OpName>Op.
+    if (!def->getName().startswith("HLO_"))
       PrintFatalError(def->getLoc(),
-                      "unexpected op name format: 'XLA_' prefix missing");
+                      "unexpected op name format: 'HLO_' prefix missing");
     if (!def->getName().endswith("Op"))
       PrintFatalError(def->getLoc(),
                       "unexpected op name format: 'Op' suffix missing");
@@ -187,10 +187,7 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
 }
 
 int main(int argc, char** argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::PrettyStackTraceProgram X(argc, argv);
-
-  llvm::llvm_shutdown_obj Y;
+  llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv);
   return TableGenMain(argv[0], &OperatorWritersMain);
 }

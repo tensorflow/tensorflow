@@ -337,6 +337,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
+        "@flatbuffers",
     ],
 )
 
@@ -388,6 +389,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
+        "depth_to_space.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
@@ -545,9 +547,9 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
-        ":kernel_util",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
@@ -633,6 +635,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1299,6 +1302,21 @@ cc_test(
 )
 
 cc_test(
+    name = "lstm_eval_test",
+    size = "small",
+    srcs = ["lstm_eval_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":lstm_eval",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "skip_gram_test",
     size = "small",
     srcs = ["skip_gram_test.cc"],
@@ -1316,6 +1334,20 @@ cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "depth_to_space_test",
+    size = "small",
+    srcs = ["depth_to_space_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",

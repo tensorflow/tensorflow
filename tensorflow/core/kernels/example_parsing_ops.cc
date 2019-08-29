@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -646,7 +646,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
             errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
                                     ".  Data types don't match. ",
                                     "Expected type: ", DataTypeString(dtype),
-                                    "  Feature is: ", ProtoDebugString(f)));
+                                    "  Feature is: ", f.DebugString()));
 
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(0, name, key, dtype, shape, f,
                                              context_dense_values[d]));
@@ -675,7 +675,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
             errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
                                     ".  Data types don't match. ",
                                     "Expected type: ", DataTypeString(dtype),
-                                    "  Feature is: ", ProtoDebugString(f)));
+                                    "  Feature is: ", f.DebugString()));
 
         Tensor feature_values = FeatureSparseCopy(0, key, dtype, f);
         const int64 num_elements = feature_values.NumElements();
@@ -756,7 +756,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                         "Name: ", name, ", Feature list: ", key, ", Index: ", t,
                         ".  Data types don't match. ",
                         "Expected type: ", DataTypeString(dtype),
-                        "  Feature is: ", ProtoDebugString(f)));
+                        "  Feature is: ", f.DebugString()));
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
                                              feature_list_dense_values[d]));
       }
@@ -786,7 +786,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                                       ", Index: ", t,
                                       ".  Data types don't match. ",
                                       "Expected type: ", DataTypeString(dtype),
-                                      "  Feature is: ", ProtoDebugString(f)));
+                                      "  Feature is: ", f.DebugString()));
           sparse_values_tmp.push_back(FeatureSparseCopy(t, key, dtype, f));
         }
       } else {

@@ -117,7 +117,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 5,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm

@@ -196,6 +196,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFunctionCallsFromFunction(self):
+    ops.disable_tensor_equality()
     x = constant_op.constant(5.0)
     y = constant_op.constant(10.0)
 

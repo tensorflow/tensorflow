@@ -36,7 +36,7 @@ class DefaultCommandQueue : public CommandQueue {
   }
 
   Status WaitForCompletion() override {
-    // TODO(akulik): may be let a user to choose what wait method to use.
+    // TODO(akulik): Maybe let the user choose which wait method to use.
     return GlActiveSyncWait();
   }
 };

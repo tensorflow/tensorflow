@@ -1414,6 +1414,8 @@ class AccumulatorSet {
 
   bool empty() const { return ordered_.empty(); }
 
+  size_t size() const { return ordered_.size(); }
+
  private:
   typedef std::list<TFE_Py_ForwardAccumulator*> ListType;
   typedef tensorflow::gtl::FlatMap<TFE_Py_ForwardAccumulator*,
@@ -1422,9 +1424,13 @@ class AccumulatorSet {
 
  public:
   typedef ListType::const_iterator const_iterator;
-  const_iterator begin() const { return ordered_.begin(); }
+  typedef ListType::const_reverse_iterator const_reverse_iterator;
 
+  const_iterator begin() const { return ordered_.begin(); }
   const_iterator end() const { return ordered_.end(); }
+
+  const_reverse_iterator rbegin() const { return ordered_.rbegin(); }
+  const_reverse_iterator rend() const { return ordered_.rend(); }
 
  private:
   MapType map_;
@@ -1467,8 +1473,9 @@ class SafeSetCopy {
   typename ContainerType::const_iterator end() const { return set_copy_.end(); }
 
   bool empty() const { return set_copy_.empty(); }
+  size_t size() const { return set_copy_.size(); }
 
- private:
+ protected:
   ContainerType set_copy_;
 };
 
@@ -1483,6 +1490,14 @@ class SafeTapeSet
 class SafeAccumulatorSet : public SafeSetCopy<AccumulatorSet> {
  public:
   SafeAccumulatorSet() : SafeSetCopy<AccumulatorSet>(*GetAccumulatorSet()) {}
+
+  typename AccumulatorSet::const_reverse_iterator rbegin() const {
+    return set_copy_.rbegin();
+  }
+
+  typename AccumulatorSet::const_reverse_iterator rend() const {
+    return set_copy_.rend();
+  }
 };
 
 bool* ThreadTapeIsStopped() {
@@ -1623,6 +1638,22 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   }
 
   Py_RETURN_FALSE;
+}
+
+PyObject* TFE_Py_ForwardAccumulatorPushState() {
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    accumulator->accumulator->PushState();
+  }
+  Py_RETURN_NONE;
+}
+
+PyObject* TFE_Py_ForwardAccumulatorPopState() {
+  auto forward_accumulators = *GetAccumulatorSet();
+  for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
+    accumulator->accumulator->PopState();
+  }
+  Py_RETURN_NONE;
 }
 
 PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
@@ -1916,18 +1947,19 @@ void TapeSetRecordOperation(
 }
 }  // namespace
 
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensors,
-                                   PyObject* backward_function) {
+PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
+                                        PyObject* output_tensors,
+                                        PyObject* input_tensors,
+                                        PyObject* backward_function) {
   if (!HasTape() || *ThreadTapeIsStopped()) {
-    return;
+    Py_RETURN_NONE;
   }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
-  if (PyErr_Occurred()) return;
+  if (PyErr_Occurred()) return nullptr;
 
   std::vector<tensorflow::DataType> input_dtypes =
       MakeTensorDtypeList(input_tensors);
-  if (PyErr_Occurred()) return;
+  if (PyErr_Occurred()) return nullptr;
 
   TapeSetRecordOperation(
       op_type, input_tensors, output_tensors, input_ids, input_dtypes,
@@ -1945,6 +1977,10 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
         delete py_backward_function;
       },
       nullptr /* No special-cased forward function */);
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+  Py_RETURN_NONE;
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
@@ -2121,6 +2157,100 @@ PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator,
   }
   Py_INCREF(jvp);
   return jvp;
+}
+
+PyObject* TFE_Py_PackForwardGradients(PyObject* tensors) {
+  if (!TapeCouldPossiblyRecord(tensors)) {
+    tensorflow::Safe_PyObjectPtr empty_tuple(PyTuple_New(0));
+    tensorflow::Safe_PyObjectPtr empty_list(PyList_New(0));
+    return PyTuple_Pack(2, empty_tuple.get(), empty_list.get());
+  }
+  auto accumulators = *GetAccumulatorSet();
+  tensorflow::Safe_PyObjectPtr tensors_fast(
+      PySequence_Fast(tensors, "Expected a sequence of input Tensors."));
+  if (tensors_fast == nullptr || PyErr_Occurred()) {
+    return nullptr;
+  }
+  std::vector<tensorflow::int64> augmented_input_ids;
+  for (Py_ssize_t position = 0;
+       position < PySequence_Fast_GET_SIZE(tensors_fast.get()); ++position) {
+    PyObject* input = PySequence_Fast_GET_ITEM(tensors_fast.get(), position);
+    if (input == Py_None) {
+      continue;
+    }
+    tensorflow::DataType input_dtype(FastTensorDtype(input));
+    if (input_dtype == tensorflow::DT_INVALID) {
+      return nullptr;
+    }
+    augmented_input_ids.push_back(FastTensorId(input));
+  }
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+  // Find the innermost accumulator such that all outer accumulators are
+  // recording. Any more deeply nested accumulators will not have their JVPs
+  // saved.
+  AccumulatorSet::const_iterator innermost_all_recording = accumulators.begin();
+  for (; innermost_all_recording != accumulators.end();
+       ++innermost_all_recording) {
+    if ((*innermost_all_recording)->accumulator->BusyAccumulating()) {
+      break;
+    }
+  }
+  AccumulatorSet::const_reverse_iterator reverse_innermost_all_recording(
+      innermost_all_recording);
+
+  bool saving_jvps = false;
+  tensorflow::Safe_PyObjectPtr all_indices(PyTuple_New(accumulators.size()));
+  std::vector<PyObject*> new_tensors;
+  Py_ssize_t accumulator_index = 0;
+  // Start with the innermost accumulators to give outer accumulators a chance
+  // to find their higher-order JVPs.
+  for (AccumulatorSet::const_reverse_iterator it = accumulators.rbegin();
+       it != accumulators.rend(); ++it, ++accumulator_index) {
+    std::vector<tensorflow::int64> new_input_ids;
+    std::vector<std::pair<tensorflow::int64, tensorflow::int64>>
+        accumulator_indices;
+    if (it == reverse_innermost_all_recording) {
+      saving_jvps = true;
+    }
+    if (saving_jvps) {
+      for (int input_index = 0; input_index < augmented_input_ids.size();
+           ++input_index) {
+        tensorflow::int64 existing_input = augmented_input_ids[input_index];
+        PyObject* jvp = (*it)->accumulator->FetchJVP(existing_input);
+        if (jvp != nullptr) {
+          new_tensors.push_back(jvp);
+          new_input_ids.push_back(FastTensorId(jvp));
+          accumulator_indices.emplace_back(
+              input_index,
+              augmented_input_ids.size() + new_input_ids.size() - 1);
+        }
+      }
+    }
+    tensorflow::Safe_PyObjectPtr accumulator_indices_py(
+        PyTuple_New(accumulator_indices.size()));
+    for (int i = 0; i < accumulator_indices.size(); ++i) {
+      tensorflow::Safe_PyObjectPtr from_index(
+          GetPythonObjectFromInt(accumulator_indices[i].first));
+      tensorflow::Safe_PyObjectPtr to_index(
+          GetPythonObjectFromInt(accumulator_indices[i].second));
+      PyTuple_SetItem(accumulator_indices_py.get(), i,
+                      PyTuple_Pack(2, from_index.get(), to_index.get()));
+    }
+    PyTuple_SetItem(all_indices.get(), accumulator_index,
+                    accumulator_indices_py.release());
+    augmented_input_ids.insert(augmented_input_ids.end(), new_input_ids.begin(),
+                               new_input_ids.end());
+  }
+
+  tensorflow::Safe_PyObjectPtr new_tensors_py(PyList_New(new_tensors.size()));
+  for (int i = 0; i < new_tensors.size(); ++i) {
+    PyObject* jvp = new_tensors[i];
+    Py_INCREF(jvp);
+    PyList_SET_ITEM(new_tensors_py.get(), i, jvp);
+  }
+  return PyTuple_Pack(2, all_indices.get(), new_tensors_py.get());
 }
 
 namespace {
@@ -2371,6 +2501,7 @@ bool OpGradientDoesntRequireInputIndices(
           {"Relu6", {true, {}}},
           {"Elu", {true, {}}},
           {"Selu", {true, {}}},
+          {"SparseSoftmaxCrossEntropyWithLogits", {true, {}}},
           {"Neg", {true, {}}},
           {"Inv", {true, {}}},
           {"Reciprocal", {true, {}}},
@@ -2388,7 +2519,6 @@ bool OpGradientDoesntRequireInputIndices(
 
           // Ops that don't require a subset of inputs.
           {"FusedBatchNorm", {false, {2}}},
-          {"SparseSoftmaxCrossEntropyWithLogits", {false, {1}}},
       });
 
   auto it = m->find(op_name);
@@ -2602,6 +2732,10 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   Py_DECREF(num_inputs);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
   if (op_inputs_tuple_created) Py_DECREF(op_inputs);
+
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
 
   Py_RETURN_NONE;
 }

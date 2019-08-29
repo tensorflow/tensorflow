@@ -30,6 +30,8 @@ class _ObjectIdentityWrapper(object):
   _ListWrapper objects to object-identity collections.
   """
 
+  __slots__ = ["_wrapped"]
+
   def __init__(self, wrapped):
     self._wrapped = wrapped
 
@@ -128,6 +130,9 @@ class ObjectIdentityDictionary(collections_abc.MutableMapping):
   def __iter__(self):
     for key in self._storage:
       yield key.unwrapped
+
+  def __repr__(self):
+    return "ObjectIdentityDictionary(%s)" % repr(self._storage)
 
 
 class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):

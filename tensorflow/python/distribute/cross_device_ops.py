@@ -252,8 +252,8 @@ class CrossDeviceOps(object):
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -262,7 +262,7 @@ class CrossDeviceOps(object):
 
     Raises:
       ValueError: if per_replica_value can't be converted to a PerReplica
-        object.
+        object or if destinations aren't strings, Variables or DistributedValues
     """
     if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
@@ -288,17 +288,17 @@ class CrossDeviceOps(object):
     element which indicates the destinations.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        the `per_replica_value` will be reduced.
+      value_destination_pairs: a list or a tuple of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
-        tuples of PerReplica objects and destinations
+      ValueError: if `value_destination_pairs` is not an iterable of
+        tuples of PerReplica objects and destinations.
     """
     # TODO(yuefengz): if destinations are different, split into several
     # `_batch_reduce` invocations.
@@ -340,12 +340,14 @@ class CrossDeviceOps(object):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     """The implementation of reduce of `per_replica_value` to `destinations`.
 
+    Overriding this method is useful for subclass implementers.
+
     It runs the reduction operation defined by `reduce_op` and put the
     result on `destinations`.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
+      reduce_op: An instance `tf.distribute.ReduceOp` that indicates of how
+        per_replica_value will be reduced.
       per_replica_value: a PerReplica object or a tensor with device set.
       destinations: the reduction destinations.
 
@@ -363,20 +365,22 @@ class CrossDeviceOps(object):
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     """Implementation of reduce PerReplica objects in a batch.
 
+    Overriding this method is useful for subclass implementers.
+
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
     Args:
-      reduce_op: Indicates how per_replica_value will be reduced. Accepted
-        values are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
-      value_destination_pairs: a list or a tuple of tuples of PerReplica objects
+      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
+        per_replica_value will be reduced.
+      value_destination_pairs: an iterable of tuples of PerReplica objects
         (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
 
     Raises:
-      ValueError: if `value_destination_pairs` is not a list or a tuple of
+      ValueError: if `value_destination_pairs` is not an iterable of
         tuples of PerReplica objects and destinations
     """
     raise NotImplementedError(
@@ -400,15 +404,20 @@ class CrossDeviceOps(object):
 class ReductionToOneDevice(CrossDeviceOps):
   """Always do reduction to one device first and then do broadcasting.
 
-    Batch reduction is done by reduction on each element one by one.
+  Batch reduction is done by reduction on each element one by one.
+
+  ```
+    mirrored_strategy = tf.distribute.MirroredStrategy(
+      cross_device_ops=tf.distribute.ReductionToOneDevice())
+  ```
   """
 
   def __init__(self, reduce_to_device=None, accumulation_fn=None):
-    """Constructor.
+    """Initializes with a device to reduce to and a way to accumulate.
 
     Args:
       reduce_to_device: the intermediate device to reduce to. If None, reduce
-        to the first device in `destinations` of the reduce() method.
+        to the first device in `destinations` of the `reduce()` method.
       accumulation_fn: a function that does accumulation.  If None, then
         `tf.math.add_n` is used.
     """
@@ -804,14 +813,14 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "NCCL all-reduce requires num_packs > 0, but {} is specified".format(
+          "NCCL all-reduce requires num_packs >= 0, but {} is specified".format(
               num_packs))
     super(NcclAllReduce, self).__init__(
         all_reduce_alg="nccl", num_packs=num_packs)
@@ -835,15 +844,15 @@ class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
 
     Args:
       num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than 0.
+        be greater than or equals 0. When it is zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is zero or negative.
+      ValueError if `num_packs` is negative.
     """
-    if num_packs <= 0:
+    if num_packs < 0:
       raise ValueError(
-          "HierarchicalCopy requires num_packs > 0, but {} is specified".format(
-              num_packs))
+          "HierarchicalCopy requires num_packs >= 0, but {} is specified"
+          .format(num_packs))
     super(HierarchicalCopyAllReduce, self).__init__(
         all_reduce_alg="hierarchical_copy",
         num_packs=num_packs)

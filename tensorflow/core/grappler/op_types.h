@@ -190,6 +190,7 @@ bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
 bool IsXdivy(const NodeDef& node);
+bool IsXlaLaunch(const NodeDef& node);
 bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 

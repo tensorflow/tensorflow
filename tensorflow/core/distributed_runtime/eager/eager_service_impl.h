@@ -84,8 +84,11 @@ class EagerServiceImpl {
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
 
+  static const uint64 kInvalidStreamId = 0;
+
   // Used by both Enqueue and StreamingEnqueue RPCs.
-  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response);
+  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,
+                 uint64 stream_id = kInvalidStreamId);
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
@@ -194,7 +197,10 @@ class EagerServiceImpl {
 
  private:
   Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
+                   EagerExecutor* eager_executor,
                    QueueResponse* queue_response);
+  Status SendTensor(const SendTensorOp& send_tensor,
+                    EagerContext* eager_context);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

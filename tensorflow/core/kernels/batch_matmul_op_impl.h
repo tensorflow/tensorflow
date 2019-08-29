@@ -296,7 +296,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y,
-                     const MatMulBCast& bcast, Tensor* out) {
+                     const MatMulBCast& bcast, Tensor* out, float alpha = 1.0,
+                     float beta = 0.0) {
     constexpr se::blas::Transpose kTranspose =
         is_complex<Scalar>::value ? se::blas::Transpose::kConjugateTranspose
                                   : se::blas::Transpose::kTranspose;
@@ -380,9 +381,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         bool blas_launch_status =
             stream
                 ->ThenBlasGemv(gemv_trans_a, adj_x ? m : k, adj_x ? k : m,
-                               static_cast<Coefficient>(1.0), *(a_ptrs[0]),
+                               static_cast<Coefficient>(alpha), *(a_ptrs[0]),
                                adj_x ? m : k, *(b_ptrs[0]), 1,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], 1)
+                               static_cast<Coefficient>(beta), c_ptrs[0], 1)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -394,9 +395,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         bool blas_launch_status =
             stream
                 ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                               static_cast<Coefficient>(1.0), *(b_ptrs[0]),
+                               static_cast<Coefficient>(alpha), *(b_ptrs[0]),
                                adj_y ? k : n, *(a_ptrs[0]), adj_x ? m : k,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], n)
+                               static_cast<Coefficient>(beta), c_ptrs[0], n)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -411,9 +412,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           stream
               ->ThenBlasGemmBatchedWithScratch(
                   blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), b_ptrs, adj_y ? k : n, a_ptrs,
-                  adj_x ? m : k, static_cast<Coefficient>(0.0), c_ptrs, n,
-                  batch_size, &scratch_allocator)
+                  static_cast<Coefficient>(alpha), b_ptrs, adj_y ? k : n,
+                  a_ptrs, adj_x ? m : k, static_cast<Coefficient>(beta), c_ptrs,
+                  n, batch_size, &scratch_allocator)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -430,7 +431,8 @@ template <>
 struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y,
-                     const MatMulBCast& bcast, Tensor* out) {
+                     const MatMulBCast& bcast, Tensor* out, float alpha = 1.0,
+                     float beta = 0.0) {
     typedef Eigen::half Scalar;
     constexpr perftools::gputools::blas::Transpose kTranspose =
         is_complex<Scalar>::value
@@ -506,9 +508,9 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
-                             static_cast<Coefficient>(1.0), *(b_ptrs[0]),
+                             static_cast<Coefficient>(alpha), *(b_ptrs[0]),
                              adj_y ? k : n, *(a_ptrs[0]), adj_x ? m : k,
-                             static_cast<Coefficient>(0.0), c_ptrs[0], n)
+                             static_cast<Coefficient>(beta), c_ptrs[0], n)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -522,9 +524,9 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
           stream
               ->ThenBlasGemmBatchedWithScratch(
                   blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), b_ptrs, adj_y ? k : n, a_ptrs,
-                  adj_x ? m : k, static_cast<Coefficient>(0.0), c_ptrs, n,
-                  batch_size, &scratch_allocator)
+                  static_cast<Coefficient>(alpha), b_ptrs, adj_y ? k : n,
+                  a_ptrs, adj_x ? m : k, static_cast<Coefficient>(beta), c_ptrs,
+                  n, batch_size, &scratch_allocator)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(

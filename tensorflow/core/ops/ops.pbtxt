@@ -3479,6 +3479,64 @@ op {
   }
 }
 op {
+  name: "BatchGemm"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "beta"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+}
+op {
   name: "BatchIFFT"
   input_arg {
     name: "input"
@@ -4849,6 +4907,218 @@ op {
   }
 }
 op {
+  name: "BlockLSTMGradV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "x_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "w_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wci_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wcf_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wco_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
+  name: "BlockLSTMV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  attr {
+    name: "cell_clip"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BoostedTreesAggregateStats"
   input_arg {
     name: "node_ids"
@@ -5661,6 +5931,77 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesUpdateEnsembleV2"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "dimension_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "split_types"
+    type: DT_STRING
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "max_depth"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "pruning_mode"
+    type: DT_INT32
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "BroadcastArgs"
   input_arg {
     name: "s0"
@@ -5875,7 +6216,7 @@ op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -5898,7 +6239,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "beam_width"
@@ -5919,12 +6260,25 @@ op {
       b: true
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCGreedyDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -5944,7 +6298,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "merge_repeated"
@@ -5953,12 +6307,25 @@ op {
       b: false
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCLoss"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "labels_indices"
@@ -5974,11 +6341,11 @@ op {
   }
   output_arg {
     name: "loss"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "gradient"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "preprocess_collapse_repeated"
@@ -5999,6 +6366,19 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
     }
   }
 }
@@ -6407,6 +6787,13 @@ op {
     name: "shape"
     type: "shape"
   }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -6448,6 +6835,13 @@ op {
     name: "shape"
     type: "shape"
   }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -6488,6 +6882,13 @@ op {
   attr {
     name: "shape"
     type: "shape"
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
   }
   is_stateful: true
 }
@@ -6598,6 +6999,13 @@ op {
     default_value {
       list {
       }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
     }
   }
   is_stateful: true
@@ -9820,6 +10228,22 @@ op {
     name: "graph"
     type: DT_STRING
   }
+  attr {
+    name: "stateful_whitelist"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "DatasetToSingleElement"
@@ -11590,6 +12014,13 @@ op {
   attr {
     name: "token"
     type: "string"
+  }
+  attr {
+    name: "is_async"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "Tin"

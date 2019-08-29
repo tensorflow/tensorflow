@@ -608,13 +608,6 @@ def tf_additional_device_tracer_test_flags():
 def tf_additional_cupti_test_flags():
     return []
 
-def tf_additional_profiler_lib_deps():
-    return [
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
-    ] + if_cuda([
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
-    ])
-
 def tf_additional_libdevice_data():
     return []
 
@@ -827,12 +820,12 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/strings",
     ]
 
-def tf_env_time_srcs():
-    return select({
-        "//tensorflow:windows": [
-            "windows/env_time.cc",
-        ],
-        "//conditions:default": [
-            "posix/env_time.cc",
-        ],
-    })
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]

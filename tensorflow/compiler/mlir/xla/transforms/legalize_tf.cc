@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 using namespace mlir;
@@ -33,7 +33,9 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 };
 }  // end anonymous namespace
 
-FunctionPassBase *mlir::XLA::createLegalizeTFPass() { return new LegalizeTF(); }
+std::unique_ptr<mlir::FunctionPassBase> mlir::xla_hlo::createLegalizeTFPass() {
+  return std::make_unique<LegalizeTF>();
+}
 
 /// Returns if the given TF data format string is the default format.
 static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
@@ -128,11 +130,11 @@ static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
 }
 
 namespace mlir {
-namespace XLA {
+namespace xla {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
-}  // end namespace XLA
+}  // end namespace xla
 }  // end namespace mlir
 
 /// Perform the lowering to XLA dialect.
@@ -141,7 +143,7 @@ void LegalizeTF::runOnFunction() {
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  XLA::populateWithGenerated(func.getContext(), &patterns);
+  xla::populateWithGenerated(func.getContext(), &patterns);
   applyPatternsGreedily(func, patterns);
 }
 

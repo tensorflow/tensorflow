@@ -424,14 +424,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                 input_shapes=None):
     raise NotImplementedError
 
-  def skip_unsupported_test_configuration(self, distribution,
-                                          experimental_run_tf_function):
-    if should_skip_tpu_with_eager(
-        distribution) and experimental_run_tf_function:
-      self.skipTest('TPUStrategy does not support eager mode with '
-                    'experimental_run_tf_function.')
-    return
-
   def run_correctness_test(self,
                            distribution,
                            use_numpy,
@@ -443,8 +435,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            training_epochs=2):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
-      self.skip_unsupported_test_configuration(distribution,
-                                               experimental_run_tf_function)
 
       if partial_last_batch == 'eval':
         x_train, y_train, x_eval, y_eval, x_predict = (
@@ -545,8 +535,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                           experimental_run_tf_function=None):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution,
-                                               experimental_run_tf_function)
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(

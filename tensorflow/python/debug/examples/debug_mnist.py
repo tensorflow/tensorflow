@@ -28,10 +28,12 @@ import argparse
 import sys
 import tempfile
 
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 IMAGE_SIZE = 28

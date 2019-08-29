@@ -16,5 +16,7 @@ ios_static_framework(
     ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    deps = ["//tensorflow/lite/experimental/c:c_api"],
+    deps = [
+        "//tensorflow/lite/experimental/c:c_api",
+    ],
 )

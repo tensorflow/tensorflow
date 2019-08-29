@@ -76,6 +76,9 @@ public:
   /// dimensional identifiers.
   bool isIdentity() const;
 
+  /// Returns true if this affine map is an empty map, i.e., () -> ().
+  bool isEmpty() const;
+
   /// Returns true if this affine map is a single result constant function.
   bool isSingleConstant() const;
 
