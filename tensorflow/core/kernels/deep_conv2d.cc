@@ -73,7 +73,7 @@ static int64 GetDeepConvCost(int input_tile_rows, int input_tile_cols,
 
 static int64 GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
                                int out_depth, int out_rows, int out_cols) {
-  return filter_rows * filter_cols * in_depth * out_depth * out_rows * out_cols;
+  return (int64)filter_rows * (int64)filter_cols * (int64)in_depth * (int64)out_depth * (int64)out_rows * (int64)out_cols;
 }
 
 // Reads environment variable 'env_var_name'.
