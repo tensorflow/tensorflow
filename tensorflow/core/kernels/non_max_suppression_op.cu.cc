@@ -182,9 +182,9 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
 // x1<x2 and y1<y2.
 template <bool flip_box, bool legacy_mode>
 __launch_bounds__(kNmsBlockDim* kNmsBlockDim, 4) __global__
-    void NMSKernel(const Box* __restrict__ d_desc_sorted_boxes,
+    void NMSKernel(const Box*  d_desc_sorted_boxes,
                    const int num_boxes, const float iou_threshold,
-                   const int bit_mask_len, int* __restrict__ d_delete_mask) {
+                   const int bit_mask_len, int*  d_delete_mask) {
   // Storing boxes used by this CUDA block in the shared memory.
   __shared__ Box shared_i_boxes[kNmsBlockDim];
   // Same thing with areas
@@ -247,8 +247,8 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 template <typename Index, typename T, typename... Args>
 __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
                                                  const Index i_original,
-                                                 const T* __restrict__ original,
-                                                 T* __restrict__ selected,
+                                                 const T*  original,
+                                                 T*  selected,
                                                  Args... args) {
   selected[i_selected] = original[i_original];
   SelectHelper(i_selected, i_original, args...);
@@ -262,9 +262,9 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 // selected2).
 template <typename Index, typename T, typename... Args>
 __global__ void IndexMultiSelect(const int num_elements,
-                                 const Index* __restrict__ indices,
-                                 const T* __restrict__ original,
-                                 T* __restrict__ selected, Args... args) {
+                                 const Index*  indices,
+                                 const T*  original,
+                                 T*  selected, Args... args) {
   for (const int idx : CudaGridRangeX(num_elements)) {
     SelectHelper(idx, indices[idx], original, selected, args...);
   }
