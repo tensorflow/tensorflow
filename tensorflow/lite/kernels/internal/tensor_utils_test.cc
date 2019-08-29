@@ -390,6 +390,33 @@ TEST(uKernels, QuantMul8bitOut23ShiftTest) {
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
+// Quantized Multiply with arbitrary scale.
+TEST(uKernels, QuantMul8bitArbitrarySclaeTest) {
+  // scale = 0.000028.
+  int multiplier = 1970324837;
+  int shift = -15;
+
+  const std::vector<int16_t> input1 = {
+      2491, 32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 2157,
+      4545, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
+      1399, 4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
+  };
+  const std::vector<int16_t> input2 = {
+      -1156, 32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  -10132,
+      -964,  1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
+      5180,  -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
+  };
+  std::vector<int8_t> output(2 * 15, 0);
+  CwiseMul(input1.data(), input2.data(), multiplier, shift, 2, 15, 3,
+           output.data());
+  const std::vector<int8_t> expected_output = {
+      -84,  127, 127, -128, -128, 127,  56,   -128, 127,  -128,
+      -126, 127, -7,  127,  127,  -128, -128, 127,  -128, 127,
+      127,  -33, -20, 127,  -128, -128, -128, -128, 127,  -128,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
 // Quantized element wise Add with saturation.
 TEST(uKernels, QuantAddTest) {
   const std::vector<int16_t> input1 = {

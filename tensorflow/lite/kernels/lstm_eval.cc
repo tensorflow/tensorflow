@@ -922,6 +922,8 @@ inline void LstmStepQuantized(
     int32_t effective_cell_to_output_scale_a,
     int32_t effective_cell_to_output_scale_b, const int8_t* proj_weight_ptr,
     int32_t effective_proj_scale_a, int32_t effective_proj_scale_b,
+    int32_t hidden_zp, int32_t effective_hidden_scale_a,
+    int32_t effective_hidden_scale_b,
     const int16_t* layer_norm_input_weight_ptr,
     int32_t layer_norm_input_scale_a, int32_t layer_norm_input_scale_b,
     const int16_t* layer_norm_forget_weight_ptr,
@@ -1072,7 +1074,8 @@ inline void LstmStepQuantized(
 
   tensor_utils::ApplyTanh4(cell_ptr, n_batch, n_cell, scratch_0_ptr);
 
-  tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, n_batch, n_cell, 23,
+  tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, effective_hidden_scale_a,
+                         effective_hidden_scale_b, n_batch, n_cell, hidden_zp,
                          scratch_4_ptr);
 
   // Projection.
@@ -1774,6 +1777,9 @@ TfLiteStatus EvalQuantized(
         quantized_lstm_param->effective_cell_to_output_scale_b, proj_weight_ptr,
         quantized_lstm_param->effective_proj_scale_a,
         quantized_lstm_param->effective_proj_scale_b,
+        quantized_lstm_param->hidden_zp,
+        quantized_lstm_param->effective_hidden_scale_a,
+        quantized_lstm_param->effective_hidden_scale_b,
         layer_norm_input_weight_ptr,
         quantized_lstm_param->layer_norm_input_scale_a,
         quantized_lstm_param->layer_norm_input_scale_b,

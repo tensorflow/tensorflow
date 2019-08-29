@@ -129,6 +129,10 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int8_t* output);
 
+void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                      int32_t multiplier, int32_t shift, int32_t n_batch,
+                      int32_t n_input, int32_t output_zp, int8_t* output);
+
 void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int16_t* output);
 

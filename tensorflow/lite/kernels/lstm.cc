@@ -113,7 +113,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < 13; ++i) {
     // Calculate intermediate tensors.
     TfLiteTensor* intermediate =
         &context->tensors[node->intermediates->data[i]];
@@ -244,6 +244,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   float effective_recurrent_to_output_scale = default_scale;
   float effective_cell_to_output_scale = default_scale;
   float effective_proj_scale = default_scale;
+  float effective_hidden_scale = default_scale;
 
   // Populate scales.
   if (!use_cifg) {
@@ -306,8 +307,12 @@ TfLiteStatus PopulateQuantizedLstmParams(
   effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
                                         activation_scale /
                                         intermediate_scale[9];
-  // Use (2, -7) as scale.
-  effective_proj_scale = proj_weight_scale * std::pow(2, -7) / activation_scale;
+
+  effective_hidden_scale =
+      std::pow(2, -15) / intermediate_scale[12] * std::pow(2, -15);
+
+  effective_proj_scale =
+      proj_weight_scale * intermediate_scale[12] / activation_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -361,6 +366,9 @@ TfLiteStatus PopulateQuantizedLstmParams(
   QuantizeMultiplier(effective_proj_scale,
                      &quantized_lstm_param->effective_proj_scale_a,
                      &quantized_lstm_param->effective_proj_scale_b);
+  QuantizeMultiplier(effective_hidden_scale,
+                     &quantized_lstm_param->effective_hidden_scale_a,
+                     &quantized_lstm_param->effective_hidden_scale_b);
   QuantizeMultiplier(layer_norm_input_scale,
                      &quantized_lstm_param->layer_norm_input_scale_a,
                      &quantized_lstm_param->layer_norm_input_scale_b);
@@ -373,6 +381,8 @@ TfLiteStatus PopulateQuantizedLstmParams(
   QuantizeMultiplier(layer_norm_output_scale,
                      &quantized_lstm_param->layer_norm_output_scale_a,
                      &quantized_lstm_param->layer_norm_output_scale_b);
+
+  quantized_lstm_param->hidden_zp = intermediate_zp[12];
 
   // TODO(jianlijianli): add support for cifg.
   // 10000 is used to make sure the kernel logic does not overflow.
@@ -720,6 +730,12 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   lstm_eval::QuantizedLstmParameter* quantized_lstm_params =
       &op_data->quantized_lstm_param;
 
+  const TfLiteTensor* intermediate =
+      &context->tensors[node->intermediates->data[12]];
+  const auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
+      intermediate->quantization.params);
+  const int32_t hidden_zp = params->zero_point->data[0];
+
   // Forget gate.
   TF_LITE_ENSURE_OK(
       context,
@@ -768,7 +784,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
   // Projection bias.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
-                        context, 0, projection_weights, projection_bias,
+                        context, hidden_zp, projection_weights, projection_bias,
                         &(quantized_lstm_params->projection_bias_accu)));
   return kTfLiteOk;
 }

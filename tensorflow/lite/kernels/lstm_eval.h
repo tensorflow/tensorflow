@@ -54,6 +54,8 @@ struct QuantizedLstmParameter {
   int32_t effective_cell_to_output_scale_b;
   int32_t effective_proj_scale_a;
   int32_t effective_proj_scale_b;
+  int32_t effective_hidden_scale_a;
+  int32_t effective_hidden_scale_b;
   int32_t layer_norm_input_scale_a;
   int32_t layer_norm_input_scale_b;
   int32_t layer_norm_forget_scale_a;
@@ -65,6 +67,7 @@ struct QuantizedLstmParameter {
   // Quantized clip value for cell and projection. Zero value means no clipping.
   int32_t quantized_cell_clip;
   int32_t quantized_proj_clip;
+  int32_t hidden_zp;
   std::vector<int32_t> inv_large_value;
 
   // The fields are used for pre-computing zero_point * weight.

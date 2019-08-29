@@ -171,6 +171,8 @@ class QuantizedLstmParam {
     quant_lstm_parm_.effective_cell_to_output_scale_b = 1;
     quant_lstm_parm_.effective_proj_scale_a = 1105682560;
     quant_lstm_parm_.effective_proj_scale_b = -8;
+    quant_lstm_parm_.effective_hidden_scale_a = 0;
+    quant_lstm_parm_.effective_hidden_scale_b = 0;
     quant_lstm_parm_.layer_norm_input_scale_a = 2011617664;
     quant_lstm_parm_.layer_norm_input_scale_b = -11;
     quant_lstm_parm_.layer_norm_forget_scale_a = 1968024960;
@@ -185,6 +187,7 @@ class QuantizedLstmParam {
     quant_lstm_parm_.inv_large_value[1] = 2;
     quant_lstm_parm_.inv_large_value[2] = 2;
     quant_lstm_parm_.inv_large_value[3] = 1;
+    quant_lstm_parm_.hidden_zp = 0;
     quant_lstm_parm_.input_to_forget_weight_x_input_zp.reset(
         new int32_t[n_cell_]);
     quant_lstm_parm_.recurrent_to_forget_weight_x_activation_zp.reset(
