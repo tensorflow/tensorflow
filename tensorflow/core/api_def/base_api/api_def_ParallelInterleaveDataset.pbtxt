@@ -33,9 +33,10 @@ END
     name: "sloppy"
     description: <<END
 If `True`, return elements as they become available, even if that means returning
-these elements in a different order.
-If `False`, the operation of this dataset will be deterministic, but the
-dataset may block.
+these elements in a different order. Sloppy operation may result in better
+performance in the presence of stragglers, but the dataset will still block if
+all of its open streams are blocked.
+If `False`, always return elements in the same order.
 END
   }
   in_arg {
@@ -83,7 +84,8 @@ block, it will skip that input dataset. This dataset is especially useful
 when loading data from a variable-latency datastores (e.g. HDFS, GCS), as it
 allows the training step to proceed so long as some data is available.
 
-!! WARNING !! This dataset is not deterministic!
+!! WARNING !! If the `sloppy` parameter is set to `True`, the operation of this
+dataset will not be deterministic!
 
 This dataset has been superseded by `ParallelInterleaveDatasetV2`.  New code
 should use `ParallelInterleaveDatasetV2`. 
