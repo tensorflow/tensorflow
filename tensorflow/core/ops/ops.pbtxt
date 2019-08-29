@@ -45319,6 +45319,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "TPUReplicatedOutput"
