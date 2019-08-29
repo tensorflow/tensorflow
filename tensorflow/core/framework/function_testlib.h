@@ -40,6 +40,14 @@ class Attrs {
     }
   }
 
+  Attrs(
+      const std::vector<std::pair<string, FunctionDefHelper::AttrValueWrapper>>&
+          attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
   operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
 
  private:

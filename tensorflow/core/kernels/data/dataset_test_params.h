@@ -25,10 +25,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
-#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 namespace data {
+
+typedef std::vector<
+    std::pair<string, tensorflow::FunctionDefHelper::AttrValueWrapper>>
+    AttributeVector;
 
 constexpr char kDefaultIteratorPrefix[] = "Iterator";
 
@@ -76,58 +79,111 @@ class DatasetParams {
   // Returns the dataset inputs as a TensorValue vector.
   virtual Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
 
+  // Returns the dataset attributes as a vector.
+  virtual Status MakeAttributes(AttributeVector* attributes) const = 0;
+
   // Checks if the tensor is a dataset variant tensor.
   static bool IsDatasetTensor(const Tensor& tensor);
 
+  string node_name() const { return node_name_; }
+
+  DataTypeVector output_dtypes() const { return output_dtypes_; }
+
+  std::vector<PartialTensorShape> output_shapes() const {
+    return output_shapes_;
+  }
+
+  string iterator_prefix() const { return iterator_prefix_; }
+
+  DatasetParamsType type() const { return type_; }
+
+  std::vector<std::pair<std::shared_ptr<DatasetParams>, Tensor>>&
+  input_dataset_params() {
+    return input_dataset_params_group_;
+  }
+
+  virtual std::vector<FunctionDef> func_lib() { return {}; }
+
+ protected:
   // Used to store all the input dataset parameters and the dataset tensors
   // generated from the parameters.
   std::vector<std::pair<std::shared_ptr<DatasetParams>, Tensor>>
-      input_dataset_params_group;
-  DataTypeVector output_dtypes;
-  std::vector<PartialTensorShape> output_shapes;
-  string node_name;
-  string iterator_prefix = kDefaultIteratorPrefix;
-  DatasetParamsType type;
+      input_dataset_params_group_;
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
+  string node_name_;
+  string iterator_prefix_ = kDefaultIteratorPrefix;
+  DatasetParamsType type_;
 };
 
 class BatchDatasetParams : public DatasetParams {
  public:
-  BatchDatasetParams(std::shared_ptr<DatasetParams> input_dataset_params,
-                     int64 batch_size, bool drop_remainder, bool parallel_copy,
+  template <typename T>
+  BatchDatasetParams(T input_dataset_params, int64 batch_size,
+                     bool drop_remainder, bool parallel_copy,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
-                     string node_name);
-
-  ~BatchDatasetParams() {}
+                     string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name), DatasetParamsType::Batch),
+        batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
+        drop_remainder_(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
+        parallel_copy_(parallel_copy) {
+    auto input_dataset_params_ptr =
+        std::make_shared<T>(std::move(input_dataset_params));
+    input_dataset_params_group_.emplace_back(
+        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+  }
 
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  Tensor batch_size;
-  Tensor drop_remainder;
-  bool parallel_copy;
+  Status MakeAttributes(AttributeVector* attr_vector) const override;
+
+ private:
+  Tensor batch_size_;
+  Tensor drop_remainder_;
+  bool parallel_copy_;
 };
 
 class MapDatasetParams : public DatasetParams {
  public:
-  MapDatasetParams(std::shared_ptr<DatasetParams> input_dataset_params,
-                   std::vector<Tensor> other_arguments,
+  template <typename T>
+  MapDatasetParams(T input_dataset_params, std::vector<Tensor> other_arguments,
                    FunctionDefHelper::AttrValueWrapper func,
                    std::vector<FunctionDef> func_lib,
                    DataTypeVector type_arguments, DataTypeVector output_dtypes,
                    std::vector<PartialTensorShape> output_shapes,
                    bool use_inter_op_parallelism, bool preserve_cardinality,
-                   string node_name);
-
-  ~MapDatasetParams(){};
+                   string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name), DatasetParamsType::Map),
+        other_arguments_(std::move(other_arguments)),
+        func_(std::move(func)),
+        func_lib_(std::move(func_lib)),
+        type_arguments_(std::move(type_arguments)),
+        use_inter_op_parallelism_(use_inter_op_parallelism),
+        preserve_cardinality_(preserve_cardinality) {
+    auto input_dataset_params_ptr =
+        std::make_shared<T>(std::move(input_dataset_params));
+    input_dataset_params_group_.emplace_back(
+        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+  }
 
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  std::vector<Tensor> other_arguments;
-  FunctionDefHelper::AttrValueWrapper func;
-  std::vector<FunctionDef> func_lib;
-  DataTypeVector type_arguments;
-  bool use_inter_op_parallelism;
-  bool preserve_cardinality;
+  Status MakeAttributes(AttributeVector* attr_vector) const override;
+
+  std::vector<FunctionDef> func_lib() override;
+
+  int num_of_other_arguments() const;
+
+ private:
+  std::vector<Tensor> other_arguments_;
+  FunctionDefHelper::AttrValueWrapper func_;
+  std::vector<FunctionDef> func_lib_;
+  DataTypeVector type_arguments_;
+  bool use_inter_op_parallelism_;
+  bool preserve_cardinality_;
 };
 
 class RangeDatasetParams : public DatasetParams {
@@ -139,102 +195,14 @@ class RangeDatasetParams : public DatasetParams {
 
   RangeDatasetParams(int64 start, int64 stop, int64 step);
 
-  ~RangeDatasetParams(){};
-
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  Tensor start;
-  Tensor stop;
-  Tensor step;
-};
-
-static std::shared_ptr<BatchDatasetParams> Batch(
-    std::shared_ptr<DatasetParams> input_dataset_params, int64 batch_size,
-    bool drop_remainder, bool parallel_copy,
-    const DataTypeVector& output_dtypes,
-    const std::vector<PartialTensorShape>& output_shapes, string node_name) {
-  return std::make_shared<BatchDatasetParams>(
-      input_dataset_params, batch_size, drop_remainder, parallel_copy,
-      output_dtypes, output_shapes, node_name);
-}
-
-static std::shared_ptr<MapDatasetParams> Map(
-    std::shared_ptr<DatasetParams> input_dataset_params,
-    const std::vector<Tensor>& other_arguments,
-    const FunctionDefHelper::AttrValueWrapper& func,
-    const std::vector<FunctionDef>& func_lib, DataTypeVector type_arguments,
-    const DataTypeVector& output_dtypes,
-    const std::vector<PartialTensorShape>& output_shapes,
-    bool use_inter_op_parallelism, bool preserve_cardinality,
-    string node_name) {
-  return std::make_shared<MapDatasetParams>(
-      input_dataset_params, other_arguments, func, func_lib, type_arguments,
-      output_dtypes, output_shapes, use_inter_op_parallelism,
-      preserve_cardinality, node_name);
-}
-
-static std::shared_ptr<RangeDatasetParams> Range(int64 start, int64 stop,
-                                                 int64 step) {
-  return std::make_shared<RangeDatasetParams>(start, stop, step);
-}
-
-class DatasetParamsBuilder {
- public:
-  DatasetParamsBuilder() = default;
-
-  DatasetParamsBuilder Range(int64 start, int64 stop, int64 step) {
-    string node_name = GetNodeName(RangeDatasetOp::kDatasetType);
-    auto range_dataset_params = new RangeDatasetParams(
-        start, stop, step, {DT_INT64}, {PartialTensorShape({})}, node_name);
-    dataset_params_.reset(range_dataset_params);
-    return *this;
-  }
-
-  DatasetParamsBuilder Batch(
-      int64 batch_size, bool drop_remainder, bool parallel_copy,
-      const DataTypeVector& output_dtypes,
-      const std::vector<PartialTensorShape>& output_shapes) {
-    string node_name = GetNodeName(BatchDatasetOp::kDatasetType);
-    auto batch_dataset_params = new BatchDatasetParams(
-        dataset_params_, batch_size, drop_remainder, parallel_copy,
-        output_dtypes, output_shapes, node_name);
-    dataset_params_.reset(batch_dataset_params);
-    return *this;
-  }
-
-  DatasetParamsBuilder Map(const std::vector<Tensor>& other_arguments,
-                           const FunctionDefHelper::AttrValueWrapper& func,
-                           const std::vector<FunctionDef>& func_lib,
-                           const DataTypeVector& type_arguments,
-                           const DataTypeVector& output_dtypes,
-                           const std::vector<PartialTensorShape>& output_shapes,
-                           bool use_inter_op_parallelism,
-                           bool preserve_cardinality) {
-    string node_name = GetNodeName(MapDatasetOp::kDatasetType);
-    auto map_dataset_params = new MapDatasetParams(
-        dataset_params_, other_arguments, func, func_lib, type_arguments,
-        output_dtypes, output_shapes, use_inter_op_parallelism,
-        preserve_cardinality, node_name);
-    dataset_params_.reset(map_dataset_params);
-    return *this;
-  }
-
-  template <typename T>
-  T GetDatasetParams() {
-    auto dataset_params = dynamic_cast<T*>(dataset_params_.get());
-    return *dataset_params;
-  }
+  Status MakeAttributes(AttributeVector* attr_vector) const override;
 
  private:
-  string GetNodeName(const string& dataset_type) {
-    string node_name = absl::StrCat(dataset_type, "_",
-                                    node_name_id[RangeDatasetOp::kDatasetType]);
-    node_name_id[dataset_type] += 1;
-    return node_name;
-  }
-
-  std::shared_ptr<DatasetParams> dataset_params_;
-  std::unordered_map<string, int64> node_name_id;
+  Tensor start_;
+  Tensor stop_;
+  Tensor step_;
 };
 
 }  // namespace data

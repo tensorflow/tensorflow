@@ -293,68 +293,60 @@ Status DatasetOpsTestBase::MakeRangeDataset(
 }
 
 Status DatasetOpsTestBase::MakeRangeDataset(
-    const RangeDatasetParams& range_dataset_params, Tensor* range_dataset) {
+    RangeDatasetParams& range_dataset_params, Tensor* range_dataset) {
   GraphConstructorOptions graph_opts;
   graph_opts.allow_internal_ops = true;
   graph_opts.expect_device_spec = false;
-  TF_RETURN_IF_ERROR(RunFunction(
-      test::function::MakeRangeDataset(),
-      /*attrs*/
-      {{RangeDatasetOp::kOutputTypes, range_dataset_params.output_dtypes},
-       {RangeDatasetOp::kOutputShapes, range_dataset_params.output_shapes}},
-      /*inputs*/
-      {range_dataset_params.start, range_dataset_params.stop,
-       range_dataset_params.step},
-      graph_opts,
-      /*rets*/ {range_dataset}));
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(range_dataset_params.MakeAttributes(&attributes));
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  TF_RETURN_IF_ERROR(range_dataset_params.MakeInputs(&inputs));
+  std::vector<Tensor> input_tensors;
+  for (auto& tensor_value : inputs) {
+    input_tensors.emplace_back(*tensor_value.tensor);
+  }
+  TF_RETURN_IF_ERROR(RunFunction(test::function::MakeRangeDataset(), attributes,
+                                 input_tensors, graph_opts,
+                                 /*rets=*/{range_dataset}));
   return Status::OK();
 }
 
 Status DatasetOpsTestBase::MakeBatchDataset(
-    const BatchDatasetParams& batch_dataset_params, Tensor* batch_dataset) {
+    BatchDatasetParams& batch_dataset_params, Tensor* batch_dataset) {
   GraphConstructorOptions graph_opts;
   graph_opts.allow_internal_ops = true;
   graph_opts.expect_device_spec = false;
-  TF_RETURN_IF_ERROR(RunFunction(
-      test::function::MakeBatchDataset(),
-      /*attrs*/
-      {{BatchDatasetOp::kParallelCopy, batch_dataset_params.parallel_copy},
-       {BatchDatasetOp::kOutputTypes, batch_dataset_params.output_dtypes},
-       {BatchDatasetOp::kOutputShapes, batch_dataset_params.output_shapes}},
-      /*inputs*/
-      {batch_dataset_params.input_dataset_params_group[0].second,
-       batch_dataset_params.batch_size, batch_dataset_params.drop_remainder},
-      graph_opts,
-      /*rets*/ {batch_dataset}));
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(batch_dataset_params.MakeAttributes(&attributes));
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  TF_RETURN_IF_ERROR(batch_dataset_params.MakeInputs(&inputs));
+  std::vector<Tensor> input_tensors;
+  for (auto& tensor_value : inputs) {
+    input_tensors.emplace_back(*tensor_value.tensor);
+  }
+  TF_RETURN_IF_ERROR(RunFunction(test::function::MakeBatchDataset(), attributes,
+                                 input_tensors, graph_opts,
+                                 /*rets=*/{batch_dataset}));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::MakeMapDataset(
-    const MapDatasetParams& map_dataset_params, Tensor* map_dataset) {
+Status DatasetOpsTestBase::MakeMapDataset(MapDatasetParams& map_dataset_params,
+                                          Tensor* map_dataset) {
   GraphConstructorOptions graph_opts;
   graph_opts.allow_internal_ops = true;
   graph_opts.expect_device_spec = false;
-  std::vector<Tensor> inputs;
-  inputs.reserve(1 + map_dataset_params.other_arguments.size());
-  inputs.push_back(map_dataset_params.input_dataset_params_group[0].second);
-  inputs.insert(inputs.end(), map_dataset_params.other_arguments.begin(),
-                map_dataset_params.other_arguments.end());
-  bool has_other_args = !map_dataset_params.other_arguments.empty();
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(map_dataset_params.MakeAttributes(&attributes));
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  TF_RETURN_IF_ERROR(map_dataset_params.MakeInputs(&inputs));
+  std::vector<Tensor> input_tensors;
+  for (auto& tensor_value : inputs) {
+    input_tensors.emplace_back(*tensor_value.tensor);
+  }
+  bool has_other_args = map_dataset_params.num_of_other_arguments() > 0;
   auto fdef = test::function::MakeMapDataset(has_other_args);
-
-  TF_RETURN_IF_ERROR(RunFunction(
-      fdef,
-      /*attrs=*/
-      {{MapDatasetOp::kFunc, map_dataset_params.func},
-       {MapDatasetOp::kTarguments, map_dataset_params.type_arguments},
-       {MapDatasetOp::kOutputTypes, map_dataset_params.output_dtypes},
-       {MapDatasetOp::kOutputShapes, map_dataset_params.output_shapes},
-       {MapDatasetOp::kUseInterOpParallelism,
-        map_dataset_params.use_inter_op_parallelism},
-       {MapDatasetOp::kPreserveCardinality,
-        map_dataset_params.preserve_cardinality}},
-      /*inputs=*/inputs, graph_opts,
-      /*rets*/ {map_dataset}));
+  TF_RETURN_IF_ERROR(RunFunction(fdef, attributes, input_tensors, graph_opts,
+                                 /*rets=*/{map_dataset}));
   return Status::OK();
 }
 
