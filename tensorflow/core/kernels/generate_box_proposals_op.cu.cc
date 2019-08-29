@@ -371,7 +371,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
     }
 
     OP_REQUIRES_OK(context, GetScalarValue(context, 6, &min_size));
-    auto cuda_stream = GetCudaStream(context);
+    auto cuda_stream = GetGpuStream(context);
     size_t cub_sort_temp_storage_bytes = 0;
     float* flt_ptr = nullptr;
     int* int_ptr = nullptr;
