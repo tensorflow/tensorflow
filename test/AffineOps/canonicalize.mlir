@@ -5,25 +5,27 @@
 // CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0) -> (d0 + 1)
 
 // Affine maps for test case: compose_affine_maps_1dto2d_with_symbols
-// CHECK-DAG: [[MAP4:#map[0-9]+]] = (d0)[s0] -> (d0 - s0)
-// CHECK-DAG: [[MAP6:#map[0-9]+]] = (d0)[s0] -> (d0 * 2 - s0 + 1)
-// CHECK-DAG: [[MAP7:#map[0-9]+]] = (d0)[s0, s1] -> (d0 * 2 + s0 - s1)
+// CHECK-DAG: [[MAP4:#map[0-9]+]] = (d0) -> (d0 - 4)
+// CHECK-DAG: [[MAP4b:#map[0-9]+]] = (d0) -> (d0 - 7)
+// CHECK-DAG: [[MAP7:#map[0-9]+]] = (d0) -> (d0 * 2 - 3)
+// CHECK-DAG: [[MAP7a:#map[0-9]+]] = (d0) -> (d0 * 2 + 1)
 
 // Affine map for test case: compose_affine_maps_d2_tile
-// CHECK-DAG: [[MAP8:#map[0-9]+]] = (d0, d1)[s0] -> ((d0 ceildiv s0) * s0 + d1 mod s0)
+// CHECK-DAG: [[MAP8:#map[0-9]+]] = (d0, d1) -> (d1 + (d0 ceildiv 4) * 4 - (d1 floordiv 4) * 4)
+// CHECK-DAG: [[MAP8a:#map[0-9]+]] = (d0, d1) -> (d1 + (d0 ceildiv 8) * 8 - (d1 floordiv 8) * 8)
 
 // Affine maps for test case: compose_affine_maps_dependent_loads
-// CHECK-DAG: [[MAP9:#map[0-9]+]] = (d0)[s0] -> (d0 + s0)
-// CHECK-DAG: [[MAP10:#map[0-9]+]] = (d0)[s0] -> (d0 * s0)
-// CHECK-DAG: [[MAP11:#map[0-9]+]] = (d0)[s0, s1] -> ((d0 + s1) ceildiv s0)
-// CHECK-DAG: [[MAP12:#map[0-9]+]] = (d0)[s0] -> ((d0 - s0) * s0)
+// CHECK-DAG: [[MAP9:#map[0-9]+]] = (d0) -> (d0 + 3)
+// CHECK-DAG: [[MAP10:#map[0-9]+]] = (d0) -> (d0 * 3)
+// CHECK-DAG: [[MAP11:#map[0-9]+]] = (d0) -> ((d0 + 7) ceildiv 3)
+// CHECK-DAG: [[MAP12:#map[0-9]+]] = (d0) -> (d0 * 7 - 49)
 
 // Affine maps for test case: compose_affine_maps_diamond_dependency
 // CHECK-DAG: [[MAP13A:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8)
 // CHECK-DAG: [[MAP13B:#map[0-9]+]] = (d0) -> ((d0 * 4 - 4) floordiv 3)
 
 // Affine maps for test case: partial_fold_map
-// CHECK-DAG: [[MAP15:#map[0-9]+]] = ()[s0, s1] -> (s0 - s1)
+// CHECK-DAG: [[MAP15:#map[0-9]+]] = ()[s0] -> (s0 - 42)
 
 // Affine maps for test cases: symbolic_composition_*
 // CHECK-DAG: [[map_symbolic_composition_a:#map[0-9]+]] = ()[s0] -> (s0 * 512)
@@ -89,20 +91,20 @@ func @compose_affine_maps_1dto2d_with_symbols() {
     %c4 = constant 4 : index
     %x0 = affine.apply (d0)[s0] -> (d0 - s0) (%i0)[%c4]
 
-    // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP4]](%{{.*}})[%{{.*}}]
+    // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP4]](%{{.*}})
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]], [[I0]]{{\]}}
     %v0 = load %0[%x0, %x0] : memref<4x4xf32>
 
     // Test load[%x0, %x1] with symbol %c4 captured by '%x0' map.
     %x1 = affine.apply (d0) -> (d0 + 1) (%i0)
     %y1 = affine.apply (d0, d1) -> (d0+d1) (%x0, %x1)
-    // CHECK-NEXT: [[I1:%[0-9]+]] = affine.apply [[MAP6]](%{{.*}})[%{{.*}}]
+    // CHECK-NEXT: [[I1:%[0-9]+]] = affine.apply [[MAP7]](%{{.*}})
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I1]], [[I1]]{{\]}}
     %v1 = load %0[%y1, %y1] : memref<4x4xf32>
 
     // Test load[%x1, %x0] with symbol %c4 captured by '%x0' map.
     %y2 = affine.apply (d0, d1) -> (d0 + d1) (%x1, %x0)
-    // CHECK-NEXT: [[I2:%[0-9]+]] = affine.apply [[MAP6]](%{{.*}})[%{{.*}}]
+    // CHECK-NEXT: [[I2:%[0-9]+]] = affine.apply [[MAP7]](%{{.*}})
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I2]], [[I2]]{{\]}}
     %v2 = load %0[%y2, %y2] : memref<4x4xf32>
 
@@ -110,7 +112,7 @@ func @compose_affine_maps_1dto2d_with_symbols() {
     %c5 = constant 5 : index
     %x2 = affine.apply (d0)[s0] -> (d0 + s0) (%i0)[%c5]
     %y3 = affine.apply (d0, d1) -> (d0 + d1) (%x2, %x0)
-    // CHECK: [[I3:%[0-9]+]] = affine.apply [[MAP7]](%{{.*}})[%{{.*}}, %{{.*}}]
+    // CHECK: [[I3:%[0-9]+]] = affine.apply [[MAP7a]](%{{.*}})
     // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I3]], [[I3]]{{\]}}
     %v3 = load %0[%y3, %y3] : memref<4x4xf32>
   }
@@ -138,8 +140,8 @@ func @compose_affine_maps_2d_tile() {
             ((d0 * s0) + d2) (%x0, %x1, %x2, %x3)[%c4, %c8]
           %x41 = affine.apply (d0, d1, d2, d3)[s0, s1] ->
             ((d1 * s1) + d3) (%x0, %x1, %x2, %x3)[%c4, %c8]
-          // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP8]](%{{.*}}, %{{.*}})[%{{.*}}]
-          // CHECK: [[I1:%[0-9]+]] = affine.apply [[MAP8]](%{{.*}}, %{{.*}})[%{{.*}}]
+          // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP8]](%{{.*}}, %{{.*}})
+          // CHECK: [[I1:%[0-9]+]] = affine.apply [[MAP8a]](%{{.*}}, %{{.*}})
           // CHECK-NEXT: [[L0:%[0-9]+]] = load %{{[0-9]+}}{{\[}}[[I0]], [[I1]]{{\]}}
           %v0 = load %0[%x40, %x41] : memref<16x32xf32>
 
@@ -170,9 +172,9 @@ func @compose_affine_maps_dependent_loads() {
         %x02 = affine.apply (d0, d1, d2)[s0, s1] -> (d2 * s0)
             (%i0, %i1, %i2)[%c3, %c7]
 
-        // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP9]](%{{.*}})[%{{.*}}]
-        // CHECK: [[I1:%[0-9]+]] = affine.apply [[MAP4]](%{{.*}})[%{{.*}}]
-        // CHECK: [[I2:%[0-9]+]] = affine.apply [[MAP10]](%{{.*}})[%{{.*}}]
+        // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP9]](%{{.*}})
+        // CHECK: [[I1:%[0-9]+]] = affine.apply [[MAP4b]](%{{.*}})
+        // CHECK: [[I2:%[0-9]+]] = affine.apply [[MAP10]](%{{.*}})
         // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]], [[I1]]{{\]}}
         %v0 = load %0[%x00, %x01] : memref<16x32xf32>
 
@@ -189,8 +191,8 @@ func @compose_affine_maps_dependent_loads() {
         %x11 = affine.apply (d0, d1)[s0, s1] -> (d1 ceildiv s0)
            (%x01, %x00)[%c7, %c3]
 
-        // CHECK-NEXT: [[I2A:%[0-9]+]] = affine.apply [[MAP12]](%{{.*}})[%{{.*}}]
-        // CHECK-NEXT: [[I2B:%[0-9]+]] = affine.apply [[MAP11]](%{{.*}})[%{{.*}}, %{{.*}}]
+        // CHECK-NEXT: [[I2A:%[0-9]+]] = affine.apply [[MAP12]](%{{.*}})
+        // CHECK-NEXT: [[I2B:%[0-9]+]] = affine.apply [[MAP11]](%{{.*}})
         // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I2A]], [[I2B]]{{\]}}
         %v3 = load %0[%x10, %x11] : memref<16x32xf32>
       }
@@ -261,7 +263,7 @@ func @partial_fold_map(%arg0: memref<index>, %arg1: index, %arg2: index) {
   %c42 = constant 42 : index
   %2 = affine.apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
   store %2, %arg0[] : memref<index>
-  // CHECK: [[X:%[0-9]+]] = affine.apply [[MAP15]]()[%{{.*}}, %{{.*}}]
+  // CHECK: [[X:%[0-9]+]] = affine.apply [[MAP15]]()[%{{.*}}]
   // CHECK-NEXT: store [[X]], %{{.*}}
 
   return

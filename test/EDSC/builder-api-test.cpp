@@ -594,10 +594,10 @@ TEST_FUNC(tile_2d) {
   //       CHECK:   affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
   //  CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
   //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] step 16 {
-  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] step 32 {
-  //  CHECK-NEXT:             affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%{{.*}}, %{{.*}})[%[[N]]] {
-  //  CHECK-NEXT:               affine.for %{{.*}} = max (d0, d1)[s0] -> (s0, d0, d1)(%{{.*}}, %{{.*}})[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%{{.*}}, %{{.*}})[%[[M]]] {
+  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] step 16 {
+  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] step 32 {
+  //  CHECK-NEXT:             affine.for %{{.*}} = max (d0, d1) -> (0, d0, d1)(%{{.*}}, %{{.*}}) to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%{{.*}}, %{{.*}})[%[[N]]] {
+  //  CHECK-NEXT:               affine.for %{{.*}} = max (d0, d1) -> (0, d0, d1)(%{{.*}}, %{{.*}}) to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%{{.*}}, %{{.*}})[%[[M]]] {
   //  CHECK-NEXT:                 {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
@@ -608,8 +608,8 @@ TEST_FUNC(tile_2d) {
   //  CHECK-NEXT:         }
   //  CHECK-NEXT:       }
   //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] {
-  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0)[s0] -> (s0, d0)(%{{.*}})[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] {
+  //  CHECK-NEXT:         affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 512)(%{{.*}})[%[[M]]] {
+  //  CHECK-NEXT:           affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 1024)(%{{.*}})[%[[N]]] {
   //  CHECK-NEXT:             {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}} = affine.load {{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32

@@ -602,7 +602,7 @@ canonicalizePromotedSymbols(AffineMap *map,
   for (unsigned i = 0, e = map->getNumInputs(); i != e; ++i) {
     if (i < map->getNumDims()) {
       if (isValidSymbol((*operands)[i])) {
-        // This is a valid symbols that appears as a dim, canonicalize it.
+        // This is a valid symbol that appears as a dim, canonicalize it.
         dimRemapping[i] = getAffineSymbolExpr(oldNumSyms + nextSym++, context);
         remappedSymbols.push_back((*operands)[i]);
       } else {
@@ -653,6 +653,7 @@ void mlir::canonicalizeMapAndOperands(
   unsigned nextDim = 0;
   for (unsigned i = 0, e = map->getNumDims(); i != e; ++i) {
     if (usedDims[i]) {
+      // Remap dim positions for duplicate operands.
       auto it = seenDims.find((*operands)[i]);
       if (it == seenDims.end()) {
         dimRemapping[i] = getAffineDimExpr(nextDim++, context);
@@ -667,16 +668,27 @@ void mlir::canonicalizeMapAndOperands(
   SmallVector<AffineExpr, 8> symRemapping(map->getNumSymbols());
   unsigned nextSym = 0;
   for (unsigned i = 0, e = map->getNumSymbols(); i != e; ++i) {
-    if (usedSyms[i]) {
-      auto it = seenSymbols.find((*operands)[i + map->getNumDims()]);
-      if (it == seenSymbols.end()) {
-        symRemapping[i] = getAffineSymbolExpr(nextSym++, context);
-        resultOperands.push_back((*operands)[i + map->getNumDims()]);
-        seenSymbols.insert(std::make_pair((*operands)[i + map->getNumDims()],
-                                          symRemapping[i]));
-      } else {
-        symRemapping[i] = it->second;
-      }
+    if (!usedSyms[i])
+      continue;
+    // Handle constant operands (only needed for symbolic operands since
+    // constant operands in dimensional positions would have already been
+    // promoted to symbolic positions above).
+    IntegerAttr operandCst;
+    if (matchPattern((*operands)[i + map->getNumDims()],
+                     m_Constant(&operandCst))) {
+      symRemapping[i] =
+          getAffineConstantExpr(operandCst.getValue().getSExtValue(), context);
+      continue;
+    }
+    // Remap symbol positions for duplicate operands.
+    auto it = seenSymbols.find((*operands)[i + map->getNumDims()]);
+    if (it == seenSymbols.end()) {
+      symRemapping[i] = getAffineSymbolExpr(nextSym++, context);
+      resultOperands.push_back((*operands)[i + map->getNumDims()]);
+      seenSymbols.insert(
+          std::make_pair((*operands)[i + map->getNumDims()], symRemapping[i]));
+    } else {
+      symRemapping[i] = it->second;
     }
   }
   *map =

@@ -657,7 +657,7 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP3]](%{{.*}}, %{{.*}})
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP4]](%{{.*}}, %{{.*}})
 // CHECK-NEXT:      %{{.*}} = "foo"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (index, index, index, index, index, index) -> i32
-// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[0, ((%{{.*}} * 9 + %{{.*}}) mod 288) floordiv 144, (((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) floordiv 48, ((((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) mod 48) floordiv 16, ((((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) mod 48) mod 16, symbol(%{{.*}})] : memref<1x2x3x3x16x1xi32>
+// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[0, ((%{{.*}} * 9 + %{{.*}}) mod 288) floordiv 144, (((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) floordiv 48, ((((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) mod 48) floordiv 16, ((((%{{.*}} * 9 + %{{.*}}) mod 288) mod 144) mod 48) mod 16, 0] : memref<1x2x3x3x16x1xi32>
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP11]](%{{.*}}, %{{.*}})
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP12]](%{{.*}})
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP13]](%{{.*}})
@@ -841,8 +841,8 @@ func @fusion_at_depth0_not_currently_supported() {
   // nest, and make the store in the slice store to the same element.
   // CHECK-DAG:   %{{.*}} = alloc() : memref<1xf32>
   // CHECK:       affine.for %{{.*}} = 0 to 10 {
-  // CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[symbol(%{{.*}})] : memref<1xf32>
-  // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[symbol(%{{.*}})] : memref<1xf32>
+  // CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[0] : memref<1xf32>
+  // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[0] : memref<1xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
@@ -1228,10 +1228,10 @@ func @R3_to_R2_reshape() {
 // CHECK-NEXT:     affine.for %{{.*}} = 0 to 3 {
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP0]](%{{.*}}, %{{.*}})
 // CHECK-NEXT:      %{{.*}} = "foo"(%{{.*}}, %{{.*}}, %{{.*}}) : (index, index, index) -> i32
-// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[0, 0, symbol(%{{.*}})] : memref<1x1x1xi32>
+// CHECK-NEXT:      affine.store %{{.*}}, %{{.*}}[0, 0, 0] : memref<1x1x1xi32>
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP1]](%{{.*}}, %{{.*}})
 // CHECK-NEXT:      %{{.*}} = affine.apply [[MAP2]](%{{.*}})
-// CHECK-NEXT:      %{{.*}} = affine.load %{{.*}}[0, 0, symbol(%{{.*}})] : memref<1x1x1xi32>
+// CHECK-NEXT:      %{{.*}} = affine.load %{{.*}}[0, 0, 0] : memref<1x1x1xi32>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return

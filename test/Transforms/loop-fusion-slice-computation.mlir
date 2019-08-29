@@ -75,14 +75,14 @@ func @slice_depth2_loop_nest_two_loads() {
   %c0 = constant 0 : index
   %cst = constant 7.000000e+00 : f32
   affine.for %i0 = 0 to 16 {
-    // expected-remark@-1 {{slice ( src loop: 1, dst loop: 0, depth: 1 : insert point: (1, 1) loop bounds: [(d0)[s0] -> (d0), (d0)[s0] -> (d0 + 1)] [(d0)[s0] -> (0), (d0)[s0] -> (8)] )}}
-    // expected-remark@-2 {{slice ( src loop: 1, dst loop: 0, depth: 2 : insert point: (2, 1) loop bounds: [(d0, d1)[s0] -> (d0), (d0, d1)[s0] -> (d0 + 1)] [(d0, d1)[s0] -> (0), (d0, d1)[s0] -> (8)] )}}
+    // expected-remark@-1 {{slice ( src loop: 1, dst loop: 0, depth: 1 : insert point: (1, 1) loop bounds: [(d0) -> (d0), (d0) -> (d0 + 1)] [(d0) -> (0), (d0) -> (8)] )}}
+    // expected-remark@-2 {{slice ( src loop: 1, dst loop: 0, depth: 2 : insert point: (2, 1) loop bounds: [(d0, d1) -> (d0), (d0, d1) -> (d0 + 1)] [(d0, d1) -> (0), (d0, d1) -> (8)] )}}
     affine.for %i1 = 0 to 16 {
       affine.store %cst, %0[%i0, %i1] : memref<100x100xf32>
     }
   }
   affine.for %i2 = 0 to 10 {
-    // expected-remark@-1 {{slice ( src loop: 0, dst loop: 1, depth: 1 : insert point: (1, 0) loop bounds: [(d0)[s0] -> (d0), (d0)[s0] -> (d0 + 1)] [(d0)[s0] -> (0), (d0)[s0] -> (8)] )}}
+    // expected-remark@-1 {{slice ( src loop: 0, dst loop: 1, depth: 1 : insert point: (1, 0) loop bounds: [(d0) -> (d0), (d0) -> (d0 + 1)] [(d0) -> (0), (d0) -> (8)] )}}
     affine.for %i3 = 0 to 8 {
       %1 = affine.load %0[%i2, %i3] : memref<100x100xf32>
     }
@@ -103,15 +103,15 @@ func @slice_depth2_loop_nest_two_stores() {
   %c0 = constant 0 : index
   %cst = constant 7.000000e+00 : f32
   affine.for %i0 = 0 to 16 {
-    // expected-remark@-1 {{slice ( src loop: 1, dst loop: 0, depth: 1 : insert point: (1, 2) loop bounds: [(d0)[s0] -> (d0), (d0)[s0] -> (d0 + 1)] [(d0)[s0] -> (0), (d0)[s0] -> (8)] )}}
+    // expected-remark@-1 {{slice ( src loop: 1, dst loop: 0, depth: 1 : insert point: (1, 2) loop bounds: [(d0) -> (d0), (d0) -> (d0 + 1)] [(d0) -> (0), (d0) -> (8)] )}}
     affine.for %i1 = 0 to 16 {
       affine.store %cst, %0[%i0, %i1] : memref<100x100xf32>
     }
     affine.store %cst, %0[%i0, %c0] : memref<100x100xf32>
   }
   affine.for %i2 = 0 to 10 {
-    // expected-remark@-1 {{slice ( src loop: 0, dst loop: 1, depth: 1 : insert point: (1, 0) loop bounds: [(d0)[s0] -> (d0), (d0)[s0] -> (d0 + 1)] [(d0)[s0] -> (0), (d0)[s0] -> (16)] )}}
-    // expected-remark@-2 {{slice ( src loop: 0, dst loop: 1, depth: 2 : insert point: (2, 0) loop bounds: [(d0, d1)[s0] -> (d0), (d0, d1)[s0] -> (d0 + 1)] [(d0, d1)[s0] -> (0), (d0, d1)[s0] -> (16)] )}}
+    // expected-remark@-1 {{slice ( src loop: 0, dst loop: 1, depth: 1 : insert point: (1, 0) loop bounds: [(d0) -> (d0), (d0) -> (d0 + 1)] [(d0) -> (0), (d0) -> (16)] )}}
+    // expected-remark@-2 {{slice ( src loop: 0, dst loop: 1, depth: 2 : insert point: (2, 0) loop bounds: [(d0, d1) -> (d0), (d0, d1) -> (d0 + 1)] [(d0, d1) -> (0), (d0, d1) -> (16)] )}}
     affine.for %i3 = 0 to 8 {
       %1 = affine.load %0[%i2, %i3] : memref<100x100xf32>
     }

@@ -31,13 +31,13 @@ func @loop_nest_dma() {
 // CHECK:       %{{.*}} = alloc() : memref<256xf32>
 // CHECK:       %{{.*}} = alloc() : memref<2x32xf32, 1>
 // CHECK-NEXT:  %{{.*}} = alloc() : memref<2x1xf32>
-// CHECK-NEXT:  affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}} mod 2, %{{.*}}], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
+// CHECK-NEXT:  affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}} mod 2, %{{.*}}], %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
 // CHECK-NEXT:  affine.for %{{.*}} = 1 to 8 {
-// CHECK-NEXT:    affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}} mod 2, %{{.*}}], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
+// CHECK-NEXT:    affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[%{{.*}} mod 2, %{{.*}}], %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
 // CHECK-NEXT:    %{{.*}} = affine.apply [[MAP_MINUS_1]](%{{.*}})
 // CHECK-NEXT:    %{{.*}} = affine.apply [[MOD_2]](%{{.*}})
 // CHECK-NEXT:    %{{.*}} = affine.apply [[MOD_2]](%{{.*}})
-// CHECK-NEXT:    affine.dma_wait %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xf32>
+// CHECK-NEXT:    affine.dma_wait %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<2x1xf32>
 // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
 // CHECK-NEXT:    %{{.*}} = "compute"(%{{.*}}) : (f32) -> f32
 // CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
@@ -48,7 +48,7 @@ func @loop_nest_dma() {
 // CHECK-NEXT:  %{{.*}} = affine.apply [[MAP_MINUS_1]](%{{.*}})
 // CHECK-NEXT:  %{{.*}} = affine.apply [[MOD_2]](%{{.*}})
 // CHECK-NEXT:  %{{.*}} = affine.apply [[MOD_2]](%{{.*}})
-// CHECK-NEXT:  affine.dma_wait %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xf32>
+// CHECK-NEXT:  affine.dma_wait %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<2x1xf32>
 // CHECK-NEXT:  %{{.*}} = affine.load %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
 // CHECK-NEXT:  %{{.*}} = "compute"(%{{.*}}) : (f32) -> f32
 // CHECK-NEXT:  affine.store %{{.*}}, %{{.*}}[%{{.*}} mod 2, %{{.*}}] : memref<2x32xf32, 1>
@@ -81,17 +81,17 @@ func @loop_step(%arg0: memref<512xf32>,
   return
 }
 // CHECK:        [[TAG:%[0-9]+]] = alloc() : memref<2x1xi32>
-// CHECK-NEXT:   affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], [[TAG]][(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], %{{.*}} : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
+// CHECK-NEXT:   affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[(%{{.*}} floordiv 4) mod 2, 0], [[TAG]][(%{{.*}} floordiv 4) mod 2, 0], %{{.*}} : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
 // CHECK-NEXT:   affine.for %{{.*}} = 4 to 512 step 4 {
-// CHECK-NEXT:     affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], [[TAG]][(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], %{{.*}} : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
+// CHECK-NEXT:     affine.dma_start %{{.*}}[%{{.*}}], %{{.*}}[(%{{.*}} floordiv 4) mod 2, 0], [[TAG]][(%{{.*}} floordiv 4) mod 2, 0], %{{.*}} : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
 // CHECK-NEXT:     %{{.*}} = affine.apply [[REMAP_SHIFT_MINUS_4]](%{{.*}})
 // CHECK-NEXT:     %{{.*}} = affine.apply [[FLOOR_MOD_2]](%{{.*}})
-// CHECK:          affine.dma_wait [[TAG]][(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xi32>
+// CHECK:          affine.dma_wait [[TAG]][(%{{.*}} floordiv 4) mod 2, 0], %{{.*}} : memref<2x1xi32>
 // CHECK-NEXT:     "compute"(%{{.*}}) : (index) -> ()
 // CHECK-NEXT:   }
 // CHECK-NEXT:   [[SHIFTED:%[0-9]+]] = affine.apply [[REMAP_SHIFT_MINUS_4]](%{{.*}})
 // CHECK-NEXT:   %{{.*}} = affine.apply [[FLOOR_MOD_2]]([[SHIFTED]])
-// CHECK:        affine.dma_wait [[TAG]][(%{{.*}} floordiv 4) mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xi32>
+// CHECK:        affine.dma_wait [[TAG]][(%{{.*}} floordiv 4) mod 2, 0], %{{.*}} : memref<2x1xi32>
 // CHECK-NEXT:   "compute"(%{{.*}}) : (index) -> ()
 // CHECK:        return
 // CHECK-NEXT: }
@@ -282,7 +282,7 @@ func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
 // CHECK-NEXT:  %{{.*}} = dim %{{.*}}, 0 : memref<?x?xf32, 2>
 // CHECK-NEXT:  %{{.*}} = dim %{{.*}}, 1 : memref<?x?xf32, 2>
 // CHECK-NEXT:  %{{.*}} = alloc(%{{.*}}, %{{.*}}) : memref<2x?x?xf32, 2>
-// CHECK:       affine.dma_start %{{.*}}[%{{.*}}, %{{.*}}], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}}), symbol(%{{.*}})], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}}
+// CHECK:       affine.dma_start %{{.*}}[%{{.*}}, %{{.*}}], %{{.*}}[%{{.*}} mod 2, 0, 0], %{{.*}}[%{{.*}} mod 2, 0], %{{.*}}
   affine.for %kTT = 0 to 16 {
     affine.dma_start %arg0[%zero, %zero], %Av[%zero, %zero], %tag[%zero], %num_elt :
       memref<512 x 32 x f32>,
@@ -291,10 +291,10 @@ func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
   }
   return
 // CHECK-NEXT:  affine.for %{{.*}} = 1 to 16 {
-// CHECK:         affine.dma_start %{{.*}}[%{{.*}}, %{{.*}}], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}}), symbol(%{{.*}})], %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}}
-// CHECK:         affine.dma_wait %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xi32>
+// CHECK:         affine.dma_start %{{.*}}[%{{.*}}, %{{.*}}], %{{.*}}[%{{.*}} mod 2, 0, 0], %{{.*}}[%{{.*}} mod 2, 0], %{{.*}}
+// CHECK:         affine.dma_wait %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<2x1xi32>
 // CHECK:       }
-// CHECK:       affine.dma_wait %{{.*}}[%{{.*}} mod 2, symbol(%{{.*}})], %{{.*}} : memref<2x1xi32>
+// CHECK:       affine.dma_wait %{{.*}}[%{{.*}} mod 2, 0], %{{.*}} : memref<2x1xi32>
 // CHECK:       return
 }
 
