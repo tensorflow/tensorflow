@@ -22,9 +22,9 @@ limitations under the License.
 #include "include/pybind11/pybind11.h"
 #include "include/pybind11/stl_bind.h"
 
-struct StackFrame;  // Forward declaration.
+struct FrameSummary;  // Forward declaration.
 
-PYBIND11_MAKE_OPAQUE(std::vector<StackFrame>);
+PYBIND11_MAKE_OPAQUE(std::vector<FrameSummary>);
 
 namespace tensorflow {
 
@@ -32,7 +32,7 @@ namespace {
 
 namespace py = pybind11;
 
-struct StackFrame {
+struct FrameSummary {
   py::str filename;
   int lineno;
   py::str name;
@@ -56,10 +56,17 @@ struct StackFrame {
 #endif
     return size > 0 ? static_cast<py::object>(code) : py::none();
   }
+
+  bool operator==(const FrameSummary& other) const {
+    return filename == other.filename && lineno == other.lineno &&
+           name == other.name && globals == other.globals;
+  }
+
+  bool operator!=(const FrameSummary& other) const { return !(*this == other); }
 };
 
-std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
-                                     const py::list& filters) {
+std::vector<FrameSummary> ExtractStack(ssize_t limit, const py::list& mappers,
+                                       const py::list& filters) {
   const py::dict& source_map =
       mappers.size() == 0
           ? py::dict()
@@ -73,7 +80,7 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
   // Drop extract_stack() wrapper-function frame from the result.
   const PyFrameObject* f = tstate->frame->f_back;  // TODO(slebedev): INCREF?
 
-  std::vector<StackFrame> ret;
+  std::vector<FrameSummary> ret;
   // 16 is somewhat arbitrary, but TensorFlow stack traces tend to be deep.
   ret.reserve(limit < 0 ? 16 : static_cast<size_t>(limit));
   for (; f != nullptr && (limit < 0 || ret.size() < limit); f = f->f_back) {
@@ -110,34 +117,38 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
 }  // namespace
 
 PYBIND11_MODULE(_tf_stack, m) {
-  // TODO(slebedev): rename to FrameSummary to match Python 3.5+.
-  py::class_<StackFrame>(m, "StackFrame")
-      .def_readonly("filename", &StackFrame::filename)
-      .def_readonly("lineno", &StackFrame::lineno)
-      .def_readonly("name", &StackFrame::name)
-      .def_property_readonly("line", &StackFrame::line)
-      .def("__repr__",
-           [](const StackFrame& self) {
-             return py::str("<StackFrame file {}, line {} in {}>")
-                 .format(self.filename, self.lineno, self.name);
-           })
+  py::class_<FrameSummary>(m, "FrameSummary")
+      .def_readonly("filename", &FrameSummary::filename)
+      .def_readonly("lineno", &FrameSummary::lineno)
+      .def_readonly("name", &FrameSummary::name)
+      .def_property_readonly("line", &FrameSummary::line)
 
       // For compatibility with the traceback module.
+      .def("__eq__", &FrameSummary::operator==)
+      .def("__ne__", &FrameSummary::operator!=)
       .def("__getitem__",
-           [](const StackFrame& self, const py::object& index) -> py::object {
+           [](const FrameSummary& self, const py::object& index) -> py::object {
              return py::make_tuple(self.filename, self.lineno, self.name,
                                    self.line())[index];
            })
-      .def("__len__", [](const StackFrame&) {
-        return 4;  // For compatibility with the traceback module.
-      });
+      .def("__iter__",
+           [](const FrameSummary& self) {
+             return py::iter(py::make_tuple(self.filename, self.lineno,
+                                            self.name, self.line()));
+           })
+      .def("__repr__",
+           [](const FrameSummary& self) {
+             return py::str("<FrameSummary file {}, line {} in {}>")
+                 .format(self.filename, self.lineno, self.name);
+           })
+      .def("__len__", [](const FrameSummary&) { return 4; });
 
-  // TODO(slebedev): rename to StackSummary to match Python 3.5+.
-  py::bind_vector<std::vector<StackFrame>>(m, "Stack", py::module_local(true))
+  py::bind_vector<std::vector<FrameSummary>>(m, "StackSummary",
+                                             py::module_local(true))
       // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
-          [](const std::vector<StackFrame>& self, ssize_t index) {
+          [](const std::vector<FrameSummary>& self, ssize_t index) {
             const size_t eff_index =
                 index < 0 ? self.size() + index : static_cast<size_t>(index);
             if (eff_index > self.size()) {

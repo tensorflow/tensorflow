@@ -44,6 +44,14 @@ class TFStackTest(test.TestCase):
         traceback.format_list(stack),
         traceback.format_list(expected_stack))
 
+  def testFrameSummaryEquality(self):
+    frame0, frame1 = tf_stack.extract_stack(limit=2)
+    self.assertNotEqual(frame0, frame1)
+    self.assertEqual(frame0, frame0)
+
+    another_frame0, _ = tf_stack.extract_stack(limit=2)
+    self.assertEqual(frame0, another_frame0)
+
 
 def extract_stack(limit=None):
   # Both defined on the same line to produce identical stacks.

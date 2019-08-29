@@ -30,15 +30,15 @@ from tensorflow.python.framework import traceable_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
-# A mock for ``tf_stack.StackFrame``.
-StackFrame = collections.namedtuple(
+# A mock for ``tf_stack.FrameSummary``.
+FrameSummary = collections.namedtuple(
     "StackFrame", ["filename", "lineno", "name", "line"])
 
 
 def _make_frame_with_filename(op, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
   frame = op._traceback[idx]
-  return StackFrame(
+  return FrameSummary(
       filename,
       frame.lineno,
       frame.name,
