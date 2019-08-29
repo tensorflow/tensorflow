@@ -37,6 +37,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -277,6 +279,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       acc.watch(c, d)
       with self.assertRaisesRegexp(ValueError, "test_error_string"):
         f(c)
+
+  @parameterized.named_parameters(
+      [("EluM5", -0.5, nn_ops.elu),
+       ("EluP5", [0.5], nn_ops.elu),
+       ("SwishP5", 0.5, nn_impl.swish),
+       ("SwishM5", [-0.5], nn_impl.swish)])
+  def testElementwiseNNOps(self, value, op_fn):
+    _test_gradients(self, op_fn, [constant_op.constant(value)], order=3)
 
   def testPushPopAccumulatorState(self):
     # Note that this example is somewhat contrived. push_forwardprop_state is
