@@ -95,6 +95,16 @@ static llvm::cl::list<std::string>
                  llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
                  llvm::cl::cat(clOptionsCategory));
 
+// CLI variables for debugging.
+static llvm::cl::opt<bool> dumpObjectFile(
+    "dump-object-file",
+    llvm::cl::desc("Dump JITted-compiled object to file specified with "
+                   "-object-filename (<input file>.o by default)."));
+
+static llvm::cl::opt<std::string> objectFilename(
+    "object-filename",
+    llvm::cl::desc("Dump JITted-compiled object to file <input file>.o"));
+
 static OwningModuleRef parseMLIRInput(StringRef inputFilename,
                                       MLIRContext *context) {
   // Set up the input file.
@@ -181,6 +191,11 @@ compileAndExecute(ModuleOp module, StringRef entryPoint,
   auto expectedFPtr = engine->lookup(entryPoint);
   if (!expectedFPtr)
     return expectedFPtr.takeError();
+
+  if (dumpObjectFile)
+    engine->dumpToObjectFile(objectFilename.empty() ? inputFilename + ".o"
+                                                    : objectFilename);
+
   void (*fptr)(void **) = *expectedFPtr;
   (*fptr)(args);
 
