@@ -1283,6 +1283,21 @@ void print(OpAsmPrinter *p, AffineForOp op) {
 }
 
 namespace {
+/// This is a pattern to fold trivially empty loops.
+struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
+  using OpRewritePattern<AffineForOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AffineForOp forOp,
+                                     PatternRewriter &rewriter) const override {
+    // Check that the body only contains a terminator.
+    auto *body = forOp.getBody();
+    if (std::next(body->begin()) != body->end())
+      return matchFailure();
+    rewriter.replaceOp(forOp, llvm::None);
+    return matchSuccess();
+  }
+};
+
 /// This is a pattern to fold constant loop bounds.
 struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
@@ -1343,7 +1358,7 @@ struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.insert<AffineForLoopBoundFolder>(context);
+  results.insert<AffineForEmptyLoopFolder, AffineForLoopBoundFolder>(context);
 }
 
 AffineBound AffineForOp::getLowerBound() {
