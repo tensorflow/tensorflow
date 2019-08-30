@@ -349,7 +349,7 @@ def zip_(*iterables):
 
 
 def _tf_dataset_zip(*iterables):
-  return dataset_ops.DatasetV2.zip(tuple(iterables))
+  return dataset_ops.DatasetV2.zip(iterables)
 
 
 def _py_zip(*iterables):
