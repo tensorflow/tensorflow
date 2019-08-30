@@ -25,6 +25,7 @@ cc_library(
         "fully_connected.cc",
         "logical.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
