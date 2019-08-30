@@ -301,6 +301,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "mul_test",
+    srcs = [
+        "mul_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "arg_min_max_test",
     srcs = [
         "arg_min_max_test.cc",
