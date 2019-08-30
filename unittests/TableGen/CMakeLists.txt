@@ -10,7 +10,7 @@ add_public_tablegen_target(MLIRTableGenStructAttrIncGen)
 
 add_mlir_unittest(MLIRTableGenTests
   EnumsGenTest.cpp
-  StructAttrGenTest.cpp
+  StructsGenTest.cpp
   FormatTest.cpp
 )
 
