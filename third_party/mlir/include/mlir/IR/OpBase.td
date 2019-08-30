@@ -850,12 +850,14 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
-class DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+class DictionaryAttrBase : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
                           "dictionary of named attribute values"> {
   let storageType = [{ DictionaryAttr }];
   let returnType = [{ DictionaryAttr }];
   let convertFromStorage = "$_self";
 }
+
+def DictionaryAttr : DictionaryAttrBase;
 
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
@@ -939,7 +941,7 @@ class StructFieldAttr<string thisName, Attr thisType> {
 // validation method and set of accessors for a fixed set of fields. This is
 // useful when representing data that would normally be in a structure.
 class StructAttr<string name, Dialect dialect,
-                 list<StructFieldAttr> attributes> : DictionaryAttr {
+                 list<StructFieldAttr> attributes> : DictionaryAttrBase {
   // Name for this StructAttr.
   string className = name;
 
