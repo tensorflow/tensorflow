@@ -27,9 +27,11 @@ namespace mlir {
 class AffineForOp;
 class AffineMap;
 class FuncOp;
-class FunctionPassBase;
 class Operation;
 class Value;
+
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 } // namespace mlir
 
 namespace linalg {

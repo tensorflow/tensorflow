@@ -27,7 +27,9 @@
 #include <limits>
 
 namespace mlir {
-class ModulePassBase;
+class ModuleOp;
+template <typename T> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 } // namespace mlir
 
 namespace linalg {

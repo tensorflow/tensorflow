@@ -27,13 +27,16 @@ namespace mlir {
 
 class FuncOp;
 class Location;
-class ModulePassBase;
+class ModuleOp;
 class OpBuilder;
 class Value;
 
 namespace LLVM {
 class LLVMDialect;
 }
+
+template <typename T> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;

@@ -33,7 +33,8 @@ class LLVMTypeConverter;
 struct LogicalResult;
 class MLIRContext;
 class ModuleOp;
-class ModulePassBase;
+template <typename T> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 class RewritePattern;
 class Type;
 

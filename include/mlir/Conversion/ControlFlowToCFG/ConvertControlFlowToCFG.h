@@ -23,9 +23,10 @@
 
 namespace mlir {
 class FuncOp;
-class FunctionPassBase;
 struct LogicalResult;
 class MLIRContext;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 class RewritePattern;
 
 // Owning list of rewriting patterns.
