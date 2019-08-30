@@ -1,13 +1,5 @@
 op {
   graph_op_name: "Acos"
   summary: "Computes acos of x element-wise."
-  description : <<END
+  }
 
-  Given an input tensor, the function computes and returns the inverse cosine of each element of the tensor.
-  Input range is `[-1,1]` and output range is `[0,3.14159265]`
-  
-  ```python
-  x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2] , dtype = tf.float32)
-  tf.math.acos(x) ==> [0.  2.0943952  nan  1.3694384  1.5707964  nan]
-  ```
-}
