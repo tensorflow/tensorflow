@@ -414,3 +414,13 @@ func @constant_fold_bounds(%N : index) {
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL:  func @fold_empty_loop() {
+func @fold_empty_loop() {
+  // CHECK-NOT: affine.for
+  affine.for %i = 0 to 10 {
+  }
+  return
+}

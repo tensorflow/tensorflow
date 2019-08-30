@@ -228,12 +228,6 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
   }
 
   LLVM_DEBUG(forOp.getOperation()->print(llvm::dbgs() << "Modified loop\n"));
-
-  // If the for loop body has a single operation (the terminator), erase it.
-  if (forOp.getBody()->getOperations().size() == 1) {
-    assert(isa<AffineTerminatorOp>(forOp.getBody()->front()));
-    forOp.erase();
-  }
 }
 
 void LoopInvariantCodeMotion::runOnFunction() {
