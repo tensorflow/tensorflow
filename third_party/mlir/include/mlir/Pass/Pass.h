@@ -18,6 +18,7 @@
 #ifndef MLIR_PASS_PASS_H
 #define MLIR_PASS_PASS_H
 
+#include "mlir/IR/Function.h"
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
@@ -68,9 +69,8 @@ class ModulePassExecutor;
 
 /// The state for a single execution of a pass. This provides a unified
 /// interface for accessing and initializing necessary state for pass execution.
-template <typename IRUnitT, typename AnalysisManagerT>
-struct PassExecutionState {
-  PassExecutionState(IRUnitT ir, AnalysisManagerT &analysisManager)
+template <typename IRUnitT> struct PassExecutionState {
+  PassExecutionState(IRUnitT ir, AnalysisManager analysisManager)
       : irAndPassFailed(ir, false), analysisManager(analysisManager) {}
 
   /// The current IR unit being transformed and a bool for if the pass signaled
@@ -78,7 +78,7 @@ struct PassExecutionState {
   llvm::PointerIntPair<IRUnitT, 1, bool> irAndPassFailed;
 
   /// The analysis manager for the IR unit.
-  AnalysisManagerT &analysisManager;
+  AnalysisManager analysisManager;
 
   /// The set of preserved analyses for the current execution.
   detail::PreservedAnalyses preservedAnalyses;
@@ -89,8 +89,7 @@ struct PassExecutionState {
 /// not inherit from this class directly, and instead should use the CRTP
 /// FunctionPass class.
 class FunctionPassBase : public Pass {
-  using PassStateT =
-      detail::PassExecutionState<FuncOp, FunctionAnalysisManager>;
+  using PassStateT = detail::PassExecutionState<FuncOp>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -119,14 +118,14 @@ protected:
   }
 
   /// Returns the current analysis manager.
-  FunctionAnalysisManager &getAnalysisManager() {
+  AnalysisManager getAnalysisManager() {
     return getPassState().analysisManager;
   }
 
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(FuncOp fn, FunctionAnalysisManager &fam);
+  LogicalResult run(FuncOp fn, AnalysisManager am);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -138,8 +137,7 @@ private:
 /// Pass to transform a module. Derived passes should not inherit from this
 /// class directly, and instead should use the CRTP ModulePass class.
 class ModulePassBase : public Pass {
-  using PassStateT =
-      detail::PassExecutionState<ModuleOp, ModuleAnalysisManager>;
+  using PassStateT = detail::PassExecutionState<ModuleOp>;
 
 public:
   static bool classof(const Pass *pass) {
@@ -165,14 +163,14 @@ protected:
   }
 
   /// Returns the current analysis manager.
-  ModuleAnalysisManager &getAnalysisManager() {
+  AnalysisManager getAnalysisManager() {
     return getPassState().analysisManager;
   }
 
 private:
   /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  LogicalResult run(ModuleOp module, ModuleAnalysisManager &mam);
+  LogicalResult run(ModuleOp module, AnalysisManager am);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -255,7 +253,8 @@ struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedModuleAnalysis() {
     return this->getAnalysisManager()
-        .template getCachedModuleAnalysis<AnalysisT>();
+        .template getCachedParentAnalysis<AnalysisT>(
+            this->getFunction().getParentOp());
   }
 
   /// A clone method to create a copy of this pass.
@@ -272,8 +271,7 @@ template <typename T>
 struct ModulePass : public detail::PassModel<ModuleOp, T, ModulePassBase> {
   /// Returns the analysis for a child function.
   template <typename AnalysisT> AnalysisT &getFunctionAnalysis(FuncOp f) {
-    return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(
-        f);
+    return this->getAnalysisManager().template getChildAnalysis<AnalysisT>(f);
   }
 
   /// Returns an existing analysis for a child function if it exists.
@@ -281,7 +279,7 @@ struct ModulePass : public detail::PassModel<ModuleOp, T, ModulePassBase> {
   llvm::Optional<std::reference_wrapper<AnalysisT>>
   getCachedFunctionAnalysis(FuncOp f) {
     return this->getAnalysisManager()
-        .template getCachedFunctionAnalysis<AnalysisT>(f);
+        .template getCachedChildAnalysis<AnalysisT>(f);
   }
 };
 } // end namespace mlir

@@ -5934,6 +5934,13 @@ op {
     type: "int"
     has_minimum: true
   }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
   is_stateful: true
 }
 op {
@@ -6151,7 +6158,7 @@ op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -6174,7 +6181,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "beam_width"
@@ -6195,12 +6202,25 @@ op {
       b: true
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCGreedyDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -6220,7 +6240,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "merge_repeated"
@@ -6229,12 +6249,25 @@ op {
       b: false
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCLoss"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "labels_indices"
@@ -6250,11 +6283,11 @@ op {
   }
   output_arg {
     name: "loss"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "gradient"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "preprocess_collapse_repeated"
@@ -6275,6 +6308,19 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
     }
   }
 }
@@ -10132,6 +10178,13 @@ op {
       }
     }
     has_minimum: true
+  }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -26440,6 +26493,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
@@ -26494,6 +26554,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
@@ -45244,6 +45311,13 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

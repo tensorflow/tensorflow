@@ -28,9 +28,12 @@ namespace {
 std::string GetAveragePoolingKernelCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+
+  const auto address_mode = GetFastestZeroMode(device);
 
   std::string code = GetCommonDefines(precision);
 
@@ -58,10 +61,12 @@ std::string GetAveragePoolingKernelCode(
   code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     code += "     r += !outside ? " +
-            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") +
+            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
+                                     TextureAddressMode::DONT_CARE) +
             " : (float4)(0.0f);\n";
   } else {
-    code += "      r += " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") + ";\n";
+    code += "      r += " +
+            src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
   }
   code += "        window_size += !outside ? 1.0 : 0.0;\n";
   code += "    }\n";
@@ -107,8 +112,8 @@ std::string GetMaxPoolingKernelCode(
   code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
   code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
-    code += "  int4 indexes = (int4)(0);\n";
-    code += "  int index_counter = 0;\n";
+    code += "  FLT4 indexes = (FLT4)(0.0f);\n";
+    code += "  FLT index_counter = (FLT)(0.1f);\n";
   }
   code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
   code += "    int y_c = Y * stride.y - padding.y + ky;\n";
@@ -117,7 +122,9 @@ std::string GetMaxPoolingKernelCode(
   code += "      int x_c = X * stride.x - padding.x + kx;\n";
   code += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
   code += "      if (!outside_x && !outside_y) {\n";
-  code += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
+  code += "        FLT4 src = " +
+          src_tensor.Read3D("x_c", "y_c", "Z", TextureAddressMode::DONT_CARE) +
+          ";\n";
   if (output_indices) {
     code += "        if (src.x > maximum.x) {\n";
     code += "          indexes.x = index_counter;\n";
@@ -135,7 +142,7 @@ std::string GetMaxPoolingKernelCode(
     code += "          indexes.w = index_counter;\n";
     code += "          maximum.w = src.w;\n";
     code += "        }\n";
-    code += "      index_counter++;\n";
+    code += "        index_counter += (FLT)(1.0f);\n";
   }
   code += "        maximum = max(src, maximum);\n";
   code += "      };\n";
@@ -145,8 +152,7 @@ std::string GetMaxPoolingKernelCode(
   code += PostProcess(linked_operations, "maximum", "Z", "address");
   code += "  " + dst_tensor.Write3D("maximum", "address");
   if (output_indices) {
-    code += "  FLT4 result_value = TO_FLT4(indexes) + (FLT4)(0.1);\n";
-    code += "  " + indices_tensor.Write3D("result_value", "address");
+    code += "  " + indices_tensor.Write3D("indexes", "address");
   }
   code += "}\n";
 
@@ -194,7 +200,7 @@ Status Pooling::Compile(const CreationContext& creation_context) {
     case PoolingType::AVERAGE:
       code = GetAveragePoolingKernelCode(
           definition_.src_tensors[0], definition_.dst_tensors[0],
-          definition_.precision, linked_operations_);
+          definition_.precision, *creation_context.device, linked_operations_);
       break;
     case PoolingType::MAX:
       code = GetMaxPoolingKernelCode(

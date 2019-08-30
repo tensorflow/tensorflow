@@ -46,12 +46,14 @@ class PythonErrorReporter;
 class InterpreterWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path,
-                                                      std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(
+      const char* model_path, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromBuffer(PyObject* data,
-                                                        std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors();
@@ -84,7 +86,7 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateInterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
-      std::string* error_msg);
+      const std::vector<std::string>& registerers, std::string* error_msg);
 
   InterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,

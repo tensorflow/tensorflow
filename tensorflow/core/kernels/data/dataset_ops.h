@@ -24,14 +24,14 @@ namespace data {
 
 class DatasetToGraphOp : public OpKernel {
  public:
-  static constexpr const char* const kStatefulWhitelist = "stateful_whitelist";
+  static constexpr const char* const kAllowStateful = "allow_stateful";
 
   explicit DatasetToGraphOp(OpKernelConstruction* ctx);
 
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  std::vector<string> whitelisted_stateful_ops_;
+  bool allow_stateful_ops_ = false;
 };
 
 class DatasetCardinalityOp : public OpKernel {

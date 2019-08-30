@@ -163,7 +163,7 @@ TEST(BufferedInputStream, ReadNBytes) {
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
-    string read;
+    tstring read;
     BufferedInputStream in(input_stream.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(3, &read));
@@ -200,7 +200,7 @@ TEST(BufferedInputStream, SkipNBytes) {
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
-    string read;
+    tstring read;
     BufferedInputStream in(input_stream.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_ASSERT_OK(in.SkipNBytes(3));
@@ -235,7 +235,7 @@ TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
-    string read;
+    tstring read;
     BufferedInputStream in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(3, &read));
@@ -270,7 +270,7 @@ TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
-    string read;
+    tstring read;
     BufferedInputStream in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_ASSERT_OK(in.SkipNBytes(3));
@@ -307,7 +307,7 @@ TEST(BufferedInputStream, Seek) {
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
-    string read;
+    tstring read;
     BufferedInputStream in(input_stream.get(), buf_size);
 
     // Seek forward
@@ -378,7 +378,7 @@ void BM_BufferedReaderSmallReads(const int iters, const int buff_size,
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
-  string result;
+  tstring result;
   testing::StartTiming();
 
   for (int itr = 0; itr < iters; ++itr) {

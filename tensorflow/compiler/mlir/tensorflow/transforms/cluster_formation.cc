@@ -220,8 +220,8 @@ void ClusterFormationPass::runOnFunction() {
 
 }  // namespace
 
-FunctionPassBase* CreateClusterFormationPass() {
-  return new ClusterFormationPass();
+std::unique_ptr<FunctionPassBase> CreateClusterFormationPass() {
+  return std::make_unique<ClusterFormationPass>();
 }
 
 static PassRegistration<ClusterFormationPass> pass(

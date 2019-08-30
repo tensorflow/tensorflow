@@ -37,7 +37,7 @@ class TensorResponse;
 class WorkerInterface {
  public:
   virtual void GetStatusAsync(const GetStatusRequest* request,
-                              GetStatusResponse* response,
+                              GetStatusResponse* response, bool fail_fast,
                               StatusCallback done) = 0;
 
   virtual void CreateWorkerSessionAsync(
@@ -131,7 +131,15 @@ class WorkerInterface {
 
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
-    return CallAndWait(&ME::GetStatusAsync, request, response);
+    Status ret;
+    Notification n;
+    GetStatusAsync(request, response, /*fail_fast=*/true,
+                   [&ret, &n](const Status& s) {
+                     ret = s;
+                     n.Notify();
+                   });
+    n.WaitForNotification();
+    return ret;
   }
 
   Status CreateWorkerSession(const CreateWorkerSessionRequest* request,

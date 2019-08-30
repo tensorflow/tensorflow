@@ -58,7 +58,7 @@ def _get_or_make_execution_function(model, mode):
 
 def _make_execution_function(model, mode):
   """Creates a function to run one step of distributed model execution."""
-  per_replica_function = _make_replica_execution_function(mode)
+  per_replica_function = _make_replica_execution_function(model, mode)
 
   def distributed_function(input_iterator):
     """A single step of the distributed execution across replicas."""
@@ -70,7 +70,7 @@ def _make_execution_function(model, mode):
     # are PerReplicas too.
     strategy = distribution_strategy_context.get_strategy()
     outputs = strategy.experimental_run_v2(
-        per_replica_function, args=(model, x, y, sample_weights))
+        per_replica_function, args=(x, y, sample_weights))
     # Out of PerReplica outputs reduce or pick values to return.
     all_outputs = dist_utils.unwrap_output_dict(
         strategy, outputs, mode)
@@ -150,14 +150,14 @@ def _get_input_from_iterator(iterator):
   return x, y, sample_weights
 
 
-def _make_replica_execution_function(mode):
+def _make_replica_execution_function(model, mode):
   """A single step of the distributed execution on a replica."""
   if mode == ModeKeys.TRAIN:
-    func = train_on_batch
+    func = functools.partial(train_on_batch, model)
   elif mode == ModeKeys.TEST:
-    func = test_on_batch
+    func = functools.partial(test_on_batch, model)
   else:
-    def _predict_on_batch(model, x, y=None, sample_weights=None):
+    def _predict_on_batch(x, y=None, sample_weights=None):
       del y, sample_weights
       return predict_on_batch(model, x)
 

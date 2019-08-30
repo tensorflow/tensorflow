@@ -36,16 +36,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+class AsyncEagerNode;
+
 // A unit of execution for the EagerExecutor class below. Example subclasses
 // encapsulate execution of a TFE_Op, or copying a TFE_TensorHandle from one
 // device to another.
 class EagerNode {
  public:
   EagerNode() {}
-  // Nodes should not do any work in their destructor. This is because if the
-  // node is being destructed by the EagerExecutor, then the node queue lock may
-  // be held. Instead opt for calling clean-up code as part of Run() or Abort(),
-  // since one of those are guaranteed to be run.
+
   virtual ~EagerNode() {}
 
   // Runs the computation corresponding to this node and blocks till the
@@ -57,6 +56,29 @@ class EagerNode {
   // For example, if the node would have computed some tensors in the Run(),
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
+
+  // Returns nullptr iff this Eager node is synchronous.
+  virtual AsyncEagerNode* AsAsync() { return nullptr; }
+
+  virtual string DebugString() const = 0;
+};
+
+class AsyncEagerNode : public EagerNode {
+ public:
+  using EagerNode::EagerNode;  // Lift EagerNode constructors.
+
+  // This node will be cleaned up once the done callback is called.
+  virtual void RunAsync(StatusCallback done) = 0;
+
+  AsyncEagerNode* AsAsync() final { return this; }
+
+  // This is non-blocking. It returns the scheduling status.
+  // TODO(fishx): avoid calling this AsyncEagerNode::Run.
+  Status Run() final {
+    std::shared_ptr<Status> status(new Status);
+    RunAsync([status](const Status& s) { status->Update(s); });
+    return *status;
+  }
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -119,6 +141,8 @@ class EagerExecutor {
 
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
+  void NodeDone(EagerNode* node, const Status& status);
+
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
@@ -131,12 +155,12 @@ class EagerExecutor {
       EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // If async has been enabled on this executor, just calls
-  // WaitForAllPendingNodes. Else:
-  //  - Aborts and destroys all pending nodes
-  //  - sets the status_ to an error if it does not already contain one
-  // `lock` is the lock that holds node_queue_mutex_.
+  // WaitForAllPendingNodes. Else sets the status_ to an error if it does not
+  // already contain one `lock` is the lock that holds node_queue_mutex_.
   // Precondition: state_ != kActive.
-  void WaitForOrDestroyAllPendingNodes(mutex_lock* lock)
+  void WaitForOrDestroyAllPendingNodes(
+      mutex_lock* lock,
+      std::vector<std::unique_ptr<EagerNode>>* nodes_to_destroy)
       EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
@@ -148,6 +172,10 @@ class EagerExecutor {
 
   // Queue of pending EagerNodes.
   std::queue<std::unique_ptr<EagerNode>> node_queue_
+      GUARDED_BY(node_queue_mutex_);
+
+  // Owned the EagerNode in it.
+  std::unordered_set<EagerNode*> unfinished_nodes_
       GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a

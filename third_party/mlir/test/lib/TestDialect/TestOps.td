@@ -46,6 +46,17 @@ def NestedTupleOp : TEST_Op<"nested_tuple_32_bit"> {
   let results = (outs NestedTupleOf<[I32, F32]>);
 }
 
+def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
+  let arguments = (ins AnyStaticShapeMemRef:$x);
+}
+
+def I32TensorRank0Or1Op : TEST_Op<"i32_tensor_rank_0_or_1"> {
+  let arguments = (ins
+    Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0, 1]>]>,
+         "tensor<i32> or tensor<?xi32>">:$arg0
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Test Operands
 //===----------------------------------------------------------------------===//
@@ -83,6 +94,13 @@ def NonNegIntAttrOp : TEST_Op<"non_negative_int_attr"> {
   );
 }
 
+def PositiveIntAttrOp : TEST_Op<"positive_int_attr"> {
+  let arguments = (ins
+      PositiveI32Attr:$i32attr,
+      PositiveI64Attr:$i64attr
+  );
+}
+
 def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
   let arguments = (ins TypeArrayAttr:$attr);
 }
@@ -91,8 +109,9 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let printer = [{ *p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
-    Type stringType = OpaqueType::get(Identifier::get("foo", result->context),
-                                      "string", result->context);
+    Type stringType = OpaqueType::get(Identifier::get("foo",
+                                      result->getContext()), "string",
+                                      result->getContext());
     return parser->parseAttribute(attr, stringType, "attr", result->attributes);
   }];
 }
@@ -146,8 +165,19 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 // Test Traits
 //===----------------------------------------------------------------------===//
 
+def SameOperandElementTypeOp : TEST_Op<"same_operand_type",
+    [SameOperandsElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
 def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
     [SameOperandsAndResultElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
+def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
   let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
   let results = (outs AnyVectorOrTensor:$res);
 }
@@ -218,6 +248,10 @@ def TerminatorOp : TEST_Op<"finish", [Terminator]> {
 def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
     [SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let regions = (region SizedRegion<1>:$region);
+}
+
+def I32ElementsAttributesOp : TEST_Op<"i32ElementsAttr"> {
+  let arguments = (ins I32ElementsAttr:$attr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -316,9 +350,23 @@ def : Pat<(OpAllAttrConstraint1
           (OpAllAttrConstraint2 $attr)>;
 
 // Op for testing RewritePattern removing op with inner ops.
-def TestOpWithRegion : TEST_Op<"op_with_region"> {
+def TestOpWithRegionPattern : TEST_Op<"op_with_region_pattern"> {
   let regions = (region SizedRegion<1>:$region);
   let hasCanonicalizer = 1;
+}
+
+// Op for testing trivial removal via folding of op with inner ops and no uses.
+def TestOpWithRegionFoldNoSideEffect : TEST_Op<
+    "op_with_region_fold_no_side_effect", [NoSideEffect]> {
+  let regions = (region SizedRegion<1>:$region);
+}
+
+// Op for testing folding of outer op with inner ops.
+def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
+  let arguments = (ins I32:$operand);
+  let results = (outs I32:$result);
+  let regions = (region SizedRegion<1>:$region);
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -506,6 +554,116 @@ def : Pattern<
     ]>;
 
 //===----------------------------------------------------------------------===//
+// Test Patterns (Variadic Ops)
+
+def OneVResOneVOperandOp1 : TEST_Op<"one_variadic_out_one_variadic_in1"> {
+  let arguments = (ins Variadic<I32>:$inputs);
+  let results = (outs Variadic<I32>:$outputs);
+}
+def OneVResOneVOperandOp2 : TEST_Op<"one_variadic_out_one_variadic_in2"> {
+  let arguments = (ins Variadic<I32>:$inputs);
+  let results = (outs Variadic<I32>:$outputs);
+}
+
+// Rewrite an op with one variadic operand and one variadic result to
+// another similiar op.
+def : Pat<(OneVResOneVOperandOp1 $inputs), (OneVResOneVOperandOp2 $inputs)>;
+
+def MixedVOperandOp1 : TEST_Op<"mixed_variadic_in1",
+                               [SameVariadicOperandSize]> {
+  let arguments = (ins
+    Variadic<I32>:$input1,
+    F32:$input2,
+    Variadic<I32>:$input3
+  );
+}
+
+def MixedVOperandOp2 : TEST_Op<"mixed_variadic_in2",
+                               [SameVariadicOperandSize]> {
+  let arguments = (ins
+    Variadic<I32>:$input1,
+    F32:$input2,
+    Variadic<I32>:$input3
+  );
+}
+
+// Rewrite an op with both variadic operands and normal operands.
+def : Pat<(MixedVOperandOp1 $input1, $input2, $input3),
+          (MixedVOperandOp2 $input1, $input2, $input3)>;
+
+def MixedVResultOp1 : TEST_Op<"mixed_variadic_out1", [SameVariadicResultSize]> {
+  let results = (outs
+    Variadic<I32>:$output1,
+    F32:$output2,
+    Variadic<I32>:$output3
+  );
+}
+
+def MixedVResultOp2 : TEST_Op<"mixed_variadic_out2", [SameVariadicResultSize]> {
+  let results = (outs
+    Variadic<I32>:$output1,
+    F32:$output2,
+    Variadic<I32>:$output3
+  );
+}
+
+// Rewrite an op with both variadic results and normal results.
+// Note that because we are generating the op with a top-level result pattern,
+// we are able to deduce the correct result types for the generated op using
+// the information from the matched root op.
+def : Pat<(MixedVResultOp1), (MixedVResultOp2)>;
+
+def OneI32ResultOp : TEST_Op<"one_i32_out"> {
+  let results = (outs I32:$output);
+}
+
+def MixedVOperandOp3 : TEST_Op<"mixed_variadic_in3",
+                               [SameVariadicOperandSize]> {
+  let arguments = (ins
+    I32:$input1,
+    Variadic<I32>:$input2,
+    Variadic<I32>:$input3,
+    I32Attr:$count
+  );
+
+  let results = (outs I32:$output);
+}
+
+def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
+                               [SameVariadicResultSize]> {
+  let arguments = (ins I32Attr:$count);
+
+  let results = (outs
+    I32:$output1,
+    Variadic<I32>:$output2,
+    Variadic<I32>:$output3
+  );
+
+  // We will use this op in a nested result pattern, where we cannot deduce the
+  // result type. So need to provide a builder not requiring result types.
+  let builders = [
+    OpBuilder<
+      "Builder *builder, OperationState *state, IntegerAttr count",
+      [{
+        auto i32Type = builder->getIntegerType(32);
+        state->addTypes(i32Type); // $ouput1
+        SmallVector<Type, 4> types(count.getInt(), i32Type);
+        state->addTypes(types); // $ouput2
+        state->addTypes(types); // $ouput3
+        state->addAttribute("count", count);
+      }]>
+  ];
+}
+
+// Generates an op with variadic results using nested pattern.
+def : Pat<(OneI32ResultOp),
+          (MixedVOperandOp3
+              (MixedVResultOp3:$results__0 ConstantAttr<I32Attr, "2">),
+              (replaceWithValue $results__1),
+              (replaceWithValue $results__2),
+              ConstantAttr<I32Attr, "2">)>;
+
+//===----------------------------------------------------------------------===//
 // Test Legalization
 //===----------------------------------------------------------------------===//
 
@@ -561,6 +719,19 @@ def TestValidOp : TEST_Op<"valid", [Terminator]>,
 //===----------------------------------------------------------------------===//
 // Test region argument list parsing.
 //===----------------------------------------------------------------------===//
+
+def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
+  let summary =  "isolated region operation";
+  let description = [{
+    Test op with an isolated region, to test passthrough region arguments. Each
+    argument is of index type.
+  }];
+
+  let arguments = (ins Index:$input);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
 
 def PolyForOp : TEST_Op<"polyfor">
 {

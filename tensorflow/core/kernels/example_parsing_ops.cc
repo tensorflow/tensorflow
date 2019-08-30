@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -132,10 +132,10 @@ class ParseExampleOp : public OpKernel {
       config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
     }
 
-    auto serialized_t = serialized->flat<string>();
-    auto names_t = names->flat<string>();
-    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
-    gtl::ArraySlice<string> names_slice(names_t.data(), names_t.size());
+    auto serialized_t = serialized->flat<tstring>();
+    auto names_t = names->flat<tstring>();
+    gtl::ArraySlice<tstring> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<tstring> names_slice(names_t.data(), names_t.size());
 
     OP_REQUIRES_OK(
         ctx,
@@ -352,11 +352,11 @@ class ParseSequenceExampleOp : public OpKernel {
            attrs_.feature_list_sparse_types[d]});
     }
 
-    auto serialized_t = serialized->flat<string>();
-    auto debug_name_t = debug_name->flat<string>();
-    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
-    gtl::ArraySlice<string> names_slice(debug_name_t.data(),
-                                        debug_name_t.size());
+    auto serialized_t = serialized->flat<tstring>();
+    auto debug_name_t = debug_name->flat<tstring>();
+    gtl::ArraySlice<tstring> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<tstring> names_slice(debug_name_t.data(),
+                                         debug_name_t.size());
 
     OP_REQUIRES_OK(
         ctx,
@@ -646,7 +646,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
             errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
                                     ".  Data types don't match. ",
                                     "Expected type: ", DataTypeString(dtype),
-                                    "  Feature is: ", ProtoDebugString(f)));
+                                    "  Feature is: ", f.DebugString()));
 
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(0, name, key, dtype, shape, f,
                                              context_dense_values[d]));
@@ -675,7 +675,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
             errors::InvalidArgument("Name: ", name, ", Context feature: ", key,
                                     ".  Data types don't match. ",
                                     "Expected type: ", DataTypeString(dtype),
-                                    "  Feature is: ", ProtoDebugString(f)));
+                                    "  Feature is: ", f.DebugString()));
 
         Tensor feature_values = FeatureSparseCopy(0, key, dtype, f);
         const int64 num_elements = feature_values.NumElements();
@@ -756,7 +756,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                         "Name: ", name, ", Feature list: ", key, ", Index: ", t,
                         ".  Data types don't match. ",
                         "Expected type: ", DataTypeString(dtype),
-                        "  Feature is: ", ProtoDebugString(f)));
+                        "  Feature is: ", f.DebugString()));
         OP_REQUIRES_OK(ctx, FeatureDenseCopy(t, name, key, dtype, shape, f,
                                              feature_list_dense_values[d]));
       }
@@ -786,7 +786,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                                       ", Index: ", t,
                                       ".  Data types don't match. ",
                                       "Expected type: ", DataTypeString(dtype),
-                                      "  Feature is: ", ProtoDebugString(f)));
+                                      "  Feature is: ", f.DebugString()));
           sparse_values_tmp.push_back(FeatureSparseCopy(t, key, dtype, f));
         }
       } else {
@@ -853,10 +853,12 @@ class DecodeJSONExampleOp : public OpKernel {
                                   &binary_examples));
 
     for (int i = 0; i < json_examples->NumElements(); ++i) {
-      const string& json_example = json_examples->flat<string>()(i);
-      auto status = protobuf::util::JsonToBinaryString(
-          resolver_.get(), "type.googleapis.com/tensorflow.Example",
-          json_example, &binary_examples->flat<string>()(i));
+      const tstring& json_example = json_examples->flat<tstring>()(i);
+      protobuf::io::ArrayInputStream in(json_example.data(),
+                                        json_example.size());
+      TStringOutputStream out(&binary_examples->flat<tstring>()(i));
+      auto status = protobuf::util::JsonToBinaryStream(
+          resolver_.get(), "type.googleapis.com/tensorflow.Example", &in, &out);
       OP_REQUIRES(ctx, status.ok(),
                   errors::InvalidArgument("Error while parsing JSON: ",
                                           string(status.error_message())));

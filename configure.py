@@ -1145,78 +1145,6 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
-def set_mpi_home(environ_cp):
-  """Set MPI_HOME."""
-
-  default_mpi_home = which('mpirun') or which('mpiexec') or ''
-  default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
-
-  def valid_mpi_path(mpi_home):
-    exists = (
-        os.path.exists(os.path.join(mpi_home, 'include')) and
-        (os.path.exists(os.path.join(mpi_home, 'lib')) or
-         os.path.exists(os.path.join(mpi_home, 'lib64')) or
-         os.path.exists(os.path.join(mpi_home, 'lib32'))))
-    if not exists:
-      print(
-          'Invalid path to the MPI Toolkit. %s or %s or %s or %s cannot be found'
-          % (os.path.join(mpi_home, 'include'),
-             os.path.exists(os.path.join(mpi_home, 'lib')),
-             os.path.exists(os.path.join(mpi_home, 'lib64')),
-             os.path.exists(os.path.join(mpi_home, 'lib32'))))
-    return exists
-
-  _ = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='MPI_HOME',
-      var_default=default_mpi_home,
-      ask_for_var='Please specify the MPI toolkit folder.',
-      check_success=valid_mpi_path,
-      error_msg='',
-      suppress_default_error=True)
-
-
-def set_other_mpi_vars(environ_cp):
-  """Set other MPI related variables."""
-  # Link the MPI header files
-  mpi_home = environ_cp.get('MPI_HOME')
-  symlink_force('%s/include/mpi.h' % mpi_home, 'third_party/mpi/mpi.h')
-
-  # Determine if we use OpenMPI or MVAPICH, these require different header files
-  # to be included here to make bazel dependency checker happy
-  if os.path.exists(os.path.join(mpi_home, 'include/mpi_portable_platform.h')):
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpi_portable_platform.h'),
-        'third_party/mpi/mpi_portable_platform.h')
-    # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI = False',
-                 'MPI_LIB_IS_OPENMPI = True')
-  else:
-    # MVAPICH / MPICH
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpio.h'), 'third_party/mpi/mpio.h')
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpicxx.h'), 'third_party/mpi/mpicxx.h')
-    # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI = True',
-                 'MPI_LIB_IS_OPENMPI = False')
-
-  if os.path.exists(os.path.join(mpi_home, 'lib/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib/libmpi.so'), 'third_party/mpi/libmpi.so')
-  elif os.path.exists(os.path.join(mpi_home, 'lib64/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib64/libmpi.so'), 'third_party/mpi/libmpi.so')
-  elif os.path.exists(os.path.join(mpi_home, 'lib32/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib32/libmpi.so'), 'third_party/mpi/libmpi.so')
-
-  else:
-    raise ValueError(
-        'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
-        (mpi_home, mpi_home, mpi_home))
-
-
 def system_specific_test_config(env):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
@@ -1549,11 +1477,6 @@ def main():
     raise UserInputError('SYCL / CUDA / ROCm are mututally exclusive. '
                          'At most 1 GPU platform can be configured.')
 
-  set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
-  if environ_cp.get('TF_NEED_MPI') == '1':
-    set_mpi_home(environ_cp)
-    set_other_mpi_vars(environ_cp)
-
   set_cc_opt_flags(environ_cp)
   set_system_libs_flag(environ_cp)
   if is_windows():
@@ -1581,7 +1504,6 @@ def main():
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('gdr', 'Build with GDR support.')
-  config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(

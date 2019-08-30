@@ -40,8 +40,10 @@ class MultiplyAdd : public ElementwiseOperation {
   MultiplyAdd(const MultiplyAdd&) = delete;
   MultiplyAdd& operator=(const MultiplyAdd&) = delete;
 
-  Status UploadMul(const MultiplyScalarAttributes& attr, CLContext* context);
-  Status UploadAdd(const AddAttributes& attr, CLContext* context);
+  Status UploadMul(const MultiplyScalarAttributes& attr,
+                   CalculationsPrecision scalar_precision, CLContext* context);
+  Status UploadAdd(const AddAttributes& attr,
+                   CalculationsPrecision scalar_precision, CLContext* context);
 
   template <DataType T>
   Status UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,

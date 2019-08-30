@@ -37,7 +37,25 @@ struct StackFrame {
   int lineno;
   py::str name;
   py::object globals;
-  int func_start_lineno;
+
+  py::object line() const {
+    static const auto* linecache =
+        new py::module(py::module::import("linecache"));
+    const auto& checkcache = linecache->attr("checkcache");
+    const auto& getline = linecache->attr("getline");
+    checkcache(filename);
+    const auto& code =
+        py::cast<py::str>(getline(filename, lineno, globals).attr("strip")());
+    ssize_t size = 0;
+#if PY_MAJOR_VERSION == 3
+    if (PyUnicode_AsUTF8AndSize(code.ptr(), &size) == nullptr) {
+      throw py::error_already_set();
+    }
+#else
+    size = PyString_Size(code.ptr());
+#endif
+    return size > 0 ? static_cast<py::object>(code) : py::none();
+  }
 };
 
 std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
@@ -59,7 +77,7 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
   // 16 is somewhat arbitrary, but TensorFlow stack traces tend to be deep.
   ret.reserve(limit < 0 ? 16 : static_cast<size_t>(limit));
   for (; f != nullptr && (limit < 0 || ret.size() < limit); f = f->f_back) {
-    PyCodeObject* co = f->f_code;
+    const PyCodeObject* co = f->f_code;
     int lineno = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(f));
     auto filename = py::reinterpret_borrow<py::str>(co->co_filename);
     auto name = py::reinterpret_borrow<py::str>(co->co_name);
@@ -75,16 +93,14 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
       }
     }
 
-    // Never filter the innermost frame.
-    // TODO(slebedev): upstream py::set::contains to pybind11.
-    if (!ret.empty() &&
-        PySet_Contains(filtered_filenames.ptr(), filename.ptr()))
+    if (!ret.empty() &&  // Never filter the innermost frame.
+        filtered_filenames.size() > 0 &&
+        PySet_Contains(filtered_filenames.ptr(), filename.ptr())) {
       continue;
+    }
 
     const auto& globals = py::reinterpret_borrow<py::object>(f->f_globals);
-    const int func_start_lineno = co->co_firstlineno;
-    ret.push_back({std::move(filename), lineno, std::move(name), globals,
-                   func_start_lineno});
+    ret.push_back({std::move(filename), lineno, std::move(name), globals});
   }
 
   std::reverse(ret.begin(), ret.end());
@@ -94,25 +110,42 @@ std::vector<StackFrame> ExtractStack(ssize_t limit, const py::list& mappers,
 }  // namespace
 
 PYBIND11_MODULE(_tf_stack, m) {
-  // TODO(slebedev): consider dropping convert_stack in favor of
-  // a lazily initialized StackFrame.code property (using linecache).
+  // TODO(slebedev): rename to FrameSummary to match Python 3.5+.
   py::class_<StackFrame>(m, "StackFrame")
-      .def(py::init<const py::str&, int, const py::str&, const py::object&,
-                    int>())
       .def_readonly("filename", &StackFrame::filename)
       .def_readonly("lineno", &StackFrame::lineno)
       .def_readonly("name", &StackFrame::name)
-      .def_readonly("globals", &StackFrame::globals)
-      .def_readonly("func_start_lineno", &StackFrame::func_start_lineno)
-      .def("__repr__", [](const StackFrame& self) {
-        return py::str(
-                   "StackFrame(filename={}, lineno={}, name={}, globals={}, "
-                   "func_start_lineno={})")
-            .format(self.filename, self.lineno, self.name, self.globals,
-                    self.func_start_lineno);
+      .def_property_readonly("line", &StackFrame::line)
+      .def("__repr__",
+           [](const StackFrame& self) {
+             return py::str("<StackFrame file {}, line {} in {}>")
+                 .format(self.filename, self.lineno, self.name);
+           })
+
+      // For compatibility with the traceback module.
+      .def("__getitem__",
+           [](const StackFrame& self, const py::object& index) -> py::object {
+             return py::make_tuple(self.filename, self.lineno, self.name,
+                                   self.line())[index];
+           })
+      .def("__len__", [](const StackFrame&) {
+        return 4;  // For compatibility with the traceback module.
       });
 
-  py::bind_vector<std::vector<StackFrame>>(m, "Stack", py::module_local(true));
+  // TODO(slebedev): rename to StackSummary to match Python 3.5+.
+  py::bind_vector<std::vector<StackFrame>>(m, "Stack", py::module_local(true))
+      // TODO(slebedev): upstream negative indexing support into pybind11.
+      .def(
+          "__getitem__",
+          [](const std::vector<StackFrame>& self, ssize_t index) {
+            const size_t eff_index =
+                index < 0 ? self.size() + index : static_cast<size_t>(index);
+            if (eff_index > self.size()) {
+              throw py::index_error();
+            }
+            return self[eff_index];
+          },
+          py::return_value_policy::reference_internal);
 
   m.def("extract_stack", [](const py::object& limit, const py::list& mappers,
                             const py::list& filters) {

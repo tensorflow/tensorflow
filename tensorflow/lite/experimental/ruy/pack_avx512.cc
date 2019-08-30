@@ -30,7 +30,23 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
+#if !(RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Pack8bitAvx512(const std::int8_t* src_ptr, std::int8_t input_xor,
+                    const std::int8_t* zerobuf, int src_stride,
+                    int remaining_src_cols, int src_rows,
+                    std::int8_t* packed_ptr, std::int32_t* sums_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void PackFloatAvx512(const float* src_ptr, const float* zerobuf, int src_stride,
+                     int remaining_src_cols, int src_rows, float* packed_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 // The first int8_t template parameter is arbitrary: this routine is common to
 // all 8-bit source matrix types.
@@ -73,8 +89,12 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
   RUY_DCHECK_EQ(Layout::kCols, 16);
   RUY_DCHECK_EQ(Layout::kRows, 4);
   RUY_DCHECK_EQ(kHalfLayoutCols, 8);
+  // Each Layout::Rows is 4 contiguous input, contiguous packed elements.
+  // We process 8 of these chunks at a time, padding short input chunks.
+  constexpr int kNumRowChunks = 8;
+  constexpr int kNumChunkedSrcRows = kNumRowChunks * Layout::kRows;
 
-  std::int8_t in_data[kHalfLayoutCols][kHalfLayoutCols][Layout::kRows];
+  std::int8_t in_data[kHalfLayoutCols][kNumRowChunks][Layout::kRows];
 
   const std::int8_t* src_ptr0 = src_ptr;
   const std::int8_t* src_ptr1 = src_ptr0 + src_stride;
@@ -84,10 +104,6 @@ inline void HalfPack8bitAvx512(const std::int8_t* src_ptr,
   const std::int8_t* src_ptr5 = src_ptr4 + src_stride;
   const std::int8_t* src_ptr6 = src_ptr5 + src_stride;
   const std::int8_t* src_ptr7 = src_ptr6 + src_stride;
-  // Each Layout::Rows is 4 contiguous input, contiguous packed elements.
-  // We process 8 of these chunks at a time, padding short input chunks.
-  constexpr int kNumRowChunks = 8;
-  constexpr int kNumChunkedSrcRows = kNumRowChunks * Layout::kRows;
   std::int64_t src_inc0 = kNumChunkedSrcRows;
   std::int64_t src_inc1 = kNumChunkedSrcRows;
   std::int64_t src_inc2 = kNumChunkedSrcRows;

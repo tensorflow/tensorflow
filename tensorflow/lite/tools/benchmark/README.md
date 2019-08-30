@@ -38,7 +38,17 @@ and the following optional parameters:
     Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
     This API is available on recent Android devices. Note that some Android P
     devices will fail to use NNAPI for models in `/data/local/tmp/` and this
-    benchmark tool will not correctly use NNAPI.
+    benchmark tool will not correctly use NNAPI. When on Android Q+, will also
+    print the names of NNAPI accelerators accessible through the
+    `nnapi_accelerator_name` flag.
+*   `nnapi_accelerator_name`: `str` (default="") \
+    The name of the NNAPI accelerator to use (requires Android Q+). If left
+    blank, NNAPI will automatically select which of the available accelerators
+    to use.
+*   `nnapi_execution_preference`: `string` (default="") \
+    Which [NNAPI execution preference](https://developer.android.com/ndk/reference/group/neural-networks.html#group___neural_networks_1gga034380829226e2d980b2a7e63c992f18af727c25f1e2d8dcc693c477aef4ea5f5)
+    to use when executing using NNAPI. Should be one of the
+    following: fast_single_answer, sustained_speed, low_power, undefined.
 *   `use_legacy_nnapi`: `bool` (default=false) \
     Whether to use the legacy
     [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)

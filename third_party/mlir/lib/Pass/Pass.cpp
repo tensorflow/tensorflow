@@ -42,12 +42,12 @@ using namespace mlir::detail;
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-LogicalResult FunctionPassBase::run(FuncOp fn, FunctionAnalysisManager &fam) {
+LogicalResult FunctionPassBase::run(FuncOp fn, AnalysisManager am) {
   // Initialize the pass state.
-  passState.emplace(fn, fam);
+  passState.emplace(fn, am);
 
   // Instrument before the pass has run.
-  auto pi = fam.getPassInstrumentor();
+  auto pi = am.getPassInstrumentor();
   if (pi)
     pi->runBeforePass(this, fn);
 
@@ -55,7 +55,7 @@ LogicalResult FunctionPassBase::run(FuncOp fn, FunctionAnalysisManager &fam) {
   runOnFunction();
 
   // Invalidate any non preserved analyses.
-  fam.invalidate(passState->preservedAnalyses);
+  am.invalidate(passState->preservedAnalyses);
 
   // Instrument after the pass has run.
   bool passFailed = passState->irAndPassFailed.getInt();
@@ -71,12 +71,12 @@ LogicalResult FunctionPassBase::run(FuncOp fn, FunctionAnalysisManager &fam) {
 }
 
 /// Forwarding function to execute this pass.
-LogicalResult ModulePassBase::run(ModuleOp module, ModuleAnalysisManager &mam) {
+LogicalResult ModulePassBase::run(ModuleOp module, AnalysisManager am) {
   // Initialize the pass state.
-  passState.emplace(module, mam);
+  passState.emplace(module, am);
 
   // Instrument before the pass has run.
-  auto pi = mam.getPassInstrumentor();
+  auto pi = am.getPassInstrumentor();
   if (pi)
     pi->runBeforePass(this, module);
 
@@ -84,7 +84,7 @@ LogicalResult ModulePassBase::run(ModuleOp module, ModuleAnalysisManager &mam) {
   runOnModule();
 
   // Invalidate any non preserved analyses.
-  mam.invalidate(passState->preservedAnalyses);
+  am.invalidate(passState->preservedAnalyses);
 
   // Instrument after the pass has run.
   bool passFailed = passState->irAndPassFailed.getInt();
@@ -111,20 +111,20 @@ FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
 
 /// Run all of the passes in this manager over the current function.
 LogicalResult detail::FunctionPassExecutor::run(FuncOp function,
-                                                FunctionAnalysisManager &fam) {
+                                                AnalysisManager am) {
   // Run each of the held passes.
   for (auto &pass : passes)
-    if (failed(pass->run(function, fam)))
+    if (failed(pass->run(function, am)))
       return failure();
   return success();
 }
 
 /// Run all of the passes in this manager over the current module.
 LogicalResult detail::ModulePassExecutor::run(ModuleOp module,
-                                              ModuleAnalysisManager &mam) {
+                                              AnalysisManager am) {
   // Run each of the held passes.
   for (auto &pass : passes)
-    if (failed(pass->run(module, mam)))
+    if (failed(pass->run(module, am)))
       return failure();
   return success();
 }
@@ -136,44 +136,44 @@ LogicalResult detail::ModulePassExecutor::run(ModuleOp module,
 /// Utility to run the given function and analysis manager on a provided
 /// function pass executor.
 static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe, FuncOp func,
-                                         FunctionAnalysisManager &fam) {
+                                         AnalysisManager am) {
   // Run the function pipeline over the provided function.
-  auto result = fpe.run(func, fam);
+  auto result = fpe.run(func, am);
 
   // Clear out any computed function analyses. These analyses won't be used
   // any more in this pipeline, and this helps reduce the current working set
   // of memory. If preserving these analyses becomes important in the future
   // we can re-evalutate this.
-  fam.clear();
+  am.clear();
   return result;
 }
 
 /// Run the held function pipeline over all non-external functions within the
 /// module.
 void ModuleToFunctionPassAdaptor::runOnModule() {
-  ModuleAnalysisManager &mam = getAnalysisManager();
+  AnalysisManager am = getAnalysisManager();
   for (auto func : getModule().getOps<FuncOp>()) {
     // Skip external functions.
     if (func.isExternal())
       continue;
 
     // Run the held function pipeline over the current function.
-    auto fam = mam.slice(func);
-    if (failed(runFunctionPipeline(fpe, func, fam)))
+    auto childAM = am.slice(func);
+    if (failed(runFunctionPipeline(fpe, func, childAM)))
       return signalPassFailure();
 
-    // Clear out any computed function analyses. These analyses won't be used
+    // Clear out any computed child analyses. These analyses won't be used
     // any more in this pipeline, and this helps reduce the current working set
     // of memory. If preserving these analyses becomes important in the future
     // we can re-evalutate this.
-    fam.clear();
+    am.clear();
   }
 }
 
 // Run the held function pipeline synchronously across the functions within
 // the module.
 void ModuleToFunctionPassAdaptorParallel::runOnModule() {
-  ModuleAnalysisManager &mam = getAnalysisManager();
+  AnalysisManager am = getAnalysisManager();
 
   // Create the async executors if they haven't been created, or if the main
   // function pipeline has changed.
@@ -183,10 +183,10 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
   // Run a prepass over the module to collect the functions to execute a over.
   // This ensures that an analysis manager exists for each function, as well as
   // providing a queue of functions to execute over.
-  std::vector<std::pair<FuncOp, FunctionAnalysisManager>> funcAMPairs;
+  std::vector<std::pair<FuncOp, AnalysisManager>> funcAMPairs;
   for (auto func : getModule().getOps<FuncOp>())
     if (!func.isExternal())
-      funcAMPairs.emplace_back(func, mam.slice(func));
+      funcAMPairs.emplace_back(func, am.slice(func));
 
   // A parallel diagnostic handler that provides deterministic diagnostic
   // ordering.
@@ -253,8 +253,8 @@ PassManager::~PassManager() {}
 
 /// Run the passes within this manager on the provided module.
 LogicalResult PassManager::run(ModuleOp module) {
-  ModuleAnalysisManager mam(module, instrumentor.get());
-  return mpe->run(module, mam);
+  ModuleAnalysisManager am(module, instrumentor.get());
+  return mpe->run(module, am);
 }
 
 /// Disable support for multi-threading within the pass manager.
@@ -329,42 +329,53 @@ void PassManager::addInstrumentation(PassInstrumentation *pi) {
 // AnalysisManager
 //===----------------------------------------------------------------------===//
 
-/// Returns a pass instrumentation object for the current function.
-PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
-  return parent->getPassInstrumentor();
+/// Returns a pass instrumentation object for the current operation.
+PassInstrumentor *AnalysisManager::getPassInstrumentor() const {
+  ParentPointerT curParent = parent;
+  while (auto *parentAM = curParent.dyn_cast<const AnalysisManager *>())
+    curParent = parentAM->parent;
+  return curParent.get<const ModuleAnalysisManager *>()->getPassInstrumentor();
 }
 
-/// Create an analysis slice for the given child function.
-FunctionAnalysisManager ModuleAnalysisManager::slice(FuncOp func) {
-  assert(func.getOperation()->getParentOp() == moduleAnalyses.getIRUnit() &&
-         "function has a different parent module");
-  auto it = functionAnalyses.find(func);
-  if (it == functionAnalyses.end()) {
-    it =
-        functionAnalyses.try_emplace(func, new AnalysisMap<FuncOp>(func)).first;
-  }
+/// Get an analysis manager for the given child operation.
+AnalysisManager AnalysisManager::slice(Operation *op) {
+  assert(op->getParentOp() == impl->getOperation() &&
+         "'op' has a different parent operation");
+  auto it = impl->childAnalyses.find(op);
+  if (it == impl->childAnalyses.end())
+    it = impl->childAnalyses
+             .try_emplace(op, std::make_unique<NestedAnalysisMap>(op))
+             .first;
   return {this, it->second.get()};
 }
 
 /// Invalidate any non preserved analyses.
-void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
+void detail::NestedAnalysisMap::invalidate(
+    const detail::PreservedAnalyses &pa) {
   // If all analyses were preserved, then there is nothing to do here.
   if (pa.isAll())
     return;
 
-  // Invalidate the module analyses directly.
-  moduleAnalyses.invalidate(pa);
+  // Invalidate the analyses for the current operation directly.
+  analyses.invalidate(pa);
 
-  // If no analyses were preserved, then just simply clear out the function
+  // If no analyses were preserved, then just simply clear out the child
   // analysis results.
   if (pa.isNone()) {
-    functionAnalyses.clear();
+    childAnalyses.clear();
     return;
   }
 
-  // Otherwise, invalidate each function analyses.
-  for (auto &analysisPair : functionAnalyses)
-    analysisPair.second->invalidate(pa);
+  // Otherwise, invalidate each child analysis map.
+  SmallVector<NestedAnalysisMap *, 8> mapsToInvalidate(1, this);
+  while (!mapsToInvalidate.empty()) {
+    auto *map = mapsToInvalidate.pop_back_val();
+    for (auto &analysisPair : map->childAnalyses) {
+      analysisPair.second->invalidate(pa);
+      if (!analysisPair.second->childAnalyses.empty())
+        mapsToInvalidate.push_back(analysisPair.second.get());
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//

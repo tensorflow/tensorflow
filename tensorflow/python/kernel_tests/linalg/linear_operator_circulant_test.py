@@ -339,8 +339,8 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       h = operator.convolution_kernel()
       c = operator.to_dense()
 
-      self.assertAllEqual((2, 3), h.get_shape())
-      self.assertAllEqual((2, 3, 3), c.get_shape())
+      self.assertAllEqual((2, 3), h.shape)
+      self.assertAllEqual((2, 3, 3), c.shape)
       self.assertAllClose(h.eval(), self.evaluate(c)[:, :, 0])
 
   @test_util.run_deprecated_v1

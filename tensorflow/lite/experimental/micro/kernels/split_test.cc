@@ -45,7 +45,7 @@ void TestSplitTwoOutputsFloat(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 0, 5),
+      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
       CreateFloatTensor(input_data, input_dims, "input_tensor"),
       CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
       CreateFloatTensor(output2_data, output2_dims, "output2_tensor")};
@@ -141,7 +141,7 @@ void TestSplitFourOutputsFloat(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 0, 5),
+      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
       CreateFloatTensor(input_data, input_dims, "input_tensor"),
       CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
       CreateFloatTensor(output2_data, output2_dims, "output2_tensor"),
@@ -243,9 +243,7 @@ void TestSplitTwoOutputsQuantized(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      // CreateQuantizedTensor needs min/max values as input, but these values
-      // don't matter as to the functionality of SPLIT, so just set as 0 and 10.
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 0, 10),
+      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
       CreateQuantizedTensor(input_data, input_dims, "input_tensor", 0, 10),
       CreateQuantizedTensor(output1_data, output1_dims, "output1_tensor", 0,
                             10),
@@ -334,14 +332,12 @@ void TestSplitTwoOutputsQuantized32(
   constexpr int axis_size = 1;
   constexpr int tensors_size = input_size + output_size + axis_size;
   TfLiteTensor tensors[tensors_size] = {
-      // CreateQuantizedTensor needs min/max values as input, but these values
-      // don't matter as to the functionality of SPLIT, so just set as 0 and 10.
-      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 0, 10),
-      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 0, 10),
-      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor", 0,
-                              10),
-      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor", 0,
-                              10)};
+      CreateQuantized32Tensor(axis_data, axis_dims, "axis_tensor", 1.0),
+      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 1.0),
+      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor",
+                              1.0),
+      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor",
+                              1.0)};
 
   // Currently only support constant axis tensor.
   tensors[0].allocation_type = kTfLiteMmapRo;

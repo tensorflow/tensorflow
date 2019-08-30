@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -162,11 +162,11 @@ class SnapshotReader {
     }
   }
 
-  Status ReadRecord(string* record) {
+  Status ReadRecord(tstring* record) {
     profiler::TraceMe activity(
         absl::StrCat(kClassName, kSeparator, kReadString),
         profiler::TraceMeLevel::kInfo);
-    string header;
+    tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
     return input_stream_->ReadNBytes(length, record);
@@ -176,14 +176,14 @@ class SnapshotReader {
   Status ReadRecord(absl::Cord* record) {
     profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kReadCord),
                                profiler::TraceMeLevel::kInfo);
-    string header;
+    tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
 
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
-      string tmp_str;
+      tstring tmp_str;
       Status s = input_stream_->ReadNBytes(length, &tmp_str);
       record->Append(tmp_str);
       return s;
@@ -224,7 +224,7 @@ Status ReadMetadataFile(const string& hash_dir,
   std::unique_ptr<RandomAccessFile> file;
   TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
-  string record_bytes;
+  tstring record_bytes;
   auto reader = absl::make_unique<SnapshotReader>(file.get());
   TF_CHECK_OK(reader->ReadRecord(&record_bytes));
 
@@ -333,7 +333,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    string path;
+    tstring path;
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
@@ -473,7 +473,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
-        hash_dir_ = absl::StrCat(dataset()->dir_, "/", dataset()->graph_hash_);
+        // TODO(dero): remove NOLINT after USE_TSTRING is enabled.
+        hash_dir_ = absl::StrCat(StringPiece(dataset()->dir_), "/",  // NOLINT
+                                 dataset()->graph_hash_);
         return Status::OK();
       }
 
@@ -1116,7 +1118,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-    const string dir_;
+    const tstring dir_;
     const string graph_hash_;
 
     const string reader_path_prefix_;

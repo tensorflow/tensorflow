@@ -63,3 +63,17 @@ func @testSideEffectOp() -> tensor<3xf32> {
   // CHECK: return %[[random]]
   return %1: tensor<3xf32>
 }
+
+// Ops with unimplemnted attributes which couldn't be added to the TFE_Op.
+// CHECK-LABEL: func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>)
+func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
+  %0 = constant dense<1> : tensor<i32>
+  %1 = constant dense<2> : tensor<i32>
+  %2 = "tf.Maximum"(%0, %1) {_output_shapes = ["tfshape$"]} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %3 = "tf.Minimum"(%0, %1) {random_attr = "hello"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2, %3: tensor<i32>, tensor<i32>
+
+// CHECK-NEXT: %[[CST:.*]] = constant
+// CHECK-NEXT: %[[CST1:.*]] = constant
+// CHECK-NEXT: return %[[CST]], %[[CST1]]
+}

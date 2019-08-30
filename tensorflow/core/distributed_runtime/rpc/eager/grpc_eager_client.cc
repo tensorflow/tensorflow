@@ -49,8 +49,7 @@ class GrpcEagerClient : public EagerClient {
       override {                                                          \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr, nullptr, /*max_retries=*/10,  \
-        /*fail_fast=*/true);                                              \
+        response, std::move(done), nullptr, nullptr, /*max_retries=*/0);  \
   }
 
   CLIENT_METHOD(CreateContext);
@@ -82,9 +81,9 @@ class GrpcEagerClient : public EagerClient {
     }
   }
 
-  Status StreamingEnqueueAsync(const EnqueueRequest* request,
-                               EnqueueResponse* response,
-                               StatusCallback done) override {
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
     if (EnableStreaming()) {
       tf_shared_lock l(mu_);
       auto it = enqueue_dispatchers_.find(request->context_id());
@@ -99,7 +98,6 @@ class GrpcEagerClient : public EagerClient {
         it = it_and_bool.first;
       }
       it->second.SendNextRequest(*request, response, std::move(done));
-      return Status::OK();
     } else {
       Notification n;
       Status status;
@@ -109,7 +107,6 @@ class GrpcEagerClient : public EagerClient {
       });
       n.WaitForNotification();
       done(status);
-      return status;
     }
   }
 

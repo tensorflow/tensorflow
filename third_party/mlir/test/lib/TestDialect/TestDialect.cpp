@@ -35,9 +35,36 @@ TestDialect::TestDialect(MLIRContext *context)
 }
 
 //===----------------------------------------------------------------------===//
+// Test IsolatedRegionOp - parse passthrough region arguments.
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseIsolatedRegionOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  OpAsmParser::OperandType argInfo;
+  Type argType = parser->getBuilder().getIndexType();
+
+  // Parse the input operand.
+  if (parser->parseOperand(argInfo) ||
+      parser->resolveOperand(argInfo, argType, result->operands))
+    return failure();
+
+  // Parse the body region, and reuse the operand info as the argument info.
+  Region *body = result->addRegion();
+  return parser->parseRegion(*body, argInfo, argType,
+                             /*enableNameShadowing=*/true);
+}
+
+static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
+  *p << "test.isolated_region ";
+  p->printOperand(op.getOperand());
+  p->shadowRegionArgs(op.region(), op.getOperand());
+  p->printRegion(op.region(), /*printEntryBlockArgs=*/false);
+}
+
+//===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
-ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
   if (parser->parseRegionArgumentList(ivsInfo))
@@ -47,10 +74,7 @@ ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
   Region *body = result->addRegion();
   auto &builder = parser->getBuilder();
   SmallVector<Type, 4> argTypes(ivsInfo.size(), builder.getIndexType());
-  if (parser->parseRegion(*body, ivsInfo, argTypes))
-    return failure();
-
-  return success();
+  return parser->parseRegion(*body, ivsInfo, argTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -58,10 +82,11 @@ ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
-  using OpRewritePattern<TestOpWithRegion>::OpRewritePattern;
+struct TestRemoveOpWithInnerOps
+    : public OpRewritePattern<TestOpWithRegionPattern> {
+  using OpRewritePattern<TestOpWithRegionPattern>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TestOpWithRegion op,
+  PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
@@ -69,9 +94,13 @@ struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
 };
 } // end anonymous namespace
 
-void TestOpWithRegion::getCanonicalizationPatterns(
+void TestOpWithRegionPattern::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TestRemoveOpWithInnerOps>(context);
+}
+
+OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
+  return operand();
 }
 
 // Static initialization for Test dialect registration.

@@ -188,13 +188,14 @@ func @fakeQuantFollowedByTranspose(tensor<1x2xf32>, tensor<f32>, tensor<f32>) ->
 // CHECK-LABEL: fakeQuantFollowedByReshape
 func @fakeQuantFollowedByReshape(tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2x1xf32>) {
 ^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
-  %cst_0 = constant dense<[2, 1]> : tensor<2xi64>
+  %cst_0 = constant dense<[2, -1]> : tensor<2xi64>
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<1x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x2xf32>
   %1 = "tf.Reshape"(%0, %cst_0) : (tensor<1x2xf32>, tensor<2xi64>) -> tensor<2x1xf32>
   return %1 : tensor<2x1xf32>
 
 // CHECK:  %cst = constant
 // CHECK:  %0 = "tf.Reshape"(%arg0, %cst)
+// CHECK-SAME: tensor<2x1xf32>
 // CHECK:  %1 = "tf.FakeQuantWithMinMaxVars"(%0, %arg1, %arg2)
 // CHECK:  return %1
 }
@@ -237,6 +238,17 @@ func @QDQFollowedByReshape(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
 // CHECK: return %2
 }
 
+// CHECK-LABEL: QDQFollowedByRank
+func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
+  %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
+  %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
+  %2 = "tf.Rank"(%1): (tensor<1x2xf32>) -> tensor<i32>
+  return %2 : tensor<i32>
+
+// CHECK-NEXT: %[[R:.*]] = "tf.Rank"(%arg0)
+// CHECK-NEXT: return %[[R]] : tensor<i32>
+}
+
 // CHECK-LABEL: fakeQuantWithConv2D
 func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>) {
 ^bb0(%arg: tensor<256x32x32x3xf32>) :
@@ -277,13 +289,13 @@ func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30
 // CHECK: return %2
 }
 
-func @identity(tensor<10xi32>) -> tensor<10xi32> {
-^bb0(%arg0: tensor<10xi32>):
+func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>) {
   %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<10xi32>
-  return %0: tensor<10xi32>
+  %1:2 = "tf.IdentityN"(%arg1,%arg2) : (tensor<20xi32>, tensor<30xi32>) -> (tensor<20xi32>, tensor<30xi32>)
+  return %0, %1#0, %1#1: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>
 
 // CHECK-LABEL: identity
-// CHECK: return %arg0
+// CHECK: return %arg0, %arg1, %arg2
 }
 
 

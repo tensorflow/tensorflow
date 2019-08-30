@@ -23,7 +23,7 @@ def tflite_copts():
             "-msse4.1",
         ],
         str(Label("//tensorflow:windows")): [
-            "/DTF_COMPILE_LIBRARY",
+            "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [

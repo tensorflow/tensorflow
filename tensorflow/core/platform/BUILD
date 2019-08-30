@@ -23,6 +23,8 @@ load(
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
+    "tf_protobuf_compiler_deps",
+    "tf_protobuf_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -139,6 +141,21 @@ cc_library(
 )
 
 cc_library(
+    name = "numbers",
+    srcs = ["numbers.cc"],
+    hdrs = ["numbers.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
     hdrs = ["rocm_rocdl_path.h"],
@@ -169,6 +186,36 @@ cc_library(
 )
 
 cc_library(
+    name = "protobuf",
+    srcs = [
+        "protobuf.cc",
+        "protobuf_util.cc",
+    ],
+    hdrs = ["protobuf.h"],
+    deps = [
+        ":platform",
+        ":types",
+    ] + tf_protobuf_deps(),
+)
+
+cc_library(
+    name = "protobuf_compiler",
+    hdrs = ["protobuf_compiler.h"],
+    deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "scanner",
+    srcs = ["scanner.cc"],
+    hdrs = ["scanner.h"],
+    deps = [
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+    ],
+)
+
+cc_library(
     name = "stacktrace",
     srcs = glob(["*/stacktrace.h"]),
     hdrs = ["stacktrace.h"],
@@ -196,6 +243,32 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
+    ],
+)
+
+cc_library(
+    name = "str_util",
+    srcs = ["str_util.cc"],
+    hdrs = ["str_util.h"],
+    deps = [
+        ":logging",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "strcat",
+    srcs = ["strcat.cc"],
+    hdrs = ["strcat.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":numbers",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/meta:type_traits",
     ],
 )
 
@@ -265,6 +338,7 @@ filegroup(
             "**/stream_executor.h",
             "**/env_time.cc",
             "**/device_tracer.cc",
+            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -272,8 +346,11 @@ filegroup(
             "**/rocm_rocdl_path.cc",
             "abi.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
         ],
     ),
@@ -337,6 +414,7 @@ filegroup(
             "jpeg.h",
             "png.h",
             "stringprintf.h",
+            "str_util.h",
             "**/cuda.h",
             "**/rocm.h",
             "**/stream_executor.h",
@@ -359,6 +437,7 @@ filegroup(
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
             "**/device_tracer.cc",
+            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -366,9 +445,13 @@ filegroup(
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
+            "str_util.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],

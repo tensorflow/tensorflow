@@ -32,6 +32,12 @@ namespace absl {
 class string_view;
 }
 
+#ifdef PLATFORM_GOOGLE
+// TODO(dero): Move above to 'namespace absl' when absl moves Cord out of global
+// namepace.
+class Cord;
+#endif  // PLATFORM_GOOGLE
+
 namespace tensorflow {
 
 // tensorflow::tstring is the scalar type for DT_STRING tensors.
@@ -72,10 +78,18 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
+  tstring(size_t n, char c) : str_(n, c) {}
+
   template <typename T,
             typename std::enable_if<std::is_same<T, absl::string_view>::value,
                                     T>::type* = nullptr>
   explicit tstring(const T& str) : str_(str.data(), str.size()) {}
+
+#ifdef PLATFORM_GOOGLE
+  template <typename T, typename std::enable_if<std::is_same<T, Cord>::value,
+                                                T>::type* = nullptr>
+  explicit tstring(const T& cord) : str_(string(cord)) {}
+#endif  // PLATFORM_GOOGLE
 
   tstring(tstring&&) noexcept = default;
 
@@ -97,6 +111,16 @@ class tstring {
 
     return *this;
   }
+
+#ifdef PLATFORM_GOOGLE
+  template <typename T, typename std::enable_if<std::is_same<T, Cord>::value,
+                                                T>::type* = nullptr>
+  tstring& operator=(const T& cord) {
+    str_ = string(cord);
+
+    return *this;
+  }
+#endif  // PLATFORM_GOOGLE
 
   tstring& operator=(const char* str) {
     str_ = str;
@@ -133,9 +157,13 @@ class tstring {
 
   size_t size() const { return str_.size(); }
 
+  size_t capacity() const { return str_.capacity(); }
+
   const char* c_str() const { return str_.c_str(); }
 
   const char* data() const { return str_.data(); }
+
+  char back() const { return str_.back(); }
 
   const char& operator[](size_t i) const { return str_[i]; }
 
@@ -143,11 +171,15 @@ class tstring {
 
   char& operator[](size_t i) { return str_[i]; }
 
+  void clear() noexcept { str_.clear(); }
+
   void resize(size_t new_size) { str_.resize(new_size); }
 
   void resize_uninitialized(size_t new_size) {
     ResizeUninitialized<decltype(str_)>::Resize(str_, new_size);
   }
+
+  void reserve(size_t n) { str_.reserve(n); }
 
   tstring& assign(const char* str, size_t len) {
     str_.assign(str, len);
@@ -160,6 +192,35 @@ class tstring {
 
     return *this;
   }
+
+  tstring& append(const tstring& str) {
+    str_.append(str);
+
+    return *this;
+  }
+
+  tstring& append(const char* str, size_t len) {
+    str_.append(str, len);
+
+    return *this;
+  }
+
+  tstring& append(const char* str) {
+    str_.append(str);
+
+    return *this;
+  }
+
+  void swap(tstring& str) { str_.swap(str.str_); }
+
+  tstring& insert(size_t pos, const tstring& str, size_t subpos,
+                  size_t sublen) {
+    str_.insert(pos, str.str_, subpos, sublen);
+
+    return *this;
+  }
+
+  void push_back(char ch) { str_.push_back(ch); }
 
   friend const tstring operator+(const tstring& a, const tstring& b);
   friend bool operator==(const char* a, const tstring& b);

@@ -79,6 +79,7 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
   x = ... Shape [3, 4] Tensor
   operator.matmul(x)
   ==> Shape [3, 4] Tensor
+  ```
 
   #### Shape compatibility
 
@@ -168,12 +169,12 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
   def _check_row_col(self, row, col):
     """Static check of row and column."""
     for name, tensor in [["row", row], ["col", col]]:
-      if tensor.get_shape().ndims is not None and tensor.get_shape().ndims < 1:
+      if tensor.shape.ndims is not None and tensor.shape.ndims < 1:
         raise ValueError("Argument {} must have at least 1 dimension.  "
                          "Found: {}".format(name, tensor))
 
-    if row.get_shape()[-1] is not None and col.get_shape()[-1] is not None:
-      if row.get_shape()[-1] != col.get_shape()[-1]:
+    if row.shape[-1] is not None and col.shape[-1] is not None:
+      if row.shape[-1] != col.shape[-1]:
         raise ValueError(
             "Expected square matrix, got row and col with mismatched "
             "dimensions.")

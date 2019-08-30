@@ -50,16 +50,16 @@ class SqlDatasetOp : public DatasetOpKernel {
     }
   }
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string driver_name;
+    tstring driver_name;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<string>(ctx, "driver_name", &driver_name));
+        ctx, ParseScalarArgument<tstring>(ctx, "driver_name", &driver_name));
 
-    string data_source_name;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "data_source_name",
-                                                    &data_source_name));
+    tstring data_source_name;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "data_source_name",
+                                                     &data_source_name));
 
-    string query;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "query", &query));
+    tstring query;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "query", &query));
 
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
@@ -204,9 +204,9 @@ class SqlDatasetOp : public DatasetOpKernel {
       std::unique_ptr<sql::QueryConnection> query_connection_ GUARDED_BY(mu_);
       bool query_connection_initialized_ GUARDED_BY(mu_) = false;
     };
-    const string driver_name_;
-    const string data_source_name_;
-    const string query_;
+    const tstring driver_name_;
+    const tstring data_source_name_;
+    const tstring query_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
   };

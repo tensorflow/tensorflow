@@ -66,7 +66,7 @@ class ZlibInputStream : public InputStreamInterface {
   // ABORTED:      If inflate() fails, we return the error code with the
   //               error message in `z_stream_->msg`.
   // others:       If reading from stream failed.
-  Status ReadNBytes(int64 bytes_to_read, string* result) override;
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
 
   int64 Tell() const override;
 
@@ -107,7 +107,7 @@ class ZlibInputStream : public InputStreamInterface {
   // bytes have been read or `z_stream_->next_out` is reached.
   // Returns the number of bytes read and advances the `next_unread_byte_`
   // pointer to the next location to read from.
-  size_t ReadBytesFromCache(size_t bytes_to_read, string* result);
+  size_t ReadBytesFromCache(size_t bytes_to_read, tstring* result);
 
   // The number of unread bytes in z_stream_output_.
   //

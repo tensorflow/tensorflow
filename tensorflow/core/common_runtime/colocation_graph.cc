@@ -122,18 +122,15 @@ bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
 
 Status Member::SetParentAndSupportedDevices(
     const Node& node, const std::vector<DeviceType>& types,
-    const Device* default_local_device) {
+    const DeviceNameUtils::ParsedName* local_address_spec) {
   int id = node.id();
   if (id < 0) {
     return errors::Internal("Placer should not be creating a Member for node: ",
                             node.DebugString());
   }
   parent_ = id;
-  const DeviceNameUtils::ParsedName* name =
-      default_local_device == nullptr ? nullptr
-                                      : &default_local_device->parsed_name();
-  return SupportedDeviceTypesForNode(types, node.def(),
-                                     &supported_device_types_, name);
+  return SupportedDeviceTypesForNode(
+      types, node.def(), &supported_device_types_, local_address_spec);
 }
 
 Status Member::SetAssignedDeviceName(const string& device_name) {
@@ -534,6 +531,26 @@ DeviceNameUtils::ParsedName Member::GetPreferredSoftDeviceName() const {
   return soft_device_name;
 }
 
+// Returns ParsedName whose address space (i.e. job, replica, task) identifies
+// the address space directly accessible by the local process. If the address
+// space is fully specified and it is exactly the same as the address space
+// of a device, then all kernels of that device should be registered in the
+// local process.
+static const DeviceNameUtils::ParsedName LocalAddressSpec(
+    const Device* client_device, const Device* default_local_device) {
+  if (client_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(client_device->parsed_name());
+  }
+
+  if (default_local_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(default_local_device->parsed_name());
+  }
+
+  // TODO(b/139617593) Return the name of the first local device in device_set_
+  // once we can trust the output of Device::IsLocal().
+  return DeviceNameUtils::ParsedName();
+}
+
 ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
                                  const FunctionLibraryDefinition* flib_def,
                                  const DeviceSet* device_set,
@@ -548,6 +565,8 @@ ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
       inspection_required_checker_(graph, flib_def),
       device_set_(*device_set),
       device_types_(device_set->PrioritizedDeviceTypeList()),
+      local_address_spec_(
+          LocalAddressSpec(device_set->client_device(), default_local_device)),
       default_local_device_(default_local_device),
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {
@@ -1167,12 +1186,8 @@ string ColocationGraph::DebugInfo(const int node_root) const {
     colocation_nodes.push_back(node);
 
     PrioritizedDeviceTypeVector supported_types;
-    const DeviceNameUtils::ParsedName* name =
-        default_local_device_ == nullptr
-            ? nullptr
-            : &default_local_device_->parsed_name();
     SupportedDeviceTypesForNode(device_types_, node->def(), &supported_types,
-                                name)
+                                &local_address_spec_)
         .IgnoreError();
     string devices_registered;
     for (const auto& device_type : supported_types) {
@@ -1249,7 +1264,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 
 Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
   TF_RETURN_IF_ERROR(member->SetParentAndSupportedDevices(
-      node, device_types_, default_local_device_));
+      node, device_types_, &local_address_spec_));
 
   if (node.has_assigned_device_name()) {
     TF_RETURN_IF_ERROR(InitializeMemberWithAssignedDevice(

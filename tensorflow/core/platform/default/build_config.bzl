@@ -608,13 +608,6 @@ def tf_additional_device_tracer_test_flags():
 def tf_additional_cupti_test_flags():
     return []
 
-def tf_additional_profiler_lib_deps():
-    return [
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
-    ] + if_cuda([
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
-    ])
-
 def tf_additional_libdevice_data():
     return []
 
@@ -738,18 +731,6 @@ def tf_lib_proto_compiler_deps():
         "@com_google_protobuf//:protoc_lib",
     ]
 
-def tf_additional_verbs_lib_defines():
-    return select({
-        "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_mpi_lib_defines():
-    return select({
-        "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
-        "//conditions:default": [],
-    })
-
 def tf_additional_gdr_lib_defines():
     return select({
         "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
@@ -825,4 +806,14 @@ def tf_logging_absl_deps():
     return [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+    ]
+
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
     ]

@@ -103,7 +103,7 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
           out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                     TensorShape({}));
           out_tensors->back().scalar<tstring>()() =
-              string(row_keys_[index_].row_key);
+              tstring(row_keys_[index_].row_key);
           *end_of_sequence = false;
           index_++;
         } else {

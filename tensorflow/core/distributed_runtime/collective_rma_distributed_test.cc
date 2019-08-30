@@ -74,7 +74,7 @@ class FakeWorker : public TestWorkerInterface {
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);

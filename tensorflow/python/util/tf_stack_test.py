@@ -36,7 +36,7 @@ class TFStackTest(test.TestCase):
   def testConsistencyWithTraceback(self):
     stack, expected_stack = extract_stack()
     for frame, expected in zip(stack, expected_stack):
-      self.assertEqual(frame, expected)
+      self.assertEqual(tuple(frame), expected)
 
   def testFormatStack(self):
     stack, expected_stack = extract_stack()
@@ -46,9 +46,8 @@ class TFStackTest(test.TestCase):
 
 
 def extract_stack(limit=None):
-  convert = tf_stack.convert_stack
   # Both defined on the same line to produce identical stacks.
-  return convert(tf_stack.extract_stack(limit)), traceback.extract_stack(limit)
+  return tf_stack.extract_stack(limit), traceback.extract_stack(limit)
 
 
 if __name__ == "__main__":

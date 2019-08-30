@@ -357,7 +357,9 @@ LogicalResult verifyZeroResult(Operation *op);
 LogicalResult verifyOneResult(Operation *op);
 LogicalResult verifyNResults(Operation *op, unsigned numOperands);
 LogicalResult verifyAtLeastNResults(Operation *op, unsigned numOperands);
+LogicalResult verifySameOperandsShape(Operation *op);
 LogicalResult verifySameOperandsAndResultShape(Operation *op);
+LogicalResult verifySameOperandsElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultType(Operation *op);
 LogicalResult verifyResultsAreBoolLike(Operation *op);
@@ -626,6 +628,17 @@ class VariadicResults
     : public detail::MultiResultTraitBase<ConcreteType, VariadicResults> {};
 
 /// This class provides verification for ops that are known to have the same
+/// operand shape: all operands are scalars, vectors/tensors of the same
+/// shape.
+template <typename ConcreteType>
+class SameOperandsShape : public TraitBase<ConcreteType, SameOperandsShape> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
 /// operand and result shape: both are scalars, vectors/tensors of the same
 /// shape.
 template <typename ConcreteType>
@@ -634,6 +647,18 @@ class SameOperandsAndResultShape
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifySameOperandsAndResultShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
+/// operand element type.
+///
+template <typename ConcreteType>
+class SameOperandsElementType
+    : public TraitBase<ConcreteType, SameOperandsElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsElementType(op);
   }
 };
 
@@ -996,8 +1021,119 @@ private:
                               traitID);
   }
 
-  /// Allow access to 'hasTrait'.
+  /// Returns an opaque pointer to a concept instance of the interface with the
+  /// given ID if one was registered to this operation.
+  static void *getRawInterface(ClassID *id) {
+    return InterfaceLookup::template lookup<Traits<ConcreteType>...>(id);
+  }
+
+  struct InterfaceLookup {
+    /// Trait to check if T provides a static 'getInterfaceID' method.
+    template <typename T, typename... Args>
+    using has_get_interface_id = decltype(T::getInterfaceID());
+
+    /// If 'T' is the same interface as 'interfaceID' return the concept
+    /// instance.
+    template <typename T>
+    static typename std::enable_if<is_detected<has_get_interface_id, T>::value,
+                                   void *>::type
+    lookup(ClassID *interfaceID) {
+      return (T::getInterfaceID() == interfaceID) ? &T::instance() : nullptr;
+    }
+
+    /// 'T' is known to not be an interface, return nullptr.
+    template <typename T>
+    static typename std::enable_if<!is_detected<has_get_interface_id, T>::value,
+                                   void *>::type
+    lookup(ClassID *) {
+      return nullptr;
+    }
+
+    template <typename T, typename T2, typename... Ts>
+    static void *lookup(ClassID *interfaceID) {
+      auto *concept = lookup<T>(interfaceID);
+      return concept ? concept : lookup<T2, Ts...>(interfaceID);
+    }
+  };
+
+  /// Allow access to 'hasTrait' and 'getRawInterface'.
   friend AbstractOperation;
+};
+
+/// This class represents the base of an operation interface. Operation
+/// interfaces provide access to derived *Op properties through an opaquely
+/// Operation instance. Derived interfaces must also provide a 'Traits' class
+/// that defines a 'Concept' and a 'Model' class. The 'Concept' class defines an
+/// abstract virtual interface, where as the 'Model' class implements this
+/// interface for a specific derived *Op type. Both of these classes *must* not
+/// contain non-static data. A simple example is shown below:
+///
+///  struct ExampleOpInterfaceTraits {
+///    struct Concept {
+///      virtual unsigned getNumInputs(Operation *op) = 0;
+///    };
+///    template <typename OpT> class Model {
+///      unsigned getNumInputs(Operation *op) final {
+///        return llvm::cast<OpT>(op).getNumInputs();
+///      }
+///    };
+///  };
+///
+template <typename ConcreteType, typename Traits>
+class OpInterface : public Op<ConcreteType> {
+public:
+  using Concept = typename Traits::Concept;
+  template <typename T> using Model = typename Traits::template Model<T>;
+
+  OpInterface(Operation *op = nullptr)
+      : Op<ConcreteType>(op), impl(op ? getInterfaceFor(op) : nullptr) {
+    assert((!op || impl) &&
+           "instantiating an interface with an unregistered operation");
+  }
+
+  /// Support 'classof' by checking if the given operation defines the concrete
+  /// interface.
+  static bool classof(Operation *op) { return getInterfaceFor(op); }
+
+  /// Define an accessor for the ID of this interface.
+  static ClassID *getInterfaceID() { return ClassID::getID<ConcreteType>(); }
+
+  /// This is a special trait that registers a given interface with an
+  /// operation.
+  template <typename ConcreteOp>
+  struct Trait : public OpTrait::TraitBase<ConcreteOp, Trait> {
+    /// Define an accessor for the ID of this interface.
+    static ClassID *getInterfaceID() { return ClassID::getID<ConcreteType>(); }
+
+    /// Provide an accessor to a static instance of the interface model for the
+    /// concrete operation type.
+    /// The implementation is inspired from Sean Parent's concept-based
+    /// polymorphism. A key difference is that the set of classes erased is
+    /// statically known, which alleviates the need for using dynamic memory
+    /// allocation.
+    /// We use a zero-sized templated class `Model<ConcreteOp>` to emit the
+    /// virtual table and generate a singleton object for each instantiation of
+    /// this class.
+    static Concept &instance() {
+      static Model<ConcreteOp> singleton;
+      return singleton;
+    }
+  };
+
+protected:
+  /// Get the raw concept in the correct derived concept type.
+  Concept *getImpl() { return impl; }
+
+private:
+  /// Returns the impl interface instance for the given operation.
+  static Concept *getInterfaceFor(Operation *op) {
+    // Access the raw interface from the abstract operation.
+    auto *abstractOp = op->getAbstractOperation();
+    return abstractOp ? abstractOp->getInterface<ConcreteType>() : nullptr;
+  }
+
+  /// A pointer to the impl concept object.
+  Concept *impl;
 };
 
 // These functions are out-of-line implementations of the methods in BinaryOp,

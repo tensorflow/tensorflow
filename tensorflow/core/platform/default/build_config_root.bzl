@@ -40,23 +40,6 @@ def tf_additional_license_deps():
         "//conditions:default": [],
     })
 
-def tf_additional_verbs_deps():
-    return select({
-        str(Label("//tensorflow:with_verbs_support")): [
-            str(Label("//tensorflow/contrib/verbs:verbs_server_lib")),
-            str(Label("//tensorflow/contrib/verbs:grpc_verbs_client")),
-        ],
-        "//conditions:default": [],
-    })
-
-def tf_additional_mpi_deps():
-    return select({
-        str(Label("//tensorflow:with_mpi_support")): [
-            str(Label("//tensorflow/contrib/mpi:mpi_server_lib")),
-        ],
-        "//conditions:default": [],
-    })
-
 def tf_additional_gdr_deps():
     return select({
         str(Label("//tensorflow:with_gdr_support")): [

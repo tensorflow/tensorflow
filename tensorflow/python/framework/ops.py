@@ -365,7 +365,7 @@ class Tensor(_TensorLike):
   }
 
   # Whether to allow hashing or numpy-style equality
-  _USE_EQUALITY = False
+  _USE_EQUALITY = tf2.enabled()
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -393,6 +393,12 @@ class Tensor(_TensorLike):
     self._consumers = []
     self._id = uid()
     self._name = None
+
+  @staticmethod
+  def _create_with_tf_output(op, value_index, dtype, tf_output):
+    ret = Tensor(op, value_index, dtype)
+    ret._tf_output = tf_output
+    return ret
 
   @property
   def op(self):
@@ -1529,32 +1535,24 @@ def _device_string(dev_spec):
     return dev_spec
 
 
-def _NodeDef(op_type, name, device=None, attrs=None):  # pylint: disable=redefined-outer-name
+def _NodeDef(op_type, name, attrs=None):
   """Create a NodeDef proto.
 
   Args:
     op_type: Value for the "op" attribute of the NodeDef proto.
     name: Value for the "name" attribute of the NodeDef proto.
-    device: string, device, or function from NodeDef to string. Value for the
-      "device" attribute of the NodeDef proto.
-    attrs: Optional dictionary where the key is the attribute name (a string)
+    attrs: Dictionary where the key is the attribute name (a string)
       and the value is the respective "attr" attribute of the NodeDef proto (an
       AttrValue).
 
   Returns:
     A node_def_pb2.NodeDef protocol buffer.
   """
-  node_def = node_def_pb2.NodeDef()
-  node_def.op = compat.as_bytes(op_type)
-  node_def.name = compat.as_bytes(name)
-  if attrs is not None:
+  node_def = node_def_pb2.NodeDef(op=compat.as_bytes(op_type),
+                                  name=compat.as_bytes(name))
+  if attrs:
     for k, v in six.iteritems(attrs):
       node_def.attr[k].CopyFrom(v)
-  if device is not None:
-    if callable(device):
-      node_def.device = device(node_def)
-    else:
-      node_def.device = _device_string(device)
   return node_def
 
 
@@ -1759,6 +1757,7 @@ class Operation(object):
     if c_op:
       self._c_op = c_op
       op_def = g._get_op_def(c_api.TF_OperationOpType(c_op))
+      name = self.name
     else:
       if op_def is None:
         op_def = self._graph._get_op_def(node_def.op)
@@ -1768,22 +1767,21 @@ class Operation(object):
           op_def, inputs, node_def.attr)
       self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
                                 control_input_ops)
+      name = compat.as_str(node_def.name)
     # pylint: enable=protected-access
 
     self._is_stateful = op_def.is_stateful
 
     # Initialize self._outputs.
     num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
-    output_types = [
-        c_api.TF_OperationOutputType(c_api_util.tf_output(self._c_op, i))
-        for i in range(num_outputs)
-    ]
-    self._outputs = [
-        Tensor(self, i, output_type)
-        for i, output_type in enumerate(output_types)
-    ]
+    self._outputs = []
+    for i in range(num_outputs):
+      tf_output = c_api_util.tf_output(self._c_op, i)
+      output_type = c_api.TF_OperationOutputType(tf_output)
+      tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
+      self._outputs.append(tensor)
 
-    self._graph._add_op(self)  # pylint: disable=protected-access
+    self._graph._add_op(self, self._id_value, name)  # pylint: disable=protected-access
 
     if not c_op:
       self._control_flow_post_processing()
@@ -2306,17 +2304,7 @@ class Operation(object):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return tf_stack.convert_stack(self._traceback)
-
-  @property
-  def traceback_with_start_lines(self):
-    """Same as traceback but includes start line of function definition.
-
-    Returns:
-      A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
-    """
-    return tf_stack.convert_stack(
-        self._traceback, include_func_start_lineno=True)
+    return self._traceback
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
@@ -2402,20 +2390,26 @@ class Operation(object):
     return getattr(x, oneof_value)
 
   def _get_attr_type(self, name):
-    """Returns the value of the attr of this op with the given `name`.
-
-    Args:
-      name: The name of the attr to fetch.
-
-    Returns:
-      The value of the attr, as a Python object.
-
-    Raises:
-      ValueError: If this op does not have an attr with the given `name`.
-    """
+    """Returns the `DType` value of the attr of this op with the given `name`."""
     try:
       dtype_enum = c_api.TF_OperationGetAttrType(self._c_op, name)
       return _DTYPES_INTERN_TABLE[dtype_enum]
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+
+  def _get_attr_bool(self, name):
+    """Returns the `bool` value of the attr of this op with the given `name`."""
+    try:
+      return c_api.TF_OperationGetAttrBool(self._c_op, name)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+
+  def _get_attr_int(self, name):
+    """Returns the `int` value of the attr of this op with the given `name`."""
+    try:
+      return c_api.TF_OperationGetAttrInt(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
@@ -2997,31 +2991,19 @@ class Graph(object):
     if self._finalized:
       raise RuntimeError("Graph is finalized and cannot be modified.")
 
-  def _add_op(self, op):
+  def _add_op(self, op, op_id, op_name):
     """Adds 'op' to the graph.
 
     Args:
-      op: the Operator or Tensor to add.
-
-    Raises:
-      TypeError: if op is not an Operation or Tensor.
-      ValueError: if the op.name or op._id are already used.
+      op: the Operation to add.
+      op_id: the ID of the Operation.
+      op_name: the name of the Operation.
     """
     self._check_not_finalized()
-    if not isinstance(op, (Tensor, Operation)):
-      raise TypeError("op must be a Tensor or Operation: %s" % op)
     with self._lock:
-      # pylint: disable=protected-access
-      if op._id in self._nodes_by_id:
-        raise ValueError("cannot add an op with id %d as it already "
-                         "exists in the graph" % op._id)
-      if op.name in self._nodes_by_name:
-        raise ValueError("cannot add op with name %s as that name "
-                         "is already used" % op.name)
-      self._nodes_by_id[op._id] = op
-      self._nodes_by_name[op.name] = op
-      self._version = max(self._version, op._id)
-      # pylint: enable=protected-access
+      self._nodes_by_id[op_id] = op
+      self._nodes_by_name[op_name] = op
+      self._version = max(self._version, op_id)
 
   @property
   def _c_graph(self):
@@ -3408,7 +3390,7 @@ class Graph(object):
     else:
       name = self.unique_name(name)
 
-    node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
+    node_def = _NodeDef(op_type, name, attrs)
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
@@ -3969,8 +3951,12 @@ class Graph(object):
         c = []
         regex = re.compile(scope)
         for item in collection:
-          if hasattr(item, "name") and regex.match(item.name):
-            c.append(item)
+          try:
+            if regex.match(item.name):
+              c.append(item)
+          except AttributeError:
+            # Collection items with no name are ignored.
+            pass
         return c
 
   def get_all_collection_keys(self):

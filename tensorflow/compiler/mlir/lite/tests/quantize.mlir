@@ -99,6 +99,18 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
 // CHECK: return %2
 }
 
+// CHECK-LABEL: QuantizeNoBiasFullyConnected
+func @QuantizeNoBiasFullyConnected(%arg0: tensor<3x!quant.uniform<u8:f32, 1.0>>, %arg1: tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>, %arg2: none) -> tensor<3x!quant.uniform<u8:f32, 1.0>> {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<3x!quant.uniform<u8:f32, 1.0>>) -> tensor<3xf32>
+  %1 = "tfl.dequantize"(%arg1) : (tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>>) -> tensor<3xf32>
+  %2 = "tfl.fully_connected"(%0, %1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<3xf32>, tensor<3xf32>, none) -> tensor<3xf32>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<3x!quant.uniform<u8:f32, 1.0>>} : (tensor<3xf32>) -> tensor<3x!quant.uniform<u8:f32, 1.0>>
+  return %3 : tensor<3x!quant.uniform<u8:f32, 1.0>>
+
+// CHECK-NEXT: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %arg2)
+// CHECK-NEXT: return %[[fc]]
+}
+
 // CHECK-LABEL: QuantizeAveragePool2D
 func @QuantizeAveragePool2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x1x1x16xf32> {
 ^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):

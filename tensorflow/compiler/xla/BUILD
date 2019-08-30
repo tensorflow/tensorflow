@@ -15,7 +15,7 @@ package_group(
     includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/contrib/tpu/...",
+        "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
     ],
 )

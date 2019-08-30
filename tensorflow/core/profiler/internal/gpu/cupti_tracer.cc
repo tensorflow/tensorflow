@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -187,8 +188,7 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
                              CuptiTracerEventType::MemcpyP2P, true);
     }
     default: {
-      LOG_FIRST_N(ERROR, 100)
-          << "Unsupported memcpy activity observed: " << cbid;
+      LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
       return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
@@ -216,7 +216,7 @@ void CUPTIAPI AllocCuptiActivityBuffer(uint8_t **buffer, size_t *size,
   constexpr size_t kBufferSize = 32 * 1024;
   constexpr int kBufferAlignSize = 8;
   *buffer = reinterpret_cast<uint8_t *>(
-      aligned_malloc(kBufferSize, kBufferAlignSize));
+      port::AlignedMalloc(kBufferSize, kBufferAlignSize));
   if (*buffer == nullptr) {
     LOG(WARNING)
         << "Cupti Buffer not allocated, activity records will be dropped";
@@ -240,7 +240,8 @@ void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
           << " size: " << size << " valid_size: " << valid_size;
 
   // Ensure buffer is free when this function returns.
-  auto buffer_cleanup = gtl::MakeCleanup([buffer] { aligned_free(buffer); });
+  auto buffer_cleanup =
+      gtl::MakeCleanup([buffer] { port::AlignedFree(buffer); });
 
   if (valid_size <= 0) {
     return;
@@ -493,7 +494,7 @@ void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
       event.device_id = overhead->objectId.dcs.deviceId;
       break;
     default:
-      DLOG(FATAL) << "Unexpected object kind: " << overhead->objectKind;
+      LOG(ERROR) << "Unexpected object kind: " << overhead->objectKind;
       return;
   }
   collector->AddEvent(std::move(event));
@@ -557,8 +558,9 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   auto &per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   if (per_device_map.annotations.size() < max_size_) {
-    per_device_map.correlation_map.emplace(
-        correlation_id, *per_device_map.annotations.insert(annotation).first);
+    absl::string_view annotation_str =
+        *per_device_map.annotations.insert(annotation).first;
+    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
   }
 }
 
@@ -590,7 +592,7 @@ int CuptiTracer::NumGpus() {
     if (cuDeviceGetCount(&gpu_count) != CUDA_SUCCESS) {
       return 0;
     }
-    LOG(INFO) << "xprof found " << gpu_count << " GPUs";
+    LOG(INFO) << "Profiler found " << gpu_count << " GPUs";
     return gpu_count;
   }();
   return num_gpus;
@@ -609,11 +611,12 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
 }
 
 void CuptiTracer::Disable() {
+  DisableApiTracing().IgnoreError();
   if (option_->enable_activity_api) {
     DisableActivityTracing().IgnoreError();
   }
-  DisableApiTracing().IgnoreError();
   cupti_interface_->CleanUp();
+  Finalize().IgnoreError();
   collector_->Flush();
   collector_ = nullptr;
   cupti_interface_ = nullptr;
@@ -698,18 +701,22 @@ Status CuptiTracer::DisableActivityTracing() {
     VLOG(1) << "Flushing CUPTI activity buffer";
     RETURN_IF_CUPTI_ERROR(
         cupti_interface_->ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
-
-    if (option_->cupti_finalize) {
-      RETURN_IF_CUPTI_ERROR(cupti_interface_->Finalize());
-    }
   }
   activity_tracing_enabled_ = false;
   return Status::OK();
 }
 
+Status CuptiTracer::Finalize() {
+  if (option_->cupti_finalize) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->Finalize());
+  }
+  return Status::OK();
+}
+
 uint64 CuptiTracer::GetTimestamp() {
   uint64_t tsc;
-  if (cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
+  if (cupti_interface_ &&
+      cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
     return tsc;
   }
   // Return 0 on error. If an activity timestamp is 0, the activity will be

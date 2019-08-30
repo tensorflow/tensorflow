@@ -32,6 +32,7 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
@@ -575,8 +576,8 @@ def clone_and_build_model(
   Args:
     model: `tf.keras.Model` object. Can be Functional, Sequential, or
       sub-classed.
-    input_tensors: Optional list of input tensors to build the model upon. If
-      not provided, placeholders will be created.
+    input_tensors: Optional list or dictionary of input tensors to build the
+      model upon. If not provided, placeholders will be created.
     target_tensors: Optional list of target tensors for compiling the model. If
       not provided, placeholders will be created.
     custom_objects: Optional dictionary mapping string names to custom classes
@@ -591,10 +592,10 @@ def clone_and_build_model(
       optimizer if the clone is compiled. This argument is used when a Keras
       model is cloned into an Estimator model function, because Estimators
       create their own global step variable.
-    optimizer_config: Optimizer config dictionary returned from `get_config()`.
-      This argument should be defined if `clone_and_build_model` is called in
-      a different graph or session from the original model, and the optimizer is
-      an instance of `OptimizerV2`.
+    optimizer_config: Optimizer config dictionary or list of dictionary
+      returned from `get_config()`. This argument should be defined if
+      `clone_and_build_model` is called in a different graph or session from
+      the original model, and the optimizer is an instance of `OptimizerV2`.
 
   Returns:
     Clone of the model.
@@ -628,16 +629,24 @@ def clone_and_build_model(
       clone._set_inputs(
           K.placeholder(model._build_input_shape, dtype=model.inputs[0].dtype))
   else:
-    if not in_place_reset:
-      raise ValueError(
-          'This model is a subclassed model. '
-          'Such a model cannot be cloned, but there is a workaround where '
-          'the model is reset in-place. To use this, please set the argument '
-          '`in_place_reset` to `True`. This will reset the attributes in the '
-          'original model. To restore the attributes, call '
-          '`in_place_subclassed_model_state_restoration(model)`.')
-    clone = model
-    _in_place_subclassed_model_reset(clone)
+    try:
+      # Prefer clonining the model if serial/deserial logic is implemented for
+      # subclassed model.
+      clone = model.__class__.from_config(model.get_config())
+    except NotImplementedError:
+      logging.warning('This model is a subclassed model. Please implement '
+                      '`get_config` and `from_config` to better support '
+                      'cloning the model.')
+      if not in_place_reset:
+        raise ValueError(
+            'This model is a subclassed model. '
+            'Such a model cannot be cloned, but there is a workaround where '
+            'the model is reset in-place. To use this, please set the argument '
+            '`in_place_reset` to `True`. This will reset the attributes in the '
+            'original model. To restore the attributes, call '
+            '`in_place_subclassed_model_state_restoration(model)`.')
+      clone = model
+      _in_place_subclassed_model_reset(clone)
     if input_tensors is not None:
       if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
         input_tensors = input_tensors[0]
@@ -649,11 +658,27 @@ def clone_and_build_model(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
-      optimizer_config = optimizer_config or orig_optimizer.get_config()
-      optimizer = orig_optimizer.__class__.from_config(optimizer_config)
+      if not isinstance(orig_optimizer, (tuple, list)):
+        orig_optimizer = [orig_optimizer]
+      if optimizer_config is None:
+        optimizer = [
+            opt.__class__.from_config(opt.get_config())
+            for opt in orig_optimizer
+        ]
+      elif isinstance(optimizer_config, dict):
+        optimizer = [orig_optimizer[0].__class__.from_config(optimizer_config)]
+      else:
+        # optimizer config is list of dict, same order as orig_optimizer.
+        optimizer = [
+            opt.__class__.from_config(opt_config)
+            for (opt, opt_config) in zip(orig_optimizer, optimizer_config)
+        ]
       if optimizer_iterations is not None:
-        optimizer.iterations = optimizer_iterations
+        for opt in optimizer:
+          opt.iterations = optimizer_iterations
 
+      if len(optimizer) == 1:
+        optimizer = optimizer[0]
     clone.compile(
         optimizer,
         model.loss,

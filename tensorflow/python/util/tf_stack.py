@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import inspect
-import linecache
 import threading
 
 import six
@@ -149,11 +148,8 @@ def extract_stack(limit=-1):
     limit: A limit on the number of frames to return.
 
   Returns:
-    A sequence of StackFrame objects
-        (filename, lineno, name, globals, func_start_lineno)
-    corresponding to the call stack of the current thread.  The returned
-    tuples have the innermost stack frame at the end, unlike the Python
-    inspect module's stack() function.
+    A sequence of StackFrame objects (filename, lineno, name, line)
+    corresponding to the call stack of the current thread.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
@@ -164,36 +160,3 @@ def extract_stack(limit=-1):
       _source_filter_stacks[thread_key])
 
 StackFrame = _tf_stack.StackFrame
-
-
-def convert_stack(stack, include_func_start_lineno=False):
-  """Converts a stack extracted using extract_stack() to a traceback stack.
-
-  Args:
-    stack: A list of n 5-tuples,
-      (filename, lineno, name, frame_globals, func_start_lineno).
-    include_func_start_lineno: True if function start line number should be
-      included as the 5th entry in return tuples.
-
-  Returns:
-    A tuple of n 4-tuples or 5-tuples
-    (filename, lineno, name, code, [optional: func_start_lineno]), where the
-    code tuple element is calculated from the corresponding elements of the
-    input tuple.
-  """
-  def _tuple_generator():  # pylint: disable=missing-docstring
-    for frame in stack:
-      filename = frame.filename
-      lineno = frame.lineno
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame.globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
-      if include_func_start_lineno:
-        yield (filename, lineno, frame.name, line, frame.func_start_lineno)
-      else:
-        yield (filename, lineno, frame.name, line)
-
-  return tuple(_tuple_generator())

@@ -66,13 +66,16 @@ std::string Add::GetElementWiseCode(
       c += "    int ti_y = (t_y + 0.5) * " + inv_divisor_name_ + "; \n";
       c += "    int2 tmp_add = (int2)(address.x, ti_y  * " +
            std::to_string(src_depthes_[0]) + " + Z);\n";
-      c += "    src += " + src_tensor.Read3D("tmp_add") + ";\n";
+      c += "    src += " +
+           src_tensor.Read3D("tmp_add", TextureAddressMode::DONT_CARE) + ";\n";
     } else {
-      c += "    src += " + src_tensor.Read3D("address") + ";\n";
+      c += "    src += " +
+           src_tensor.Read3D("address", TextureAddressMode::DONT_CARE) + ";\n";
     }
     c += "  }\n";
   } else {
-    c += "  src += " + src_tensor.Read3D("address") + ";\n";
+    c += "  src += " +
+         src_tensor.Read3D("address", TextureAddressMode::DONT_CARE) + ";\n";
   }
   c += "  " + GetCoreCode("src", "Z", "address");
   c += PostProcess(linked_operations, "src", "Z", "address");
@@ -132,16 +135,21 @@ std::string Add::GetCoreCode(const std::string& src, const std::string& z_coord,
                         inv_divisor_name_, ";\n");
         absl::StrAppend(&result, "    int2 tmp_add = (int2)(", address,
                         ".x, ti_y * ", src_depthes_[i], " + ", z_coord, ");\n");
-        absl::StrAppend(&result, "    ", src,
-                        " += ", src_tensor.Read3D("tmp_add"), ";\n");
+        absl::StrAppend(
+            &result, "    ", src,
+            " += ", src_tensor.Read3D("tmp_add", TextureAddressMode::DONT_CARE),
+            ";\n");
       } else {
-        absl::StrAppend(&result, "    ", src,
-                        " += ", src_tensor.Read3D(address), ";\n");
+        absl::StrAppend(
+            &result, "    ", src,
+            " += ", src_tensor.Read3D(address, TextureAddressMode::DONT_CARE),
+            ";\n");
       }
       absl::StrAppend(&result, "  }\n");
     } else {
-      absl::StrAppend(&result, "  ", src,
-                      " += ", src_tensor.Read3D(address) + ";\n");
+      absl::StrAppend(
+          &result, "  ", src, " += ",
+          src_tensor.Read3D(address, TextureAddressMode::DONT_CARE) + ";\n");
     }
   }
   return result;

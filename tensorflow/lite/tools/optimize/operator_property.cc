@@ -86,6 +86,13 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       // Comparisons have no quantizable outputs.
       property.version = 2;
       break;
+    case BuiltinOperator_EXPAND_DIMS:
+      // We skip input 1 as it is not real valued (it's the index of axis) and
+      // hence does not need to be quantized.
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;

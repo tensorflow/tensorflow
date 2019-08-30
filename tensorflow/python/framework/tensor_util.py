@@ -737,6 +737,21 @@ def _ConstantValue(tensor, partial):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Unpack":
+    # We can't handle axis != 0 Unpacks at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
+    value = constant_value(tensor.op.inputs[0], partial)
+    if value is None:
+      return None
+    return value[tensor.value_index]
+  elif tensor.op.type == "Split":
+    dim = constant_value(tensor.op.inputs[0])
+    value = constant_value(tensor.op.inputs[1], partial)
+    if value is None or dim is None:
+      return None
+    split = np.split(value, tensor.op.get_attr("num_split"), dim)
+    return split[tensor.value_index]
   elif tensor.op.type == "Fill":
     fill_shape = tensor.shape
     fill_value = constant_value(tensor.op.inputs[1])
@@ -760,6 +775,8 @@ def _ConstantValue(tensor, partial):
     if value2 is None:
       return None
     return np.not_equal(value1, value2)
+  elif tensor.op.type == "StopGradient":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 

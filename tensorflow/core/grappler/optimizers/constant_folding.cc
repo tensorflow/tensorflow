@@ -2990,22 +2990,19 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
     //              / \      / \      / \        / \     / \      / \
     //             C   Y    C   Y    Y   C      Y   C   C   Y    Y   C
     //
-    NodeDef* non_const_leaf = left_leaf_is_constant ? right_leaf : left_leaf;
-    NodeDef* maybe_const_leaf =
-        non_const_leaf == right_leaf ? left_leaf : right_leaf;
 
     // First, let's determine the effective sign of each term in the original
     // expression
-    auto is_leaf_negated = [&](const NodeDef* node) -> bool {
-      bool leaf_negated = !is_child_symmetric && (node == right_leaf);
+    auto is_leaf_negated = [&](const bool is_right_leaf) -> bool {
+      bool leaf_negated = !is_child_symmetric && is_right_leaf;
       bool child_negated = !is_symmetric && (op_child == right_child);
       return leaf_negated != child_negated;
     };
     const string symmetric_op = (is_add || is_sub) ? "Add" : "Mul";
     const string nonsymmetric_op = (is_add || is_sub) ? "Sub" : "Div";
     bool neg_c = !is_symmetric && (const_child == right_child);
-    bool neg_x = is_leaf_negated(non_const_leaf);
-    bool neg_y = is_leaf_negated(maybe_const_leaf);
+    bool neg_x = is_leaf_negated(left_leaf_is_constant);
+    bool neg_y = is_leaf_negated(!left_leaf_is_constant);
     // Rewrite the parent node.
     node->set_op((neg_x || (neg_c && neg_y)) ? nonsymmetric_op : symmetric_op);
     node->set_input(0, neg_x ? input_op : input_x);

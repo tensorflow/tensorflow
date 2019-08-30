@@ -882,9 +882,6 @@ class Network(base_layer.Layer):
           kept_nodes += 1
     layer_configs = []
     for layer in self.layers:  # From the earliest layers on.
-      layer_class_name = layer.__class__.__name__
-      layer_config = layer.get_config()
-
       filtered_inbound_nodes = []
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
@@ -920,12 +917,10 @@ class Network(base_layer.Layer):
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
 
-      layer_configs.append({
-          'name': layer.name,
-          'class_name': layer_class_name,
-          'config': layer_config,
-          'inbound_nodes': filtered_inbound_nodes,
-      })
+      layer_config = generic_utils.serialize_keras_object(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
     config['layers'] = layer_configs
 
     # Gather info about inputs and outputs.
@@ -1124,7 +1119,8 @@ class Network(base_layer.Layer):
            overwrite=True,
            include_optimizer=True,
            save_format=None,
-           signatures=None):
+           signatures=None,
+           options=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1153,6 +1149,8 @@ class Network(base_layer.Layer):
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
+      options: Optional `tf.saved_model.SaveOptions` object that specifies
+        options for saving to SavedModel.
 
     Example:
 
@@ -1168,7 +1166,7 @@ class Network(base_layer.Layer):
     ```
     """
     saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures)
+                      signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.

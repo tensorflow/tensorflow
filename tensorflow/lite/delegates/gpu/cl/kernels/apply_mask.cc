@@ -51,13 +51,17 @@ std::string GetApplyMaskKernelCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
-  c += "  FLT4 result = " + src.Read3D("X", "Y", "Z") + ";\n";
+  c += "  FLT4 result = " +
+       src.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   c += "  if (apply_mask_type == 1) {\n";
-  c += "    result *= " + mask.Read3D("X", "Y", "Z") + ";\n";
+  c += "    result *= " +
+       mask.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   c += "  } else if (apply_mask_type == 2) {\n";
-  c += "    result *= " + mask.Read3D("0", "0", "Z") + ";\n";
+  c += "    result *= " +
+       mask.Read3D("0", "0", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   c += "  } else {\n";
-  c += "    result *= " + mask.Read3D("X", "Y", "0") + ".x;\n";
+  c += "    result *= " +
+       mask.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ".x;\n";
   c += "  }\n";
   c += "  " + dst.GetAddress("dst_adr", "X", "Y", "Z");
   c += PostProcess(linked_operations, "result", "Z", "dst_adr");

@@ -20,30 +20,53 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
-#include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 #include "llvm/ADT/StringSwitch.h"
 
-namespace mlir {
+using namespace mlir;
+
 namespace {
 
-// A pass that replaces all occurences of GPU operations with their
-// corresponding NVVM equivalent.
-//
-// This pass does not handle launching of kernels. Instead, it is meant to be
-// used on the body region of a launch or the body region of a kernel
-// function.
-class LowerGpuOpsToNVVMOpsPass : public FunctionPass<LowerGpuOpsToNVVMOpsPass> {
+// Rewriting that replaces the types of a LaunchFunc operation with their
+// LLVM counterparts.
+struct GPULaunchFuncOpLowering : public LLVMOpLowering {
+public:
+  explicit GPULaunchFuncOpLowering(LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(gpu::LaunchFuncOp::getOperationName(),
+                       lowering_.getDialect()->getContext(), lowering_) {}
+
+  // Convert the kernel arguments to an LLVM type, preserve the rest.
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.clone(*op)->setOperands(operands);
+    return rewriter.replaceOp(op, llvm::None), matchSuccess();
+  }
+};
+
+// Rewriting that replaces Op with XOp, YOp, or ZOp depending on the dimension
+// that Op operates on.  Op is assumed to return an `std.index` value and
+// XOp, YOp and ZOp are assumed to return an `llvm.i32` value.  Depending on
+// `indexBitwidth`, sign-extend or truncate the resulting value to match the
+// bitwidth expected by the consumers of the value.
+template <typename Op, typename XOp, typename YOp, typename ZOp>
+struct GPUIndexIntrinsicOpLowering : public LLVMOpLowering {
 private:
   enum dimension { X = 0, Y = 1, Z = 2, invalid };
+  unsigned indexBitwidth;
 
-  template <typename T> dimension dimensionToIndex(T op) {
+  static dimension dimensionToIndex(Op op) {
     return llvm::StringSwitch<dimension>(op.dimension())
         .Case("x", X)
         .Case("y", Y)
@@ -51,89 +74,98 @@ private:
         .Default(invalid);
   }
 
-  // Helper that replaces Op with XOp, YOp, or ZOp dependeing on the dimension
-  // that Op operates on.  Op is assumed to return an `std.index` value and
-  // XOp, YOp and ZOp are assumed to return an `llvm.i32` value.  Depending on
-  // `indexBitwidth`, sign-extend or truncate the resulting value to match the
-  // bitwidth expected by the consumers of the value.
-  template <typename XOp, typename YOp, typename ZOp, class Op>
-  void replaceWithIntrinsic(Op operation, LLVM::LLVMDialect *dialect,
-                            unsigned indexBitwidth) {
-    assert(operation.getType().isIndex() &&
-           "expected an operation returning index");
-    OpBuilder builder(operation);
-    auto loc = operation.getLoc();
-    Value *newOp;
-    switch (dimensionToIndex(operation)) {
-    case X:
-      newOp = builder.create<XOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
-      break;
-    case Y:
-      newOp = builder.create<YOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
-      break;
-    case Z:
-      newOp = builder.create<ZOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
-      break;
-    default:
-      operation.emitError("Illegal dimension: " + operation.dimension());
-      signalPassFailure();
-      return;
-    }
-
-    if (indexBitwidth > 32) {
-      newOp = builder.create<LLVM::SExtOp>(
-          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
-    } else if (indexBitwidth < 32) {
-      newOp = builder.create<LLVM::TruncOp>(
-          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
-    }
-    operation.replaceAllUsesWith(newOp);
-    operation.erase();
+  static unsigned getIndexBitWidth(LLVMTypeConverter &lowering) {
+    auto dialect = lowering.getDialect();
+    return dialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
   }
 
 public:
-  void runOnFunction() {
-    LLVM::LLVMDialect *llvmDialect =
-        getContext().getRegisteredDialect<LLVM::LLVMDialect>();
-    unsigned indexBitwidth =
-        llvmDialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
-    getFunction().walk([&](Operation *opInst) {
-      if (auto threadId = dyn_cast<gpu::ThreadId>(opInst)) {
-        replaceWithIntrinsic<NVVM::ThreadIdXOp, NVVM::ThreadIdYOp,
-                             NVVM::ThreadIdZOp>(threadId, llvmDialect,
-                                                indexBitwidth);
-        return;
-      }
-      if (auto blockDim = dyn_cast<gpu::BlockDim>(opInst)) {
-        replaceWithIntrinsic<NVVM::BlockDimXOp, NVVM::BlockDimYOp,
-                             NVVM::BlockDimZOp>(blockDim, llvmDialect,
-                                                indexBitwidth);
-        return;
-      }
-      if (auto blockId = dyn_cast<gpu::BlockId>(opInst)) {
-        replaceWithIntrinsic<NVVM::BlockIdXOp, NVVM::BlockIdYOp,
-                             NVVM::BlockIdZOp>(blockId, llvmDialect,
-                                               indexBitwidth);
-        return;
-      }
-      if (auto gridDim = dyn_cast<gpu::GridDim>(opInst)) {
-        replaceWithIntrinsic<NVVM::GridDimXOp, NVVM::GridDimYOp,
-                             NVVM::GridDimZOp>(gridDim, llvmDialect,
-                                               indexBitwidth);
-        return;
-      }
-    });
+  explicit GPUIndexIntrinsicOpLowering(LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(Op::getOperationName(),
+                       lowering_.getDialect()->getContext(), lowering_),
+        indexBitwidth(getIndexBitWidth(lowering_)) {}
+
+  // Convert the kernel arguments to an LLVM type, preserve the rest.
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = op->getLoc();
+    auto dialect = lowering.getDialect();
+    Value *newOp;
+    switch (dimensionToIndex(cast<Op>(op))) {
+    case X:
+      newOp = rewriter.create<XOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
+      break;
+    case Y:
+      newOp = rewriter.create<YOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
+      break;
+    case Z:
+      newOp = rewriter.create<ZOp>(loc, LLVM::LLVMType::getInt32Ty(dialect));
+      break;
+    default:
+      return matchFailure();
+    }
+
+    if (indexBitwidth > 32) {
+      newOp = rewriter.create<LLVM::SExtOp>(
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
+    } else if (indexBitwidth < 32) {
+      newOp = rewriter.create<LLVM::TruncOp>(
+          loc, LLVM::LLVMType::getIntNTy(dialect, indexBitwidth), newOp);
+    }
+
+    rewriter.replaceOp(op, {newOp});
+    return matchSuccess();
+  }
+};
+
+// A pass that replaces all occurences of GPU operations with their
+// corresponding NVVM equivalent.
+//
+// This pass does not handle launching of kernels. Instead, it is meant to be
+// used on the body region of a launch or the body region of a kernel
+// function.
+class LowerGpuOpsToNVVMOpsPass : public ModulePass<LowerGpuOpsToNVVMOpsPass> {
+public:
+  void runOnModule() override {
+    ModuleOp m = getModule();
+
+    OwningRewritePatternList patterns;
+    LLVMTypeConverter converter(m.getContext());
+    populateGpuToNVVMConversionPatterns(converter, patterns);
+
+    ConversionTarget target(getContext());
+    target.addLegalDialect<LLVM::LLVMDialect>();
+    target.addLegalDialect<NVVM::NVVMDialect>();
+    target.addDynamicallyLegalOp<FuncOp>(
+        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
+    if (failed(applyPartialConversion(m, target, patterns, &converter)))
+      signalPassFailure();
   }
 };
 
 } // anonymous namespace
 
-std::unique_ptr<FunctionPassBase> createLowerGpuOpsToNVVMOpsPass() {
+/// Collect a set of patterns to convert from the GPU dialect to NVVM.
+void mlir::populateGpuToNVVMConversionPatterns(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
+  patterns
+      .insert<GPULaunchFuncOpLowering,
+              GPUIndexIntrinsicOpLowering<gpu::ThreadId, NVVM::ThreadIdXOp,
+                                          NVVM::ThreadIdYOp, NVVM::ThreadIdZOp>,
+              GPUIndexIntrinsicOpLowering<gpu::BlockDim, NVVM::BlockDimXOp,
+                                          NVVM::BlockDimYOp, NVVM::BlockDimZOp>,
+              GPUIndexIntrinsicOpLowering<gpu::BlockId, NVVM::BlockIdXOp,
+                                          NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
+              GPUIndexIntrinsicOpLowering<gpu::GridDim, NVVM::GridDimXOp,
+                                          NVVM::GridDimYOp, NVVM::GridDimZOp>>(
+          converter);
+}
+
+std::unique_ptr<ModulePassBase> mlir::createLowerGpuOpsToNVVMOpsPass() {
   return std::make_unique<LowerGpuOpsToNVVMOpsPass>();
 }
 
 static PassRegistration<LowerGpuOpsToNVVMOpsPass>
     pass("lower-gpu-ops-to-nvvm-ops",
          "Generate NVVM operations for gpu operations");
-
-} // namespace mlir

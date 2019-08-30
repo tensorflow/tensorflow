@@ -42,6 +42,9 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
+#if !defined(PLATFORM_WINDOWS)
+#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
+#endif  // !PLATFORM_WINDOWS
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -78,7 +81,18 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  if (compile_with_xla_) {
+#if defined(IS_MOBILE_PLATFORM) || defined(PLATFORM_WINDOWS)
+    return errors::Unimplemented(
+        "Compile with XLA is not available on mobile devices and windows.");
+#else   // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
+    std::unique_ptr<OpKernel> kernel;
+    TF_RETURN_IF_ERROR(CreateXlaKernel(flr_, ndef, &kernel));
+    k = kernel.release();
+#endif  // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
+  } else {
+    TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  }
   kernel_.reset(k);
   return Status::OK();
 }
@@ -112,7 +126,6 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
-  options.input_tensor_shapes = input_tensor_shapes_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");

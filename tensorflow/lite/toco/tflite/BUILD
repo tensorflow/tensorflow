@@ -146,6 +146,7 @@ cc_library(
         ":operator",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 

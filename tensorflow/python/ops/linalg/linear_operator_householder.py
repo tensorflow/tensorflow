@@ -155,15 +155,15 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
-    if (reflection_axis.get_shape().ndims is not None and
-        reflection_axis.get_shape().ndims < 1):
+    if (reflection_axis.shape.ndims is not None and
+        reflection_axis.shape.ndims < 1):
       raise ValueError(
           "Argument reflection_axis must have at least 1 dimension.  "
           "Found: %s" % reflection_axis)
 
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
-    d_shape = self._reflection_axis.get_shape()
+    d_shape = self._reflection_axis.shape
     return d_shape.concatenate(d_shape[-1:])
 
   def _shape_tensor(self):
