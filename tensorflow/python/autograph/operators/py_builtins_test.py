@@ -200,7 +200,7 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(iterator.get_next()), 6)
       self.assertAllEqual(self.evaluate(iterator.get_next()), 7)
 
-  def test_map_multiple_dataset(self):
+  def test_map_multiple_datasets(self):
     add_list = lambda x, y: x + y
     ds1 = dataset_ops.DatasetV2.from_tensor_slices([-11, -12, 4])
     ds2 = dataset_ops.DatasetV2.from_tensor_slices([-21, -22, 5])
