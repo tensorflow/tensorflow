@@ -71,48 +71,41 @@ struct TPUClusterFormation : public FunctionPass<TPUClusterFormation> {
 // TPUReplicateMetadata ops have the same `_tpu_replicate` attribute, an error
 // will be returned.
 LogicalResult CollectMetadata(Operation* op, MetadataMap* metadata_map) {
-  LogicalResult metadata_op_err = LogicalResult::Success;
+  auto result =
+      op->walk([&](TF::TPUReplicateMetadataOp metadata_op) -> WalkResult {
+        NamedAttributeList attrs = metadata_op.getAttrs();
 
-  op->walk([&](TF::TPUReplicateMetadataOp metadata_op) {
-    // TODO(lyandy): Update with new walk that can be interrupted once its
-    // available.
-    if (failed(metadata_op_err)) return;
+        // Missing or bad `_tpu_replicate` attribute.
+        auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
+        if (!tpu_replicate_attr)
+          return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
-    NamedAttributeList attrs = metadata_op.getAttrs();
+        auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
+        if (!tpu_replicate_attr_str ||
+            tpu_replicate_attr_str.getValue().empty())
+          return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
-    // Missing or bad `_tpu_replicate` attribute.
-    auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
-    if (!tpu_replicate_attr) {
-      metadata_op_err = metadata_op.emitError() << kBadTPUReplicateAttrMsg;
-      return;
-    }
+        // Remove `name` attribute.
+        attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
 
-    auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
-    if (!tpu_replicate_attr_str || tpu_replicate_attr_str.getValue().empty()) {
-      metadata_op_err = metadata_op.emitError() << kBadTPUReplicateAttrMsg;
-      return;
-    }
+        auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
+                                            std::move(attrs));
 
-    // Remove `name` attribute.
-    attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
+        // There are multiple TPUReplicateMetadata ops with the same
+        // `_tpu_replicate` attribute.
+        if (!it.second) {
+          return metadata_op.emitError()
+                 << "multiple TPUReplicateMetadata ops with the same '"
+                 << kTPUReplicateAttr << "' attribute '"
+                 << tpu_replicate_attr_str.getValue() << "' found";
+        }
 
-    auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
-                                        std::move(attrs));
+        metadata_op.erase();
+        return WalkResult::advance();
+      });
 
-    // There are multiple TPUReplicateMetadata ops with the same
-    // `_tpu_replicate` attribute.
-    if (!it.second) {
-      metadata_op_err = metadata_op.emitError()
-                        << "multiple TPUReplicateMetadata ops with the same '"
-                        << kTPUReplicateAttr << "' attribute '"
-                        << tpu_replicate_attr_str.getValue() << "' found";
-      return;
-    }
-
-    metadata_op.erase();
-  });
-
-  return metadata_op_err;
+  // Return failure if the walk was interrupted.
+  return failure(result.wasInterrupted());
 }
 
 // Collects and clusters ops with the same `_tpu_replicate` attribute. This will

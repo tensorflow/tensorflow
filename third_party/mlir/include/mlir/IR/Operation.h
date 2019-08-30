@@ -494,12 +494,21 @@ public:
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one). The callback method can take any of the
   /// following forms:
-  ///   (void)(Operation*) : Walk all operations opaquely.
+  ///   void(Operation*) : Walk all operations opaquely.
   ///     * op->walk([](Operation *nestedOp) { ...});
-  ///   (void)(OpT) : Walk all operations of the given derived type.
+  ///   void(OpT) : Walk all operations of the given derived type.
   ///     * op->walk([](ReturnOp returnOp) { ...});
-  template <typename FnT> void walk(FnT &&callback) {
-    detail::walkOperations(this, std::forward<FnT>(callback));
+  ///   WalkResult(Operation*|OpT) : Walk operations, but allow for
+  ///                                interruption/cancellation.
+  ///     * op->walk([](... op) {
+  ///         // Interrupt, i.e cancel, the walk based on some invariant.
+  ///         if (some_invariant)
+  ///           return WalkResult::interrupt();
+  ///         return WalkResult::advance();
+  ///       });
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return detail::walkOperations(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//

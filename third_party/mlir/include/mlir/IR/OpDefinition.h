@@ -190,8 +190,9 @@ public:
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one).
   /// See Operation::walk for more details.
-  template <typename FnT> void walk(FnT &&callback) {
-    state->walk(std::forward<FnT>(callback));
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return state->walk(std::forward<FnT>(callback));
   }
 
   // These are default implementations of customization hooks.
