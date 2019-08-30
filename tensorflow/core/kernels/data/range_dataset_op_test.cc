@@ -15,38 +15,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/range_dataset_op_test.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
- public:
-  Status Initialize(RangeDatasetParams* range_dataset_params) override {
-    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
-    TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
-
-    TF_RETURN_IF_ERROR(
-        MakeDatasetOpKernel(*range_dataset_params, &dataset_kernel_));
-    TF_RETURN_IF_ERROR(MakeDatasetAndIterator(range_dataset_params));
-    return Status::OK();
-  }
-
- protected:
-  Status MakeDatasetOpKernel(
-      const RangeDatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* range_dataset_op_kernel) override {
-    AttributeVector attributes;
-    TF_RETURN_IF_ERROR(dataset_params.MakeAttributes(&attributes));
-    NodeDef node_def = test::function::NDef(
-        dataset_params.node_name(),
-        name_utils::OpName(RangeDatasetOp::kDatasetType),
-        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
-        attributes);
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_dataset_op_kernel));
-    return Status::OK();
-  }
-};
+class RangeDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 RangeDatasetParams PositiveStepRangeDatasetParams() {
   return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3);
@@ -74,26 +49,26 @@ ITERATOR_GET_NEXT_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, DatasetNodeName) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckDatasetNodeName(range_dataset_params.node_name()));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetTypeString) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(
       CheckDatasetTypeString(name_utils::OpName(RangeDatasetOp::kDatasetType)));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
@@ -109,19 +84,19 @@ DATASET_CARDINALITY_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(RangeDatasetOpTest, IteratorPrefix) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(&range_dataset_params));
+  TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       RangeDatasetOp::kDatasetType, range_dataset_params.iterator_prefix())));
 }
@@ -143,7 +118,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 
 TEST_F(RangeDatasetOpTest, ZeroStep) {
   auto range_dataset_params = ZeroStepRangeDatasetParams();
-  EXPECT_EQ(Initialize(&range_dataset_params).code(),
+  EXPECT_EQ(Initialize(range_dataset_params).code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 

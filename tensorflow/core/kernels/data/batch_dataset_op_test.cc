@@ -11,61 +11,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
+#include "tensorflow/core/kernels/data/batch_dataset_op_test.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/range_dataset_op_test.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 constexpr char kNodeName[] = "batch_dataset_v2";
-constexpr int kOpVersion = 2;
 
-class BatchDatasetOpTest : public DatasetOpsTestBaseV2<BatchDatasetParams> {
- public:
-  Status Initialize(BatchDatasetParams* batch_dataset_params) override {
-    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
-    TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
-
-    // Create the dataset kernel.
-    TF_RETURN_IF_ERROR(
-        MakeDatasetOpKernel(*batch_dataset_params, &dataset_kernel_));
-
-    // Create the dataset and iterator.
-    TF_RETURN_IF_ERROR(MakeDatasetAndIterator(batch_dataset_params));
-    return Status::OK();
-  }
-
- protected:
-  // Creates a new `BatchDataset` op kernel.
-  Status MakeDatasetOpKernel(
-      const BatchDatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* batch_dataset_op_kernel) override {
-    name_utils::OpNameParams params;
-    params.op_version = kOpVersion;
-    AttributeVector attributes;
-    TF_RETURN_IF_ERROR(dataset_params.MakeAttributes(&attributes));
-    NodeDef node_def = test::function::NDef(
-        dataset_params.node_name(),
-        name_utils::OpName(BatchDatasetOp::kDatasetType, params),
-        {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
-         BatchDatasetOp::kDropRemainder},
-        attributes);
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
-    return Status::OK();
-  }
-};
+class BatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams1() {
   auto range_dataset_params = RangeDatasetParams(0, 12, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/4,
-               /*drop_remainder=*/false,
-               /*parallel_copy=*/true,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({4})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/4,
+                            /*drop_remainder=*/false,
+                            /*parallel_copy=*/true,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({4})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
@@ -73,27 +41,25 @@ BatchDatasetParams BatchDatasetParams1() {
 BatchDatasetParams BatchDatasetParams2() {
   auto range_dataset_params = RangeDatasetParams(0, 12, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/4,
-               /*drop_remainder=*/true,
-               /*parallel_copy=*/false,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({4})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/4,
+                            /*drop_remainder=*/true,
+                            /*parallel_copy=*/false,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({4})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can not evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams3() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  auto batch_dataset_params_0 =
-      BatchDatasetParams(std::move(range_dataset_params),
-            /*batch_size=*/3,
-            /*drop_remainder=*/false,
-            /*parallel_copy=*/false,
-            /*output_dtypes=*/{DT_INT64},
-            /*output_shapes=*/{PartialTensorShape({-1})},
-            /*node_name=*/"batch_dataset_0");
-  return batch_dataset_params_0;
+  return BatchDatasetParams(std::move(range_dataset_params),
+                            /*batch_size=*/3,
+                            /*drop_remainder=*/false,
+                            /*parallel_copy=*/false,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({-1})},
+                            /*node_name=*/"batch_dataset_0");
 }
 
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
@@ -101,12 +67,12 @@ BatchDatasetParams BatchDatasetParams3() {
 BatchDatasetParams BatchDatasetParams4() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/3,
-               /*drop_remainder=*/true,
-               /*parallel_copy=*/true,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({3})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/3,
+                            /*drop_remainder=*/true,
+                            /*parallel_copy=*/true,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({3})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
@@ -114,12 +80,12 @@ BatchDatasetParams BatchDatasetParams4() {
 BatchDatasetParams BatchDatasetParams5() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/12,
-               /*drop_remainder=*/true,
-               /*parallel_copy=*/true,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({12})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/12,
+                            /*drop_remainder=*/true,
+                            /*parallel_copy=*/true,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({12})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
@@ -127,12 +93,12 @@ BatchDatasetParams BatchDatasetParams5() {
 BatchDatasetParams BatchDatasetParams6() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/12,
-               /*drop_remainder=*/false,
-               /*parallel_copy=*/true,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({-1})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/12,
+                            /*drop_remainder=*/false,
+                            /*parallel_copy=*/true,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({-1})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
@@ -140,24 +106,24 @@ BatchDatasetParams BatchDatasetParams6() {
 BatchDatasetParams BatchDatasetParams7() {
   auto range_dataset_params = RangeDatasetParams(0, 0, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/4,
-               /*drop_remainder=*/false,
-               /*parallel_copy=*/false,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({4})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/4,
+                            /*drop_remainder=*/false,
+                            /*parallel_copy=*/false,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({4})},
+                            /*node_name=*/kNodeName);
 }
 
 // Test Case 8: test BatchDatasetV2 with an invalid batch size
 BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 1);
   return BatchDatasetParams(std::move(range_dataset_params),
-               /*batch_size=*/-1,
-               /*drop_remainder=*/false,
-               /*parallel_copy=*/false,
-               /*output_dtypes=*/{DT_INT64},
-               /*output_shapes=*/{PartialTensorShape({3})},
-               /*node_name=*/kNodeName);
+                            /*batch_size=*/-1,
+                            /*drop_remainder=*/false,
+                            /*parallel_copy=*/false,
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({3})},
+                            /*node_name=*/kNodeName);
 }
 
 std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {
@@ -195,22 +161,22 @@ ITERATOR_GET_NEXT_TEST_P(BatchDatasetOpTest, BatchDatasetParams,
 
 TEST_F(BatchDatasetOpTest, DatasetNodeName) {
   auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(Initialize(batch_dataset_params));
   TF_ASSERT_OK(CheckDatasetNodeName(batch_dataset_params.node_name()));
 }
 
 TEST_F(BatchDatasetOpTest, DatasetTypeString) {
   auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(Initialize(batch_dataset_params));
   name_utils::OpNameParams params;
-  params.op_version = kOpVersion;
+  params.op_version = batch_dataset_params.op_version();
   TF_ASSERT_OK(CheckDatasetTypeString(
       name_utils::OpName(BatchDatasetOp::kDatasetType, params)));
 }
 
 TEST_F(BatchDatasetOpTest, DatasetOutputDtypes) {
   auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(Initialize(batch_dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
@@ -251,7 +217,7 @@ DATASET_CARDINALITY_TEST_P(BatchDatasetOpTest, BatchDatasetParams,
 
 TEST_F(BatchDatasetOpTest, IteratorOutputDtypes) {
   auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(Initialize(batch_dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
@@ -278,9 +244,9 @@ ITERATOR_OUTPUT_SHAPES_TEST_P(BatchDatasetOpTest, BatchDatasetParams,
 
 TEST_F(BatchDatasetOpTest, IteratorOutputPrefix) {
   auto batch_dataset_params = BatchDatasetParams1();
-  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(Initialize(batch_dataset_params));
   name_utils::IteratorPrefixParams params;
-  params.op_version = kOpVersion;
+  params.op_version = batch_dataset_params.op_version();
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       BatchDatasetOp::kDatasetType, batch_dataset_params.iterator_prefix(),
       params)));
@@ -329,7 +295,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(BatchDatasetOpTest, BatchDatasetParams,
 
 TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
   auto batch_dataset_params = InvalidBatchSizeBatchDatasetParams();
-  EXPECT_EQ(Initialize(&batch_dataset_params).code(),
+  EXPECT_EQ(Initialize(batch_dataset_params).code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 

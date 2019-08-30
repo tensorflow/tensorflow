@@ -292,64 +292,6 @@ Status DatasetOpsTestBase::MakeRangeDataset(
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::MakeRangeDataset(
-    RangeDatasetParams& range_dataset_params, Tensor* range_dataset) {
-  GraphConstructorOptions graph_opts;
-  graph_opts.allow_internal_ops = true;
-  graph_opts.expect_device_spec = false;
-  AttributeVector attributes;
-  TF_RETURN_IF_ERROR(range_dataset_params.MakeAttributes(&attributes));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(range_dataset_params.MakeInputs(&inputs));
-  std::vector<Tensor> input_tensors;
-  for (auto& tensor_value : inputs) {
-    input_tensors.emplace_back(*tensor_value.tensor);
-  }
-  TF_RETURN_IF_ERROR(RunFunction(test::function::MakeRangeDataset(), attributes,
-                                 input_tensors, graph_opts,
-                                 /*rets=*/{range_dataset}));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::MakeBatchDataset(
-    BatchDatasetParams& batch_dataset_params, Tensor* batch_dataset) {
-  GraphConstructorOptions graph_opts;
-  graph_opts.allow_internal_ops = true;
-  graph_opts.expect_device_spec = false;
-  AttributeVector attributes;
-  TF_RETURN_IF_ERROR(batch_dataset_params.MakeAttributes(&attributes));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(batch_dataset_params.MakeInputs(&inputs));
-  std::vector<Tensor> input_tensors;
-  for (auto& tensor_value : inputs) {
-    input_tensors.emplace_back(*tensor_value.tensor);
-  }
-  TF_RETURN_IF_ERROR(RunFunction(test::function::MakeBatchDataset(), attributes,
-                                 input_tensors, graph_opts,
-                                 /*rets=*/{batch_dataset}));
-  return Status::OK();
-}
-
-Status DatasetOpsTestBase::MakeMapDataset(MapDatasetParams& map_dataset_params,
-                                          Tensor* map_dataset) {
-  GraphConstructorOptions graph_opts;
-  graph_opts.allow_internal_ops = true;
-  graph_opts.expect_device_spec = false;
-  AttributeVector attributes;
-  TF_RETURN_IF_ERROR(map_dataset_params.MakeAttributes(&attributes));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(map_dataset_params.MakeInputs(&inputs));
-  std::vector<Tensor> input_tensors;
-  for (auto& tensor_value : inputs) {
-    input_tensors.emplace_back(*tensor_value.tensor);
-  }
-  bool has_other_args = map_dataset_params.num_of_other_arguments() > 0;
-  auto fdef = test::function::MakeMapDataset(has_other_args);
-  TF_RETURN_IF_ERROR(RunFunction(fdef, attributes, input_tensors, graph_opts,
-                                 /*rets=*/{map_dataset}));
-  return Status::OK();
-}
-
 // Create a `TakeDataset` dataset as a variant tensor.
 Status DatasetOpsTestBase::MakeTakeDataset(
     const Tensor& input_dataset, int64 count,
@@ -732,6 +674,101 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     } else {
       EXPECT_FALSE(end_of_sequence);
     }
+  }
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::Initialize(DatasetParams& dataset_params) {
+  TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
+  TF_RETURN_IF_ERROR(
+      InitFunctionLibraryRuntime(dataset_params.func_lib(), cpu_num_));
+
+  TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, &dataset_kernel_));
+  for (auto& pair : dataset_params.input_dataset_params()) {
+    TF_RETURN_IF_ERROR(MakeDatasetTensor(pair.first.get(), &pair.second));
+  }
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  TF_RETURN_IF_ERROR(dataset_params.MakeInputs(&inputs));
+  TF_RETURN_IF_ERROR(
+      CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
+  TF_RETURN_IF_ERROR(
+      CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
+  TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+      iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+}
+
+Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
+    const DatasetParams& dataset_params,
+    std::unique_ptr<OpKernel>* dataset_kernel) {
+  name_utils::OpNameParams params;
+  params.op_version = dataset_params.op_version();
+  std::vector<string> input_placeholder;
+  TF_RETURN_IF_ERROR(dataset_params.MakeInputPlaceholder(&input_placeholder));
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(dataset_params.MakeAttributes(&attributes));
+  NodeDef node_def = test::function::NDef(
+      dataset_params.node_name(),
+      name_utils::OpName(ToString(dataset_params.type()), params),
+      input_placeholder, attributes);
+  TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::MakeDatasetTensor(DatasetParams* dataset_params,
+                                               Tensor* dataset) {
+  // Make sure all the input dataset tensors have been populated.
+  for (auto& pair : dataset_params->input_dataset_params()) {
+    TF_RETURN_IF_ERROR(MakeDatasetTensor(pair.first.get(), &pair.second));
+  }
+
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(dataset_params->MakeAttributes(&attributes));
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  TF_RETURN_IF_ERROR(dataset_params->MakeInputs(&inputs));
+  std::vector<Tensor> input_tensors;
+  for (auto& tensor_value : inputs) {
+    input_tensors.emplace_back(*tensor_value.tensor);
+  }
+
+  bool has_other_args = false;
+  if (dataset_params->type() == DatasetParamsType::Map) {
+    auto map_dataset_params = dynamic_cast<MapDatasetParams*>(dataset_params);
+    has_other_args = map_dataset_params->num_of_other_arguments() > 0;
+  }
+
+  GraphConstructorOptions graph_opts;
+  graph_opts.allow_internal_ops = true;
+  graph_opts.expect_device_spec = false;
+  FunctionDef make_dataset_tensor_fdef;
+  TF_RETURN_IF_ERROR(
+      MakeDatasetTensorFunc(*dataset_params, &make_dataset_tensor_fdef));
+  TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes,
+                                 input_tensors, graph_opts,
+                                 /*rets=*/{dataset}));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBaseV2::MakeDatasetTensorFunc(
+    const DatasetParams& dataset_params, FunctionDef* fdef) {
+  switch (dataset_params.type()) {
+    case DatasetParamsType::Range:
+      *fdef = test::function::MakeRangeDataset();
+      break;
+    case DatasetParamsType::Batch:
+      *fdef = test::function::MakeBatchDataset();
+      break;
+    case DatasetParamsType::Map: {
+      std::vector<string> input_placeholder;
+      TF_RETURN_IF_ERROR(
+          dataset_params.MakeInputPlaceholder(&input_placeholder));
+      bool has_other_args = input_placeholder.size() > 1;
+      *fdef = test::function::MakeMapDataset(has_other_args);
+      break;
+    }
+    default:
+      return errors::Unimplemented("MakeDatasetTensorFunc() for ",
+                                   ToString(dataset_params.type()));
   }
   return Status::OK();
 }

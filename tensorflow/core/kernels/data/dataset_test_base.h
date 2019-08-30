@@ -32,7 +32,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_test_params.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/map_dataset_op_test.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -257,6 +259,8 @@ class DatasetOpsTestBase : public ::testing::Test {
                                   std::vector<Tensor>* const components,
                                   DatasetBase** tensor_slice_dataset);
 
+  // TODO(feihugis): remove this function after all related testes switch to
+  // `DatasetOpsTestBaseV2`.
   // Creates a `RangeDataset` dataset as a variant tensor.
   Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
                           const Tensor& step,
@@ -264,18 +268,8 @@ class DatasetOpsTestBase : public ::testing::Test {
                           const std::vector<PartialTensorShape>& output_shapes,
                           Tensor* range_dataset);
 
-  // Creates a `RangeDataset` dataset as a variant tensor.
-  Status MakeRangeDataset(RangeDatasetParams& range_dataset_params,
-                          Tensor* range_dataset);
-
-  // Create a `BatchDataset` dataset as a variant tensor.
-  Status MakeBatchDataset(BatchDatasetParams& batch_dataset_params,
-                          Tensor* batch_dataset);
-
-  // Create a `MapDataset` dataset as a variant tensor.
-  Status MakeMapDataset(MapDatasetParams& map_dataset_params,
-                        Tensor* map_dataset);
-
+  // TODO(feihugis): remove this function after all related testes switch to
+  // `DatasetOpsTestBaseV2`.
   // Creates a `TakeDataset` dataset as a variant tensor.
   Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
                          const DataTypeVector& output_types,
@@ -415,60 +409,21 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<IteratorBase> iterator_;
 };
 
-template <typename T>
 class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
  public:
   // Initializes the required members for running the unit tests.
-  virtual Status Initialize(T* dataset_params) = 0;
+  Status Initialize(DatasetParams& dataset_params);
 
-  // A helper function to intialize `dataset_ctx_`, `dataset_`, `iterator_ctx_`,
-  // and `iterator_`.
-  Status MakeDatasetAndIterator(DatasetParams* dataset_params) {
-    for (auto& pair : dataset_params->input_dataset_params()) {
-      TF_RETURN_IF_ERROR(MakeDatasetTensor(pair.first.get(), &pair.second));
-    }
-    gtl::InlinedVector<TensorValue, 4> inputs;
-    TF_RETURN_IF_ERROR(dataset_params->MakeInputs(&inputs));
-    TF_RETURN_IF_ERROR(
-        CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
-    TF_RETURN_IF_ERROR(
-        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
-    TF_RETURN_IF_ERROR(
-        CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-    TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-        iterator_ctx_.get(), dataset_params->iterator_prefix(), &iterator_));
-    return Status::OK();
-  }
-
-  virtual Status MakeDatasetOpKernel(
-      const T& dataset_params, std::unique_ptr<OpKernel>* dataset_kernel) = 0;
+ private:
+  // Creates the dataset op kernel.
+  Status MakeDatasetOpKernel(const DatasetParams& dataset_params,
+                             std::unique_ptr<OpKernel>* dataset_kernel);
 
   // Creates a dataset tensor according to the input dataset params.
-  Status MakeDatasetTensor(DatasetParams* dataset_params, Tensor* dataset) {
-    switch (dataset_params->type()) {
-#define CASE_DS_PARAMS(DatasetParams_Type, DatasetParams_Class,              \
-                       MakeDataset_Fn_Name)                                  \
-  case DatasetParams_Type: {                                                 \
-    for (auto& pair : dataset_params->input_dataset_params()) {              \
-      TF_RETURN_IF_ERROR(MakeDatasetTensor(pair.first.get(), &pair.second)); \
-    }                                                                        \
-    auto input_dataset_params =                                              \
-        dynamic_cast<DatasetParams_Class*>(dataset_params);                  \
-    TF_RETURN_IF_ERROR(MakeDataset_Fn_Name(*input_dataset_params, dataset)); \
-    break;                                                                   \
-  }
-      CASE_DS_PARAMS(DatasetParamsType::Range, RangeDatasetParams,
-                     MakeRangeDataset)
-      CASE_DS_PARAMS(DatasetParamsType::Batch, BatchDatasetParams,
-                     MakeBatchDataset)
-      CASE_DS_PARAMS(DatasetParamsType::Map, MapDatasetParams, MakeMapDataset)
-      default:
-        return errors::InvalidArgument("MakeDatasetTensor() does not support ",
-                                       ToString(dataset_params->type()),
-                                       " yet.");
-    }
-    return Status::OK();
-  }
+  Status MakeDatasetTensor(DatasetParams* dataset_params, Tensor* dataset);
+
+  Status MakeDatasetTensorFunc(const DatasetParams& dataset_params,
+                               FunctionDef* fdef);
 };
 
 #define ITERATOR_GET_NEXT_TEST_P(dataset_op_test_class, dataset_params_class, \
@@ -480,7 +435,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                               \
   TEST_P(ParameterizedGetNextTest, GetNext) {                                 \
     auto test_case = GetParam();                                              \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                      \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
     TF_ASSERT_OK(CheckIteratorGetNext(test_case.expected_outputs,             \
                                       /*compare_order=*/true));               \
   }                                                                           \
@@ -499,7 +454,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                               \
   TEST_P(ParameterizedDatasetNodeNameTest, DatasetNodeName) {                 \
     auto test_case = GetParam();                                              \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                      \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
     TF_ASSERT_OK(CheckDatasetNodeName(test_case.expected_node_name));         \
   }                                                                           \
                                                                               \
@@ -518,7 +473,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                          \
   TEST_P(ParameterizedDatasetTypeStringTest, DatasetTypeString) {        \
     auto test_case = GetParam();                                         \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                 \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                  \
     TF_ASSERT_OK(                                                        \
         CheckDatasetTypeString(test_case.expected_dataset_type_string)); \
   }                                                                      \
@@ -539,7 +494,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                               \
   TEST_P(ParameterizedDatasetOutputDtypesTest, DatasetOutputDtypes) {         \
     auto test_case = GetParam();                                              \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                      \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
     TF_ASSERT_OK(CheckDatasetOutputDtypes(test_case.expected_output_dtypes)); \
   }                                                                           \
                                                                               \
@@ -559,7 +514,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                               \
   TEST_P(ParameterizedDatasetOutputShapesTest, DatasetOutputShapes) {         \
     auto test_case = GetParam();                                              \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                      \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
     TF_ASSERT_OK(CheckDatasetOutputShapes(test_case.expected_output_shapes)); \
   }                                                                           \
                                                                               \
@@ -579,7 +534,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                            \
   TEST_P(ParameterizedCardinalityTest, Cardinality) {                      \
     auto test_case = GetParam();                                           \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                   \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                    \
     TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality)); \
   }                                                                        \
                                                                            \
@@ -598,7 +553,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                               \
   TEST_P(ParameterizedIteratorOutputDtypesTest, IteratorOutputDtypes) {       \
     auto test_case = GetParam();                                              \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                      \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
     TF_ASSERT_OK(CheckDatasetOutputDtypes(test_case.expected_output_dtypes)); \
   }                                                                           \
                                                                               \
@@ -617,7 +572,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                                \
   TEST_P(ParameterizedIteratorOutputShapesTest, IteratorOutputShapes) {        \
     auto test_case = GetParam();                                               \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                       \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                        \
     TF_ASSERT_OK(CheckIteratorOutputShapes(test_case.expected_output_shapes)); \
   }                                                                            \
                                                                                \
@@ -636,7 +591,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
                                                                             \
   TEST_P(ParameterizedIteratorPrefixTest, IteratorPrefix) {                 \
     auto test_case = GetParam();                                            \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                    \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                     \
     TF_ASSERT_OK(CheckIteratorPrefix(test_case.expected_iterator_prefix));  \
   }                                                                         \
                                                                             \
@@ -654,7 +609,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
             IteratorSaveAndRestoreTestCase<dataset_params_class>> {};        \
   TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {  \
     auto test_case = GetParam();                                             \
-    TF_ASSERT_OK(Initialize(&test_case.dataset_params));                     \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                      \
     TF_ASSERT_OK(CheckIteratorSaveAndRestore(                                \
         test_case.dataset_params.iterator_prefix(),                          \
         test_case.expected_outputs, test_case.breakpoints));                 \

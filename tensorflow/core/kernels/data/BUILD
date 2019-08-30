@@ -28,8 +28,11 @@ cc_library(
         "dataset_test_params.cc",
     ],
     hdrs = [
+        "batch_dataset_op_test.h",
         "dataset_test_base.h",
         "dataset_test_params.h",
+        "map_dataset_op_test.h",
+        "range_dataset_op_test.h",
     ],
     deps = [
         ":batch_dataset_op",

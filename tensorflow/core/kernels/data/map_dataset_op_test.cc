@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
+#include "tensorflow/core/kernels/data/batch_dataset_op_test.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/map_dataset_op_test.h"
+#include "tensorflow/core/kernels/data/range_dataset_op_test.h"
 
 namespace tensorflow {
 namespace data {
@@ -22,38 +25,7 @@ namespace {
 
 constexpr char kNodeName[] = "map_dataset";
 
-class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
- public:
-  Status Initialize(MapDatasetParams* map_dataset_params) override {
-    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
-    TF_RETURN_IF_ERROR(
-        InitFunctionLibraryRuntime(map_dataset_params->func_lib(), cpu_num_));
-    TF_RETURN_IF_ERROR(
-        MakeDatasetOpKernel(*map_dataset_params, &dataset_kernel_));
-    TF_RETURN_IF_ERROR(MakeDatasetAndIterator(map_dataset_params));
-    return Status::OK();
-  }
-
- protected:
-  // Creates a new MapDataset op kernel.
-  Status MakeDatasetOpKernel(const MapDatasetParams& map_dataset_params,
-                             std::unique_ptr<OpKernel>* map_kernel) override {
-    std::vector<string> input_placeholder = {MapDatasetOp::kInputDataset};
-    for (int i = 0; i < map_dataset_params.num_of_other_arguments(); ++i) {
-      input_placeholder.emplace_back(
-          absl::StrCat(MapDatasetOp::kOtherArguments, "_", i));
-    }
-
-    AttributeVector attributes;
-    TF_RETURN_IF_ERROR(map_dataset_params.MakeAttributes(&attributes));
-    NodeDef map_dataset_node_def =
-        test::function::NDef(map_dataset_params.node_name(),
-                             name_utils::OpName(MapDatasetOp::kDatasetType),
-                             input_placeholder, attributes);
-    TF_RETURN_IF_ERROR(CreateOpKernel(map_dataset_node_def, map_kernel));
-    return Status::OK();
-  }
-};
+class MapDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 MapDatasetParams MapDatasetParams1() {
   auto range_dataset_params = RangeDatasetParams(0, 10, 3);
@@ -144,26 +116,26 @@ ITERATOR_GET_NEXT_TEST_P(MapDatasetOpTest, MapDatasetParams, GetNextTestCases())
 
 TEST_F(MapDatasetOpTest, DatasetNodeName) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
 }
 
 TEST_F(MapDatasetOpTest, DatasetTypeString) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(
       CheckDatasetTypeString(name_utils::OpName(MapDatasetOp::kDatasetType)));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
@@ -181,19 +153,19 @@ DATASET_CARDINALITY_TEST_P(MapDatasetOpTest, MapDatasetParams,
 
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorPrefix) {
   auto dataset_params = MapDatasetParams1();
-  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       MapDatasetOp::kDatasetType, dataset_params.iterator_prefix())));
 }
