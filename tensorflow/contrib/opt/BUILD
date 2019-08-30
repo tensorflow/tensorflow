@@ -2,7 +2,6 @@
 #   Optimization routines.
 
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -63,40 +62,48 @@ py_library(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "adam_gs_optimizer_test",
     srcs = ["python/training/adam_gs_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "adamax_test",
     srcs = ["python/training/adamax_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no-internal-py3",
+    ],
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
@@ -104,29 +111,29 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
-    ],
-    tags = [
-        "no-internal-py3",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "moving_average_optimizer_test",
     srcs = ["python/training/moving_average_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = [
+        "notsan",  # b/31055119
+    ],
+    deps = [
         ":opt_py",
-        "@six_archive//:six",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-    ],
-    tags = [
-        "notsan",  # b/31055119
+        "@six_archive//:six",
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "variable_clipping_optimizer_test",
     srcs = ["python/training/variable_clipping_optimizer_test.py"],
     additional_deps = [
@@ -145,29 +152,31 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "multitask_optimizer_wrapper_test",
     srcs = ["python/training/multitask_optimizer_wrapper_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "lazy_adam_gs_optimizer_test",
     srcs = ["python/training/lazy_adam_gs_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -176,16 +185,18 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "lazy_adam_optimizer_test",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -194,15 +205,18 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "reg_adagrad_optimizer_test",
     srcs = ["python/training/reg_adagrad_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -212,15 +226,15 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
-    additional_deps = [
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -230,15 +244,17 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "weight_decay_optimizers_test",
     srcs = ["python/training/weight_decay_optimizers_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -248,10 +264,11 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "drop_stale_gradient_optimizer_test",
     srcs = ["python/training/drop_stale_gradient_optimizer_test.py"],
     additional_deps = [
@@ -273,7 +290,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "agn_optimizer_test",
     srcs = ["python/training/agn_optimizer_test.py"],
     additional_deps = [
@@ -294,7 +311,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "elastic_average_optimizer_test",
     srcs = ["python/training/elastic_average_optimizer_test.py"],
     additional_deps = [
@@ -315,7 +332,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "model_average_optimizer_test",
     srcs = ["python/training/model_average_optimizer_test.py"],
     additional_deps = [
@@ -336,21 +353,24 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "sign_decay_test",
     srcs = ["python/training/sign_decay_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
         "//tensorflow/python:client_testlib",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "addsign_test",
     srcs = ["python/training/addsign_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -360,15 +380,17 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "powersign_test",
     srcs = ["python/training/powersign_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -378,15 +400,17 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "ggt_test",
     srcs = ["python/training/ggt_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -395,17 +419,19 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "shampoo_test",
     size = "medium",
     srcs = ["python/training/shampoo_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -414,34 +440,39 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
-    shard_count = 4,
 )
 
-cuda_py_test(
+py_test(
     name = "lars_optimizer_test",
     srcs = ["python/training/lars_optimizer_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "matrix_functions_test",
     srcs = ["python/training/matrix_functions_test.py"],
-    additional_deps = [
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
         ":opt_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
