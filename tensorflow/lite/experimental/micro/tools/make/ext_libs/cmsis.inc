@@ -6,10 +6,14 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     ifneq (,$(filter $(TARGET_ARCH), cortex-m4))
         CCFLAGS += -DARM_MATH_DSP
         CXXFLAGS += -DARM_MATH_DSP
+        CCFLAGS += -DARM_MATH_LOOPUNROLL
+        CXXFLAGS += -DARM_MATH_LOOPUNROLL
     endif
     ifneq (,$(filter $(TARGET_ARCH), cortex-m7))
         CCFLAGS += -DARM_MATH_DSP
         CXXFLAGS += -DARM_MATH_DSP
+        CCFLAGS += -DARM_MATH_LOOPUNROLL
+        CXXFLAGS += -DARM_MATH_LOOPUNROLL
     endif
     ifneq (,$(filter $(TARGET_ARCH), x86_64))
         # CMSIS-NN optimizations not supported
@@ -272,6 +276,10 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       ${CMSIS_PATH}/CMSIS/DSP/Testing/FrameworkInclude/Timing.h \
       ${CMSIS_PATH}/CMSIS/DSP/Testing/FrameworkInclude/FPGA.h \
       ${CMSIS_PATH}/CMSIS/DSP/ComputeLibrary/Include/NEMath.h
+
+    # todo: remove the two lines below once context->AllocateTemporaryTensor() is implemented.
+    MICROLITE_CC_HDRS += tensorflow/lite/experimental/micro/kernels/cmsis-nn/scratch_buffer.h
+    MICROLITE_CC_SRCS += tensorflow/lite/experimental/micro/kernels/cmsis-nn/scratch_buffer.cc
 
     INCLUDES += -I$(CMSIS_PATH)/CMSIS/Core/Include \
                 -I$(CMSIS_PATH)/CMSIS/NN/Include \

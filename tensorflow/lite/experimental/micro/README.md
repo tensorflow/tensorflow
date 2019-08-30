@@ -411,23 +411,35 @@ conv in this example), follow these steps:
 1.  Clone CMSIS to a custom location (<CUSTOM_LOCATION>) url:
     https://github.com/ARM-software/CMSIS_5.git Make sure you're on the
     development branch.
-2.  Generate the project for depthwise conv mbed test: `make -f
+2.  Generate the project for depthwise conv mbed test:
+    ```
+    make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn
-    CMSIS_PATH=<CUSTOM_LOCATION> generate_depthwise_conv_test_mbed_project`
-3.  Go to the generated mbed folder: `cd
-    tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/depthwise_conv_test/mbed`
+    CMSIS_PATH=<CUSTOM_LOCATION> generate_depthwise_conv_test_mbed_project
+    ```
+3.  Go to the generated mbed folder:
+    ```
+    cd tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/depthwise_conv_test/mbed
+    ```
 4.  Follow the steps in README_MBED.md to setup the environment. Or simply do:
-    `mbed config root . mbed deploy python -c 'import fileinput, glob; for
+    ```
+    mbed config root .
+    mbed deploy
+    python -c 'import fileinput, glob; for
     filename in glob.glob("mbed-os/tools/profiles/*.json"): for line in
     fileinput.input(filename, inplace=True):
     print(line.replace("\"-std=gnu++98\"","\"-std=gnu++11\",
-    \"-fpermissive\""))'`
+    \"-fpermissive\""))'
+    ```
 5.  Compile and flash. The 'auto' flag requires your target to be plugged in.
-    `mbed compile -m auto -t GCC_ARM -f --source . --source
-    <CUSTOM_LOCATION>/CMSIS/NN/Include --source
-    <CUSTOM_LOCATION>/CMSIS/NN/Source/ConvolutionFunctions --source
-    <CUSTOM_LOCATION>/CMSIS/DSP/Include --source
-    <CUSTOM_LOCATION>/CMSIS/Core/Include -j8`
+    ```
+    mbed compile -m auto -t GCC_ARM -f --source .
+    --source <CUSTOM_LOCATION>/CMSIS/NN/Include
+    --source <CUSTOM_LOCATION>/CMSIS/NN/Source
+    --source <CUSTOM_LOCATION>/CMSIS/DSP/Include
+    --source <CUSTOM_LOCATION>/CMSIS/Core/Include
+    -DARM_MATH_DSP -DARM_MATH_LOOPUNROLL -j8
+    ```
 
 ## Goals
 
