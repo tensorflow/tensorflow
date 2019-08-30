@@ -1233,6 +1233,4 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
     ],
-    # b/140155562: incorrect values
-    xla_enable_strict_auto_jit = False,
 )
