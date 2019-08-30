@@ -421,14 +421,14 @@ def get_op_definition(instruction, doc, existing_info):
   arguments = existing_info.get('arguments', None)
   if arguments is None:
     arguments = [map_spec_operand_to_ods_argument(o) for o in operands]
-    arguments = '\n    '.join(arguments)
+    arguments = ',\n    '.join(arguments)
     if arguments:
       # Prepend and append whitespace for formatting
       arguments = '\n    {}\n  '.format(arguments)
 
   assembly = existing_info.get('assembly', None)
   if assembly is None:
-    assembly = '    ``` {.ebnf}\n'\
+    assembly = '\n    ``` {.ebnf}\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
                '    For example:\n\n'\
