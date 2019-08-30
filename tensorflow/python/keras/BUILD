@@ -1506,6 +1506,7 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "noasan",  # TODO(b/132183295): Re-enable this.
+        "nomac",  # TODO(b/140193633): Re-enable this.
         "notsan",
     ],
 )
