@@ -215,13 +215,12 @@ cuda_py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":opt_py",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -231,7 +230,6 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
     ],
 )
 
