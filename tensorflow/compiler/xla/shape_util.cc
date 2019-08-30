@@ -1492,4 +1492,71 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return hash_value;
 }
 
+// Returns the indices of the first elements of all consecutive subarrays of the
+// given array. For example:
+// ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
+static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64> xs) {
+  std::vector<size_t> is = {0};
+  for (size_t i = 1; i < xs.size(); ++i) {
+    if (1 != xs[i] - xs[i - 1]) {
+      is.push_back(i);
+    }
+  }
+  return is;
+}
+
+// Merges the sequences of dimensions of the given shape which start at the
+// given indices `segs`.
+static Shape MergeDimensions(absl::Span<const size_t> segs,
+                             const Shape& shape) {
+  std::vector<int64> dimensions;
+  for (size_t i = 1; i <= segs.size(); ++i) {
+    dimensions.push_back(std::accumulate(
+        shape.dimensions().begin() + segs[i - 1],
+        shape.dimensions().begin() +
+            (segs.size() == i ? shape.dimensions().size() : segs[i]),
+        1, std::multiplies<int64>()));
+  }
+  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
+                                                  dimensions);
+}
+
+/*static*/ absl::optional<std::vector<int64>> ShapeUtil::FindTranspose021(
+    const Shape& a, const Shape& b) {
+  if (!CompatibleIgnoringElementType(a, b)) {
+    return absl::nullopt;
+  }
+
+  std::vector<int64> permutation(a.dimensions().size());
+  absl::Span<const int64> minor_to_major_a = LayoutUtil::MinorToMajor(a);
+  std::vector<int64> major_to_minor_a(minor_to_major_a.rbegin(),
+                                      minor_to_major_a.rend());
+  absl::Span<const int64> minor_to_major_b = LayoutUtil::MinorToMajor(b);
+  std::vector<int64> major_to_minor_b(minor_to_major_b.rbegin(),
+                                      minor_to_major_b.rend());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    permutation[i] = PositionInContainer(major_to_minor_b, major_to_minor_a[i]);
+  }
+
+  std::vector<size_t> segments = ConsecutiveSegments(permutation);
+  if ((3 == segments.size() && 0 == permutation[0]) || 2 == segments.size()) {
+    Shape descending_layout_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
+    Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
+    absl::Span<const int64> normalized_dims =
+        AsInt64Slice(normalized_shape.dimensions());
+    std::vector<int64> dims_021;
+    if (2 == segments.size()) {
+      // The logical component-0 is of size one.
+      dims_021 = {1, normalized_dims[1], normalized_dims[0]};
+    } else {
+      dims_021 = {normalized_dims[0], normalized_dims[2], normalized_dims[1]};
+    }
+
+    return dims_021;
+  }
+
+  return absl::nullopt;
+}
+
 }  // namespace xla

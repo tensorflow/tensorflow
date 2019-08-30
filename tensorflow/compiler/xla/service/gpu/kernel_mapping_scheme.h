@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
-namespace llvm_ir {
-
-// About 0-2-1 transpose:
-//
-// If a shape can be viewed as three logical components 0-1-2 in the order of
-// major to minor, a 0-2-1-transpose changes the order of such logical
-// components to 0-2-1. We call the shape being transposed the input shape and
-// the transposed shape the output shape. The logical view of the input/output
-// shapes for the transpose are called the 0-1-2/0-2-1 shapes or the normalized
-// shapes. The original input/output shapes are called unnormalized shapes.
-//
-// If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-// normalized shape of `b` or the 0-2-1 shape.
-absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
-                                                     const Shape& b);
+namespace gpu {
 
 // A tile is a spatial subdivision of a tensor. We group tensor elements into
 // tiles so that we can launch kernels to process the tensor elements in blocks
@@ -88,13 +76,36 @@ absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-
- public:
-  // dims_in_elems: the normalized tensor dimensions.
   KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
                       int64 tile_size_x, int64 block_size_z,
                       int64 num_threads_y, int64 num_threads_x,
-                      bool is_dilated_x, llvm::IRBuilder<>* b);
+                      bool is_dilated_x)
+      : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
+        tile_sizes_{1, tile_size_y, tile_size_x},
+        dims_in_tiles_{dims_in_elems[0],
+                       CeilOfRatio<int64>(dims_in_elems[1], tile_size_y),
+                       CeilOfRatio<int64>(dims_in_elems[2], tile_size_x)},
+        block_sizes_{block_size_z, 1, 1},
+        dims_in_blocks_{CeilOfRatio<int64>(dims_in_elems[0], block_sizes_[0]),
+                        dims_in_tiles_[1], dims_in_tiles_[2]},
+        num_threads_x_(num_threads_x),
+        num_threads_y_(num_threads_y),
+        dilated_x_(is_dilated_x) {
+    CHECK_EQ(tile_size_y % num_threads_y_, 0);
+    CHECK_EQ(tile_size_x % num_threads_x_, 0);
+    CHECK_EQ((dims_in_elems[0] % block_size_z), 0);
+    VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",")
+             << "]";
+    VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",")
+             << "]";
+    VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")
+             << "]";
+    if (!dilated_x_) {
+      // dilated_x_=false is for the purpose of vectorization, which requires
+      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
+      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
+    }
+  }
 
   // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64> GetDimensionsInElements() const {
@@ -115,13 +126,16 @@ class KernelMappingScheme {
   int64 GetNumberOfTilesInTotal() const {
     return absl::c_accumulate(dims_in_tiles_, 1LL, std::multiplies<int64>());
   }
+
   int64 GetNumberOfTilesInOneBlock() const {
     return absl::c_accumulate(block_sizes_, 1, std::multiplies<int64>());
   }
+
   int64 GetNumberOfTilesInOneBlockForDimension(int d) const {
     DCHECK(d >= DimZ && d <= DimX);
     return block_sizes_[d];
   }
+
   int64 GetNumberOfBlocks() const {
     return absl::c_accumulate(dims_in_blocks_, 1, std::multiplies<int64>());
   }
@@ -149,26 +163,7 @@ class KernelMappingScheme {
 
   bool DilatedX() const { return dilated_x_; }
 
-  IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
-  // Returns the index for the first tile in the block with the given block
-  // index.
-  IrArray::Index GetTileIndexForBlockOrigin(const IrArray::Index& block_index);
-  // Returns the index for the first element in the tile with the given tile
-  // index.
-  IrArray::Index GetElementIndexForTileOrigin(const IrArray::Index& tile_index);
-
-  std::tuple<llvm::Value*, llvm::Value*> EmitThreadYXCoordinate(
-      llvm::Type* index_ty);
-
-  IrArray::Index GetUnnormalizedIndex(
-      const IrArray::Index& normalized_shape_index,
-      const Shape& unnormalized_shape);
-
-  llvm::GlobalVariable* GetSharedMemoryBufferForElementType(
-      llvm::Type* elem_ty, absl::string_view buffer_name);
-
  private:
-  llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
   std::array<int64, 3> dims_in_elems_;
 
@@ -197,7 +192,79 @@ class KernelMappingScheme {
   bool dilated_x_;
 };
 
-}  // namespace llvm_ir
-}  // namespace xla
+// Information to support the code generation for a tiled reduction kernel.
+using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
+class ReductionCodegenInfo {
+ public:
+  explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
+                                bool is_row_reduction)
+      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_KERNEL_TILING_H_
+  void SetCurrentOutputLinearIndexAddress(llvm::AllocaInst* a) {
+    current_output_linear_index_address_ = a;
+  }
+
+  const KernelMappingScheme& GetKernelMappingScheme() const {
+    return mapping_scheme_;
+  }
+
+  // Returns the address of the memory that stores the linear index of the
+  // current output. Since we are processing reduction to contiguous physical
+  // dimensions, this linear index is the linear index of the 1D output array.
+  llvm::AllocaInst* GetCurrentOutputLinearIndexAddress() const {
+    return current_output_linear_index_address_;
+  }
+
+  void SetCurrentOutputInboundAddress(llvm::AllocaInst* a) {
+    current_output_inbound_address_ = a;
+  }
+
+  llvm::AllocaInst* GetCurrentOutputInboundAddress() const {
+    return current_output_inbound_address_;
+  }
+
+  AddressVector* GetMutablePartialResultAddresses() {
+    return &partial_result_addresses_;
+  }
+  absl::Span<llvm::AllocaInst* const> GetPartialResultAddresses() const {
+    return partial_result_addresses_;
+  }
+
+  AddressVector* GetMutableReductionInputAddresses() {
+    return &reduction_input_addresses_;
+  }
+  absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
+    return reduction_input_addresses_;
+  }
+
+  bool IsRowReduction() const { return is_row_reduction_; }
+
+  // Return the dimension that is being reduced between DimX and DimY.
+  int GetReducedDimensionEnum() const {
+    return IsRowReduction() ? KernelMappingScheme::DimX
+                            : KernelMappingScheme::DimY;
+  }
+
+  int GetPartialResultIndex(int64 x_iter_num) const {
+    if (IsRowReduction()) {
+      return 0;
+    }
+    return x_iter_num;
+  }
+
+ private:
+  const KernelMappingScheme mapping_scheme_;
+  AddressVector partial_result_addresses_;
+  AddressVector reduction_input_addresses_;
+  // The address of the memory that stores the linear index of the current
+  // output, assuming that the output doesn't change the layout of the kept
+  // elements in the reduction input.
+  llvm::AllocaInst* current_output_linear_index_address_ = nullptr;
+  llvm::AllocaInst* current_output_inbound_address_ = nullptr;
+  bool is_row_reduction_;
+};
+
+}  // end namespace gpu
+}  // end namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_KERNEL_MAPPING_SCHEME_H_
