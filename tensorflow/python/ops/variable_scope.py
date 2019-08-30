@@ -1036,7 +1036,7 @@ def _make_master_method(name):
     return getattr(self._master_tensor, name)(*args, **kwargs)  # pylint: disable=protected-access
   return method
 
-_master_method_list = ("get_shape", "__str__")
+_master_method_list = ("get_shape", "__str__", "shape_as_list")
 for _name in _master_method_list:
   setattr(_LazyEvalTensor, _name, _make_master_method(_name))
 
