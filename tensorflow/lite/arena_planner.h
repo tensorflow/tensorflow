@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ARENA_PLANNER_H_
 #define TENSORFLOW_LITE_ARENA_PLANNER_H_
 
-#include <limits>
 #include <memory>
 #include <vector>
 
@@ -45,12 +44,17 @@ struct AllocationInfo;
 // execution. Since dynamic tensors don't have sizes until after the
 // corresponding operation is executed, this class supports incremental
 // planning.
+//
+// TODO(b/127354079): Remove the constrain below when the issue is fixed.
+// WARNING: MemoryPlanner's behavior must be deterministic. If the first N
+// nodes are unchanged, it must produce exactly the same allocation plan for
+// the first N nodes.
 class ArenaPlanner : public MemoryPlanner {
  public:
   // Ownership of 'context' is not taken and it must remain util the
-  // ArenaPlanner is destroyed. If 'preserve_inputs' is true the inputs
-  // to the graph will not share memory with any other tensor, effectively
-  // preserving them until the end of inference.
+  // ArenaPlanner is destroyed. If 'preserve_inputs' is true the inputs to the
+  // graph will not share memory with any other tensor, effectively preserving
+  // them until the end of inference.
   ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
                bool preserve_inputs, bool preserve_intermediates,
                int tensor_alignment = kDefaultTensorAlignment);
@@ -78,37 +82,29 @@ class ArenaPlanner : public MemoryPlanner {
   // position inside the corresponding arena buffer.
   TfLiteStatus ResolveTensorAllocation(int tensor_index);
 
-  void AddTensorIfNeeded(int tensor_index);
+  // Register an allocation for the given tensor.
+  TfLiteStatus CalculateTensorAllocation(int tensor_index);
 
-  // Comparator to sort tensors for the allocation algorithm:
-  // - Tensors that have lifespan through the whole model inference time go
-  // first;
-  // - Other tensors (e.g. intermediate and temporary ones) are sorted in
-  // non-increasing order of their size. If sizes of two tensors are equal, the
-  // one that needs to be allocated earlier goes first.
-  struct CompareBySize {
-    explicit CompareBySize(const ArenaPlanner* planner) : planner(planner) {}
-    bool operator()(const int idx1, const int idx2) const;
-    const ArenaPlanner* planner;
-  };
+  // Register a deallocation for the given tensor.
+  TfLiteStatus CalculateTensorDeallocation(int tensor_index);
+
+  // Register an allocation for all internal (temporary) tensors of
+  // 'node_index'.
+  TfLiteStatus CalculateAllocationOfInternalTensors(int node_index);
+
+  // Register a deallocation for all internal (temporary) tensors of
+  // 'node_index'.
+  TfLiteStatus CalculateDeallocationOfInternalTensors(int node_index);
 
   TfLiteContext* context_;
   std::unique_ptr<GraphInfo> graph_info_;
 
   // Stores allocation data for all tensors.
-  std::vector<ArenaAllocWithUsageInterval> allocs_;
+  std::vector<ArenaAlloc> allocs_;
 
-  // First node, that uses the tensor. It needs to be allocated before
-  // execution of the node's operation.
-  std::vector<size_t> alloc_node_;
-
-  // Last node, that uses the tensor. It can be deallocated after execution of
-  // the node's operation.
-  std::vector<size_t> dealloc_node_;
-
-  // Indices of tensors in order their allocation offsets will be calculated.
-  std::vector<size_t> order_;
-  std::vector<char> was_added_;  // avoiding std::vector<bool> as bitset
+  // A chronological list of instructions to allocate and deallocate tensors,
+  // reflecting the way they are used in the graph.
+  std::vector<AllocationInfo> alloc_queue_;
 
   // Raw memory buffer that is allocated for all temporary and graph outputs
   // that are declared kTfLiteArenaRw.
