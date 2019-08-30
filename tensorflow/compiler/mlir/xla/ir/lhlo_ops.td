@@ -135,6 +135,8 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_Reduce
   let arguments = (ins
     Variadic<LHLO_BufferOrTuple>:$operands_and_init,
     Variadic<LHLO_BufferOrTuple>:$out,
+    // TODO(hinsu): Attach computation as a region similar to the
+    // xla_hlo.reduce op.
     SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );

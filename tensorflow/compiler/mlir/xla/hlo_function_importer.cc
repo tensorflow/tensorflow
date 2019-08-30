@@ -125,33 +125,59 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportFunction(
   // Add to the map right away for function calls.
   imported = function;
 
-  function.addEntryBlock();
+  mlir::Block* block = function.addEntryBlock();
+  TF_RETURN_IF_ERROR(ImportInstructions(computation, block));
 
+  return function;
+}
+
+tensorflow::Status HloFunctionImporter::ImportComputation(
+    HloComputation* computation, mlir::Region* region) {
+  // TODO(hinsu): Store computation name as an attribute for round-trip.
+  auto* block = new mlir::Block;
+  region->push_back(block);
+
+  llvm::SmallVector<Type, 4> args;
+  TF_RETURN_IF_ERROR(
+      GetMlirTypes(computation->parameter_instructions(), &args));
+  block->addArguments(args);
+
+  return ImportInstructions(computation, block);
+}
+
+tensorflow::Status HloFunctionImporter::ImportInstructions(
+    HloComputation* computation, mlir::Block* block) {
   // Setup the input parameters.
   const int num_parameters = computation->num_parameters();
   for (int i = 0; i < num_parameters; i++) {
     auto hlo_parameter = computation->parameter_instruction(i);
-    instruction_value_map_[hlo_parameter] = function.getArgument(i);
+    instruction_value_map_[hlo_parameter] = block->getArgument(i);
   }
 
-  mlir::OpBuilder func_builder(function.getBody());
+  mlir::OpBuilder builder(block);
   for (auto instruction : computation->MakeInstructionPostOrder()) {
     TF_ASSIGN_OR_RETURN(auto new_operation,
-                        ImportInstruction(instruction, &func_builder));
+                        ImportInstruction(instruction, &builder));
     if (new_operation) {
       instruction_value_map_[instruction] = new_operation->getResult(0);
     }
   }
 
+  // TODO(suderman): Add location tracking details.
+  mlir::Location loc = builder.getUnknownLoc();
+
   // Setup the return type (HLO only supports a single return value).
   TF_ASSIGN_OR_RETURN(auto result,
                       GetMlirValue(computation->root_instruction()));
   llvm::SmallVector<Value*, 1> return_values({result});
-  // TODO(suderman): Add location tracking details.
-  func_builder.create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                      makeArrayRef(return_values));
 
-  return function;
+  // Create terminator op depending on the parent op of this region.
+  if (llvm::isa<FuncOp>(block->getParentOp())) {
+    builder.create<mlir::ReturnOp>(loc, makeArrayRef(return_values));
+  } else {
+    builder.create<mlir::xla_hlo::ReturnOp>(loc, makeArrayRef(return_values));
+  }
+  return tensorflow::Status::OK();
 }
 
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
@@ -160,7 +186,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   TF_ASSIGN_OR_RETURN(auto result_type, ConvertType(instruction->shape()));
   llvm::SmallVector<NamedAttribute, 10> attributes = {builder_->getNamedAttr(
       "name", builder_->getStringAttr(instruction->name()))};
-  mlir::Location loc = mlir::UnknownLoc::get(context_);
+  mlir::Location loc = func_builder->getUnknownLoc();
 
   switch (instruction->opcode()) {
     case HloOpcode::kParameter: {
@@ -298,16 +324,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kReduce: {
-      TF_ASSIGN_OR_RETURN(auto reduction,
-                          ImportFunction(instruction->to_apply()));
-      // TODO(b/132057942): Make more convenient constructors, e.g. pass
-      // mlir function pointer instead of a function attr.
-      return func_builder
-          ->create<mlir::xla_hlo::ReduceOp>(
-              loc, result_type, operands,
-              func_builder->getSymbolRefAttr(reduction),
-              ConvertDimensions(instruction->dimensions()))
-          .getOperation();
+      auto reduce = func_builder->create<mlir::xla_hlo::ReduceOp>(
+          loc, result_type, operands,
+          ConvertDimensions(instruction->dimensions()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->to_apply(), &reduce.body()));
+      return reduce.getOperation();
     }
     case HloOpcode::kReverse: {
       return func_builder
