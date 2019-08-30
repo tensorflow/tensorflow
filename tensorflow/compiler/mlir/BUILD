@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
+        "//tensorflow/compiler/xla/service/mlir_gpu/transforms:legalize_to_affine",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm//:support",
