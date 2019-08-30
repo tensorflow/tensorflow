@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/deep_conv2d.h"
 
 #include <stdlib.h>
+#include <limits.h>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/winograd_transform.h"
