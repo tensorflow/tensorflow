@@ -1486,6 +1486,34 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.2, gdgd)
 
   @test_util.run_in_graph_and_eager_modes
+  def testPrimalsWithVariable(self):
+    @custom_gradient.custom_gradient
+    def f(x):
+
+      @custom_gradient.custom_gradient(primals=(x,))
+      def g(unused_dz):
+
+        def h(unused_ddz):
+          return 2.2
+
+        return x * 2.1, h
+
+      return x + 1., g
+
+    with backprop.GradientTape(persistent=True) as t:
+      with backprop.GradientTape(persistent=True) as tt:
+        v = variables.Variable(1.)
+        self.evaluate(v.initializer)
+        t.watch(v)
+        tt.watch(v)
+        output = f(v)
+        self.assertAllClose(2., output)
+      g = tt.gradient(output, v)
+      self.assertAllClose(2.1, g)
+    gg = t.gradient(g, v)
+    self.assertAllClose(2.2, gg)
+
+  @test_util.run_in_graph_and_eager_modes
   def testCustomGradientForwardprop(self):
     @custom_gradient.custom_gradient
     def f(x):
