@@ -127,15 +127,6 @@ py_library(
             "//tensorflow/contrib/bigtable",
             "//tensorflow/contrib/cloud:cloud_py",
         ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite",
-        ],
     }),
 )
 
@@ -180,14 +171,5 @@ cc_library(
         "//tensorflow/contrib/text:all_ops",
     ] + if_not_windows([
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
-        ],
-    }),
+    ]),
 )

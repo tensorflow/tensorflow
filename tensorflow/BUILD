@@ -268,12 +268,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
