@@ -204,16 +204,13 @@ class IrEmitterUnnested : public IrEmitter,
                       absl::Span<const int64> reduced_output_dims,
                       absl::Span<const int64> tiled_param_ids);
 
-  // Codegen a tiling kernel for an unnested HLO instruction.
+  // Emits a kernel for the hlo instruction using the given kernel mapping
+  // scheme.
   void EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
                         llvm::Type* index_ty,
                         TileElementGenerator tile_element_generator,
                         KernelPrologueGenerator kernel_prologue_generator,
                         KernelEpilogueGenerator kernel_epilogue_generator);
-
-  void EmitBlock(const KernelMappingScheme& mapping_scheme,
-                 KernelSupportLibrary* ksl, llvm::Value* y, llvm::Value* x,
-                 llvm::Type* index_ty, TileElementGenerator tile_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
