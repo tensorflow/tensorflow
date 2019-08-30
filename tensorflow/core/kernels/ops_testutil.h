@@ -61,7 +61,7 @@ inline void SetOutputAttrs(OpKernelContext::Params* params,
     attr.set_on_host(on_host);
     attrs->push_back(attr);
   }
-  params->output_attr_array = gtl::vector_as_array(attrs);
+  params->output_attr_array = attrs->data();
 }
 
 }  // namespace test

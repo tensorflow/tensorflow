@@ -532,7 +532,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
     attr.set_on_host(on_host);
     allocator_attrs_.emplace_back(attr);
   }
-  params_->output_attr_array = gtl::vector_as_array(&allocator_attrs_);
+  params_->output_attr_array = allocator_attrs_.data();
 
   *context = absl::make_unique<OpKernelContext>(params_.get());
   return Status::OK();
