@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import layers
 from tensorflow.python.layers import core as layers_core
@@ -221,22 +222,22 @@ class TestArrayShapeChecks(test.TestCase):
   def test_array_shape_static_checks(self):
     self.assertTrue(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([None, None, None]), 3, 5))
+            tensor_shape.TensorShape([None, None, None]), 3, 5))
     self.assertTrue(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([15, None, None]), 3, 5))
+            tensor_shape.TensorShape([15, None, None]), 3, 5))
     self.assertFalse(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([16, None, None]), 3, 5))
+            tensor_shape.TensorShape([16, None, None]), 3, 5))
     self.assertTrue(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([3, 5, None]), 3, 5))
+            tensor_shape.TensorShape([3, 5, None]), 3, 5))
     self.assertFalse(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([3, 6, None]), 3, 5))
+            tensor_shape.TensorShape([3, 6, None]), 3, 5))
     self.assertFalse(
         beam_search_decoder._check_static_batch_beam_maybe(
-            tf.TensorShape([5, 3, None]), 3, 5))
+            tensor_shape.TensorShape([5, 3, None]), 3, 5))
 
 
 class TestEosMasking(test.TestCase):
