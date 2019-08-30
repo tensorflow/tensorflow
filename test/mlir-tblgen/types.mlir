@@ -81,17 +81,52 @@ func @nested_tuple_multi_level_wrong_type() {
 
 // -----
 
-func @tensor_has_rank_0_or_1_success(%arg0: tensor<i32>, %arg1: tensor<5xi32>) {
-  "test.i32_tensor_rank_0_or_1"(%arg0) : (tensor<i32>) -> ()
-  "test.i32_tensor_rank_0_or_1"(%arg1) : (tensor<5xi32>) -> ()
+func @nd_tensor_of_success(%arg0: tensor<f32>, %arg1: tensor<10xf32>, %arg2: tensor<20x30xi16>, %arg3: tensor<40x50x60xi16>, %arg4: tensor<70x80x90x100xi16>) {
+  "test.nd_tensor_of"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<f32>, tensor<10xf32>, tensor<20x30xi16>, tensor<40x50x60xi16>, tensor<70x80x90x100xi16>) -> ()
   return
 }
 
 // -----
 
-func @tensor_has_rank_0_or_1_wrong_type(%arg0: tensor<2x2xi32>) {
-  // expected-error @+1 {{test.i32_tensor_rank_0_or_1' op operand #0 must be tensor<i32> or tensor<?xi32>}}
-  "test.i32_tensor_rank_0_or_1"(%arg0) : (tensor<2x2xi32>) -> ()
+func @nd_tensor_of_success_wrong_type_0d(%arg0: tensor<f32>, %arg1: tensor<10xf32>, %arg2: tensor<20x30xi16>, %arg3: tensor<40x50x60xi16>, %arg4: tensor<70x80x90x100xi32>) {
+  // expected-error @+1 {{'test.nd_tensor_of' op operand #0 must be 0D tensor of 32-bit float values}}
+  "test.nd_tensor_of"(%arg1, %arg1, %arg2, %arg3, %arg4) : (tensor<10xf32>, tensor<10xf32>, tensor<20x30xi16>, tensor<40x50x60xi16>, tensor<70x80x90x100xi32>) -> ()
+  return
+}
+
+// -----
+
+func @nd_tensor_of_success_wrong_type_4d(%arg0: tensor<f32>, %arg1: tensor<10xf32>, %arg2: tensor<20x30xi16>, %arg3: tensor<40x50x60xi16>, %arg4: tensor<70x80x90x100xi32>) {
+  // expected-error @+1 {{'test.nd_tensor_of' op operand #4 must be 4D tensor of 16-bit integer values}}
+  "test.nd_tensor_of"(%arg0, %arg1, %arg2, %arg3, %arg3) : (tensor<f32>, tensor<10xf32>, tensor<20x30xi16>, tensor<40x50x60xi16>, tensor<40x50x60xi16>) -> ()
+  return
+}
+
+// -----
+
+func @multi_tensor_rank_of_success(%arg0: tensor<i8>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<1xi8>, %arg4: tensor<1xi32>, %arg5: tensor<1xf32>) {
+  "test.multi_tensor_rank_of"(%arg0) : (tensor<i8>) -> ()
+  "test.multi_tensor_rank_of"(%arg1) : (tensor<i32>) -> ()
+  "test.multi_tensor_rank_of"(%arg2) : (tensor<f32>) -> ()
+  "test.multi_tensor_rank_of"(%arg3) : (tensor<1xi8>) -> ()
+  "test.multi_tensor_rank_of"(%arg4) : (tensor<1xi32>) -> ()
+  "test.multi_tensor_rank_of"(%arg5) : (tensor<1xf32>) -> ()
+  return
+}
+
+// -----
+
+func @multi_tensor_rank_of_wrong_unranked_type(%arg0: tensor<2x2xi8>) {
+  // expected-error @+1 {{'test.multi_tensor_rank_of' op operand #0 must be 0D/1D tensor of 8-bit integer or 32-bit integer or 32-bit float values}}
+  "test.multi_tensor_rank_of"(%arg0) : (tensor<2x2xi8>) -> ()
+  return
+}
+
+// -----
+
+func @multi_tensor_rank_of_wrong_element_type(%arg0: tensor<2xi16>) {
+  // expected-error @+1 {{'test.multi_tensor_rank_of' op operand #0 must be 0D/1D tensor of 8-bit integer or 32-bit integer or 32-bit float values}}
+  "test.multi_tensor_rank_of"(%arg0) : (tensor<2xi16>) -> ()
   return
 }
 
