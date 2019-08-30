@@ -757,7 +757,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140155803: testNotInvertible
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -862,7 +863,8 @@ cuda_py_test(
     ],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
+    # b/140156443: Wrong dimensions in testGatherWithBatchDims
+    xla_enable_strict_auto_jit = False,
 )
 
 tf_py_test(
@@ -921,7 +923,8 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
-    xla_enable_strict_auto_jit = True,
+    # b/140222676: Unsupported type in ScatterNd
+    xla_enable_strict_auto_jit = False,
 )
 
 tf_py_test(
@@ -1591,7 +1594,8 @@ cuda_py_test(
         "noasan",  # times out
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140155173: Different error message
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2030,7 +2034,8 @@ cuda_py_test(
     grpc_enabled = True,
     shard_count = 2,
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
+    # b/140155525: non-compile time constant input
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2046,7 +2051,8 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140155862: Error not raised
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2185,7 +2191,8 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
+    # b/140155845: Concat -1 dimension not supported yet
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2477,7 +2484,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140221961: Invalid dims for operations
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -2669,7 +2677,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140156084: Missing assertion
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3400,7 +3409,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    xla_enable_strict_auto_jit = True,
+    # b/140155647: Error just outside of tolerance
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3421,7 +3431,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    xla_enable_strict_auto_jit = True,
+    # b/140155706: nans in result
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3813,7 +3824,8 @@ cuda_py_test(
         "//tensorflow/python/compat",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
+    # b/140155763: testLoweringDisabledInXLA fails
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(

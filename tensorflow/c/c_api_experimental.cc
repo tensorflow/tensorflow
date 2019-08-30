@@ -79,6 +79,14 @@ unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
   return original;
 }
 
+unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  bool original = flags->tf_xla_cpu_global_jit;
+  flags->tf_xla_cpu_global_jit = static_cast<bool>(enable);
+  return static_cast<unsigned char>(original);
+}
+
 void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
 }
