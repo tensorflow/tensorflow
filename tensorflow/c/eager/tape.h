@@ -667,16 +667,15 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   Status s = InitialGradients(vspace, target_tensor_ids,
                               sources_that_are_targets, output_gradients,
                               tensor_tape_, state.op_tape, &gradients);
-  auto cleanup = [this, &state]() {
+  auto cleanup = gtl::MakeCleanup([this, &state]() {
     if (!persistent_) {
       // Release all backprop functions
       for (const auto& pair : state.op_tape) {
         pair.second.backward_function_deleter(pair.second.backward_function);
       }
     }
-  };
+  });
   if (!s.ok()) {
-    cleanup();
     return s;
   }
 
@@ -754,11 +753,17 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       s = vspace.CallBackwardFunction(trace.backward_function,
                                       unneeded_gradients, out_gradients,
                                       &in_gradients);
+      if (in_gradients.size() != trace.input_tensor_id.size()) {
+        return tensorflow::errors::Internal(
+            "Recorded operation '", trace.op_type,
+            "' returned too few gradients. Expected ",
+            trace.input_tensor_id.size(), " but received ",
+            in_gradients.size());
+      }
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
       if (!s.ok()) {
-        cleanup();
         return s;
       }
     } else {

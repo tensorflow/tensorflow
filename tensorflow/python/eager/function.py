@@ -642,7 +642,7 @@ class _DelayedRewriteGradientFunctions(object):
     """Add outputs to the forward call and feed them to the grad function."""
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
-      return []
+      return backwards_function.structured_outputs
     forward_function.add_to_graph(op.graph)
 
     # pylint: disable=protected-access
@@ -868,7 +868,7 @@ class _TapeGradientFunctions(object):
     def _backward_function_wrapper(*args):
       """Process output gradients and call the backward function."""
       if not self._backward.outputs:
-        return []
+        return self._backward.structured_outputs
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
