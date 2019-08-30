@@ -32,3 +32,20 @@ void detail::walkOperations(Operation *op,
 
   callback(op);
 }
+
+/// Walk all of the operations nested under and including the given operations.
+/// This methods walks operations until an interrupt signal is received.
+WalkResult
+detail::walkOperations(Operation *op,
+                       function_ref<WalkResult(Operation *op)> callback) {
+  // TODO(b/140235992) This walk should be iterative over the operations.
+  for (auto &region : op->getRegions()) {
+    for (auto &block : region) {
+      // Early increment here in the case where the operation is erased.
+      for (auto &nestedOp : llvm::make_early_inc_range(block))
+        if (walkOperations(&nestedOp, callback).wasInterrupted())
+          return WalkResult::interrupt();
+    }
+  }
+  return callback(op);
+}
