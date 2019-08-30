@@ -1742,6 +1742,7 @@ class Model(network.Network):
       return self.callback_model
     return self
 
+  @trackable.no_automatic_dependency_tracking
   def _make_callback_model(self, grouped_model):
     first_replicated_model = self._distribution_strategy.unwrap(
         grouped_model)[0]

@@ -1071,7 +1071,7 @@ class Layer(module.Module):
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
-    self._callable_losses += callable_losses
+    self._callable_losses.extend(callable_losses)
 
     in_call_context = base_layer_utils.call_context().in_call
     if eager_losses and not in_call_context:
@@ -1079,7 +1079,7 @@ class Layer(module.Module):
           'Expected a symbolic Tensors or a callable for the loss value. '
           'Please wrap your loss computation in a zero argument `lambda`.')
 
-    self._eager_losses += eager_losses
+    self._eager_losses.extend(eager_losses)
 
     if in_call_context:
       for symbolic_loss in symbolic_losses:
@@ -1260,7 +1260,7 @@ class Layer(module.Module):
     # they do not need to be tracked later.
     if ops.executing_eagerly_outside_functions() and call_context.in_call:
       updates = [u for u in updates if callable(u)]
-    self._updates += updates
+    self._updates.extend(updates)
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2146,6 +2146,7 @@ class Layer(module.Module):
                                  object_identity.ObjectIdentityDictionary())
     return self._obj_reference_counts_dict
 
+  @trackable.no_automatic_dependency_tracking
   def _maybe_create_attribute(self, name, default_value):
     """Create the attribute with the default value if it hasn't been created.
 
@@ -2207,7 +2208,6 @@ class Layer(module.Module):
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
         not getattr(self, '_self_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
