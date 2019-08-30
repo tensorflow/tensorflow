@@ -109,9 +109,7 @@ load(
     "tf_additional_cloud_kernel_deps",
     "tf_additional_cloud_op_deps",
     "tf_additional_core_deps",
-    "tf_additional_cupti_wrapper_deps",
     "tf_additional_device_tracer_cuda_deps",
-    "tf_additional_device_tracer_deps",
     "tf_additional_device_tracer_test_flags",
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
@@ -3389,7 +3387,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:legacy_device_tracer_srcs",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    cuda_deps = tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],
@@ -3397,9 +3395,11 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-        "@com_google_absl//absl/flags:flag",
+        "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:profiler_interface",
-    ] + tf_additional_device_tracer_deps(),
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/flags:flag",
+    ],
     alwayslink = True,
 )
 
