@@ -960,6 +960,8 @@ inline void LstmStepQuantized(
   TFLITE_DCHECK(recurrent_to_input_effective_bias);
   TFLITE_DCHECK(projection_effective_bias);
 
+  const bool use_cifg = (input_to_input_weight_ptr == nullptr);
+
   // TODO(renjieliu): Handle optional arguments processing here:
   // case cifg: input_to_input_weights should be nullptr
   //            recurrent_to_input_weight should be nullptr
@@ -1038,25 +1040,29 @@ inline void LstmStepQuantized(
   tensor_utils::ApplySigmoid(scratch_3_ptr, n_batch, n_cell, scratch_3_ptr);
 
   // Input gate.
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
-      effective_input_to_input_scale_a, effective_input_to_input_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
+  if (use_cifg) {
+    tensor_utils::Sub1Vector(scratch_1_ptr, n_batch * n_cell, scratch_0_ptr);
+  } else {
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
+        effective_input_to_input_scale_a, effective_input_to_input_scale_b,
+        n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
 
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_input_effective_bias,
-      recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
-      effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_0_ptr);
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        activation_ptr, recurrent_to_input_effective_bias,
+        recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
+        effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
+        scratch_5_ptr, scratch_0_ptr);
 
-  if (layer_norm_input_weight_ptr != nullptr) {
-    tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
-                                 input_bias_ptr, layer_norm_input_scale_a,
-                                 layer_norm_input_scale_b, inv_large_value[0],
-                                 n_batch, n_cell, scratch_0_ptr);
+    if (layer_norm_input_weight_ptr != nullptr) {
+      tensor_utils::ApplyLayerNorm(scratch_0_ptr, layer_norm_input_weight_ptr,
+                                   input_bias_ptr, layer_norm_input_scale_a,
+                                   layer_norm_input_scale_b, inv_large_value[0],
+                                   n_batch, n_cell, scratch_0_ptr);
+    }
+
+    tensor_utils::ApplySigmoid(scratch_0_ptr, n_batch, n_cell, scratch_0_ptr);
   }
-
-  tensor_utils::ApplySigmoid(scratch_0_ptr, n_batch, n_cell, scratch_0_ptr);
 
   // Cell and hidden.
   tensor_utils::CwiseMul(scratch_1_ptr, cell_ptr, n_batch, n_cell, 15,

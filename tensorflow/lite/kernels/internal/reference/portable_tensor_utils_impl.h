@@ -162,6 +162,8 @@ void PortableApplyActivationToVector(const float* vector, int v_size,
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
 
+void PortableSub1Vector(const int16_t* vector, int v_size, int16_t* result);
+
 // Multiply all elements of vector with a scalar.
 void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                                   float* result);

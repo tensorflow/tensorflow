@@ -505,6 +505,13 @@ void PortableSub1Vector(const float* vector, int v_size, float* result) {
   }
 }
 
+void PortableSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
+  static const int16_t kOne = 32767;
+  for (int v = 0; v < v_size; v++) {
+    *result++ = kOne - *vector++;
+  }
+}
+
 void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
                                   const float scale, float* result) {
   for (int v = 0; v < v_size; ++v) {

@@ -220,6 +220,10 @@ void ApplyActivationToVector(const float* vector, int v_size,
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
 
+// Compute "1.0f - elements of vector" (used in CIFG) for int16 input.
+// "vector" has range [0, 32767] because it is the output of sigmoid function.
+void Sub1Vector(const int16_t* vector, int v_size, int16_t* result);
+
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result);

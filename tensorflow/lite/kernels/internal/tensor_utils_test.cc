@@ -1049,6 +1049,24 @@ TEST(uKernels, Sub1VectorTest) {
               ElementsAreArray(ArrayFloatNear({1.0, 1.5, 0.0, 2.5, -1.0})));
 }
 
+TEST(uKernels, Sub1VectorInt16Test) {
+  constexpr int kVectorSize = 30;
+  static int16_t input[kVectorSize] = {
+      32760, 300,   1,     2,    3, 4, 5, 6, 300, 1000,
+      32767, 32000, 300,   1,    2, 3, 4, 5, 56,  300,
+      1000,  32767, 32761, 1300, 1, 2, 3, 4, 5,   6,
+  };
+  std::vector<int16_t> output(kVectorSize);
+  Sub1Vector(input, kVectorSize, output.data());
+  EXPECT_THAT(
+      output,
+      testing::ElementsAreArray({
+          7,     32467, 32766, 32765, 32764, 32763, 32762, 32761, 32467, 31767,
+          0,     767,   32467, 32766, 32765, 32764, 32763, 32762, 32711, 32467,
+          31767, 0,     6,     31467, 32766, 32765, 32764, 32763, 32762, 32761,
+      }));
+}
+
 TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
   constexpr int kVectorSize = 29;
   constexpr int kBatchSize = 4;
