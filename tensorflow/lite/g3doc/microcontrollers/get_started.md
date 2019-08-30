@@ -47,6 +47,7 @@ The example is tested on the following platforms:
 
 -   [SparkFun Edge Powered by TensorFlow (Apollo3 Blue)](https://www.sparkfun.com/products/15170)
 -   [Arduino MKRZERO](https://store.arduino.cc/usa/arduino-mkrzero)
+-   [Arduino MKR1000 WiFi](https://store.arduino.cc/usa/arduino-mkr1000)
 -   [STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
 -   Mac OS X
 
