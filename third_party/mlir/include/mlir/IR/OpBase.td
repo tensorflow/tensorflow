@@ -838,7 +838,7 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
-def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+class DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
                           "dictionary of named attribute values"> {
   let storageType = [{ DictionaryAttr }];
   let returnType = [{ DictionaryAttr }];
@@ -913,6 +913,29 @@ def I32ElementsAttr : Attr<
     "$_builder.getTensorType({}, $_builder.getIntegerType(32)), "
       "{$_builder.getI32IntegerAttr($0)})";
   let convertFromStorage = "$_self";
+}
+// Attribute information for an Attribute field within a StructAttr.
+class StructFieldAttr<string thisName, Attr thisType> {
+  // Name of this field in the StructAttr.
+  string name = thisName;
+
+  // Attribute type wrapped by the struct attr.
+  Attr type = thisType;
+}
+
+// Structured attribute that wraps a DictionaryAttr and provides both a
+// validation method and set of accessors for a fixed set of fields. This is
+// useful when representing data that would normally be in a structure.
+class StructAttr<string name, Dialect dialect,
+                 list<StructFieldAttr> attributes> : DictionaryAttr {
+  // Name for this StructAttr.
+  string className = name;
+
+  // The dialect this StructAttr belongs to.
+  Dialect structDialect = dialect;
+
+  // List of fields that the StructAttr contains.
+  list<StructFieldAttr> fields = attributes;
 }
 
 // Attributes containing symbol references.

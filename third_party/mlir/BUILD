@@ -1565,6 +1565,7 @@ cc_binary(
         "tools/mlir-tblgen/ReferenceImplGen.cpp",
         "tools/mlir-tblgen/RewriterGen.cpp",
         "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
+        "tools/mlir-tblgen/StructsGen.cpp",
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     copts = ["-std=c++14"],
