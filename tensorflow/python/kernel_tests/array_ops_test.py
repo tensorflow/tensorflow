@@ -652,6 +652,12 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[1:0]
 
   @test_util.run_deprecated_v1
+  def testSliceWithUndefinedDimension(self):
+    t = constant_op.constant([1, 2, 3])
+    d = tensor_shape.Dimension(None)
+    self.assertAllEqual(t[d:d:d], t)
+
+  @test_util.run_deprecated_v1
   def testEllipsis(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
