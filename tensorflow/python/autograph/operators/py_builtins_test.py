@@ -181,17 +181,17 @@ class PyBuiltinsTest(test.TestCase):
   def test_map(self):
     def increment(x):
       return x + 1
-    
+
     add_list = lambda x, y: x + y
     self.assertListEqual(
         list(py_builtins.map_(increment, [4, 5, 6])), [5, 6, 7])
     self.assertListEqual(
         list(py_builtins.map_(add_list, [3, 2, 1], [-1, -2, -3])), [2, 0, -2])
-    
+
   def test_map_dataset(self):
     def increment(x):
       return x + 1
-    
+
     ds1 = dataset_ops.DatasetV2.from_tensor_slices([4, 5, 6])
     ds2 = py_builtins.map_(increment, ds1)
     iterator = dataset_ops.make_one_shot_iterator(ds2)
