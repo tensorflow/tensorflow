@@ -132,6 +132,8 @@ def SPV_OC_OpSLessThan             : I32EnumAttrCase<"OpSLessThan", 177>;
 def SPV_OC_OpULessThanEqual        : I32EnumAttrCase<"OpULessThanEqual", 178>;
 def SPV_OC_OpSLessThanEqual        : I32EnumAttrCase<"OpSLessThanEqual", 179>;
 def SPV_OC_OpLabel                 : I32EnumAttrCase<"OpLabel", 248>;
+def SPV_OC_OpBranch                : I32EnumAttrCase<"OpBranch", 249>;
+def SPV_OC_OpBranchConditional     : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue           : I32EnumAttrCase<"OpReturnValue", 254>;
 
@@ -154,7 +156,8 @@ def SPV_OpcodeAttr :
       SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
       SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
       SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
-      SPV_OC_OpLabel, SPV_OC_OpReturn, SPV_OC_OpReturnValue
+      SPV_OC_OpLabel, SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
+      SPV_OC_OpReturnValue
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";

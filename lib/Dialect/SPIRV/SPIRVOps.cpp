@@ -33,6 +33,7 @@ using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
+static constexpr const char kBranchWeightAttrName[] = "branch_weights";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
@@ -483,6 +484,119 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
     return addressOfOp.emitOpError(
         "result type mismatch with the referenced global variable's type");
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BranchOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *state) {
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+  if (parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+  return success();
+}
+
+static void print(spirv::BranchOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchOp::getOperationName() << ' ';
+  printer->printSuccessorAndUseList(branchOp.getOperation(), /*index=*/0);
+}
+
+static LogicalResult verify(spirv::BranchOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 1)
+    branchOp.emitOpError("must have exactly one successor");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BranchConditionalOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchConditionalOp(OpAsmParser *parser,
+                                            OperationState *state) {
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType condInfo;
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+
+  // Parse the condition.
+  Type boolTy = builder.getI1Type();
+  if (parser->parseOperand(condInfo) ||
+      parser->resolveOperand(condInfo, boolTy, state->operands))
+    return failure();
+
+  // Parse the optional branch weights.
+  if (succeeded(parser->parseOptionalLSquare())) {
+    IntegerAttr trueWeight, falseWeight;
+    SmallVector<NamedAttribute, 2> weights;
+
+    auto i32Type = builder.getIntegerType(32);
+    if (parser->parseAttribute(trueWeight, i32Type, "weight", weights) ||
+        parser->parseComma() ||
+        parser->parseAttribute(falseWeight, i32Type, "weight", weights) ||
+        parser->parseRSquare())
+      return failure();
+
+    state->addAttribute(kBranchWeightAttrName,
+                        builder.getArrayAttr({trueWeight, falseWeight}));
+  }
+
+  // Parse the true branch.
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  // Parse the false branch.
+  destOperands.clear();
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  return success();
+}
+
+static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchConditionalOp::getOperationName() << ' ';
+  printer->printOperand(branchOp.condition());
+
+  if (auto weights = branchOp.branch_weights()) {
+    *printer << " [";
+    mlir::interleaveComma(
+        weights->getValue(), printer->getStream(),
+        [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+    *printer << "]";
+  }
+
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kTrueIndex);
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kFalseIndex);
+}
+
+static LogicalResult verify(spirv::BranchConditionalOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 2)
+    return branchOp.emitOpError("must have exactly two successors");
+
+  if (auto weights = branchOp.branch_weights()) {
+    if (weights->getValue().size() != 2) {
+      return branchOp.emitOpError("must have exactly two branch weights");
+    }
+    if (llvm::all_of(*weights, [](Attribute attr) {
+          return attr.cast<IntegerAttr>().getValue().isNullValue();
+        }))
+      return branchOp.emitOpError("branch weights cannot both be zero");
+  }
+
   return success();
 }
 
@@ -1093,6 +1207,7 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
   }
   return success();
 }
+
 //===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//

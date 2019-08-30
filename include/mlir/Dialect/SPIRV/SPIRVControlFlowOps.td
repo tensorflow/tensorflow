@@ -31,6 +31,112 @@ include "mlir/SPIRV/SPIRVBase.td"
 
 // -----
 
+def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
+  let summary = "Unconditional branch to target block.";
+
+  let description = [{
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    branch-op ::= `spv.Branch` successor
+    ```
+
+    For example:
+
+    ```
+    spv.Branch ^target
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let builders = [
+    OpBuilder<
+      "Builder *, OperationState *state, Block *successor", [{
+        state->addSuccessor(successor, {});
+      }]
+    >
+  ];
+
+  let skipDefaultBuilders = 1;
+
+  let autogenSerialization = 0;
+}
+
+// -----
+
+def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
+  let summary = [{
+    If Condition is true, branch to true block, otherwise branch to false
+    block.
+  }];
+
+  let description = [{
+    Condition must be a Boolean type scalar.
+
+    Branch weights are unsigned 32-bit integer literals. There must be
+    either no Branch Weights or exactly two branch weights. If present, the
+    first is the weight for branching to True Label, and the second is the
+    weight for branching to False Label. The implied probability that a
+    branch is taken is its weight divided by the sum of the two Branch
+    weights. At least one weight must be non-zero. A weight of zero does not
+    imply a branch is dead or permit its removal; branch weights are only
+    hints. The two weights must not overflow a 32-bit unsigned integer when
+    added together.
+
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    branch-conditional-op ::= `spv.BranchConditional` ssa-use
+                              (`[` integer-literal, integer-literal `]`)?
+                              `,` successor `,` successor
+    ```
+
+    For example:
+
+    ```
+    spv.BranchConditional %condition, ^true_branch, ^false_branch
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_Bool:$condition,
+    OptionalAttr<I32ArrayAttr>:$branch_weights
+  );
+
+  let results = (outs);
+
+  let builders = [
+    OpBuilder<
+      "Builder *, OperationState *state, Value *condition, "
+      "Block *trueBranch, Block *falseBranch, /*optional*/ArrayAttr weights",
+      [{
+        state->addOperands(condition);
+        state->addSuccessor(trueBranch, {});
+        state->addSuccessor(falseBranch, {});
+        state->addAttribute("branch_weights", weights);
+      }]
+    >
+  ];
+
+  let skipDefaultBuilders = 1;
+
+  let autogenSerialization = 0;
+
+  let extraClassDeclaration = [{
+    // Branch indices into the successor list.
+    enum { kTrueIndex = 0, kFalseIndex = 1 };
+  }];
+}
+
+// -----
+
 def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
   let summary = "Return with no value from a function with void return type.";
 
