@@ -179,21 +179,28 @@ def softsign(x):
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified Linear Unit.
 
-  With default values, it returns element-wise `max(x, 0)`.
-
-  Otherwise, it follows:
+  The Rectified Linear Unit function is:
+  x , if x>0 else 0 (for default parameter values)
+  
+  In the case that parameters are given values:
   `f(x) = max_value` for `x >= max_value`,
   `f(x) = x` for `threshold <= x < max_value`,
   `f(x) = alpha * (x - threshold)` otherwise.
 
+  Example usage:
+  ```python3
+  model.add(Convolution2D(20,kernel_size = 5, padding = 'same', input_shape = input_shape))
+  model.add(Activation("relu"))
+  ```
+
   Arguments:
       x: A tensor or variable.
       alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
-      threshold: float. Threshold value for thresholded activation.
+      max_value: float. Saturation threshold(upper limit) (default = `None`).
+      threshold: float. Threshold value(lower limit) for thresholded activation.
 
   Returns:
-      A tensor.
+      A tensor of the same shape as that of input x each element of which has undergone the ReLU activation.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
