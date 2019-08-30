@@ -138,13 +138,13 @@ TfLiteStatus PopulateQuantizedLstmParams(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
     quantized_lstm_param->quantized_cell_clip =
-        static_cast<int32_t>(cell_clip / cell_params->scale->data[0]);
+        static_cast<int16_t>(cell_clip / cell_params->scale->data[0]);
   } else {
     quantized_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
     quantized_lstm_param->quantized_proj_clip =
-        static_cast<int32_t>(proj_clip / proj_params->scale->data[0]);
+        static_cast<int8_t>(proj_clip / proj_params->scale->data[0]);
   } else {
     quantized_lstm_param->quantized_proj_clip = 0;
   }
