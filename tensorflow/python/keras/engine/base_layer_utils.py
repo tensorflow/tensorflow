@@ -209,6 +209,16 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       continue
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
+      if op.type.startswith('Sparse'):
+        lambda_example = """
+        weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+        output = tf.keras.layers.Lambda(weights_mult)(input)
+        """
+        raise ValueError(
+            'Sparse ops are not supported with functional models with built-in '
+            'layer wrapping. Please wrap the sparse ops in a Lambda layer like'
+            ': \n{lambda_example}\n'.format(lambda_example=lambda_example))
+
       # Recursively set `_keras_history`.
       op_inputs = list(op.inputs)
       constants = {}
