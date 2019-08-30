@@ -539,16 +539,6 @@ TfLiteStatus QuantizeOpOutput(
 
     const float min = input_tensor->quantization->min[0];
     const float max = input_tensor->quantization->max[0];
-    if (utils::HasMinMax(output_tensor)) {
-      if (output_tensor->quantization->min[0] != min ||
-          output_tensor->quantization->max[0] != max) {
-        printf(
-            "Note the output min/max is different from the input min/max "
-            "for op %s at index %d in subgraph %d. This is legal but "
-            "should happens rarely.\n",
-            EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
-      }
-    }
 
     // Apply to output.
     output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
