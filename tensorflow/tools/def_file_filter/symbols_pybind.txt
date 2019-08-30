@@ -17,3 +17,7 @@ tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterType
+
+[stream_executor_pimpl]
+stream_executor::StreamExecutor::EnablePeerAccessTo
+stream_executor::StreamExecutor::CanEnablePeerAccessTo
