@@ -50,10 +50,19 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
-def I32TensorRank0Or1Op : TEST_Op<"i32_tensor_rank_0_or_1"> {
+def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   let arguments = (ins
-    Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0, 1]>]>,
-         "tensor<i32> or tensor<?xi32>">:$arg0
+    0DTensorOf<[F32]>:$arg0,
+    1DTensorOf<[F32]>:$arg1,
+    2DTensorOf<[I16]>:$arg2,
+    3DTensorOf<[I16]>:$arg3,
+    4DTensorOf<[I16]>:$arg4
+  );
+}
+
+def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
+  let arguments = (ins
+    TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
 }
 
