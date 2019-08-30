@@ -738,54 +738,50 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
 
   // Forget gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_forget_weights, nullptr,
-          &(quantized_lstm_params->input_to_forget_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_forget_weights, nullptr,
+                   &(quantized_lstm_params->input_to_forget_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_forget_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
   // Modulation gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_cell_weights, nullptr,
-                   &(quantized_lstm_params->input_to_cell_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_cell_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
   // Output gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_output_weights, nullptr,
-          &(quantized_lstm_params->input_to_output_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_output_weights, nullptr,
+                   &(quantized_lstm_params->input_to_output_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_output_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_output_effective_bias)));
   // Input gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_input_weights, nullptr,
-                   &(quantized_lstm_params->input_to_input_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_input_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
                         context, hidden_zp, projection_weights, projection_bias,
-                        &(quantized_lstm_params->projection_bias_accu)));
+                        &(quantized_lstm_params->projection_effective_bias)));
   return kTfLiteOk;
 }
 

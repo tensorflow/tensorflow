@@ -936,29 +936,29 @@ inline void LstmStepQuantized(
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
     int32 quantized_cell_clip, int32 quantized_proj_clip,
     const int32_t* inv_large_value,
-    const int32_t* input_to_forget_weight_x_input_zp,
-    const int32_t* recurrent_to_forget_weight_x_activation_zp,
-    const int32_t* input_to_cell_weight_x_input_zp,
-    const int32_t* recurrent_to_cell_weight_x_activation_zp,
-    const int32_t* input_to_output_weight_x_input_zp,
-    const int32_t* recurrent_to_output_weight_x_activation_zp,
-    const int32_t* input_to_input_weight_x_input_zp,
-    const int32_t* recurrent_to_input_weight_x_activation_zp,
-    const int32_t* projection_bias_accu, int32 n_batch, int32 n_cell,
+    const int32_t* input_to_forget_effective_bias,
+    const int32_t* recurrent_to_forget_effective_bias,
+    const int32_t* input_to_cell_effective_bias,
+    const int32_t* recurrent_to_cell_effective_bias,
+    const int32_t* input_to_output_effective_bias,
+    const int32_t* recurrent_to_output_effective_bias,
+    const int32_t* input_to_input_effective_bias,
+    const int32_t* recurrent_to_input_effective_bias,
+    const int32_t* projection_effective_bias, int32 n_batch, int32 n_cell,
     int32 n_input, int32 n_output, int32 output_batch_leading_dim,
     int8_t* activation_ptr, int32_t activation_zp, int16_t* cell_ptr,
     int8_t* output_ptr, int16_t* scratch_0_ptr, int16_t* scratch_1_ptr,
     int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr,
     int32_t* scratch_5_ptr) {
-  TFLITE_DCHECK(input_to_forget_weight_x_input_zp);
-  TFLITE_DCHECK(recurrent_to_forget_weight_x_activation_zp);
-  TFLITE_DCHECK(input_to_cell_weight_x_input_zp);
-  TFLITE_DCHECK(recurrent_to_cell_weight_x_activation_zp);
-  TFLITE_DCHECK(input_to_output_weight_x_input_zp);
-  TFLITE_DCHECK(recurrent_to_output_weight_x_activation_zp);
-  TFLITE_DCHECK(input_to_input_weight_x_input_zp);
-  TFLITE_DCHECK(recurrent_to_input_weight_x_activation_zp);
-  TFLITE_DCHECK(projection_bias_accu);
+  TFLITE_DCHECK(input_to_forget_effective_bias);
+  TFLITE_DCHECK(recurrent_to_forget_effective_bias);
+  TFLITE_DCHECK(input_to_cell_effective_bias);
+  TFLITE_DCHECK(recurrent_to_cell_effective_bias);
+  TFLITE_DCHECK(input_to_output_effective_bias);
+  TFLITE_DCHECK(recurrent_to_output_effective_bias);
+  TFLITE_DCHECK(input_to_input_effective_bias);
+  TFLITE_DCHECK(recurrent_to_input_effective_bias);
+  TFLITE_DCHECK(projection_effective_bias);
 
   // TODO(renjieliu): Handle optional arguments processing here:
   // case cifg: input_to_input_weights should be nullptr
@@ -976,12 +976,12 @@ inline void LstmStepQuantized(
 
   // Forget gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_to_forget_weight_x_input_zp, input_to_forget_weight_ptr,
+      input_ptr, input_to_forget_effective_bias, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
       n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_forget_weight_x_activation_zp,
+      activation_ptr, recurrent_to_forget_effective_bias,
       recurrent_to_forget_weight_ptr, effective_recurrent_to_forget_scale_a,
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_1_ptr);
@@ -997,12 +997,12 @@ inline void LstmStepQuantized(
 
   // Modulation gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_to_cell_weight_x_input_zp, input_to_cell_weight_ptr,
+      input_ptr, input_to_cell_effective_bias, input_to_cell_weight_ptr,
       effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
       n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_cell_weight_x_activation_zp,
+      activation_ptr, recurrent_to_cell_effective_bias,
       recurrent_to_cell_weight_ptr, effective_recurrent_to_cell_scale_a,
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_2_ptr);
@@ -1018,12 +1018,12 @@ inline void LstmStepQuantized(
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_to_output_weight_x_input_zp, input_to_output_weight_ptr,
+      input_ptr, input_to_output_effective_bias, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
       n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_output_weight_x_activation_zp,
+      activation_ptr, recurrent_to_output_effective_bias,
       recurrent_to_output_weight_ptr, effective_recurrent_to_output_scale_a,
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_3_ptr);
@@ -1039,12 +1039,12 @@ inline void LstmStepQuantized(
 
   // Input gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_ptr, input_to_input_weight_x_input_zp, input_to_input_weight_ptr,
+      input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
       effective_input_to_input_scale_a, effective_input_to_input_scale_b,
       n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_input_weight_x_activation_zp,
+      activation_ptr, recurrent_to_input_effective_bias,
       recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
       effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
       scratch_5_ptr, scratch_0_ptr);
@@ -1082,7 +1082,7 @@ inline void LstmStepQuantized(
   if (proj_weight_ptr != nullptr) {
     memset(output_ptr, 0, n_batch * n_output * sizeof(int8_t));
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        scratch_4_ptr, projection_bias_accu, proj_weight_ptr,
+        scratch_4_ptr, projection_effective_bias, proj_weight_ptr,
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
         n_output, activation_zp, scratch_5_ptr, output_ptr);
   }
@@ -1796,15 +1796,15 @@ TfLiteStatus EvalQuantized(
         quantized_lstm_param->quantized_cell_clip,
         quantized_lstm_param->quantized_proj_clip,
         quantized_lstm_param->inv_large_value.data(),
-        quantized_lstm_param->input_to_forget_weight_x_input_zp.get(),
-        quantized_lstm_param->recurrent_to_forget_weight_x_activation_zp.get(),
-        quantized_lstm_param->input_to_cell_weight_x_input_zp.get(),
-        quantized_lstm_param->recurrent_to_cell_weight_x_activation_zp.get(),
-        quantized_lstm_param->input_to_output_weight_x_input_zp.get(),
-        quantized_lstm_param->recurrent_to_output_weight_x_activation_zp.get(),
-        quantized_lstm_param->input_to_input_weight_x_input_zp.get(),
-        quantized_lstm_param->recurrent_to_input_weight_x_activation_zp.get(),
-        quantized_lstm_param->projection_bias_accu.get(), n_batch, n_cell,
+        quantized_lstm_param->input_to_forget_effective_bias.get(),
+        quantized_lstm_param->recurrent_to_forget_effective_bias.get(),
+        quantized_lstm_param->input_to_cell_effective_bias.get(),
+        quantized_lstm_param->recurrent_to_cell_effective_bias.get(),
+        quantized_lstm_param->input_to_output_effective_bias.get(),
+        quantized_lstm_param->recurrent_to_output_effective_bias.get(),
+        quantized_lstm_param->input_to_input_effective_bias.get(),
+        quantized_lstm_param->recurrent_to_input_effective_bias.get(),
+        quantized_lstm_param->projection_effective_bias.get(), n_batch, n_cell,
         n_input, n_output, output_batch_leading_dim, activation_ptr,
         activation_zp, cell_ptr, output_ptr, GetTensorData<int16_t>(scratch0),
         GetTensorData<int16_t>(scratch1), GetTensorData<int16_t>(scratch2),

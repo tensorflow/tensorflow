@@ -179,7 +179,7 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
 
 template <typename T>
 void PortableMatrixBatchVectorMultiplyAccumulateImpl(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     T* output) {
@@ -187,7 +187,7 @@ void PortableMatrixBatchVectorMultiplyAccumulateImpl(
   const int16_t output_min = std::numeric_limits<T>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int row = 0; row < n_output; ++row) {
-      int32_t acc = input_zeropoint_times_weights[row];
+      int32_t acc = bias[row];
       for (int col = 0; col < n_input; ++col) {
         int8 input_val = input[batch * n_input + col];
         int8 weights_val = input_to_gate_weights[row * n_input + col];
@@ -208,23 +208,23 @@ void PortableMatrixBatchVectorMultiplyAccumulateImpl(
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int16_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
-      input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
-      shift, n_batch, n_input, n_output, output_zp, output);
+      input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
+      n_output, output_zp, output);
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
-      input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
-      shift, n_batch, n_input, n_output, output_zp, output);
+      input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
+      n_output, output_zp, output);
 }
 
 void PortableApplyLayerNorm(const int16_t* input,

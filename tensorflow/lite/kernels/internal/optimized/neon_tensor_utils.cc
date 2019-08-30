@@ -439,10 +439,11 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
 
 #endif  // __aarch64__
 
-void NeonMatrixBatchVectorMultiplyImpl(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int32_t* scratch) {
+void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
+                                       const int8_t* input_to_gate_weights,
+                                       int32_t n_batch, int32_t n_input,
+                                       int32_t n_output, int32_t output_zp,
+                                       int32_t* scratch) {
   static const int kWeightsPerUint32 = 4;
   static const int kWeightsPerNeonLane = 16;
   // Assuming *matrix is kWeightsPerUint32-byte aligned,
@@ -541,7 +542,7 @@ void NeonMatrixBatchVectorMultiplyImpl(
         dotprod += row_ptr[col] * aligned_vec[col];
       }  // for col
 
-      dotprod += input_zeropoint_times_weights[row];
+      dotprod += bias[row];
       scratch[batch * n_output + row] = dotprod;
     }  // for row
   }    // for batch
@@ -553,13 +554,12 @@ void NeonMatrixBatchVectorMultiplyImpl(
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int16_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, input_zeropoint_times_weights,
-                                    input_to_gate_weights, n_batch, n_input,
-                                    n_output, output_zp, scratch);
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -611,13 +611,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, input_zeropoint_times_weights,
-                                    input_to_gate_weights, n_batch, n_input,
-                                    n_output, output_zp, scratch);
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
   int i = 0;
   const int total_size = n_batch * n_output;
 
