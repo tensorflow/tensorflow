@@ -1226,6 +1226,19 @@ def deprecated_graph_mode_only(func=None):
 run_deprecated_v1 = deprecated_graph_mode_only
 
 
+def run_all_in_deprecated_graph_mode_only(cls):
+  """Execute all tests in a class in graph mode."""
+  base_decorator = deprecated_graph_mode_only
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name == "test_session"):
+      continue
+    value = getattr(cls, name, None)
+    if callable(value):
+      setattr(cls, name, base_decorator(value))
+  return cls
+
+
 def run_v1_only(reason, func=None):
   """Execute the decorated test only if running in v1 mode.
 
