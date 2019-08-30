@@ -4133,8 +4133,8 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns
 /// null.
-ModuleOp mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
-                               MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
+                                      MLIRContext *context) {
   auto sourceBuf = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
 
   // This is the result module we are parsing into.
@@ -4150,13 +4150,14 @@ ModuleOp mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
   if (failed(verify(*module)))
     return nullptr;
 
-  return module.release();
+  return module;
 }
 
 /// This parses the file specified by the indicated filename and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-ModuleOp mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(StringRef filename,
+                                      MLIRContext *context) {
   llvm::SourceMgr sourceMgr;
   return parseSourceFile(filename, sourceMgr, context);
 }
@@ -4165,8 +4166,9 @@ ModuleOp mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
 /// SourceMgr and returns an MLIR module if it was valid.  If not, the error
 /// message is emitted through the error handler registered in the context, and
 /// a null pointer is returned.
-ModuleOp mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
-                               MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(StringRef filename,
+                                      llvm::SourceMgr &sourceMgr,
+                                      MLIRContext *context) {
   if (sourceMgr.getNumBuffers() != 0) {
     // TODO(b/136086478): Extend to support multiple buffers.
     emitError(mlir::UnknownLoc::get(context),
@@ -4187,7 +4189,8 @@ ModuleOp mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
 
 /// This parses the program string to a MLIR module if it was valid. If not,
 /// it emits diagnostics and returns null.
-ModuleOp mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
+OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
+                                        MLIRContext *context) {
   auto memBuffer = MemoryBuffer::getMemBuffer(moduleStr);
   if (!memBuffer)
     return nullptr;
