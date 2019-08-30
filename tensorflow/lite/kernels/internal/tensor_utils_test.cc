@@ -274,6 +274,23 @@ TEST(uKernels, QuantApplyLayerNormTest) {
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
+// Quantized tanh with Q0.15 input and Q0.15 output.
+TEST(uKernels, QuantTanh0Test) {
+  const std::vector<int16_t> input = {
+      -145, 899, -176, -35,  264, 289,  8,    27,   -37,  -1310,
+      -120, 127, -16,  106,  370, -583, -299, 93,   -548, 548,
+      653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
+  };
+  std::vector<int16_t> output(2 * 15, 0);
+  ApplyTanh0(input.data(), 2, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
+      -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
+      652,  -32, -60,  1056, -56, -156, -144, -636, 192,  -1300,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
 // Quantized tanh with Q3.12 input and Q0.15 output.
 TEST(uKernels, QuantTanh3Test) {
   const std::vector<int16_t> input = {

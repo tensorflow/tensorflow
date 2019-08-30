@@ -291,6 +291,19 @@ void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
   }
 }
 
+void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                        int16_t* output) {
+  using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+  for (int batch = 0; batch < n_batch; ++batch) {
+    for (int i = 0; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      F0 tanh_input = F0::FromRaw(input[index]);
+      F0 tanh_output = gemmlowp::tanh(tanh_input);
+      output[index] = tanh_output.raw();
+    }
+  }
+}
+
 void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                         int16_t* output) {
   using FX = gemmlowp::FixedPoint<std::int16_t, 3>;

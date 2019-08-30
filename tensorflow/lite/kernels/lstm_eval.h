@@ -68,6 +68,7 @@ struct QuantizedLstmParameter {
   int32_t quantized_cell_clip;
   int32_t quantized_proj_clip;
   int32_t hidden_zp;
+  int32_t cell_scale;
   std::vector<int32_t> inv_large_value;
 
   // The fields are used for pre-computing zero_point * weight.

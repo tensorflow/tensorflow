@@ -934,7 +934,7 @@ inline void LstmStepQuantized(
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
     const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
-    int32 quantized_cell_clip, int32 quantized_proj_clip,
+    int32 quantized_cell_clip, int32 quantized_proj_clip, int32_t cell_scale,
     const int32_t* inv_large_value,
     const int32_t* input_to_forget_effective_bias,
     const int32_t* recurrent_to_forget_effective_bias,
@@ -1068,8 +1068,8 @@ inline void LstmStepQuantized(
   tensor_utils::CwiseMul(scratch_1_ptr, cell_ptr, n_batch, n_cell, 15,
                          scratch_1_ptr);
 
-  tensor_utils::CwiseMul(scratch_0_ptr, scratch_2_ptr, n_batch, n_cell, 19,
-                         scratch_2_ptr);
+  tensor_utils::CwiseMul(scratch_0_ptr, scratch_2_ptr, n_batch, n_cell,
+                         30 + cell_scale, scratch_2_ptr);
 
   tensor_utils::CwiseAdd(scratch_1_ptr, scratch_2_ptr, n_batch, n_cell,
                          cell_ptr);
@@ -1078,7 +1078,12 @@ inline void LstmStepQuantized(
     tensor_utils::CwiseClipping(cell_ptr, quantized_cell_clip, n_batch, n_cell);
   }
 
-  tensor_utils::ApplyTanh4(cell_ptr, n_batch, n_cell, scratch_0_ptr);
+  // TODO(jianlijianli): swtich to a tempalte.
+  if (cell_scale == -11) {
+    tensor_utils::ApplyTanh4(cell_ptr, n_batch, n_cell, scratch_0_ptr);
+  } else if (cell_scale == -15) {
+    tensor_utils::ApplyTanh0(cell_ptr, n_batch, n_cell, scratch_0_ptr);
+  }
 
   tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, effective_hidden_scale_a,
                          effective_hidden_scale_b, n_batch, n_cell, hidden_zp,
@@ -1801,6 +1806,7 @@ TfLiteStatus EvalQuantized(
         forget_bias_ptr, cell_bias_ptr, output_bias_ptr,
         quantized_lstm_param->quantized_cell_clip,
         quantized_lstm_param->quantized_proj_clip,
+        quantized_lstm_param->cell_scale,
         quantized_lstm_param->inv_large_value.data(),
         quantized_lstm_param->input_to_forget_effective_bias.get(),
         quantized_lstm_param->recurrent_to_forget_effective_bias.get(),

@@ -117,6 +117,9 @@ void PortableApplyLayerNorm(const int16_t* input,
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output);
 
+void PortableApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                        int16_t* output);
+
 void PortableApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                         int16_t* output);
 

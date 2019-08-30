@@ -229,7 +229,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   float layer_norm_cell_scale = default_scale;
   float layer_norm_output_scale = default_scale;
   float activation_scale = default_scale;
-  float cell_scale = default_scale;
+  int cell_scale = 1;
 
   // Effective scales.
   float effective_input_to_input_scale = default_scale;
@@ -280,7 +280,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
   recurrent_to_forget_weight_scale = recurrent_to_forget_weights->params.scale;
   recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
   recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
-  cell_scale = std::pow(2, -11);
+
+  // Get cell state.
+  TfLiteTensor* cell_state =
+      &context->tensors[op_data->cell_state_tensor_index];
+  TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
+
+  // TODO(jianlijianli): remove this check once kernel has better tanh support.
+  TF_LITE_ENSURE(context, cell_scale == -11 || cell_scale == -15);
+  quantized_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
   // Calculate effective scales.
@@ -316,13 +324,16 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   if (use_peephole) {
     if (!use_cifg) {
-      effective_cell_to_input_scale =
-          cell_scale * cell_to_input_weight_scale / intermediate_scale[0];
+      effective_cell_to_input_scale = std::pow(2, cell_scale) *
+                                      cell_to_input_weight_scale /
+                                      intermediate_scale[0];
     }
-    effective_cell_to_forget_scale =
-        cell_scale * cell_to_forget_weight_scale / intermediate_scale[3];
-    effective_cell_to_output_scale =
-        cell_scale * cell_to_output_weight_scale / intermediate_scale[9];
+    effective_cell_to_forget_scale = std::pow(2, cell_scale) *
+                                     cell_to_forget_weight_scale /
+                                     intermediate_scale[3];
+    effective_cell_to_output_scale = std::pow(2, cell_scale) *
+                                     cell_to_output_weight_scale /
+                                     intermediate_scale[9];
   }
 
   // Decompose scales.

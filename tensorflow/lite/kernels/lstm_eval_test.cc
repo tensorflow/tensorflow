@@ -183,6 +183,7 @@ class QuantizedLstmParam {
     quant_lstm_parm_.layer_norm_output_scale_b = -12;
     quant_lstm_parm_.quantized_cell_clip = 20480;
     quant_lstm_parm_.quantized_proj_clip = 0;
+    quant_lstm_parm_.cell_scale = -11;
     quant_lstm_parm_.inv_large_value[0] = 1;
     quant_lstm_parm_.inv_large_value[1] = 2;
     quant_lstm_parm_.inv_large_value[2] = 2;

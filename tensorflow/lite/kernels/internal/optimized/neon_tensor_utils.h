@@ -97,6 +97,11 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   NEON_OR_PORTABLE(ApplySigmoid, input, n_batch, n_input, output);
 }
 
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output) {
+  NEON_OR_PORTABLE(ApplyTanh0, input, n_batch, n_input, output);
+}
+
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output) {
   NEON_OR_PORTABLE(ApplyTanh3, input, n_batch, n_input, output);

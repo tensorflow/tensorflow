@@ -126,6 +126,9 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
 
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output);
+
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
 
