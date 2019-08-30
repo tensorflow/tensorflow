@@ -66,7 +66,7 @@ public:
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
-  void addPass(std::unique_ptr<FunctionPassBase> pass) {
+  void addPass(std::unique_ptr<Pass> pass) {
     passes.push_back(std::move(pass));
   }
 
@@ -78,7 +78,7 @@ public:
   }
 
 private:
-  std::vector<std::unique_ptr<FunctionPassBase>> passes;
+  std::vector<std::unique_ptr<Pass>> passes;
 };
 
 /// A pass executor that contains a list of passes over a module unit.

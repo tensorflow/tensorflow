@@ -21,8 +21,11 @@
 
 namespace mlir {
 class LLVMTypeConverter;
-class ModulePassBase;
 class OwningRewritePatternList;
+
+class ModuleOp;
+template <typename OpT> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 /// Collect a set of patterns to convert from the GPU dialect to NVVM.
 void populateGpuToNVVMConversionPatterns(LLVMTypeConverter &converter,

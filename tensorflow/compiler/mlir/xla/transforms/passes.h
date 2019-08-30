@@ -19,7 +19,10 @@ limitations under the License.
 #include <memory>
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T>
+class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 
 namespace xla_hlo {
 

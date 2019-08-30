@@ -26,9 +26,12 @@ class Any;
 } // end namespace llvm
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
 class ModuleOp;
-class ModulePassBase;
+template <typename OpT> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
+
 class Pass;
 class PassInstrumentation;
 class PassInstrumentor;

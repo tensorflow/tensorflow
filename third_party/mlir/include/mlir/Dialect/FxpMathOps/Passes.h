@@ -23,7 +23,9 @@
 #define MLIR_DIALECT_FXPMATHOPS_PASSES_H
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 
 namespace fxpmath {
 

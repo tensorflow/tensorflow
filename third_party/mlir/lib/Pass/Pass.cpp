@@ -42,17 +42,16 @@ using namespace mlir::detail;
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-LogicalResult FunctionPassBase::run(FuncOp fn, AnalysisManager am) {
-  // Initialize the pass state.
-  passState.emplace(fn, am);
+LogicalResult Pass::run(Operation *op, AnalysisManager am) {
+  passState.emplace(op, am);
 
   // Instrument before the pass has run.
   auto pi = am.getPassInstrumentor();
   if (pi)
-    pi->runBeforePass(this, fn);
+    pi->runBeforePass(this, op);
 
-  // Invoke the virtual runOnFunction function.
-  runOnFunction();
+  // Invoke the virtual runOnOperation method.
+  runOnOperation();
 
   // Invalidate any non preserved analyses.
   am.invalidate(passState->preservedAnalyses);
@@ -61,38 +60,9 @@ LogicalResult FunctionPassBase::run(FuncOp fn, AnalysisManager am) {
   bool passFailed = passState->irAndPassFailed.getInt();
   if (pi) {
     if (passFailed)
-      pi->runAfterPassFailed(this, fn);
+      pi->runAfterPassFailed(this, op);
     else
-      pi->runAfterPass(this, fn);
-  }
-
-  // Return if the pass signaled a failure.
-  return failure(passFailed);
-}
-
-/// Forwarding function to execute this pass.
-LogicalResult ModulePassBase::run(ModuleOp module, AnalysisManager am) {
-  // Initialize the pass state.
-  passState.emplace(module, am);
-
-  // Instrument before the pass has run.
-  auto pi = am.getPassInstrumentor();
-  if (pi)
-    pi->runBeforePass(this, module);
-
-  // Invoke the virtual runOnModule function.
-  runOnModule();
-
-  // Invalidate any non preserved analyses.
-  am.invalidate(passState->preservedAnalyses);
-
-  // Instrument after the pass has run.
-  bool passFailed = passState->irAndPassFailed.getInt();
-  if (pi) {
-    if (passFailed)
-      pi->runAfterPassFailed(this, module);
-    else
-      pi->runAfterPass(this, module);
+      pi->runAfterPass(this, op);
   }
 
   // Return if the pass signaled a failure.
@@ -106,7 +76,7 @@ LogicalResult ModulePassBase::run(ModuleOp module, AnalysisManager am) {
 FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
     : PassExecutor(Kind::FunctionExecutor) {
   for (auto &pass : rhs.passes)
-    addPass(pass->clone());
+    addPass(cast<FunctionPassBase>(pass->clone()));
 }
 
 /// Run all of the passes in this manager over the current function.
@@ -265,14 +235,9 @@ void PassManager::disableMultithreading(bool disable) {
 /// Add an opaque pass pointer to the current manager. This takes ownership
 /// over the provided pass pointer.
 void PassManager::addPass(std::unique_ptr<Pass> pass) {
-  switch (pass->getKind()) {
-  case Pass::Kind::FunctionPass:
-    addPass(cast<FunctionPassBase>(std::move(pass)));
-    break;
-  case Pass::Kind::ModulePass:
-    addPass(cast<ModulePassBase>(std::move(pass)));
-    break;
-  }
+  if (isa<FunctionPassBase>(pass.get()))
+    return addPass(cast<FunctionPassBase>(std::move(pass)));
+  addPass(cast<ModulePassBase>(std::move(pass)));
 }
 
 /// Add a module pass to the current manager. This takes ownership over the
