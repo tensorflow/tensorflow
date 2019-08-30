@@ -56,10 +56,26 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dialect_emitter",
+    srcs = ["hlo_dialect_emitter.cc"],
+    hdrs = ["hlo_dialect_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/types:span",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+    ],
+)
+
+cc_library(
     name = "lhlo_dialect_emitter",
     srcs = ["lhlo_dialect_emitter.cc"],
     hdrs = ["lhlo_dialect_emitter.h"],
     deps = [
+        ":hlo_dialect_emitter",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

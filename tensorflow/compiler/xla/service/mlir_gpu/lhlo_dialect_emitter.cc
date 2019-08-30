@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -53,6 +54,7 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
+// TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
                     ArrayRef<std::pair<Identifier, Attribute>> attrs) {
@@ -204,7 +206,21 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 }
 
 Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
-  LOG(FATAL) << "Not implemented yet.";
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*fusion));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values(function.getArguments());
+  auto attribute =
+      builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
+
+  auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
+      builder_.getUnknownLoc(), attribute);
+
+  HloDialectEmitter hlo_emitter(&fusion_op.region(), arg_values);
+
+  TF_RETURN_IF_ERROR(
+      hlo_emitter.EmitComputation(*fusion->fused_instructions_computation()));
+
+  return Status::OK();
 }
 
 Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {

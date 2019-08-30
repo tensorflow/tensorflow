@@ -41,11 +41,34 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
   ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
 })",
                      R"(
-;CHECK: module {
-;CHECK:  func @add(%{{.*}}: memref<2x2xf32>, %{{.*}}: memref<2x2xf32>, %{{.*}}: memref<2x2xf32>) {
-;CHECK:    "xla_lhlo.add"(%{{.*}}, %{{.*}}, %{{.*}}) {name = "add"} : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-;CHECK:  }
+;CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "add"} : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
+      )");
+}
+
+TEST_F(LhloGenTest, AddMultiply) {
+  CompileAndVerifyIr(R"(
+HloModule AddMultiply
+
+ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  %z = f32[2,2]{1,0} parameter(2)
+  %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+  ROOT %mul = f32[2,2]{1,0} multiply(f32[2,2]{1,0} %add, f32[2,2]{1,0} %z)
+})",
+                     R"(
+;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]], %[[RESULT:.*]]: [[TYPE]])
+;CHECK: "xla_lhlo.fusion"() ( {
+;CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE:.*]]
+;CHECK:   %[[REF2:.*]] = tensor_load %[[ARG2]] : [[TYPE]]
+;CHECK:   %[[ADD:.*]] = "xla_hlo.add"(%[[REF1]], %[[REF2]]) {name = "add"}
+;CHECK:   %[[REF0:.*]] = tensor_load %[[ARG0]] : [[TYPE]]
+;CHECK:   %[[MUL:.*]] = "xla_hlo.mul"(%[[ADD]], %[[REF0]]) {name = "multiply"}
+;CHECK:   tensor_store %[[MUL]], %[[RESULT]]
+;CHECK:   "xla_lhlo.terminator"()
+;CHECK-NEXT: }
       )");
 }
 
