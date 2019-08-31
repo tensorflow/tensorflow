@@ -8,12 +8,12 @@ func @fuseMulIntoConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x112x112x2xf3
   %1 = "tf.Mul"(%0, %cst2) : (tensor<1x112x112x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
 
   return %1 : tensor<1x112x112x2xf32>
-  // CHECK: %cst = constant dense<
+  // CHECK: %[[CST:.*]] = "tf.Const{{.*}} dense<
   // CHECK-SAME: [1.000000e+00, 4.000000e+00], [3.000000e+00, 8.000000e+00], [5.000000e+00, 1.200000e+01]
   // CHECK-SAME: [7.000000e+00, 1.600000e+01], [9.000000e+00, 2.000000e+01], [1.100000e+01, 2.400000e+01]
   // CHECK-SAME: [1.300000e+01, 2.800000e+01], [1.500000e+01, 3.200000e+01], [1.700000e+01, 3.600000e+01]
-  // CHECK: %0 = "tf.Conv2D"(%arg0, %cst) {data_format = "NHWC", dilations = [1, 2, 3, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 5, 1], use_cudnn_on_gpu = true} : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>) -> tensor<1x112x112x2xf32>
-  // CHECK: return %0 : tensor<1x112x112x2xf32>
+  // CHECK: %[[CONV:.*]] = "tf.Conv2D"(%arg0, %[[CST]]) {data_format = "NHWC", dilations = [1, 2, 3, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 5, 1], use_cudnn_on_gpu = true} : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>) -> tensor<1x112x112x2xf32>
+  // CHECK: return %[[CONV]] : tensor<1x112x112x2xf32>
 }
 
 // CHECK-LABEL: @notfuseMulIntoConv2d
