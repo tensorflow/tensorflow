@@ -36,8 +36,7 @@ Status SelectConvolutionTextureArray(const Convolution2DAttributes& attr,
                                      const OperationDef& op_def,
                                      ModelHints hints,
                                      std::unique_ptr<GPUOperation>* ptr) {
-  if (creation_context.device->IsPowerVR() &&
-    IsConvPowerVRSupported(op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
     ConvPowerVR conv;
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
@@ -60,8 +59,7 @@ Status SelectConvolutionTexture2D(const Convolution2DAttributes& attr,
                                   const CreationContext& creation_context,
                                   const OperationDef& op_def,
                                   std::unique_ptr<GPUOperation>* ptr) {
-  if (creation_context.device->IsPowerVR() &&
-    IsConvPowerVRSupported(op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
     ConvPowerVR conv;
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
@@ -83,8 +81,7 @@ Status SelectConvolutionBuffer(const Convolution2DAttributes& attr,
                                const CreationContext& creation_context,
                                const OperationDef& op_def,
                                std::unique_ptr<GPUOperation>* ptr) {
-  if (creation_context.device->IsPowerVR() &&
-    IsConvPowerVRSupported(op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
     ConvPowerVR conv;
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));

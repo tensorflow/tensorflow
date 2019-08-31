@@ -55,6 +55,8 @@ class ConvPowerVR : public GPUOperation {
     int3 work_group_size;
     int src_depth_loop_size;
     bool explicit_sync;
+    bool x_kernel_is_1;
+    bool y_kernel_is_1;
   };
 
   ConvPowerVR(const OperationDef& definition,
@@ -88,10 +90,8 @@ class ConvPowerVR : public GPUOperation {
   Buffer weights_;
   LinearStorage biases_;
 
-  int2 kernel_size_;
-  int2 stride_;
-  int2 padding_;
-  int2 dilation_;
+  int4 stride_padding_;
+  int4 kernel_dilation_;
   ConvParams conv_params_;
 
   CLKernel kernel_;
@@ -162,9 +162,6 @@ void ConvPowerVR::RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
     }
   }
 }
-
-bool IsConvPowerVRSupported(const OperationDef& definition,
-                            const Convolution2DAttributes& attr);
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
