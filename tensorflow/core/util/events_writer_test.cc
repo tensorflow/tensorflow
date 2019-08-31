@@ -53,7 +53,7 @@ void WriteFile(EventsWriter* writer) {
 
 static bool ReadEventProto(io::RecordReader* reader, uint64* offset,
                            Event* proto) {
-  string record;
+  tstring record;
   Status s = reader->ReadRecord(offset, &record);
   if (!s.ok()) {
     return false;

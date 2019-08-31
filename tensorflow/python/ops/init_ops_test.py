@@ -178,6 +178,10 @@ class InitializersTest(test.TestCase):
 
   @test_util.run_gpu_only
   def testVariablePlacementWithOrthogonalInitializer(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest('Disable subtest on ROCm due to missing QR op support')
+
     with ops.Graph().as_default() as g:
       with ops.device('gpu:0'):
         variable_scope.get_variable(

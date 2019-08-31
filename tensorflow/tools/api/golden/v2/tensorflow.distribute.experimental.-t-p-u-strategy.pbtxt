@@ -13,7 +13,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'steps_per_run\', \'device_assignment\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'device_assignment\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "colocate_vars_with"

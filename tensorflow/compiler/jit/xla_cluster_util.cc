@@ -318,4 +318,72 @@ bool IsShapeConsumerOp(const Node& node) {
   return node.type_string() == "Shape" || node.type_string() == "Rank" ||
          node.type_string() == "Size";
 }
+
+namespace {
+struct ClusterInfo {
+  int size;
+
+  // Maps op names to the number of times they appear in the cluster.
+  absl::flat_hash_map<absl::string_view, int> op_histogram;
+};
+
+void HistogramMapToRepeatedOpAndCount(
+    protobuf::RepeatedPtrField<XlaAutoClusteringSummary::OpAndCount>* result,
+    const absl::flat_hash_map<absl::string_view, int>& histogram) {
+  for (const auto& pair : histogram) {
+    XlaAutoClusteringSummary::OpAndCount* new_entry = result->Add();
+    new_entry->set_op(std::string(pair.first));
+    new_entry->set_count(pair.second);
+  }
+
+  absl::c_sort(*result, [](const XlaAutoClusteringSummary::OpAndCount& a,
+                           const XlaAutoClusteringSummary::OpAndCount& b) {
+    return a.op() < b.op();
+  });
+}
+
+void ClusterInfoToProtobuf(XlaAutoClusteringSummary::Cluster* result,
+                           absl::string_view name, const ClusterInfo& info) {
+  result->set_name(std::string(name));
+  result->set_size(info.size);
+  HistogramMapToRepeatedOpAndCount(result->mutable_op_histogram(),
+                                   info.op_histogram);
+}
+}  // namespace
+
+XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
+  absl::flat_hash_map<absl::string_view, ClusterInfo> cluster_name_to_info;
+  XlaAutoClusteringSummary result;
+
+  absl::flat_hash_map<absl::string_view, int> unclustered_op_histogram;
+
+  for (Node* n : graph.nodes()) {
+    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
+    if (cluster_name) {
+      result.set_clustered_node_count(result.clustered_node_count() + 1);
+      ClusterInfo* info = &cluster_name_to_info[*cluster_name];
+      info->size++;
+      info->op_histogram[n->type_string()]++;
+    } else {
+      result.set_unclustered_node_count(result.unclustered_node_count() + 1);
+      unclustered_op_histogram[n->type_string()]++;
+    }
+  }
+
+  for (const auto& pair : cluster_name_to_info) {
+    XlaAutoClusteringSummary::Cluster* new_cluster = result.add_clusters();
+    ClusterInfoToProtobuf(new_cluster, pair.first, pair.second);
+  }
+
+  absl::c_sort(*result.mutable_clusters(),
+               [&](const XlaAutoClusteringSummary::Cluster& a,
+                   const XlaAutoClusteringSummary::Cluster& b) {
+                 return a.name() < b.name();
+               });
+
+  HistogramMapToRepeatedOpAndCount(result.mutable_unclustered_op_histogram(),
+                                   unclustered_op_histogram);
+
+  return result;
+}
 }  // namespace tensorflow

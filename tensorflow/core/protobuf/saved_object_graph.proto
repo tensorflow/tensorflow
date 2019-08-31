@@ -74,6 +74,8 @@ message SavedUserObject {
   string identifier = 1;
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+  // Initialization-related metadata.
+  string metadata = 3;
 }
 
 // A SavedAsset points to an asset in the MetaGraph.

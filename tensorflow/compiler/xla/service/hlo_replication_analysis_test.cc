@@ -58,7 +58,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{false, true});
@@ -107,7 +107,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, false});
@@ -159,7 +159,7 @@ ENTRY SimpleWhileLoop {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
@@ -208,7 +208,7 @@ ENTRY WhileLoopParameterAliasingNonReplicatedOutput {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
@@ -254,7 +254,7 @@ ENTRY WhileLoopDifferentCondition {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true});
@@ -303,7 +303,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true, true, true, false, true, true});
@@ -367,7 +367,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true, true, true, true, true});
@@ -405,7 +405,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, false, true, true, true});
@@ -431,7 +431,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{true, true, true, true, false});

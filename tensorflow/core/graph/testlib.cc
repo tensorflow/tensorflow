@@ -271,11 +271,12 @@ Node* Roll(Graph* g, Node* input, Node* shift, Node* axis) {
   return ret;
 }
 
-Node* Error(Graph* g, Node* input, const string& errmsg) {
+Node* Error(Graph* g, Node* input, const string& errmsg, bool log_error) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")
                   .Input(input)
                   .Attr("message", errmsg)
+                  .Attr("log_error", log_error)
                   .Finalize(g, &ret));
   return ret;
 }

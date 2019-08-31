@@ -645,12 +645,12 @@ def scatter_mul(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_mul(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_mul(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_mul(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_div"])
@@ -697,12 +697,12 @@ def scatter_div(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_div(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_div(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_div(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_max"])
@@ -752,12 +752,12 @@ def scatter_max(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_max(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_max(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_max(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["scatter_min"])
@@ -807,12 +807,12 @@ def scatter_min(ref, indices, updates, use_locking=False, name=None):
   Returns:
     A mutable `Tensor`. Has the same type as `ref`.
   """
-  return gen_state_ops.scatter_min(
-      ref=ref,
-      indices=indices,
-      updates=updates,
-      use_locking=use_locking,
-      name=name)
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_min(ref, indices, updates,
+                                     use_locking=use_locking, name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_min(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
 
 
 @tf_export(v1=["batch_scatter_update"])

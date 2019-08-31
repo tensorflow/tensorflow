@@ -100,4 +100,11 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
   return kTfLiteOk;
 }
 
+TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(context,
+                       "Encountered an unresolved custom op. Did you miss "
+                       "a custom op or delegate?");
+  return kTfLiteError;
+}
+
 }  // namespace tflite

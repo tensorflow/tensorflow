@@ -60,6 +60,15 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
   }
 }
 
+void HloReachabilityMap::Replace(const HloInstruction* original,
+                                 const HloInstruction* replacement) {
+  if (GetKey(original) == GetKey(replacement)) {
+    return;
+  }
+  indices_[GetKey(replacement)] = GetIndex(original);
+  indices_.erase(GetKey(original));
+}
+
 void HloReachabilityMap::SetReachable(const HloInstruction* a,
                                       const HloInstruction* b) {
   GetBitVector(b).Set(GetIndex(a));
@@ -85,8 +94,8 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     std::vector<HloInstruction*> inputs;
     const auto add_input = [&channel_group, &inputs](HloInstruction* input) {
       inputs.push_back(input);
-      if (input->opcode() == HloOpcode::kAllReduce && input->all_reduce_id()) {
-        auto it = channel_group.find(*input->all_reduce_id());
+      if (input->opcode() == HloOpcode::kAllReduce && input->channel_id()) {
+        auto it = channel_group.find(*input->channel_id());
         if (it != channel_group.end()) {
           inputs.insert(inputs.end(), it->second.begin(), it->second.end());
         }
@@ -106,7 +115,7 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
 
     switch (hlo->opcode()) {
       case HloOpcode::kRecvDone: {
-        auto it = channel_group.find(hlo->channel_id());
+        auto it = channel_group.find(*hlo->channel_id());
         if (it != channel_group.end()) {
           for (HloInstruction* channel : it->second) {
             if (channel->opcode() == HloOpcode::kSend) {
@@ -117,9 +126,9 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
         break;
       }
       case HloOpcode::kAllReduce: {
-        auto all_reduce_id = hlo->all_reduce_id();
-        if (all_reduce_id) {
-          auto it = channel_group.find(all_reduce_id.value());
+        auto channel_id = hlo->channel_id();
+        if (channel_id) {
+          auto it = channel_group.find(channel_id.value());
           if (it != channel_group.end()) {
             for (HloInstruction* all_reduce : it->second) {
               add_dependencies(all_reduce);

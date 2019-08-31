@@ -123,7 +123,7 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
       learner_config.num_classes = n_classes
     elif learner_config.num_classes != n_classes:
       raise ValueError("n_classes (%d) doesn't match learner_config (%d)." %
-                       (learner_config.num_classes, n_classes))
+                       (n_classes, learner_config.num_classes))
     super(GradientBoostedDecisionTreeClassifier, self).__init__(
         model_fn=model.model_builder,
         params={

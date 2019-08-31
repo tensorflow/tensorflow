@@ -212,7 +212,7 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
   if ((is_identity || is_multi_input_identity_n) && num_cross_in > 0 &&
       num_cross_out > 0 && num_cross_after > 0) {
     // This identity node follows a device crossing, so it might be
-    // following a _Recv node after partioning. Do not remove such nodes,
+    // following a _Recv node after partitioning. Do not remove such nodes,
     // unless they only have consumers on the same device as themselves.
     return false;
   }

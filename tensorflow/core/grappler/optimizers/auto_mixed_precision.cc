@@ -221,6 +221,8 @@ class NodeTypeAttrMap {
       return errors::InvalidArgument("NodeTypeAttrMap is already initialized.");
     }
     graph_ = &graph;
+    function_library_.reset(
+        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
@@ -272,10 +274,7 @@ class NodeTypeAttrMap {
  private:
   Status AddNode(const NodeDef& node) {
     const OpDef* op_def_ptr = nullptr;
-    // TODO(benbarsdell): This may fail if node.op() is a function. It will
-    // need to be addressed when we add support for functions.
-    TF_RETURN_IF_ERROR(
-        OpRegistry::Global()->LookUpOpDef(node.op(), &op_def_ptr));
+    TF_RETURN_IF_ERROR(function_library_->LookUpOpDef(node.op(), &op_def_ptr));
     const OpDef& op_def = *op_def_ptr;
     auto& type2io_entry = type2io_[&node];
     auto& io2type_entry = io2type_[&node];
@@ -343,6 +342,7 @@ class NodeTypeAttrMap {
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
   const GraphDef* graph_ = nullptr;  // do not own
+  std::unique_ptr<FunctionLibraryDefinition> function_library_;
 
   typedef absl::flat_hash_set<int> IntSet;
   // Maps a type attr id -> (input port set, output port set)
@@ -898,6 +898,22 @@ bool CanForceFP16(const NodeDef& node) {
          !IsStateful(node) && !HasInputOrOutputRefs(node);
 }
 
+int GetCudaVersion(const Cluster& cluster) {
+  auto devices = cluster.GetDevices();
+  for (const auto& device : devices) {
+    const DeviceProperties& device_properties = device.second;
+    if (device_properties.type() == "GPU") {
+      const auto& device_env = device_properties.environment();
+      auto it = device_env.find("cuda");
+      if (it != device_env.end()) {
+        string cuda_version_str = it->second;
+        return std::stoi(cuda_version_str);
+      }
+    }
+  }
+  return 0;
+}
+
 class AutoMixedPrecisionImpl {
  public:
   AutoMixedPrecisionImpl(Cluster* cluster,
@@ -907,7 +923,8 @@ class AutoMixedPrecisionImpl {
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
         id_(id),
-        graph_view_(graph) {}
+        graph_view_(graph),
+        cuda_version_(GetCudaVersion(*cluster)) {}
 
   Status Optimize();
 
@@ -926,7 +943,7 @@ class AutoMixedPrecisionImpl {
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
   bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
-  bool IsIdentityAfterVariable(const NodeDef& node) const;
+  bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsFloat16(const NodeTypeId& node_type) const;
   const NodeDef* GetTailOfChain(const NodeDef& node, const string& op) const;
@@ -958,6 +975,7 @@ class AutoMixedPrecisionImpl {
   GraphDef* graph_;
   string id_;
   MutableGraphView graph_view_;
+  int cuda_version_;
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
@@ -1012,7 +1030,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     f << "WhiteList:\n";
-    for (auto x : AutoMixedPrecisionLists::WhiteList()) {
+    for (auto x : AutoMixedPrecisionLists::WhiteList(cuda_version_)) {
       f << x << "\n";
     }
     f << "\nBlackList:\n";
@@ -1067,16 +1085,25 @@ std::pair<int, int> GetDeviceGPUArch(
     const DeviceProperties& device_properties) {
   if (device_properties.type() != "GPU") return {0, 0};
   string arch_str = device_properties.environment().at("architecture");
-  std::vector<int32> arch_pieces;
-  if (!str_util::SplitAndParseAsInts(arch_str, '.', &arch_pieces) ||
-      arch_pieces.empty()) {
+  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
+  if (split_arch_str.empty()) {
     return {0, 0};
   }
-  std::pair<int, int> arch(arch_pieces[0], 0);
-  if (arch_pieces.size() > 1) {
-    arch.second = arch_pieces[1];
+
+  int major, minor;
+  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+    return {0, 0};
   }
-  return arch;
+
+  if (split_arch_str.size() > 1) {
+    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+      return {major, minor};
+    } else {
+      return {0, 0};
+    }
+  } else {
+    return {major, 0};
+  }
 }
 
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
@@ -1148,7 +1175,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
 
-  fp16_whitelist_ = AutoMixedPrecisionLists::WhiteList();
+  fp16_whitelist_ = AutoMixedPrecisionLists::WhiteList(cuda_version_);
   fp16_blacklist_ = AutoMixedPrecisionLists::BlackList();
   fp16_graylist_ = AutoMixedPrecisionLists::GrayList();
   fp16_clearlist_ = AutoMixedPrecisionLists::ClearList();
@@ -1461,10 +1488,11 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
                   ShouldProcess(*item.node) && IsFloat32(item) &&
                   SupportsFloat16(item) &&
                   (fp16_clearlist_.count(item.node->op())) &&
-                  // We don't propagate (backwards) through Identity nodes when
-                  // they immediately follow Variable nodes because otherwise it
-                  // breaks TensorBoard visualization.
-                  !IsIdentityAfterVariable(*item.node));
+                  // We don't propagate (backwards) through nodes that read
+                  // Variables because it can break the behavior of TensorBoard
+                  // visualization and/or (in the case of Enter nodes) the model
+                  // itself. This is only a problem for non-resource variables.
+                  !NodeImplicitlyReadsNonResourceVariable(*item.node));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
           clear_prop_set.insert(idx);
@@ -1479,35 +1507,37 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
   }
 }
 
-// Forces NextIteration nodes to have the same color as their output Merge node.
+// Forces NextIteration nodes and their output Merge node(s) to have the same
+// color. Specifically, it removes them all from white_set if any of the Merge
+// nodes is not in white_set, otherwise it adds the NextIteration node to
+// white_set.
 Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
     absl::flat_hash_set<int>* white_set) const {
   for (const NodeDef& node : graph_->node()) {
     if (node.op() == "NextIteration") {
       GraphView::OutputPort output_port(&node, 0);
       const auto& fanout = graph_view_.GetFanout(output_port);
-      if (fanout.size() != 1) {
-        return errors::FailedPrecondition(
-            "Expected exactly 1 output from port ", node.name(), ":0, got ",
-            fanout.size());
+      std::vector<int> merge_idxs;
+      merge_idxs.reserve(fanout.size());
+      bool any_merge_is_not_white = false;
+      for (const auto& output : fanout) {
+        const NodeDef& merge_node = *output.node;
+        if (merge_node.op() != "Merge") {
+          return errors::FailedPrecondition(
+              "Expected Merge node after NextIteration, got ", merge_node.op());
+        }
+        const absl::optional<int> maybe_merge_idx =
+            graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
+        if (!maybe_merge_idx.has_value()) {
+          return errors::Internal("Type attribute T of Merge node ",
+                                  merge_node.name(),
+                                  " not found in graph view");
+        }
+        int merge_idx = maybe_merge_idx.value();
+        merge_idxs.push_back(merge_idx);
+        any_merge_is_not_white =
+            any_merge_is_not_white || !white_set->count(merge_idx);
       }
-      const NodeDef& merge_node = *fanout.begin()->node;
-      if (merge_node.op() != "Merge") {
-        return errors::FailedPrecondition(
-            "Expected Merge node after NextIteration, got ", merge_node.op());
-      }
-      const absl::optional<int> maybe_merge_idx =
-          graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
-      if (!maybe_merge_idx.has_value()) {
-        return errors::Internal("Type attribute T of Merge node ",
-                                merge_node.name(), " not found in graph view");
-      }
-      int merge_idx = maybe_merge_idx.value();
-      bool merge_is_white = white_set->count(merge_idx);
-      VLOG(2) << "Painting type T of " << node.op() << " node " << node.name()
-              << " " << (merge_is_white ? "WHITE" : "BLACK")
-              << " to match the color of its output Merge node "
-              << merge_node.name();
       const absl::optional<int> maybe_nextiter_idx =
           graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
       if (!maybe_nextiter_idx.has_value()) {
@@ -1515,10 +1545,25 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
                                 node.name(), " not found in graph view");
       }
       int nextiter_idx = maybe_nextiter_idx.value();
-      if (merge_is_white) {
-        white_set->insert(nextiter_idx);
+      if (any_merge_is_not_white) {
+        for (int merge_idx : merge_idxs) {
+          if (white_set->erase(merge_idx)) {
+            VLOG(2) << "Painting type T of Merge node "
+                    << graph_type_view_.GetNode(merge_idx)->node->name()
+                    << " BLACK to match the color of its sibling Merge nodes "
+                       "with common NextIteration node "
+                    << node.name();
+          }
+        }
+        if (white_set->erase(nextiter_idx)) {
+          VLOG(2) << "Painting type T of NextIteration node " << node.name()
+                  << " BLACK to match the color of its output Merge node(s)";
+        }
       } else {
-        white_set->erase(nextiter_idx);
+        if (white_set->insert(nextiter_idx).second) {
+          VLOG(2) << "Painting type T of NextIteration node " << node.name()
+                  << " WHITE to match the color of its output Merge node(s)";
+        }
       }
     }
   }
@@ -1597,13 +1642,17 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
   }
 }
 
-bool AutoMixedPrecisionImpl::IsIdentityAfterVariable(
+bool AutoMixedPrecisionImpl::NodeImplicitlyReadsNonResourceVariable(
     const NodeDef& node) const {
-  if (node.op() == "Identity") {
+  if (node.op() == "Identity" || node.op() == "Enter") {
     GraphView::InputPort node_input(&node, 0);
     MutableGraphView::OutputPort prev_output =
         graph_view_.GetRegularFanin(node_input);
-    if (prev_output.node && IsVariable(*prev_output.node)) {
+    const NodeDef* input = prev_output.node;
+    if (input && ((node.op() == "Identity" && (input->op() == "Variable" ||
+                                               input->op() == "VariableV2")) ||
+                  (node.op() == "Enter" &&
+                   NodeImplicitlyReadsNonResourceVariable(*input)))) {
       return true;
     }
   }
@@ -1709,7 +1758,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
               added_cast_node = graph_view_.AddNode(
                   BuildCastNode(src, to_fp16, src.node->device()));
               if (to_fp16 && !IsConstant(*node) && !IsVariable(*node) &&
-                  !IsIdentityAfterVariable(*node)) {
+                  !NodeImplicitlyReadsNonResourceVariable(*node)) {
                 ++num_nonvar_casts_to_fp16;
               }
             }

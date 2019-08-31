@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 // Class containing options for running a LocalExecutable and other auxiliary
-// data, now only a stream cache for GPU backend.
+// data.
 class ServiceExecutableRunOptions {
  public:
   using StreamBorrower = std::function<StatusOr<StreamPool::Ptr>(int)>;

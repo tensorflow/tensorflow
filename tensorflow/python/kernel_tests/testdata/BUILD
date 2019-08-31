@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 filegroup(
     name = "self_adjoint_eig_op_test_files",

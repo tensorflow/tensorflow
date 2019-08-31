@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "interpreter",
@@ -20,14 +21,19 @@ py_library(
 py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
-    data = ["//tensorflow/lite/python/testdata:interpreter_test_data"],
-    python_version = "PY2",
+    data = [
+        "//tensorflow/lite/python/testdata:interpreter_test_data",
+        "//tensorflow/lite/python/testdata:test_delegate.so",
+    ],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/137568139): enable after this is fixed.
+        "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
+        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
@@ -75,6 +81,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
@@ -88,7 +95,6 @@ py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
-    python_version = "PY2",
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
@@ -104,7 +110,6 @@ py_test(
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -119,11 +124,24 @@ py_test(
 py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         # TODO(b/111881877): Enable in oss after resolving op registry issues.
         "no_oss",
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_mlir_test",
+    srcs = ["lite_mlir_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
         "no_windows",
     ],
     deps = [
@@ -144,13 +162,13 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:wrap_function",
     ],
 )
 
 py_test(
     name = "util_test",
     srcs = ["util_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -168,7 +186,7 @@ py_library(
         "wrap_toco.py",
     ],
     deps = [
-        "//tensorflow/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )
@@ -216,7 +234,6 @@ py_library(
 py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":convert",
@@ -248,7 +265,6 @@ py_library(
 py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
-    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -264,19 +280,5 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-py_binary(
-    name = "create_custom_op",
-    srcs = ["create_custom_op.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/flags",
     ],
 )

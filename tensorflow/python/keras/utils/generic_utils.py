@@ -35,6 +35,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
+_GLOBAL_CUSTOM_NAMES = {}
 
 
 @keras_export('keras.utils.CustomObjectScope')
@@ -130,18 +131,74 @@ def serialize_keras_class_and_config(cls_name, cls_config):
   return {'class_name': cls_name, 'config': cls_config}
 
 
+@keras_export('keras.utils.register_keras_serializable')
+def register_keras_serializable(package='Custom', name=None):
+  """Registers an object with the Keras serialization framework.
+
+  This decorator injects the decorated class or function into the Keras custom
+  object dictionary, so that it can be serialized and deserialized without
+  needing an entry in the user-provided custom object dict. It also injects a
+  function that Keras will call to get the object's serializable string key.
+
+  Note that to be serialized and deserialized, classes must implement the
+  `get_config()` method. Functions do not have this requirement.
+
+  The object will be registered under the key 'module>name' where `name`,
+  defaults to the object name if not passed.
+
+  Arguments:
+    package: The package that this class belongs to.
+    name: The name to serialize this class under in this package. If None, the
+      class's name will be used.
+
+  Returns:
+    A decorator that registers the decorated class with the passed names.
+  """
+
+  def decorator(arg):
+    """Registers a class with the Keras serialization framework."""
+    class_name = name if name is not None else arg.__name__
+    registered_name = package + '>' + class_name
+
+    if tf_inspect.isclass(arg) and not hasattr(arg, 'get_config'):
+      raise ValueError(
+          'Cannot register a class that does not have a get_config() method.')
+
+    if registered_name in _GLOBAL_CUSTOM_OBJECTS:
+      raise ValueError(
+          '%s has already been registered to %s' %
+          (registered_name, _GLOBAL_CUSTOM_OBJECTS[registered_name]))
+
+    if arg in _GLOBAL_CUSTOM_NAMES:
+      raise ValueError('%s has already been registered to %s' %
+                       (arg, _GLOBAL_CUSTOM_NAMES[arg]))
+    _GLOBAL_CUSTOM_OBJECTS[registered_name] = arg
+    _GLOBAL_CUSTOM_NAMES[arg] = registered_name
+
+    return arg
+
+  return decorator
+
+
+def _get_name_or_custom_name(obj):
+  if obj in _GLOBAL_CUSTOM_NAMES:
+    return _GLOBAL_CUSTOM_NAMES[obj]
+  else:
+    return obj.__name__
+
+
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
+
   if hasattr(instance, 'get_config'):
-    return serialize_keras_class_and_config(instance.__class__.__name__,
-                                            instance.get_config())
+    name = _get_name_or_custom_name(instance.__class__)
+    return serialize_keras_class_and_config(name, instance.get_config())
   if hasattr(instance, '__name__'):
-    return instance.__name__
-  else:
-    raise ValueError('Cannot serialize', instance)
+    return _get_name_or_custom_name(instance)
+  raise ValueError('Cannot serialize', instance)
 
 
 def class_and_config_for_serialized_keras_object(
@@ -275,8 +332,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
     cell_value = dummy_fn.__closure__[0]
     if not isinstance(value, type(cell_value)):
       return cell_value
-    else:
-      return value
+    return value
 
   if closure is not None:
     closure = tuple(ensure_value_to_cell(_) for _ in closure)
@@ -529,17 +585,18 @@ def slice_arrays(arrays, start=None, stop=None):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
+    return [
+        None if x is None else
+        None if not hasattr(x, '__getitem__') else x[start:stop] for x in arrays
+    ]
   else:
     if hasattr(start, '__len__'):
       if hasattr(start, 'shape'):
         start = start.tolist()
       return arrays[start]
-    elif hasattr(start, '__getitem__'):
+    if hasattr(start, '__getitem__'):
       return arrays[start:stop]
-    else:
-      return [None]
+    return [None]
 
 
 def to_list(x):

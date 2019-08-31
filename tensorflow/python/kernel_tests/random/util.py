@@ -22,7 +22,6 @@ import math
 
 import numpy as np
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.distributions import special_math
 
 
@@ -100,7 +99,8 @@ def anderson_darling(x):
   return -n - z / n
 
 
-def test_truncated_normal(assert_equal, assert_all_close, dtype, n, y):
+def test_truncated_normal(assert_equal, assert_all_close, n, y,
+                          mean_atol=5e-4, median_atol=8e-4, variance_rtol=1e-3):
   """Tests truncated normal distribution's statistics."""
   def _normal_cdf(x):
     return .5 * math.erfc(-x / math.sqrt(2))
@@ -129,12 +129,12 @@ def test_truncated_normal(assert_equal, assert_all_close, dtype, n, y):
   expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
   y = y.astype(float)
   actual_mean = np.mean(y)
-  assert_all_close(actual_mean, expected_mean, atol=5e-4)
+  assert_all_close(actual_mean, expected_mean, atol=mean_atol)
 
   expected_median = mu + probit(
       (_normal_cdf(alpha) + _normal_cdf(beta)) / 2.) * sigma
   actual_median = np.median(y)
-  assert_all_close(actual_median, expected_median, atol=8e-4)
+  assert_all_close(actual_median, expected_median, atol=median_atol)
 
   expected_variance = sigma**2 * (1 + (
       (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
@@ -143,4 +143,4 @@ def test_truncated_normal(assert_equal, assert_all_close, dtype, n, y):
   assert_all_close(
       actual_variance,
       expected_variance,
-      rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
+      rtol=variance_rtol)

@@ -312,7 +312,11 @@ class SparseTensor {
                                        str_util::Join(shape_, ","), "]");
       }
       if (!increasing) {
-        return errors::InvalidArgument(index, " is out of order");
+        return errors::InvalidArgument(
+            index,
+            " is out of order. Many sparse ops require sorted indices.\n"
+            "    Use `tf.sparse.reorder` to create a correctly ordered copy."
+            "\n\n");
       }
       if (!different) {
         return errors::InvalidArgument(index, " is repeated");

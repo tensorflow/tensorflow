@@ -105,23 +105,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
                                                   delta_array, &output_array);
   }
 
-  // Delete the input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-  if (IsDiscardableArray(*model, op->inputs[1]) &&
-      CountOpsWithInput(*model, op->inputs[1]) == 1) {
-    model->EraseArray(op->inputs[1]);
-  }
-  if (IsDiscardableArray(*model, op->inputs[2]) &&
-      CountOpsWithInput(*model, op->inputs[2]) == 1) {
-    model->EraseArray(op->inputs[2]);
-  }
-
-  // Delete the operator
-  model->operators.erase(it);
-
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

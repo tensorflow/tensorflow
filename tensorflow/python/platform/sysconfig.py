@@ -36,10 +36,10 @@ def get_include():
     The directory as string.
   """
   # Import inside the function.
-  # sysconfig is imported from the tensorflow module, so having this
+  # sysconfig is imported from the tensorflow_core module, so having this
   # import at the top would cause a circular import, resulting in
-  # the tensorflow module missing symbols that come after sysconfig.
-  import tensorflow as tf
+  # the tensorflow_core module missing symbols that come after sysconfig.
+  import tensorflow_core as tf
   return _os_path.join(_os_path.dirname(tf.__file__), 'include')
 
 
@@ -50,7 +50,7 @@ def get_lib():
   Returns:
     The directory as string.
   """
-  import tensorflow as tf
+  import tensorflow_core as tf
   return _os_path.join(_os_path.dirname(tf.__file__))
 
 
@@ -80,7 +80,7 @@ def get_link_flags():
   if not _MONOLITHIC_BUILD:
     flags.append('-L%s' % get_lib())
     if is_mac:
-      flags.append('-l:libtensorflow_framework.%s.dylib' % ver)
+      flags.append('-ltensorflow_framework.%s' % ver)
     else:
       flags.append('-l:libtensorflow_framework.so.%s' % ver)
   return flags

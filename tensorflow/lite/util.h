@@ -64,6 +64,8 @@ struct TfLiteIntArrayDeleter {
 TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
                            size_t* bytes);
 
+TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

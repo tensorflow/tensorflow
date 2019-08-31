@@ -31,6 +31,7 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import Clust
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -93,7 +94,7 @@ class TPUClusterResolver(ClusterResolver):
 
     This works around an issue where the underlying HTTP connection sometimes
     times out when the script has been running for too long. Other methods in
-    this object calls this method to get a new API object whenever they need
+    this object call this method to get a new API object whenever they need
     to communicate with the Cloud API.
 
     Returns:
@@ -108,11 +109,14 @@ class TPUClusterResolver(ClusterResolver):
 
     if self._discovery_url:
       return discovery.build(
-          'tpu', 'v1alpha1', credentials=credentials,
-          discoveryServiceUrl=self._discovery_url, cache_discovery=False)
+          'tpu',
+          'v1',
+          credentials=credentials,
+          discoveryServiceUrl=self._discovery_url,
+          cache_discovery=False)
     else:
       return discovery.build(
-          'tpu', 'v1alpha1', credentials=credentials, cache_discovery=False)
+          'tpu', 'v1', credentials=credentials, cache_discovery=False)
 
   def _request_compute_metadata(self, path):
     req = Request('%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
@@ -120,20 +124,17 @@ class TPUClusterResolver(ClusterResolver):
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
 
-  def _is_google_environment(self):
+  def _is_local_tpu(self):
     return (
         self._tpu == compat.as_bytes('') or
-        self._tpu == compat.as_bytes('local') or
-        self._tpu.startswith(compat.as_bytes('localhost:')) or
-        self._tpu.startswith(compat.as_bytes('/bns')) or
-        self._tpu.startswith(compat.as_bytes('uptc://')))
+        self._tpu == compat.as_bytes('local'))
 
   def _should_resolve(self):
     if isinstance(self._should_resolve_override, bool):
       return self._should_resolve_override
     else:
       return not (self._tpu.startswith(compat.as_bytes('grpc://')) or
-                  self._is_google_environment())
+                  self._is_local_tpu())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -202,12 +203,12 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: A string corresponding to the TPU to use. If the string is the empty
-        string, the string 'local', or a string that begins with 'grpc://' or
-          '/bns', then it is assumed to not correspond with a Cloud TPU and will
-          instead be passed as the session master and no ClusterSpec propagation
-          will be done. In the future, this may also support a list of strings
-          when multiple Cloud TPUs are used.
+      tpu: A string corresponding to the TPU to use. If the string is an empty
+        string, the string 'local', or a string that begins with 'grpc://',
+        then it is assumed to not correspond with a Cloud TPU and will
+        instead be passed as the session master and no ClusterSpec propagation
+        will be done. In the future, this may also support a list of strings
+        when multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -269,8 +270,7 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
-    if self._is_google_environment():
-      self._environment = 'google'
+    if self._is_local_tpu():
       self.rpc_layer = None
     else:
       self._environment = ''
@@ -377,7 +377,8 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    if (self._should_resolve() or is_running_in_gce()):
+    if ops.executing_eagerly_outside_functions() or self._should_resolve(
+    ) or is_running_in_gce():
       return self.task_type
 
   def cluster_spec(self):
@@ -387,7 +388,8 @@ class TPUClusterResolver(ClusterResolver):
     called.
 
     Returns:
-      A ClusterSpec containing host information returned from Cloud TPUs.
+      A ClusterSpec containing host information returned from Cloud TPUs,
+      or None.
 
     Raises:
       RuntimeError: If the provided TPU is not healthy.
@@ -401,7 +403,7 @@ class TPUClusterResolver(ClusterResolver):
     #     tasks and
     #      a. Create a ClusterSpec with the coordinator
     #      b. Create a ClusterSpec without the coordinator
-    #  3. [Other (legacy non-gRPC).] We should return an empty ClusterSpec.
+    #  3. [Other (legacy non-gRPC).] We should return None.
     ############################################################################
 
     if self._should_resolve():
@@ -424,7 +426,8 @@ class TPUClusterResolver(ClusterResolver):
 
       cluster_spec = {self.task_type: worker_list}
     else:
-      if self.rpc_layer is None:
+      is_eager = ops.executing_eagerly_outside_functions()
+      if self.rpc_layer is None and not is_eager:
         # Case 3.
         return None
       # Case 2.
@@ -448,17 +451,16 @@ class TPUClusterResolver(ClusterResolver):
 
   def _fetch_cloud_tpu_metadata(self):
     """Returns the TPU metadata object from the TPU Get API call."""
-    res = []
     try:
       full_name = 'projects/%s/locations/%s/nodes/%s' % (
           self._project, self._zone, compat.as_text(self._tpu))
       service = self._tpu_service()
       request = service.projects().locations().nodes().get(name=full_name)
-      res = request.execute()
-    except:  # pylint: disable=bare-except
-      pass
-    finally:
-      return res  # pylint: disable=lost-exception
+      return request.execute()
+    except Exception as e:
+      raise ValueError("Could not lookup TPU metadata from name '%s'. Please "
+                       "doublecheck the tpu argument in the TPUClusterResolver "
+                       "constructor. Exception: %s" % (self._tpu, e))
 
   def num_accelerators(self,
                        task_type=None,

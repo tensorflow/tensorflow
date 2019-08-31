@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
+#include <vector>
+
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -40,7 +44,7 @@ class FusionMergerTest : public HloTestBase {};
 //                   Tuple
 //
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule MergeSharedFusionInstruction
 
 comp.3 {
@@ -106,7 +110,7 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule BytesTransferredThresholdExeceeded
 
 comp.2 {
@@ -154,7 +158,7 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule BytesTransferredThresholdNotExeceeded
 
 comp.2 {
@@ -197,7 +201,7 @@ ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
 // Check that we're willing to merge f1_computation into f2_computation, even
 // though f2 is an input fusion node.
 TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
@@ -231,7 +235,7 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
 }
 
 TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     f1_computation {
@@ -263,9 +267,53 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
+// Check that we limit the number of operands to fusions we create.
+TEST_F(FusionMergerTest, AvoidsLargeFusion) {
+  constexpr int64 kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+
+  // Compute
+  //   p0 + p1 + p2 + ... + pn,
+  // Use so many parameters that they do not fit into one fusion.
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+
+  std::vector<HloInstruction*> entry_params;
+
+  for (int64 i = 0; i < kNumParams; ++i) {
+    entry_params.push_back(
+        b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p")));
+  }
+  auto make_fusion = [&](absl::Span<HloInstruction* const> params) {
+    // Build a fusion computation for calculating the sum of all parameters.
+    HloComputation::Builder sub_builder("subcomp");
+    HloInstruction* sum = nullptr;
+    for (int64 i = 0; i < params.size(); ++i) {
+      auto p = sub_builder.AddInstruction(
+          HloInstruction::CreateParameter(i, shape, "p"));
+      if (sum == nullptr) {
+        sum = p;
+      } else {
+        sum = sub_builder.AddInstruction(
+            HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sum, p));
+      }
+    }
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(sub_builder.Build());
+    return HloInstruction::CreateFusion(
+        shape, HloInstruction::FusionKind::kLoop, params, subcomp);
+  };
+  auto fusion = b.AddInstruction(
+      make_fusion(absl::MakeSpan(entry_params)
+                      .subspan(0, kMaxOperandsAndOutputsPerFusion)));
+  b.AddInstruction(make_fusion({entry_params.back(), fusion}));
+  module->AddEntryComputation(b.Build());
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 // TODO(b/119692968): Remove this test once fusion emitter is fixed.
 TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
-  auto module = ParseHloString(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
     %fused_computation (param_0.10: f32[6]) -> f32[1] {

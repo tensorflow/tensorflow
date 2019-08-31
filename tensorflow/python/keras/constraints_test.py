@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -33,6 +35,12 @@ def get_example_array():
   np.random.seed(3537)
   example_array = np.random.random((100, 100)) * 100. - 50.
   example_array[0, 0] = 0.  # 0 could possibly cause trouble
+  return example_array
+
+
+def get_example_kernel(width):
+  np.random.seed(3537)
+  example_array = np.random.rand(width, width, 2, 2)
   return example_array
 
 
@@ -92,6 +100,16 @@ class KerasConstraintsTest(test.TestCase):
       l2 = np.sqrt(np.sum(np.square(value), axis=0))
       assert not l2[l2 < m]
       assert not l2[l2 > m * 2 + 1e-5]
+
+  def test_conv2d_radial_constraint(self):
+    for width in (3, 4, 5, 6):
+      array = get_example_kernel(width)
+      norm_instance = keras.constraints.radial_constraint()
+      normed = norm_instance(keras.backend.variable(array))
+      value = keras.backend.eval(normed)
+      assert np.all(value.shape == array.shape)
+      assert np.all(value[0:, 0, 0, 0] == value[-1:, 0, 0, 0])
+      assert len(set(value[..., 0, 0].flatten())) == math.ceil(float(width) / 2)
 
 
 if __name__ == '__main__':

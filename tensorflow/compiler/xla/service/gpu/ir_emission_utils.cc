@@ -63,26 +63,6 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
 
-bool DotImplementedAsGemm(const HloInstruction& dot) {
-  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // If gemm can accept the operand shapes, use it rather than a custom
-  // kernel.
-  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
-                         dim_numbers.lhs_batch_dimensions_size())) {
-    // The size of the reduction dimension should match. The shape inference
-    // guarantees this invariant, so the check here is for programming
-    // errors.
-    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
-             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
-    return true;
-  }
-  return false;
-}
-
 // Given a shape and a group of contiguous dimensions in the shape, returns
 // a tuple of three values (major, middle, minor), where major is the size of
 // the dimensions more major then the given dimensions, minor is the size of
@@ -123,26 +103,31 @@ std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
 
 }  // namespace
 
-bool ImplementedAsGemm(const HloInstruction& hlo) {
-  // For certain types of Dot, we can call pre-canned BLAS gemm.
-  if (hlo.opcode() == HloOpcode::kDot) {
-    return DotImplementedAsGemm(hlo);
+bool IsMatrixMultiplication(const HloInstruction& dot) {
+  if (dot.opcode() != HloOpcode::kDot) {
+    return false;
   }
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  if (hlo.IsOutputFusion() &&
-      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
-       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
-    // Try to find the dot inside the output fusion node.
-    const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
-    if (dot->opcode() != HloOpcode::kDot) {
-      dot = hlo.fused_expression_root()->operand(1);
-    }
-    if (dot->opcode() == HloOpcode::kDot) {
-      return DotImplementedAsGemm(*dot);
-    }
+  // If gemm can accept the operand shapes, use it rather than a custom
+  // kernel.
+  if (AreValidGemmShapes(lhs_shape, rhs_shape, dot.shape(),
+                         dim_numbers.lhs_batch_dimensions_size())) {
+    // The size of the reduction dimension should match. The shape inference
+    // guarantees this invariant, so the check here is for programming
+    // errors.
+    CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
+             rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
+    return true;
   }
-
   return false;
+}
+
+bool IsCublasGemm(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kGemmCallTarget;
 }
 
 const char* const kCudnnBatchNormForwardInferenceCallTarget =
@@ -162,6 +147,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
          target == kCudnnBatchNormBackwardCallTarget;
 }
 
+const char* const kGemmCallTarget = "__cublas$gemm";
 const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
@@ -192,7 +178,7 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
+  return IsCublasGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
 }
 
@@ -234,9 +220,9 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   }
 
   // For column reduction, the tile block is tize_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Both tile_size_x and tile_size_y need to be
+  // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
-  return dims_in_elem[2] >= kWarpSize && dims_in_elem[1] >= kWarpSize;
+  return dims_in_elem[1] >= kWarpSize;
 }
 
 std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(

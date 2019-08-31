@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -33,34 +34,21 @@ namespace {
 class ApplyMask : public NodeShader {
  public:
   static bool IsSupported(const GenerationContext& ctx) {
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    if (inputs.size() != 2) return false;
+    const auto& shape0 = inputs[0]->tensor.shape;
+    const auto& shape1 = inputs[1]->tensor.shape;
 
-    // Implementation requires 2 input tensors: source and mask.
-    if (inputs.size() != 2) {
-      return false;
-    }
+    // [H, W, C] x [H, W, 0][0]
+    if (shape1.c == 1) return true;
 
-    auto src_shape = inputs[0]->tensor.shape;
-    auto mask_shape = inputs[1]->tensor.shape;
+    if (shape0.c != shape1.c) return false;
 
-    // Height and width dimensions of the two input tensors must be the same.
-    if (src_shape.h != mask_shape.h || src_shape.w != mask_shape.w) {
-      return false;
-    }
+    // [H, W, C] x [H, W, C]
+    if (shape0.h == shape1.h && shape0.w == shape1.w) return true;
 
-    // Broadcast will be done if mask tensor has 1 channel.
-    if (mask_shape.c == 1) {
-      return true;
-    }
-
-    // Bitwise multiplication will be done if mask tensor has the same amount of
-    // channels as source tensor.
-    if (src_shape.c == mask_shape.c) {
-      return true;
-    }
-
-    // Other cases are not supported.
-    return false;
+    // [H, W, C] x [0, 0, C]
+    return shape1.h == 1 && shape1.w == 1;
   }
 
   Status GenerateCode(const GenerationContext& ctx,
@@ -69,24 +57,26 @@ class ApplyMask : public NodeShader {
       return InvalidArgumentError(
           "This case is not supported by apply mask operation");
     }
-    auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto inputs = ctx.graph->FindInputs(ctx.node->id);
+    const auto& shape0 = inputs[0]->tensor.shape;
+    const auto& shape1 = inputs[1]->tensor.shape;
 
-    std::string source;
-    if (inputs[1]->tensor.shape.c == 1) {
-      // Broadcast case, mask channels size == 1.
-      source =
-          "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * "
-          "$input_data_1[gid.x, gid.y, 0]$.x;";
+    std::string source = "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * ";
+    if (shape1.c == 1) {
+      // [H, W, C] x [H, W, 0][0]
+      absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, 0]$.x;");
+    } else if (shape0.h == shape1.h && shape0.w == shape1.w) {
+      // [H, W, C] x [H, W, C]
+      absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, gid.z]$;");
     } else {
-      // Bitwise multiplication case, src channels size == mask channels size.
-      source =
-          "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * "
-          "$input_data_1[gid.x, gid.y, 0]$;";
+      // [H, W, C] x [0, 0, C]
+      absl::StrAppend(&source, "$input_data_1[0, 0, gid.z]$;");
     }
 
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),
@@ -110,6 +100,7 @@ class MultiplyScalar : public NodeShader {
       *generated_code = {
           /*parameters=*/{{"scalar", *scalar}},
           /*objects=*/{},
+          /*shared_variables=*/{},
           /*workload=*/uint3(),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 *= $scalar$;",
@@ -124,6 +115,7 @@ class MultiplyScalar : public NodeShader {
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
+          /*shared_variables=*/{},
           // Declare workload explicitly because shader depends on gid.z.
           /*workload=*/
           uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4)),

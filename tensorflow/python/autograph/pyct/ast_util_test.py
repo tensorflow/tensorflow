@@ -46,7 +46,7 @@ class AstUtilTest(test.TestCase):
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
 
     self.assertIsInstance(node.value.left.id, str)
-    source = compiler.ast_to_source(node)
+    source = compiler.ast_to_source(node, include_encoding_marker=False)
     self.assertEqual(source.strip(), 'renamed_a + b')
 
   def test_rename_symbols_attributes(self):
@@ -56,7 +56,7 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.from_str('b.c'): qual_names.QN('renamed_b_c')})
 
-    source = compiler.ast_to_source(node)
+    source = compiler.ast_to_source(node, include_encoding_marker=False)
     self.assertEqual(source.strip(), 'renamed_b_c = renamed_b_c.d')
 
   def test_rename_symbols_annotations(self):
@@ -131,8 +131,8 @@ class AstUtilTest(test.TestCase):
                        'super(Bar, _).__init__(_)')
 
   def _mock_apply_fn(self, target, source):
-    target = compiler.ast_to_source(target)
-    source = compiler.ast_to_source(source)
+    target = compiler.ast_to_source(target, include_encoding_marker=False)
+    source = compiler.ast_to_source(source, include_encoding_marker=False)
     self._invocation_counts[(target.strip(), source.strip())] += 1
 
   def test_apply_to_single_assignments_dynamic_unpack(self):
@@ -203,7 +203,10 @@ class AstUtilTest(test.TestCase):
     self.assertEqual(len(matching_nodes), len(expected_bodies))
     for node in matching_nodes:
       self.assertIsInstance(node, gast.Lambda)
-      self.assertIn(compiler.ast_to_source(node.body).strip(), expected_bodies)
+      self.assertIn(
+          compiler.ast_to_source(node.body,
+                                 include_encoding_marker=False).strip(),
+          expected_bodies)
 
   def test_find_matching_definitions_lambda(self):
     node = parser.parse_str(

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -38,7 +39,7 @@ class ControlFlowTest(converter_testing.TestCase):
     if not symbols:
       symbols = {}
     with self.converted(test_fn, control_flow, symbols,
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       self.assertAllEqual(self.evaluate(result.test_fn(*inputs)), expected)
 
   @test_util.run_deprecated_v1
@@ -82,6 +83,67 @@ class ControlFlowTest(converter_testing.TestCase):
       return n
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
+
+  def test_while_composite_state(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      tc = TestClass()
+      while n > 0:
+        tc.x += 1
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
+  def test_while_composite_state_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      while n < 5:
+        if n == 0:
+          tc.x = x
+        else:
+          tc.x = tc.x + 1
+        n += 1
+      return tc.x
+
+    self.assertTransformedResult(
+        test_fn, (0, constant_op.constant(10)),
+        14,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(
+          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_while_nested_composite_state(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      tc = TestClass()
+      while n > 0:
+        if n < 2:
+          tc.x += 1
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
 
   def test_while_local_composite(self):
 
@@ -182,6 +244,18 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(1), (-1, 0))
     self.assertTransformedResult(test_fn, constant_op.constant(-1), (0, -2))
+
+  def test_if_sparse_tensor(self):
+
+    def test_fn(cond, a):
+      if cond:
+        a = -a
+      return a
+
+    st = sparse_tensor.SparseTensor(
+        indices=((0,),), values=(0,), dense_shape=(1,))
+    self.assertTransformedResult(test_fn, (st, constant_op.constant(1)), -1)
+    self.assertTransformedResult(test_fn, (None, constant_op.constant(1)), 1)
 
   @test_util.run_deprecated_v1
   def test_if_complex_outputs(self):
@@ -348,6 +422,32 @@ class ControlFlowTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
+
+  def test_for_composite_state_initialized_in_loop(self):
+
+    class TestClass(object):
+      pass
+
+    def test_fn(n, x):
+      tc = TestClass()
+      for i in n:
+        if i == 0:
+          tc.x = x
+        else:
+          tc.x = tc.x + i
+      return tc.x
+
+    self.assertTransformedResult(
+        test_fn, (range(5), constant_op.constant(10)),
+        20,
+        symbols={'TestClass': TestClass})
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(
+          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+        result.test_fn(
+            constant_op.constant(list(range(5))), constant_op.constant(5))
 
   @test_util.run_deprecated_v1
   def test_for_tuple_unpacking(self):

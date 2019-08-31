@@ -162,7 +162,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts));
@@ -1062,6 +1062,124 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   }
 }
 
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
+  using test::function::NDef;
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
+
+  const string arg_device = "/job:arg/replica:0/task:0/device:GPU";
+  const string call_device = "/job:call/replica:0/task:1/device:GPU";
+  const string body_device = "/job:body/replica:0/task:1/device:CPU";
+
+  const FunctionDef func = FDH::Create(
+      "AddFunc", {"i: float"}, {"o: float"}, {},
+      {{{"ret"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {}, body_device}},
+      /*ret_def=*/{{"o", "ret:z:0"}});
+  Init({func});
+
+  // Construct a graph:
+  //   a = Arg[dtype=DT_FLOAT, _device=arg_device]
+  //   b = AddFunc[_device=call_device](a)
+  auto construct_graph = [&](std::unique_ptr<Graph>* g) -> Status {
+    Scope s = Scope::NewRootScope();
+    TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a").WithDevice(arg_device), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddFunc", {a});
+    TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
+    for (Node* node : (*g)->op_nodes()) {
+      if (node->name() == "b") node->set_requested_device(call_device);
+    }
+    return Status::OK();
+  };
+
+  const string input_node = "Func/b/input/_0";
+  const string output_node = "Func/b/output/_1";
+  const string output_control_node = "Func/b/output_control_node/_2";
+
+  // Construct expected graph after function inlining.
+  auto expected_graph = [&](const std::vector<string>& placed) -> GraphDef {
+    return test::function::GDef(
+        {
+            NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}, placed[0]),
+            NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}, placed[1]),
+            NDef("b/ret", "Add", {input_node, input_node}, {{"T", DT_FLOAT}},
+                 placed[2]),
+            NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}},
+                 placed[3]),
+            NDef(output_control_node, "NoOp", {"^" + output_node}, {},
+                 placed[4]),
+        },
+        {func});
+  };
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.keep_caller_node = KeepCallerNode::kDoNotKeep;
+
+  // Place only input nodes to match input device.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::Default();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,       //
+                                        /*input*/ arg_device,   //
+                                        /*body*/ body_device,   //
+                                        /*output*/ "",          //
+                                        /*control_output*/ ""}  //
+    );
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Place all nodes on the call node device.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::SingleDevice();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,                //
+                                        /*input*/ call_device,           //
+                                        /*body*/ call_device,            //
+                                        /*output*/ call_device,          //
+                                        /*control_output*/ call_device}  //
+    );
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Multi device function placement.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::MultiDevice();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    const string merged_device = "/job:call/replica:0/task:1/device:CPU:*";
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,                //
+                                        /*input*/ arg_device,            //
+                                        /*body*/ merged_device,          //
+                                        /*output*/ "",                   //
+                                        /*control_output*/ call_device}  //
+    );
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
 TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   auto T = DT_INT32;
   FunctionDef stateful_func = FDH::Define(
@@ -1285,8 +1403,8 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(flr0_, &g);
 
-  // NOTE: We can remove func0, func1, func2, func9 with a control edge n8->n5.
-  // But we don't have a pass doing that.
+  // NOTE: We can remove func0, func1, func2, func9 with a control edge
+  // n8->n5. But we don't have a pass doing that.
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -1397,13 +1515,21 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto two = ops::Const(s.WithOpName("two"), 2LL);
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
-    NameAttrList fn;
-    fn.set_name("Mul");
-    (*fn.mutable_attr())["T"].set_type(DT_FLOAT);
+    NameAttrList fn0;
+    fn0.set_name("Mul");
+    (*fn0.mutable_attr())["T"].set_type(DT_FLOAT);
     auto func1 = ops::SymbolicGradient(
         s.WithOpName("Func/_1"), std::initializer_list<Input>{x, scale, func0},
-        {DT_FLOAT, DT_FLOAT}, fn);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1[0], 0);
+        {DT_FLOAT, DT_FLOAT}, fn0);
+    NameAttrList fn1;
+    fn1.set_name("Cast");
+    (*fn1.mutable_attr())["SrcT"].set_type(DT_INT64);
+    (*fn1.mutable_attr())["DstT"].set_type(DT_FLOAT);
+    (*fn1.mutable_attr())["Truncate"].set_b(false);
+    auto func2 = ops::SymbolicGradient(
+        s.WithOpName("Func/_2"),
+        std::initializer_list<Input>{two, func1.output[1]}, {DT_INT64}, fn1);
+    auto func3 = ops::_Retval(s.WithOpName("Func/_3"), func1[0], 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1434,7 +1560,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
         ops::Sum(s.WithOpName("Func/_1/sum_gx"), func1_gx, func1_rx.r0);
     auto func1_dx =
         ops::Reshape(s.WithOpName("Func/_1/dx"), func1_sum_gx, func1_sx);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1_dx, 0);
+    auto func2 = ops::_Retval(s.WithOpName("Func/_3"), func1_dx, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1637,20 +1763,23 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
         std::initializer_list<Input>{grad0_z, grad0_indices, func2},
         {DT_FLOAT, DT_INT32}, sum);
 
-    auto grad0_func2 = ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_r);
+    auto grad0_func2 =
+        ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_zero);
+    auto grad0_func3 = ops::ZerosLike(s.WithOpName("grad0/Func/_3"), grad0_r);
+    auto grad0_func4 = ops::ZerosLike(s.WithOpName("grad0/Func/_4"), grad0_one);
 
     NameAttrList add;
     add.set_name("Add");
     (*add.mutable_attr())["T"].set_type(DT_FLOAT);
-    auto grad0_func3 = ops::SymbolicGradient(
-        s.WithOpName("grad0/Func/_3"),
+    auto grad0_func5 = ops::SymbolicGradient(
+        s.WithOpName("grad0/Func/_5"),
         std::initializer_list<Input>{func0, func1, grad0_func1[0]},
         {DT_FLOAT, DT_FLOAT}, add);
 
     auto func3 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func3[0]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func5[0]);
     auto func4 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func3[1]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func5[1]);
     auto dx = ops::Identity(s.WithOpName("dx"), func3);
     auto dy = ops::Identity(s.WithOpName("dy"), func4);
     auto dx_retval = ops::_Retval(s.WithOpName("dx_RetVal"), dx, 0);
@@ -1730,17 +1859,17 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
   TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.rendezvous->Unref();
 }
 

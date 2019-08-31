@@ -84,6 +84,14 @@ class XRTTupleAllocation : public core::RefCounted {
                                   xla::Backend* backend, int device_ordinal,
                                   XRTTupleAllocation** allocation);
 
+  // Allocates new device memory buffers sufficient to store a tensor of
+  // the specified shape, and returns a XRTTupleAllocation handle to the
+  // allocated buffers.  The allocated buffers are not initialized.
+  static Status CreateUninitialized(const xla::Shape& shape,
+                                    XRTMemoryManager* memory_manager,
+                                    xla::Backend* backend, int device_ordinal,
+                                    XRTTupleAllocation** allocation);
+
   // Wraps an existing ShapeBuffer in a new XRTTupleAllocation handle.
   static Status CreateFromBuffer(const xla::ShapedBuffer& shaped_buffer,
                                  xla::Backend* backend, int device_ordinal,

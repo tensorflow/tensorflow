@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import multiprocessing.pool
+import time
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -248,6 +252,161 @@ class StandardizeWeightsTest(keras_parameterized.TestCase):
         steps_per_epoch=2,
         verbose=1,
         class_weight=class_weight)
+
+
+class MonitoredPool(multiprocessing.pool.ThreadPool):
+
+  def __init__(self, *args, **kwargs):
+    self._apply_counter = 0
+    self._func_wrapper = None
+    super(MonitoredPool, self).__init__(*args, **kwargs)
+
+  def apply_async(self, func, *args, **kwargs):
+    self._apply_counter += 1
+    if self._func_wrapper:
+      func = self._func_wrapper(func)  # pylint: disable=not-callable
+    return super(MonitoredPool, self).apply_async(func, *args, **kwargs)
+
+
+def add_sleep(f):
+  @functools.wraps(f)
+  def wrapped(*args, **kwargs):
+    time.sleep(1.)
+    return f(*args, **kwargs)
+  return wrapped
+
+
+def cause_error(f):
+  @functools.wraps(f)
+  def wrapped(batch_element, batch_start, batch_end, is_finished):  # pylint: disable=unused-argument
+    # Induce a TypeError during assignment.
+    return f(None, None, None, is_finished)
+  return wrapped
+
+
+_TEST_DATA = np.array((
+    (3, 1, 3, 1, 2, 0, 3, 3, 1, 2),
+    (0, 1, 2, 1, 3, 0, 0, 1, 3, 0),
+    (3, 2, 1, 1, 1, 1, 1, 3, 2, 3),
+    (2, 2, 0, 1, 0, 3, 3, 2, 1, 1),
+    (3, 0, 3, 3, 3, 2, 1, 0, 0, 1),
+    (1, 0, 3, 3, 3, 2, 1, 2, 3, 1),))
+
+
+class AggregationTest(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(AggregationTest, self).setUp()
+    self._old_pool = training_utils._COPY_POOL
+    self._old_threshold = training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD
+    self._old_timeout = training_utils.SliceAggregator._MAX_COPY_SECONDS
+    training_utils._COPY_POOL = MonitoredPool(training_utils._COPY_THREADS)
+
+  def tearDown(self):
+    super(AggregationTest, self).tearDown()
+    training_utils._COPY_POOL = self._old_pool
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = self._old_threshold
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = self._old_timeout
+
+  def _run_with_steps(self):
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
+    for i, batch in enumerate(np.array_split(_TEST_DATA, 4)):
+      if i == 0:
+        aggregator.create(batch)
+      aggregator.aggregate(batch)
+
+    assert len(aggregator.results) == 1
+    assert isinstance(aggregator.results[0], training_utils.ConcatAggregator)
+
+    aggregator.finalize()
+    return aggregator.results
+
+  def _run_without_steps(self):
+    aggregator = training_utils.OutputsAggregator(
+        use_steps=False, num_samples=6)
+
+    batch_start = 0
+    for i, batch in enumerate(np.array_split(_TEST_DATA, 4)):
+      if i == 0:
+        aggregator.create(batch)
+
+      batch_end = batch_start + batch.shape[0]
+      aggregator.aggregate(batch, batch_start, batch_end)
+      batch_start = batch_end
+
+    assert len(aggregator.results) == 1
+    assert isinstance(aggregator.results[0], training_utils.SliceAggregator)
+
+    aggregator.finalize()
+    return aggregator.results
+
+  def test_with_steps(self):
+    self.assertAllEqual(self._run_with_steps(), _TEST_DATA)
+
+  def test_without_steps(self):
+    self.assertAllEqual(self._run_without_steps(), _TEST_DATA)
+
+  def test_nested_aggregation(self):
+    aggregator = training_utils.OutputsAggregator(
+        use_steps=False, num_samples=6)
+
+    batches = np.array_split(_TEST_DATA, 4)
+    batch_start = 0
+    for i, batch in enumerate(zip(batches, batches)):
+      if i == 0:
+        aggregator.create(batch)
+
+      batch_end = batch_start + batch[0].shape[0]
+      aggregator.aggregate(batch, batch_start, batch_end)
+      batch_start = batch_end
+
+    assert len(aggregator.results) == 2
+    aggregator.finalize()
+    self.assertAllEqual(aggregator.results, (_TEST_DATA, _TEST_DATA))
+
+  def test_concat_single_batch(self):
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
+    data = _TEST_DATA.copy()
+    aggregator.create(data)
+    assert len(aggregator.results) == 1
+    assert isinstance(aggregator.results[0], training_utils.ConcatAggregator)
+
+    aggregator.aggregate(data)
+    aggregator.finalize()
+    assert aggregator.results is data  # No copy.
+
+  def test_slice_single_batch(self):
+    aggregator = training_utils.OutputsAggregator(
+        use_steps=False, num_samples=6)
+    data = _TEST_DATA.copy()
+    aggregator.create(data)
+    assert len(aggregator.results) == 1
+    assert isinstance(aggregator.results[0], training_utils.SliceAggregator)
+
+    aggregator.aggregate(data, 0, 6)
+    aggregator.finalize()
+    assert aggregator.results is data  # No copy.
+
+  def test_async_copy(self):
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    self.assertAllEqual(self._run_without_steps(), _TEST_DATA)
+
+    # Two of the four batches will have 20 elements and two will have 10.
+    self.assertEqual(training_utils._COPY_POOL._apply_counter, 2)
+
+  def test_async_copy_timeout(self):
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = 0.1
+    training_utils._COPY_POOL._func_wrapper = add_sleep
+    with self.assertRaisesRegexp(ValueError, 'Timed out waiting for copy'):
+      self._run_without_steps()
+
+  def test_async_copy_reraise(self):
+    training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
+    training_utils.SliceAggregator._MAX_COPY_SECONDS = 1.
+    training_utils._COPY_POOL._func_wrapper = cause_error
+    with self.assertRaisesRegexp(TypeError, 'NoneType'):
+      self._run_without_steps()
 
 
 if __name__ == '__main__':

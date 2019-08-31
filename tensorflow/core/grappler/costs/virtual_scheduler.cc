@@ -89,6 +89,25 @@ struct RecvNodeDescriptorEqual {
   }
 };
 
+void UpdateDeviceAnnotationState(const NodeDef* node,
+                                 const NodeState& node_state,
+                                 DeviceState* device) {
+  bool annotated = node->attr().count(kExecutionCount) > 0;
+  int64 execution_count = annotated ? node->attr().at(kExecutionCount).i() : 1;
+
+  if (annotated) {
+    auto& shape_annotation_stats = device->shape_annotation_stats;
+    shape_annotation_stats.num_ops_annotated += 1;
+    shape_annotation_stats.num_ops_executed += execution_count;
+    shape_annotation_stats.num_ops_executed_more_than_once +=
+        execution_count > 1 ? 1 : 0;
+    shape_annotation_stats.num_ops_with_incompatible_shapes +=
+        node_state.shape_incompatible ? 1 : 0;
+    shape_annotation_stats.num_ops_with_dynamic_shapes +=
+        (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
+  }
+}
+
 }  // namespace
 
 const NodeDef* LIFOManager::GetCurrNode() {
@@ -164,17 +183,23 @@ void HeapReadyManager::DrainWaitingQueue() {
   waiting_queue_.clear();
 }
 
+bool FirstReadyCmp(
+    const std::unordered_map<const NodeDef*, NodeState>* node_map,
+    const NodeDef* a, const NodeDef* b) {
+  if (node_map->at(a).time_ready == node_map->at(b).time_ready) {
+    // Use Node name as tie-breaker for deterministic node scheduling.
+    return a->name().compare(b->name()) > 0;
+  } else {
+    // Note: we need a node with minimum time_ready, not maximum; hence, using
+    // a > b for comparison function.
+    return node_map->at(a).time_ready > node_map->at(b).time_ready;
+  }
+}
+
 std::function<bool(const NodeDef*, const NodeDef*)>
 FirstReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
-      // Use Node name as tie-breaker for deterministic node scheduling.
-      return a->name().compare(b->name()) > 0;
-    } else {
-      // Note: we need a node with minimum time_ready, not maximum; hence, using
-      // a > b for comparison function.
-      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
-    }
+    return FirstReadyCmp(node_map_, a, b);
   };
   return greater;
 }
@@ -182,22 +207,27 @@ FirstReadyManager::Greater() {
 std::function<bool(const NodeDef*, const NodeDef*)>
 PriorityReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    return node_priority_.at(a->name()) > node_priority_.at(b->name());
+    auto pri_a = node_priority_.at(a->name());
+    auto pri_b = node_priority_.at(b->name());
+    if (pri_a == pri_b) {
+      // Fallback to default (FirstReady) behaviour.
+      return FirstReadyCmp(node_map_, a, b);
+    }
+    return pri_a > pri_b;
   };
   return greater;
 }
 
+void PriorityReadyManager::AddNode(const NodeDef* node) {
+  if (node_priority_.count(node->name()) == 0) {
+    VLOG(3) << "Priority of node " << node->name() << " not found.";
+    node_priority_[node->name()] = 0;
+  }
+  HeapReadyManager::AddNode(node);
+}
+
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
-  // Checks each node has a unique priority.
-  std::unordered_set<int> priorities;
-  for (const auto& it : node_priority_) {
-    if (priorities.find(it.second) != priorities.end()) {
-      return errors::InvalidArgument("Non-unique priority found");
-    }
-    priorities.insert(it.second);
-  }
-
   node_priority_ = node_priority;
   return Status::OK();
 }
@@ -359,7 +389,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
   if (use_static_shapes_) {
     TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
-        true, use_aggressive_shape_inference_));
+        true, use_aggressive_shape_inference_, true));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
@@ -714,6 +744,8 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
       graph_properties_->GetInputProperties(node->name());
   node_state.output_properties =
       graph_properties_->GetOutputProperties(node->name());
+  node_state.shape_incompatible =
+      graph_properties_->CheckShapeIncompatible(node->name());
 
   // Some ops may need further processing to the input / output properties:
   // _Send and _Recv.
@@ -786,11 +818,18 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   const NodeDef* node = ready_nodes_->GetCurrNode();
   auto& node_state = node_map_[node];
+  // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
+  // Merge -- it can create a loop which may include loop-carried dependency,
+  // diverge-merge, and other complex execution patterns.
+  bool previously_executed_merge =
+      IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
+
   // If there is annotation in the graph about execution times, we use that
   // number, otherwise, we assume the node is executed once.
   node_state.execution_count = node->attr().count(kExecutionCount) == 0
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
+
   Costs total_node_costs =
       MultiplyCosts(node_costs, node_state.execution_count);
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
@@ -824,6 +863,9 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   auto curr_time = device.GetCurrTime();
   node_state.time_finished = curr_time;
 
+  // Update shape annotation states.
+  UpdateDeviceAnnotationState(node, node_state, &device);
+
   // Update device memory usage.
   if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
@@ -851,8 +893,15 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Checks outputs, and adds ready nodes to queue.
-  AddOutputNodesToReadyQueue(node, curr_time);
+  if (previously_executed_merge) {
+    // Skip AddOutputNodesToReadyQueue; this is due to Switch-Merge.
+    VLOG(1) << "node [ " << node->name() << ", " << node->op() << " ] "
+            << "is executed more than once. "
+            << "Skip scheduling its output nodes.";
+  } else {
+    // Checks outputs, and adds ready nodes to queue.
+    AddOutputNodesToReadyQueue(node, curr_time);
+  }
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {
@@ -973,6 +1022,21 @@ Costs VirtualScheduler::Summary() const {
             << state.device_costs.num_ops_with_unknown_shapes
             << " having unknown shapes";
 
+    // Device shape annotation statistics.
+    const auto& device_annotation_stats = state.shape_annotation_stats;
+    if (device_annotation_stats.num_ops_annotated > 0) {
+      VLOG(1) << device_annotation_stats.num_ops_annotated
+              << " ops with shape annotation, with "
+              << device_annotation_stats.num_ops_executed_more_than_once
+              << " executed more than once, "
+              << device_annotation_stats.num_ops_with_dynamic_shapes
+              << " with dynamic shapes, "
+              << device_annotation_stats.num_ops_with_incompatible_shapes
+              << " with incompatible shapes, "
+              << device_annotation_stats.num_ops_executed
+              << " ops executed in total.";
+    }
+
     VLOG(1) << "Per-op execution time / compute time / memory time "
             << " / intermediate memory time"
             << " (and memory usage at peak memory usage):";
@@ -1089,6 +1153,9 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
       }
       node_stats->set_timeline_label(node_def->op());
       node_stats->set_node_name(node_def->name());
+      // Timestamps in microseconds.
+      // TODO(b/138165866): Remove once TimelineServer support is no longer
+      // needed.
       node_stats->set_op_start_rel_micros(0);
       node_stats->set_all_start_micros(
           nodestate.time_scheduled.asMicroSeconds().count());
@@ -1098,6 +1165,14 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
       node_stats->set_all_end_rel_micros(
           nodestate.time_finished.asMicroSeconds().count() -
           nodestate.time_scheduled.asMicroSeconds().count());
+      // Timestamps in nanoseconds.
+      node_stats->set_op_start_rel_nanos(0);
+      node_stats->set_all_start_nanos(nodestate.time_scheduled.count());
+      node_stats->set_op_end_rel_nanos(nodestate.time_finished.count() -
+                                       nodestate.time_scheduled.count());
+      node_stats->set_all_end_rel_nanos(nodestate.time_finished.count() -
+                                        nodestate.time_scheduled.count());
+
       auto* mem_stats = node_stats->mutable_memory_stats();
       // VirtualScheduler does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);
@@ -1122,5 +1197,23 @@ const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
   return result;
 }
 
+const std::unordered_map<string, int64>
+VirtualScheduler::GetPersistentMemoryUsage() const {
+  std::unordered_map<string, int64> result;
+  for (const auto& device : device_) {
+    const string& name = device.first;
+    const DeviceState& state = device.second;
+    int64 persistent_memory_usage = 0;
+    for (const auto& node_port : state.persistent_nodes) {
+      const auto* node = node_port.first;
+      const auto port = node_port.second;
+      const auto output_size =
+          CalculateOutputSize(node_map_.at(node).output_properties, port);
+      persistent_memory_usage += output_size;
+    }
+    result[name] = persistent_memory_usage;
+  }
+  return result;
+}
 }  // end namespace grappler
 }  // end namespace tensorflow

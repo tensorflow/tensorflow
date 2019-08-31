@@ -206,7 +206,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     x, prediction, output_class = self.buildModel(
         fw_rnn_layer, bw_rnn_layer, is_dynamic_rnn, True, use_sequence_length)
 
-    new_sess = tf.Session(config=CONFIG)
+    new_sess = tf.compat.v1.Session(config=CONFIG)
     saver = tf.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
@@ -265,7 +265,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), self.buildRnnLayer(), False, is_inference=False)
@@ -282,7 +282,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   def testStaticRnnMultiRnnCellWithSequenceLength(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(),
@@ -309,7 +309,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(), self.buildRnnLayer(), True, is_inference=False)
@@ -331,7 +331,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCellWithSequenceLength(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildRnnLayer(),

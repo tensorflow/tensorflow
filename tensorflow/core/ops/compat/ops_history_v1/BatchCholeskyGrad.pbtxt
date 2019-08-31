@@ -1,0 +1,28 @@
+op {
+  name: "BatchCholeskyGrad"
+  input_arg {
+    name: "l"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  deprecation {
+    version: 13
+  }
+}

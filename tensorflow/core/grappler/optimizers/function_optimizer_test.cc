@@ -520,14 +520,16 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionSimpleFunction) {
         {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
 
-         // Function body nodes are not placed, however function input nodes
-         // must copy device assignment from input arguments.
+         // Function body nodes copy only job/task/replica parts of device
+         // assignment, and function input nodes must copy full device
+         // assignment from input arguments. Optimized graph is not fully
+         // placed.
          NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, kDevice),
          NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, kDevice),
-         // TODO(ezhulenev): Currently inlined function body "implicitly placed"
-         // with a 'inline_options.initialize_empty_device' flag.
+         // NOTE(ezhulenev): Currently multi-device function inlining placer
+         // strategy will override all empty devices with function call device.
          NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, kDevice),
-         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, kDevice),
+         NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}),
 
          NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, kDevice)},
         // Function library.
@@ -780,7 +782,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
        NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, cpu0),
        NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, cpu1),
        NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, cpu1),
-       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu1),
+       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu0),
 
        NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, cpu0)},
       // Function library.

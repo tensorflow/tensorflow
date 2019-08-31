@@ -41,6 +41,7 @@ namespace {
 // node names, so if necessary we add a suffix to make
 // names unique. If we have an input named "A" and a node in the function
 // body named "a", they will be renamed to "a" and "a_0".
+// TODO(b/139886381) Unify this and the one in graph_to_functiondef.cc
 class NodeNameMapping {
  public:
   NodeNameMapping() = default;
@@ -64,14 +65,14 @@ class NodeNameMapping {
   string Lookup(const string& name) const;
 
  private:
-  string UniquifyHelper(const string& name) const;
+  string UniquifyHelper(const string& name);
   static string Normalize(string name);
 
   // The normalized/uniquified names already used as
   // input names (in signature), output names (in signature), and node names
   // (in node_def).
   // This is a superset of values in name_mapping_.
-  std::unordered_set<string> used_names_;
+  std::unordered_map<string, uint64> used_names_;
   // Mapping from original node name from the graph to the normalized
   // and uniquified version of it.
   std::unordered_map<string, string> name_mapping_;
@@ -102,13 +103,16 @@ string NodeNameMapping::Normalize(string name) {
   return i == n ? "unknown" : name.substr(i);
 }
 
-string NodeNameMapping::UniquifyHelper(const string& name) const {
+string NodeNameMapping::UniquifyHelper(const string& name) {
+  auto it = used_names_.emplace(name, 0);
   // If the name hasn't been used yet, use it as-is.
-  if (used_names_.find(name) == used_names_.end()) return name;
+  if (it.second) return name;
+
   // Add a suffix to name to make it unique.
-  for (int i = 0;; ++i) {
-    const string candidate = strings::StrCat(name, "_", i);
-    if (used_names_.find(candidate) == used_names_.end()) return candidate;
+  while (true) {
+    const string candidate = strings::StrCat(name, "_", it.first->second);
+    it.first->second++;
+    if (used_names_.emplace(candidate, 0).second) return candidate;
   }
 }
 
@@ -120,16 +124,13 @@ string NodeNameMapping::GetInputName(const string& name) {
 
 string NodeNameMapping::GetOutputName(const string& name) {
   const string& input_name = UniquifyHelper(Normalize(name));
-  // Record that we used this name, but don't add it to name_mapping_
-  // since this name is not for a node.
-  used_names_.insert(input_name);
+  // Don't add it to name_mapping_ since this name is not for a node.
   return input_name;
 }
 
 string NodeNameMapping::Uniquify(const string& name) {
   const string uniqued = UniquifyHelper(name);
   name_mapping_[name] = uniqued;
-  used_names_.insert(uniqued);
   return uniqued;
 }
 
@@ -139,7 +140,7 @@ Status NodeNameMapping::UseOutputName(const string& name) {
     return InvalidArgument("Cannot have duplicate output names. Name '", name,
                            "' appears more than once in 'output_names' array.");
   }
-  used_names_.insert(iter, name);
+  used_names_.emplace(name, 0);
   return Status::OK();
 }
 
@@ -185,7 +186,8 @@ Status FillFunctionBody(
 
     // Collect regular and control inputs. Regular inputs are indexed
     // by the index at which they come into the `node`. Control inputs
-    // don't follow any order.
+    // don't follow any order, and we sort control inputs to make sure generated
+    // NodeDef is deterministic.
     in_edges.clear();
     in_edges.resize(node->num_inputs(), nullptr);
     control_edges.clear();
@@ -197,6 +199,10 @@ Status FillFunctionBody(
         in_edges[edge->dst_input()] = edge;
       }
     }
+    std::sort(control_edges.begin(), control_edges.end(),
+              [](const Edge* a, const Edge* b) {
+                return a->src()->name() < b->src()->name();
+              });
 
     // Add regular inputs.
     for (size_t i = 0; i < in_edges.size(); ++i) {
@@ -445,7 +451,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
         ") and the number of control output names (",
         control_output_names.size(), ") to match but they do not.");
   }
-  std::unordered_set<string> control_output_names_set;
+  std::set<string> control_output_names_set;
   for (int i = 0; i < control_outputs.size(); ++i) {
     string signature_name;
     if (!control_output_names.empty()) {
@@ -466,8 +472,10 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       return errors::InvalidArgument(
           "Control output node name must be not empty");
     }
-    fdef->mutable_signature()->add_control_output(signature_name);
     (*fdef->mutable_control_ret())[signature_name] = control_output_node;
+  }
+  for (const string& control_output : control_output_names_set) {
+    fdef->mutable_signature()->add_control_output(control_output);
   }
 
   return Status::OK();

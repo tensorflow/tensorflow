@@ -29,22 +29,19 @@ namespace gpu {
 
 // PHWC4 layout is where channels are grouped by 4 in a row and P stands for
 // a plane that was derived by dividing channels by 4.
-::tflite::gpu::Status ConvertToPHWC4(absl::Span<const float> in,
-                                     const BHWC& shape, absl::Span<float> out);
-::tflite::gpu::Status ConvertToPHWC4Half(
-    absl::Span<const float> in, const BHWC& shape,
-    absl::Span<::tflite::gpu::HalfBits> out);
+Status ConvertToPHWC4(absl::Span<const float> in, const BHWC& shape,
+                      absl::Span<float> out);
+Status ConvertToPHWC4Half(absl::Span<const float> in, const BHWC& shape,
+                          absl::Span<HalfBits> out);
 
 // @return number of elements when shape is converted into PHWC4.
 uint32_t GetElementsSizeForPHWC4(const BHWC& shape);
 
 // Operation is opposite to ConvertToPHWC4.
-::tflite::gpu::Status ConvertFromPHWC4(absl::Span<const float> in,
-                                       const BHWC& shape,
-                                       absl::Span<float> out);
-::tflite::gpu::Status ConvertFromPHWC4Half(
-    absl::Span<const ::tflite::gpu::HalfBits> in, const BHWC& shape,
-    absl::Span<float> out);
+Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
+                        absl::Span<float> out);
+Status ConvertFromPHWC4Half(absl::Span<const HalfBits> in, const BHWC& shape,
+                            absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWC4(
@@ -56,8 +53,8 @@ uint32_t GetElementsSizeForPIOHW4(const OHWI& shape);
 
 // PIOHW4 layout re-arranges weights in groups by 4, where outer dimension is
 // P which is OxI/4.
-::tflite::gpu::Status ConvertToPIOHW4(absl::Span<const float> in,
-                                      const OHWI& shape, absl::Span<float> out);
+Status ConvertToPIOHW4(absl::Span<const float> in, const OHWI& shape,
+                       absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPIOHW4(
@@ -66,26 +63,24 @@ std::vector<float> ConvertToPIOHW4(
 // @return number of elements when shape is converted into PHWO4I4.
 uint32_t GetElementsSizeForPHWO4I4(const OHWI& shape);
 
-// Layout is Po,H,W,OI4x4.
-::tflite::gpu::Status ConvertToPHWO4I4(absl::Span<const float> in,
-                                       const OHWI& shape,
-                                       absl::Span<float> out);
-
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWO4I4(
     const Tensor<OHWI, DataType::FLOAT32>& tensor);
 
+// Convenience wrapper around a method above, for Transposed Convolution.
+std::vector<float> ConvertToPHWO4I4Transposed(
+    const Tensor<OHWI, DataType::FLOAT32>& tensor);
+
 // @return (x,y,z) size for PHWO4I4 to access elements where each element
 // consists of 4 values.
-::tflite::gpu::uint3 Get3DSizeForPHWO4I4(const OHWI& shape);
+uint3 Get3DSizeForPHWO4I4(const OHWI& shape);
 
 // @return number of elements when shape is converted into PHWO4I4.
 uint32_t GetElementsSizeForPHWO4I4(const IHWO& shape);
 
 // Layout is Po,H,W,OI4x4.
-::tflite::gpu::Status ConvertToPHWO4I4(absl::Span<const float> in,
-                                       const IHWO& shape,
-                                       absl::Span<float> out);
+Status ConvertToPHWO4I4(absl::Span<const float> in, const IHWO& shape,
+                        absl::Span<float> out);
 
 // Convenience wrapper around a method above.
 std::vector<float> ConvertToPHWO4I4(

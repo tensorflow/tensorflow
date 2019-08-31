@@ -95,21 +95,22 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values.
-      y_pred: The predicted values.
-      sample_weight: Optional `Tensor` whose rank is either 0, or the same rank
-        as `y_true`, or is broadcastable to `y_true`. `sample_weight` acts as a
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+      sample_weight: Optional `sample_weight` acts as a
         coefficient for the loss. If a scalar is provided, then the loss is
         simply scaled by the given value. If `sample_weight` is a tensor of size
         `[batch_size]`, then the total loss for each sample of the batch is
         rescaled by the corresponding element in the `sample_weight` vector. If
-        the shape of `sample_weight` matches the shape of `y_pred`, then the
-        loss of each measurable element of `y_pred` is scaled by the
-        corresponding value of `sample_weight`.
+        the shape of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be
+        broadcasted to this shape), then each loss element of `y_pred` is scaled
+        by the corresponding value of `sample_weight`. (Note on`dN-1`: all loss
+        functions reduce by 1 dimension, usually axis=-1.)
 
     Returns:
-      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
-        shape as `y_true`; otherwise, it is scalar.
+      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has
+        shape `[batch_size, d0, .. dN-1]`; otherwise, it is scalar. (Note `dN-1`
+        because all loss functions reduce by 1 dimension, usually axis=-1.)
 
     Raises:
       ValueError: If the shape of `sample_weight` is invalid.
@@ -163,7 +164,7 @@ class Loss(object):
           '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
           'size like:\n```\nwith strategy.scope():\n'
           '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
-          'reduction=tf.keras.losses.reduction.None)\n....\n'
+          'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
           'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
@@ -226,8 +227,7 @@ class LossFunctionWrapper(Loss):
 class MeanSquaredError(LossFunctionWrapper):
   """Computes the mean of squares of errors between labels and predictions.
 
-  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
-  then the mean squared error value is 3/4 (0.75).
+  `loss = square(y_true - y_pred)`
 
   Usage:
 
@@ -237,7 +237,7 @@ class MeanSquaredError(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.75
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -256,8 +256,7 @@ class MeanSquaredError(LossFunctionWrapper):
 class MeanAbsoluteError(LossFunctionWrapper):
   """Computes the mean of absolute difference between labels and predictions.
 
-  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
-  then the mean absolute error value is 3/4 (0.75).
+  `loss = abs(y_true - y_pred)`
 
   Usage:
 
@@ -267,7 +266,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.75
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -286,8 +285,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
 class MeanAbsolutePercentageError(LossFunctionWrapper):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
-  then the mean absolute percentage error value is 5e+08.
+  `loss = 100 * abs(y_true - y_pred) / y_true`
 
   Usage:
 
@@ -297,7 +295,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 5e+08
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -316,8 +314,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
 class MeanSquaredLogarithmicError(LossFunctionWrapper):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
-  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
-  then the mean squared logarithmic error value is 0.36034.
+  `loss = square(log(y_true) - log(y_pred))`
 
   Usage:
 
@@ -327,7 +324,7 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.36034
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -373,6 +370,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
     from_logits: Whether to interpret `y_pred` as a tensor of
       [logit](https://en.wikipedia.org/wiki/Logit) values. By default, we assume
         that `y_pred` contains probabilities (i.e., values in [0, 1]).
+      Note: Using from_logits=True may be more numerically stable.
     label_smoothing: Float in [0, 1]. When 0, no smoothing occurs. When > 0, we
       compute the loss between the predicted labels and a smoothed version of
       the true labels, where the smoothing squeezes the labels towards 0.5.
@@ -422,11 +420,11 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   cce = tf.keras.losses.CategoricalCrossentropy()
   loss = cce(
     [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
-  print('Loss: ', loss.numpy())  # Loss: 0.3239
+    [[.9, .05, .05], [.05, .89, .06], [.05, .01, .94]])
+  print('Loss: ', loss.numpy())  # Loss: 0.0945
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -436,6 +434,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
+      Note: Using from_logits=True may be more numerically stable.
     label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
       meaning the confidence on label values are relaxed. e.g.
       `label_smoothing=0.2` means that we will use a value of `0.1` for label
@@ -485,12 +484,12 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   cce = tf.keras.losses.SparseCategoricalCrossentropy()
   loss = cce(
-    [0, 1, 2],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
+    tf.convert_to_tensor([0, 1, 2]),
+    tf.convert_to_tensor([[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]))
   print('Loss: ', loss.numpy())  # Loss: 0.3239
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -500,6 +499,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   Args:
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
+      Note: Using from_logits=True may be more numerically stable.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `AUTO`. `AUTO` indicates that the reduction option will
       be determined by the usage context. For almost all cases this defaults to
@@ -515,7 +515,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   def __init__(self,
                from_logits=False,
                reduction=losses_utils.ReductionV2.AUTO,
-               name=None):
+               name='sparse_categorical_crossentropy'):
     super(SparseCategoricalCrossentropy, self).__init__(
         sparse_categorical_crossentropy,
         name=name,
@@ -526,6 +526,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
 @keras_export('keras.losses.Hinge')
 class Hinge(LossFunctionWrapper):
   """Computes the hinge loss between `y_true` and `y_pred`.
+
+  `loss = maximum(1 - y_true * y_pred, 0)`
 
   `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
   provided we will convert them to -1 or 1.
@@ -541,7 +543,7 @@ class Hinge(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 1.6
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -549,13 +551,15 @@ class Hinge(LossFunctionWrapper):
   ```
   """
 
-  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name=None):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='hinge'):
     super(Hinge, self).__init__(hinge, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.SquaredHinge')
 class SquaredHinge(LossFunctionWrapper):
   """Computes the squared hinge loss between `y_true` and `y_pred`.
+
+  `loss = square(maximum(1 - y_true * y_pred, 0))`
 
   `y_true` values are expected to be -1 or 1. If binary (0 or 1) labels are
   provided we will convert them to -1 or 1.
@@ -571,7 +575,7 @@ class SquaredHinge(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 2.566666
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -590,6 +594,9 @@ class SquaredHinge(LossFunctionWrapper):
 class CategoricalHinge(LossFunctionWrapper):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
+  `loss = maximum(neg - pos + 1, 0)`
+  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+
   Usage:
 
   ```python
@@ -598,7 +605,7 @@ class CategoricalHinge(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 1.0
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -623,11 +630,11 @@ class Poisson(LossFunctionWrapper):
 
   ```python
   p = tf.keras.losses.Poisson()
-  loss = p([1, 9, 2], [4, 8, 12])
-  print('Loss: ', loss.numpy())  # Loss: -4.63
+  loss = p([1., 9., 2.], [4., 8., 12.])
+  print('Loss: ', loss.numpy())  # Loss: -0.35702705
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -643,7 +650,8 @@ class Poisson(LossFunctionWrapper):
 class LogCosh(LossFunctionWrapper):
   """Computes the logarithm of the hyperbolic cosine of the prediction error.
 
-  `logcosh = log((exp(x) + exp(-x))/2)`, where x is the error (y_pred - y_true)
+  `logcosh = log((exp(x) + exp(-x))/2)`,
+  where x is the error `y_pred - y_true`.
 
   Usage:
 
@@ -653,7 +661,7 @@ class LogCosh(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.289
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -667,19 +675,21 @@ class LogCosh(LossFunctionWrapper):
 
 @keras_export('keras.losses.KLDivergence')
 class KLDivergence(LossFunctionWrapper):
-  """Computes Kullback Leibler divergence loss between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
 
   `loss = y_true * log(y_true / y_pred)`
+
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
 
   Usage:
 
   ```python
   k = tf.keras.losses.KLDivergence()
   loss = k([.4, .9, .2], [.5, .8, .12])
-  print('Loss: ', loss.numpy())  # Loss: -0.043
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -698,11 +708,11 @@ class KLDivergence(LossFunctionWrapper):
 class Huber(LossFunctionWrapper):
   """Computes the Huber loss between `y_true` and `y_pred`.
 
-  For each value x in `error=y_true-y_pred`, the following is calculated:
+  For each value x in `error = y_true - y_pred`:
 
   ```
-  0.5 * x^2                  if |x| <= d
-  0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = 0.5 * x^2                  if |x| <= d
+  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -714,7 +724,7 @@ class Huber(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.333
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
@@ -836,7 +846,7 @@ def hinge(y_true, y_pred):
 
   Args:
     y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided we will convert them to -1 or 1.
+      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
     y_pred: The predicted values.
 
   Returns:
@@ -850,6 +860,16 @@ def hinge(y_true, y_pred):
 
 @keras_export('keras.losses.categorical_hinge')
 def categorical_hinge(y_true, y_pred):
+  """Computes the categorical hinge loss between `y_true` and `y_pred`.
+
+  Args:
+    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
+      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
+    y_pred: The predicted values.
+
+  Returns:
+    A tensor.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
@@ -860,11 +880,11 @@ def categorical_hinge(y_true, y_pred):
 def huber_loss(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
-  For each value x in `error=y_true-y_pred`, the following is calculated:
+  For each value x in `error = y_true - y_pred`:
 
   ```
-  0.5 * x^2                  if |x| <= d
-  0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = 0.5 * x^2                  if |x| <= d
+  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -975,7 +995,31 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):  
               'keras.losses.kullback_leibler_divergence',
               'keras.losses.kld',
               'keras.losses.KLD')
-def kullback_leibler_divergence(y_true, y_pred):  # pylint: disable=missing-docstring
+def kullback_leibler_divergence(y_true, y_pred):
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
+
+  `loss = y_true * log(y_true / y_pred)`
+
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+
+  Usage:
+
+  ```python
+  loss = tf.keras.losses.KLD([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
+  ```
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+
+  Returns:
+    A `Tensor` with loss.
+
+  Raises:
+      TypeError: If `y_true` cannot be cast to the `y_pred.dtype`.
+
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = K.clip(y_true, K.epsilon(), 1)
@@ -1049,7 +1093,7 @@ class CosineSimilarity(LossFunctionWrapper):
   print('Loss: ', loss.numpy())  # Loss: 0.5
   ```
 
-  Usage with tf.keras API:
+  Usage with the `compile` API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)

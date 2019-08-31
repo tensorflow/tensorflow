@@ -21,7 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,6 +37,14 @@ _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
 
 # TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
+
+
+def _to_str_elements(values):
+  """Converts the inner list elements to strings."""
+  if isinstance(values, list):
+    return [_to_str_elements(value) for value in values]
+  else:
+    return str(values).encode("utf-8")
 
 
 class GatherTest(test.TestCase, parameterized.TestCase):
@@ -343,9 +351,29 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 6, 11):
+    # Test the gradients shape.
+    if context.executing_eagerly():
+      with backprop.GradientTape() as tape:
+        zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
+        tape.watch(zeros)
+        values = zeros * 2 + zeros
+        result = array_ops.gather(
+            values, indices, axis=axis, batch_dims=batch_dims)
+      gradients = tape.gradient(result, zeros)
+    else:
+      zeros = array_ops.zeros_like(params, dtype=dtypes.float32)
+      values = zeros * 2 + zeros
       result = array_ops.gather(
-          params, indices, axis=axis, batch_dims=batch_dims)
+          values, indices, axis=axis, batch_dims=batch_dims)
+      gradients = gradients_impl.gradients(result, [zeros])[0]
+
+    self.assertAllEqual(array_ops.shape(params), array_ops.shape(gradients))
+
+    # Run the same test for strings.
+    params = _to_str_elements(params)
+    expected = _to_str_elements(expected)
+    result = array_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
 
     self.assertAllEqual(expected, result)
 
@@ -443,9 +471,11 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 6, 11):
-      result = array_ops.gather(
-          params, indices, axis=axis, batch_dims=batch_dims)
+    # Run the same test for strings.
+    params = _to_str_elements(params)
+    expected = _to_str_elements(expected.tolist())
+    result = array_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
 
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)

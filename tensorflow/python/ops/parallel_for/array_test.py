@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -42,7 +43,7 @@ class ArrayTest(PForTestCase):
       outputs = []
       x_i = array_ops.gather(x, i)
       for y in [x, x_i]:
-        axes = [0, 2, -1] if y == x else [0]
+        axes = [0, 2, -1] if y is x else [0]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
           outputs.append(array_ops.gather(y, i, axis=axis))
@@ -52,6 +53,19 @@ class ArrayTest(PForTestCase):
       return outputs
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 20)
+
+  def test_gather_nd(self):
+    x = random_ops.random_uniform([3, 3, 3])
+
+    def loop_fn(i):
+      outputs = []
+      x_i = array_ops.gather(x, i)
+      outputs.append(array_ops.gather_nd(x_i, [0], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [i], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [[i], [i], [i]], batch_dims=1))
+      return outputs
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_shape(self):
     x = random_ops.random_uniform([3, 2, 3])
@@ -308,26 +322,56 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
-  def test_matrix_diag_part(self):
-    x = random_ops.random_uniform([3, 4, 2])
+  def test_matrix_diag(self):
+    x = random_ops.random_uniform([3, 2, 4])
 
     def loop_fn(i):
-      return array_ops.matrix_diag_part(array_ops.gather(x, i))
+      diagonal = array_ops.gather(x, i)
+      if compat.forward_compatible(2019, 10, 31):
+        return array_ops.matrix_diag(diagonal, k=(0, 1), num_rows=4, num_cols=5)
+      return array_ops.matrix_diag(diagonal)
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
+
+  def test_matrix_diag_part(self):
+    x = random_ops.random_uniform([3, 4, 6])
+
+    def loop_fn(i):
+      input = array_ops.gather(x, i)  # pylint: disable=redefined-builtin
+      if compat.forward_compatible(2019, 10, 31):
+        return array_ops.matrix_diag_part(input, k=(-2, 0), padding_value=3)
+      return array_ops.matrix_diag_part(input)
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
 
   def test_matrix_set_diag(self):
     matrices = random_ops.random_uniform([3, 4, 4])
     diags = random_ops.random_uniform([3, 4])
+    num_outputs = 3
+    if compat.forward_compatible(2019, 10, 31):
+      bands = random_ops.random_uniform([3, 3, 4])
+      num_outputs = 6
 
     def loop_fn(i):
       matrix_i = array_ops.gather(matrices, i)
       diag_i = array_ops.gather(diags, i)
-      return (array_ops.matrix_set_diag(matrix_i, diag_i),
-              array_ops.matrix_set_diag(matrices[0, ...], diag_i),
-              array_ops.matrix_set_diag(matrix_i, diags[0, ...]))
+      results = [
+          array_ops.matrix_set_diag(matrix_i, diag_i),
+          array_ops.matrix_set_diag(matrices[0, ...], diag_i),
+          array_ops.matrix_set_diag(matrix_i, diags[0, ...])
+      ]
+      if compat.forward_compatible(2019, 10, 31):
+        k = (-1, 1)
+        band_i = array_ops.gather(bands, i)
+        results.extend([
+            array_ops.matrix_set_diag(matrix_i, band_i, k=k),
+            array_ops.matrix_set_diag(matrices[0, ...], band_i, k=k),
+            array_ops.matrix_set_diag(matrix_i, bands[0, ...], k=k)
+        ])
+      return results
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+    self._test_loop_fn(
+        loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * num_outputs)
 
   def test_strided_slice(self):
     with backprop.GradientTape(persistent=True) as g:

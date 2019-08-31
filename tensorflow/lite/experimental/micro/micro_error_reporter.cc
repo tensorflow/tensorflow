@@ -25,7 +25,7 @@ void DebugLogPrintf(const char* format, va_list args) {
   while (*current != 0) {
     if (*current == '%') {
       const char next = *(current + 1);
-      if ((next == 'd') || (next == 's')) {
+      if ((next == 'd') || (next == 's') || (next == 'f')) {
         current += 1;
         if (output_cache_index > 0) {
           output_cache[output_cache_index] = 0;
@@ -36,6 +36,8 @@ void DebugLogPrintf(const char* format, va_list args) {
           DebugLogInt32(va_arg(args, int));
         } else if (next == 's') {
           DebugLog(va_arg(args, char*));
+        } else if (next == 'f') {
+          DebugLogFloat(va_arg(args, double));
         }
       }
     } else {

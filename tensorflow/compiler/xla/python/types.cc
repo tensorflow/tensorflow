@@ -136,7 +136,7 @@ std::vector<ssize_t> StridesForShape(const Shape& shape) {
   return strides;
 }
 
-StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
+StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
     std::vector<Literal> elems = m.DecomposeTuple();
@@ -154,9 +154,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
   }
   TF_RET_CHECK(m.shape().IsArray());
 
-  auto capsule = py::capsule(literal.release(), [](void* ptr) {
-    delete reinterpret_cast<xla::Literal*>(ptr);
-  });
+  py::object literal_object = py::cast(literal);
   TF_ASSIGN_OR_RETURN(std::string format, FormatDescriptorForPrimitiveType(
                                               m.shape().element_type()));
   py::buffer_info info(
@@ -169,7 +167,7 @@ StatusOr<py::object> LiteralToPython(std::unique_ptr<xla::Literal> literal) {
       StridesForShape(m.shape())      // Strides (in bytes) for each index
   );
   return py::array(pybind11::dtype(info), info.shape, info.strides, info.ptr,
-                   capsule);
+                   literal_object);
 }
 
 StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
@@ -183,6 +181,9 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
       tree.leaves.reserve(tree.leaves.size() + subtree.leaves.size());
       std::move(subtree.leaves.begin(), subtree.leaves.end(),
                 std::back_inserter(tree.leaves));
+      tree.arrays.reserve(tree.arrays.size() + subtree.arrays.size());
+      std::move(subtree.arrays.begin(), subtree.arrays.end(),
+                std::back_inserter(tree.arrays));
       host_shapes[i] = std::move(subtree.shape);
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);

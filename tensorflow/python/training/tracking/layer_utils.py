@@ -21,7 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.util import object_identity
 
 
 def is_layer(obj):
@@ -41,6 +41,7 @@ def has_weights(obj):
 
 def filter_empty_layer_containers(layer_list):
   """Filter out empty Layer-like containers and uniquify."""
+  # TODO(b/130381733): Make this an attribute in base_layer.Layer.
   existing = object_identity.ObjectIdentitySet()
   to_visit = layer_list[::-1]
   filtered = []

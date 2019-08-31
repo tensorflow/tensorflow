@@ -1,0 +1,7 @@
+op {
+  name: "TPUCompilationResult"
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+}

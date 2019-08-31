@@ -94,10 +94,8 @@ namespace toco {
   }
 
   // Replace the operator in the graph.
-  const auto reshape_it = model->operators.emplace(expand_it, reshape_op);
-  expand_it = reshape_it + 1;
-  CHECK_EQ(expand_it->get(), expand_op);
-  model->operators.erase(expand_it);
+  model->operators.emplace(expand_it, reshape_op);
+  DeleteOpAndArrays(model, expand_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

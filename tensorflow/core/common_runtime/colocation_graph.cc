@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -51,63 +52,6 @@ namespace {
 // so that we can avoid the many repeated calls to strlen().
 const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
 const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
-
-// Returns a list of devices having type in supported_device_types.  The
-// returned list is sorted by preferred type (higher numeric type is preferred).
-std::vector<Device*> FilterSupportedDevices(
-    const std::vector<Device*>& devices,
-    const PrioritizedDeviceTypeVector& supported_device_types,
-    const Device* default_device) {
-  Device* filtered_default_device = nullptr;
-  std::vector<std::pair<Device*, int32>> prioritized_filtered_devices;
-  for (const auto& supported_device_type : supported_device_types) {
-    for (Device* device : devices) {
-      if (DeviceType(device->attributes().device_type()) ==
-          supported_device_type.first) {
-        if (default_device &&
-            (device == default_device ||
-             // TODO(nareshmodi, fishx): At times the device pointer in the
-             // device set is different to the one passed in as the default
-             // device. Figure out why this might be.
-             device->name() == default_device->name())) {
-          filtered_default_device = device;
-        } else {
-          prioritized_filtered_devices.emplace_back(
-              device, supported_device_type.second);
-        }
-      }
-    }
-  }
-
-  auto device_sort = [](const std::pair<Device*, int32>& a,
-                        const std::pair<Device*, int32>& b) {
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-
-    auto a_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
-    auto b_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
-    // First sort by prioritized device type (higher is preferred) and
-    // then by device name (lexicographically).
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    return StringPiece(a.first->name()) < StringPiece(b.first->name());
-  };
-  std::sort(prioritized_filtered_devices.begin(),
-            prioritized_filtered_devices.end(), device_sort);
-
-  std::vector<Device*> filtered_devices;
-  if (filtered_default_device != nullptr) {
-    filtered_devices.emplace_back(filtered_default_device);
-  }
-  for (const auto& prioritized_filtered_device : prioritized_filtered_devices) {
-    filtered_devices.push_back(prioritized_filtered_device.first);
-  }
-  return filtered_devices;
-}
 
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
 std::vector<string> DevicesToString(const std::vector<Device*> devices) {
@@ -150,8 +94,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
-         op_type == "ReduceDataset" || op_type == "ExperimentalScanDataset";
+  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  return exempt_ops.find(op_type) != exempt_ops.end();
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
@@ -177,15 +121,16 @@ bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
-    const Node& node, const std::vector<DeviceType>& types) {
+    const Node& node, const std::vector<DeviceType>& types,
+    const DeviceNameUtils::ParsedName* local_address_spec) {
   int id = node.id();
   if (id < 0) {
     return errors::Internal("Placer should not be creating a Member for node: ",
                             node.DebugString());
   }
   parent_ = id;
-  return SupportedDeviceTypesForNode(types, node.def(),
-                                     &supported_device_types_);
+  return SupportedDeviceTypesForNode(
+      types, node.def(), &supported_device_types_, local_address_spec);
 }
 
 Status Member::SetAssignedDeviceName(const string& device_name) {
@@ -494,7 +439,7 @@ bool Member::MergeSupportedDevices(
   return true;
 }
 
-Status Member::AssignDevice(const Node& node, bool allow_soft_placement) {
+Status Member::AssignDevice(const Node& node) {
   if (node.assigned_device_name_index() == assigned_device_name_index_) {
     return Status::OK();
   }
@@ -586,21 +531,43 @@ DeviceNameUtils::ParsedName Member::GetPreferredSoftDeviceName() const {
   return soft_device_name;
 }
 
+// Returns ParsedName whose address space (i.e. job, replica, task) identifies
+// the address space directly accessible by the local process. If the address
+// space is fully specified and it is exactly the same as the address space
+// of a device, then all kernels of that device should be registered in the
+// local process.
+static const DeviceNameUtils::ParsedName LocalAddressSpec(
+    const Device* client_device, const Device* default_local_device) {
+  if (client_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(client_device->parsed_name());
+  }
+
+  if (default_local_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(default_local_device->parsed_name());
+  }
+
+  // TODO(b/139617593) Return the name of the first local device in device_set_
+  // once we can trust the output of Device::IsLocal().
+  return DeviceNameUtils::ParsedName();
+}
+
 ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
                                  const FunctionLibraryDefinition* flib_def,
                                  const DeviceSet* device_set,
-                                 const Device* default_device,
+                                 const Device* default_local_device,
                                  bool allow_soft_placement,
                                  bool log_device_placement)
     : graph_(*graph),
       stack_(stack),
       flib_def_(*flib_def),
-      inspecting_placer_(graph, stack, flib_def, device_set, default_device,
+      inspecting_placer_(stack, flib_def, device_set, default_local_device,
                          allow_soft_placement, log_device_placement),
       inspection_required_checker_(graph, flib_def),
       device_set_(*device_set),
       device_types_(device_set->PrioritizedDeviceTypeList()),
-      default_device_(default_device),
+      local_address_spec_(
+          LocalAddressSpec(device_set->client_device(), default_local_device)),
+      default_local_device_(default_local_device),
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {
   members_.resize(graph_.num_node_ids());
@@ -970,7 +937,7 @@ Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
   }
   int root = FindAndUpdateRoot(node.id());
   Member& root_member = members_[root];
-  return root_member.AssignDevice(node, allow_soft_placement_);
+  return root_member.AssignDevice(node);
 }
 
 void ColocationGraph::GetSoftDeviceCandidates(
@@ -986,7 +953,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
   if (!possible_devices->empty()) {
     *possible_devices = FilterSupportedDevices(
         *possible_devices, root_member.supported_device_types(),
-        default_device_);
+        default_local_device_);
   }
 
   if (!possible_devices->empty()) {
@@ -1009,7 +976,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
   if (!possible_devices->empty()) {
     *possible_devices = FilterSupportedDevices(
         *possible_devices, root_member.supported_device_types(),
-        default_device_);
+        default_local_device_);
   }
 
   if (!possible_devices->empty()) {
@@ -1063,7 +1030,7 @@ Status ColocationGraph::GetDevicesForNode(
       // Filter devices into those that are compatible with the root
       // node (and its children).
       devices = FilterSupportedDevices(
-          devices, root_member.supported_device_types(), default_device_);
+          devices, root_member.supported_device_types(), default_local_device_);
     }
 
     // Perform soft placement if allow_soft_placement_ is set.
@@ -1106,7 +1073,7 @@ Status ColocationGraph::GetDevicesForNode(
 
           return errors::InvalidArgument(
               errors::FormatNodeNameForError(node->name()),
-              "was explicitly assigned to ", node->requested_device(),
+              " was explicitly assigned to ", node->requested_device(),
               " but available devices are [ ",
               absl::StrJoin(device_names, ", "), " ]. Make sure ",
               "the device specification refers to a valid device.", gpu_msg);
@@ -1150,7 +1117,7 @@ Status ColocationGraph::GetDevicesForNode(
     }
     devices = FilterSupportedDevices(device_set_.devices(),
                                      root_member.supported_device_types(),
-                                     default_device_);
+                                     default_local_device_);
 
     if (devices.empty()) {
       return errors::InvalidArgument(
@@ -1219,7 +1186,8 @@ string ColocationGraph::DebugInfo(const int node_root) const {
     colocation_nodes.push_back(node);
 
     PrioritizedDeviceTypeVector supported_types;
-    SupportedDeviceTypesForNode(device_types_, node->def(), &supported_types)
+    SupportedDeviceTypesForNode(device_types_, node->def(), &supported_types,
+                                &local_address_spec_)
         .IgnoreError();
     string devices_registered;
     for (const auto& device_type : supported_types) {
@@ -1276,7 +1244,10 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
         "to run a tf.function with resource inputs residing on remote devices. "
         "This use case is currently not supported. Here are the devices "
         "available on this machine: [",
-        absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "]");
+        absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "].",
+        "If you are seeing this error when running using a tf.Session, set "
+        "experimental.share_cluster_devices_in_session to true in the "
+        "tf.ConfigProto.");
   }
 
   for (const auto& d : member->supported_device_types()) {
@@ -1292,7 +1263,8 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 }
 
 Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
-  TF_RETURN_IF_ERROR(member->SetParentAndSupportedDevices(node, device_types_));
+  TF_RETURN_IF_ERROR(member->SetParentAndSupportedDevices(
+      node, device_types_, &local_address_spec_));
 
   if (node.has_assigned_device_name()) {
     TF_RETURN_IF_ERROR(InitializeMemberWithAssignedDevice(
@@ -1337,6 +1309,63 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
     }
   }
   return Status::OK();
+}
+
+// Returns a list of devices having type in supported_device_types.  The
+// returned list is sorted by preferred type (higher numeric type is preferred).
+/*static*/ std::vector<Device*> ColocationGraph::FilterSupportedDevices(
+    const std::vector<Device*>& devices,
+    const PrioritizedDeviceTypeVector& supported_device_types,
+    const Device* default_local_device) {
+  Device* filtered_default_device = nullptr;
+  std::vector<std::pair<Device*, int32>> prioritized_filtered_devices;
+  for (const auto& supported_device_type : supported_device_types) {
+    for (Device* device : devices) {
+      if (DeviceType(device->attributes().device_type()) ==
+          supported_device_type.first) {
+        if (default_local_device &&
+            (device == default_local_device ||
+             // TODO(nareshmodi, fishx): At times the device pointer in the
+             // device set is different to the one passed in as the default
+             // device. Figure out why this might be.
+             device->name() == default_local_device->name())) {
+          filtered_default_device = device;
+        } else {
+          prioritized_filtered_devices.emplace_back(
+              device, supported_device_type.second);
+        }
+      }
+    }
+  }
+
+  auto device_sort = [](const std::pair<Device*, int32>& a,
+                        const std::pair<Device*, int32>& b) {
+    if (a.second != b.second) {
+      return a.second > b.second;
+    }
+
+    auto a_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
+    auto b_priority =
+        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
+    // First sort by prioritized device type (higher is preferred) and
+    // then by device name (lexicographically).
+    if (a_priority != b_priority) {
+      return a_priority > b_priority;
+    }
+    return StringPiece(a.first->name()) < StringPiece(b.first->name());
+  };
+  std::sort(prioritized_filtered_devices.begin(),
+            prioritized_filtered_devices.end(), device_sort);
+
+  std::vector<Device*> filtered_devices;
+  if (filtered_default_device != nullptr) {
+    filtered_devices.emplace_back(filtered_default_device);
+  }
+  for (const auto& prioritized_filtered_device : prioritized_filtered_devices) {
+    filtered_devices.push_back(prioritized_filtered_device.first);
+  }
+  return filtered_devices;
 }
 
 }  // namespace tensorflow

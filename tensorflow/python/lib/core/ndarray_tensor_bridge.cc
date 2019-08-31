@@ -188,13 +188,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
 
 Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
                        std::function<void()> destructor, PyObject** result) {
-  int size = 1;
-  for (int i = 0; i < dim_size; ++i) {
-    size *= dims[i];
-  }
-  if (dtype == DT_STRING || dtype == DT_RESOURCE || size == 0) {
+  if (dtype == DT_STRING || dtype == DT_RESOURCE) {
     return errors::FailedPrecondition(
-        "Cannot convert strings, resources, or empty Tensors.");
+        "Cannot convert string or resource Tensors.");
   }
 
   int type_num = -1;
@@ -218,7 +214,7 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     Py_DECREF(releaser);
     return errors::Unknown("Python array refused to use memory.");
   }
-  *result = PyArray_Return(np_array);
+  *result = reinterpret_cast<PyObject*>(np_array);
   return Status::OK();
 }
 

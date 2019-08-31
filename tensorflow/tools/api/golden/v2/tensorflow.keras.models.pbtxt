@@ -30,6 +30,6 @@ tf_module {
   }
   member_method {
     name: "save_model"
-    argspec: "args=[\'model\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\'], "
+    argspec: "args=[\'model\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\'], "
   }
 }

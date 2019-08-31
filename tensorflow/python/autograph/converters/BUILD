@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -30,7 +32,6 @@ py_library(
         "lists.py",
         "logical_expressions.py",
         "return_statements.py",
-        "side_effect_guards.py",
         "slices.py",
     ],
     srcs_version = "PY2AND3",
@@ -173,18 +174,6 @@ py_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "side_effect_guards_test",
-    srcs = ["side_effect_guards_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

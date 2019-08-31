@@ -21,21 +21,21 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status MemzeroThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenMemZero(&dest_data, dest_data.size());
+Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::DeviceMemoryBase dest_data =
+      params.buffer_allocations->GetDeviceAddress(dest_);
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  params.stream->ThenMemZero(&dest_data, dest_data.size());
   return Status::OK();
 }
 
-Status Memset32BitValueThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenMemset32(&dest_data, value_, dest_data.size());
+Status Memset32BitValueThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::DeviceMemoryBase dest_data =
+      params.buffer_allocations->GetDeviceAddress(dest_);
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  params.stream->ThenMemset32(&dest_data, value_, dest_data.size());
   return Status::OK();
 }
 

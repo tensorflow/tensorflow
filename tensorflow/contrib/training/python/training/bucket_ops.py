@@ -212,7 +212,7 @@ def bucket(tensors,
         else static_batch_size)
 
     bucket_shapes = [
-        tensor_shape.vector(maybe_static_batch_size).concatenate(s)
+        tensor_shape.TensorShape([maybe_static_batch_size]).concatenate(s)
         for s in bucket_queues[0].shapes
     ]
     # top_queue is a PaddingFIFOQueue even if the bucket queues are regular FIFO
@@ -222,7 +222,7 @@ def bucket(tensors,
     top_queue = data_flow_ops.PaddingFIFOQueue(
         capacity=capacity,
         dtypes=[dtypes.int32] + types,
-        shapes=[tensor_shape.scalar()] + bucket_shapes,
+        shapes=[tensor_shape.TensorShape([])] + bucket_shapes,
         shared_name=shared_name,
         name="top_queue")
 
@@ -399,11 +399,11 @@ def bucket_by_sequence_length(input_length,
     conditions_c = math_ops.logical_and(
         math_ops.less_equal(buckets_min, input_length),
         math_ops.less(input_length, buckets_max))
-    which_bucket = math_ops.reduce_min(array_ops.where(conditions_c))
+    which_bucket = math_ops.reduce_min(array_ops.where_v2(conditions_c))
     which_bucket = math_ops.cast(which_bucket, dtypes.int32)
 
     if shapes is not None:
-      shapes = [tensor_shape.scalar()] + shapes
+      shapes = [tensor_shape.TensorShape([])] + shapes
 
     _, dequeued = bucket(
         tensors=[input_length] + tensor_list,

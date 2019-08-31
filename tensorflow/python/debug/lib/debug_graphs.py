@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.platform import tf_logging as logging
@@ -346,8 +344,7 @@ class DebugGraph(object):
     for node in self._node_inputs:
       inputs = self._node_inputs[node]
 
-      for i in xrange(len(inputs)):
-        inp = inputs[i]
+      for i, inp in enumerate(inputs):
         if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.

@@ -52,7 +52,7 @@ namespace tensorflow {
 namespace {
 
 void Encode(const UnicodeEncoding encoding, const icu::UnicodeString& in,
-            string* out) {
+            tstring* out) {
   if (encoding == UnicodeEncoding::UTF8) {
     out->clear();
     in.toUTF8String(*out);
@@ -295,10 +295,10 @@ class UnicodeTranscodeOp : public OpKernel {
     } else {
       OP_REQUIRES_OK(ctx, ctx->allocate_output("output", input_tensor->shape(),
                                                &output_tensor));
-      output_tensor->flat<string>() = input_tensor->flat<string>();
+      output_tensor->flat<tstring>() = input_tensor->flat<tstring>();
     }
 
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
     bool found_any_format_error = false;
     for (size_t i = 0; i < output_flat.size(); ++i) {
       Transcode(&(output_flat(i)), input_encoder->converter_,
@@ -330,7 +330,7 @@ class UnicodeTranscodeOp : public OpKernel {
   // Transcode the string from input encoding to the output_encoding_. If
   // non-valid characters are encountered, use the subst_/elide_replacement_
   // config to handle them.
-  void Transcode(string* s, UConverter* input_encoder,
+  void Transcode(tstring* s, UConverter* input_encoder,
                  bool* found_any_format_error) {
     icu::UnicodeString source;
     IterateUnicodeString(
@@ -404,7 +404,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
 
     // Go through all the strings in `input`.
-    const auto& input_vec = input_tensor->flat<string>();
+    const auto& input_vec = input_tensor->flat<tstring>();
 
     std::unique_ptr<WrappedConverter> input_encoder =
         absl::make_unique<WrappedConverter>();
@@ -538,7 +538,7 @@ class UnicodeEncodeOp : public OpKernel {
     Tensor* output_tensor;
     OP_REQUIRES_OK(context, context->allocate_output("output", output_shape,
                                                      &output_tensor));
-    auto output_tensor_flat = output_tensor->flat<string>();
+    auto output_tensor_flat = output_tensor->flat<tstring>();
 
     // Use a single index over the flattened input values tensor.
     int idx = 0;
@@ -561,9 +561,9 @@ class UnicodeEncodeOp : public OpKernel {
         appendable_unicode_string.appendCodePoint(code_point);
       }
       // Encode our string and save in the output.
-      string result;
+      tstring result;
       Encode(encoding_, unicode_string, &result);
-      output_tensor_flat(i - 1) = result;
+      output_tensor_flat(i - 1) = std::move(result);
     }
   }
 

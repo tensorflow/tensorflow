@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -96,7 +95,7 @@ class ParallelInterleaveBenchmark(test.Benchmark):
     def dataset_fn():
       return dataset_ops.Dataset.range(1).repeat().interleave(
           _make_fake_dataset_fn(),
-          cycle_length=10, num_parallel_calls=optimization.AUTOTUNE)
+          cycle_length=10, num_parallel_calls=dataset_ops.AUTOTUNE)
 
     self._benchmark(dataset_fn=dataset_fn, iters=100, num_elements=1000)
 

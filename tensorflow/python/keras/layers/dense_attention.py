@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -70,6 +71,7 @@ class BaseDenseAttention(Layer):
   def __init__(self, causal=False, **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
+    self.supports_masking = True
 
   def _calculate_scores(self, query, key):
     """Calculates attention scores.
@@ -144,6 +146,15 @@ class BaseDenseAttention(Layer):
       result *= math_ops.cast(q_mask, dtype=result.dtype)
     return result
 
+  def compute_mask(self, inputs, mask=None):
+    self._validate_call_args(inputs=inputs, mask=mask)
+    if mask:
+      q_mask = mask[0]
+      if q_mask is None:
+        return None
+      return ops.convert_to_tensor(q_mask)
+    return None
+
   def _validate_call_args(self, inputs, mask):
     """Validates arguments of the call method."""
     class_name = self.__class__.__name__
@@ -165,6 +176,11 @@ class BaseDenseAttention(Layer):
         raise ValueError(
             '{} layer mask must be a list of length 2, namely [query_mask, '
             'value_mask]. Given length: {}'.format(class_name, len(mask)))
+
+  def get_config(self):
+    config = {'causal': self.causal}
+    base_config = super(BaseDenseAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.layers.Attention')
@@ -290,6 +306,11 @@ class Attention(BaseDenseAttention):
     if self.scale is not None:
       scores *= self.scale
     return scores
+
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(Attention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.layers.AdditiveAttention')
@@ -427,6 +448,11 @@ class AdditiveAttention(BaseDenseAttention):
       scale = 1.
     return math_ops.reduce_sum(
         scale * math_ops.tanh(q_reshaped + k_reshaped), axis=-1)
+
+  def get_config(self):
+    config = {'use_scale': self.use_scale}
+    base_config = super(AdditiveAttention, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 def _lower_triangular_mask(shape):

@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/api.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object_manager.h"
+#include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/default_calculator.h"
 
 namespace tflite {
@@ -37,8 +37,8 @@ namespace gpu {
 namespace gl {
 
 SingleOpModel::SingleOpModel(Operation&& operation,
-                             const std::vector<TensorRefFloat32>& inputs,
-                             const std::vector<TensorRefFloat32>& outputs) {
+                             const std::vector<TensorRef<BHWC>>& inputs,
+                             const std::vector<TensorRef<BHWC>>& outputs) {
   auto node = graph_.NewNode();
   node->operation = std::move(operation);
 
@@ -68,9 +68,9 @@ bool SingleOpModel::PopulateTensor(int index, std::vector<float>&& data) {
   return true;
 }
 
-Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
-                                     const RuntimeOptions& runtime_options,
-                                     const NodeShader& shader) {
+Status SingleOpModel::Invoke(const CompilationOptions& compile_options,
+                             const RuntimeOptions& runtime_options,
+                             const NodeShader& shader) {
   std::unique_ptr<EglEnvironment> env;
   RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env));
 
@@ -126,6 +126,10 @@ Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
     outputs_.push_back(std::move(tensor));
   }
   return OkStatus();
+}
+
+Status SingleOpModel::Invoke(const NodeShader& shader) {
+  return Invoke(CompilationOptions(), RuntimeOptions(), shader);
 }
 
 }  // namespace gl

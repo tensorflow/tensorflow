@@ -1,11 +1,5 @@
 # Cloud Bigtable client for TensorFlow
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,6 +10,11 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
     "tf_py_test",
+)
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_custom_op_py_library(

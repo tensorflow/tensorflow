@@ -27,12 +27,15 @@ from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
+# WRAPPER_PLACEHOLDER
+
 # Hook external TensorFlow modules.
 _current_module = _sys.modules[__name__]
 try:
   from tensorflow_estimator.python.estimator.api._v1 import estimator
   _current_module.__path__ = (
       [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
 except ImportError:
   pass
 
@@ -40,9 +43,11 @@ try:
   from tensorflow.python.keras.api._v1 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
 except ImportError:
   pass
 
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-app.flags = flags  # pylint: disable=undefined-variable
+_current_module.app.flags = flags  # pylint: disable=undefined-variable
+setattr(_current_module, "flags", flags)

@@ -89,10 +89,8 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
         nan_scalar = constant_op.constant(float('NaN'), dtype=dx.dtype)
       return control_flow_ops.cond(
           have_nan_gradients,
-          lambda: array_ops.fill(dx.shape, nan_scalar),
+          lambda: array_ops.fill(array_ops.shape(dx), nan_scalar),
           lambda: dx
       )
     return x, grad
   return identity_with_nan_gradients
-
-

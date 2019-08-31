@@ -18,29 +18,41 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.contrib import slim
 from tensorflow.contrib.receptive_field.python.util import graph_compute_order
 from tensorflow.contrib.receptive_field.python.util import parse_layer_parameters
+from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def create_test_network():
+def create_test_network(placeholder_resolution, convert_variables_to_constants):
   """Convolutional neural network for test.
+
+  Args:
+    placeholder_resolution: Resolution to use for input placeholder. Used for
+      height and width dimensions.
+    convert_variables_to_constants: Whether to convert variables to constants.
 
   Returns:
     name_to_node: Dict keyed by node name, each entry containing the node's
       NodeDef.
   """
   g = ops.Graph()
+  sess = session.Session(graph=g)
   with g.as_default():
     # An input test image with unknown spatial resolution.
     x = array_ops.placeholder(
-        dtypes.float32, (None, None, None, 1), name='input_image')
+        dtypes.float32, (1, placeholder_resolution, placeholder_resolution, 1),
+        name='input_image')
     # Left branch before first addition.
     l1 = slim.conv2d(x, 1, [1, 1], stride=4, scope='L1', padding='VALID')
     # Right branch before first addition.
@@ -56,15 +68,28 @@ def create_test_network():
     # Final addition.
     gen_math_ops.add(l5, l6, name='L7_add')
 
-  name_to_node = graph_compute_order.parse_graph_nodes(g.as_graph_def())
+    if convert_variables_to_constants:
+      sess.run(variables.global_variables_initializer())
+      graph_def = graph_util.convert_variables_to_constants(
+          sess, g.as_graph_def(), ['L7_add'])
+    else:
+      graph_def = g.as_graph_def()
+
+  name_to_node = graph_compute_order.parse_graph_nodes(graph_def)
   return name_to_node
 
 
-class ParseLayerParametersTest(test.TestCase):
+class ParseLayerParametersTest(test.TestCase, parameterized.TestCase):
 
-  def testParametersAreParsedCorrectly(self):
+  @parameterized.named_parameters(('NonePlaceholder', None, False),
+                                  ('224Placeholder', 224, False),
+                                  ('NonePlaceholderVarAsConst', None, True),
+                                  ('224PlaceholderVarAsConst', 224, True))
+  def testParametersAreParsedCorrectly(self, placeholder_resolution,
+                                       convert_variables_to_constants):
     """Checks parameters from create_test_network() are parsed correctly."""
-    name_to_node = create_test_network()
+    name_to_node = create_test_network(placeholder_resolution,
+                                       convert_variables_to_constants)
 
     # L1.
     l1_node_name = 'L1/Conv2D'

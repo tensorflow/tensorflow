@@ -78,7 +78,8 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         auto& attr =
             absl::any_cast<const AddAttributes&>(node->operation.attributes);
         return absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param) ==
-               nullptr;
+                   nullptr &&
+               absl::get_if<float>(&attr.param) == nullptr;
       });
 }
 

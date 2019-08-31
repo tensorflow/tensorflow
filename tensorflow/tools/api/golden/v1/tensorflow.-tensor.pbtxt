@@ -1,7 +1,7 @@
 path: "tensorflow.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
-  is_instance: "<class \'tensorflow.python.framework.ops._TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.framework.tensor_like._TensorLike\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "OVERLOADABLE_OPERATORS"
@@ -46,6 +46,10 @@ tf_class {
   member_method {
     name: "eval"
     argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "experimental_ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_shape"

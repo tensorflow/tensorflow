@@ -26,6 +26,7 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from builtins import bytes  # pylint: disable=redefined-builtin
 import argparse
 import json
 import os
@@ -202,14 +203,14 @@ const char* tf_compiler_version() {
   return __VERSION__;
 #endif
 }
-const int tf_cxx11_abi_flag() {
+int tf_cxx11_abi_flag() {
 #ifdef _GLIBCXX_USE_CXX11_ABI
   return _GLIBCXX_USE_CXX11_ABI;
 #else
   return 0;
 #endif
 }
-const int tf_monolithic_build() {
+int tf_monolithic_build() {
 #ifdef TENSORFLOW_MONOLITHIC_BUILD
   return 1;
 #else

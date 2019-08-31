@@ -73,12 +73,13 @@ class StreamExecutor {
  public:
   StreamExecutor(
       const Platform *platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation);
+      std::unique_ptr<internal::StreamExecutorInterface> implementation,
+      int device_ordinal);
 
   ~StreamExecutor();
 
   port::Status Init();
-  port::Status Init(int device_ordinal, DeviceOptions device_options);
+  port::Status Init(DeviceOptions device_options);
 
   // Returns the platform that this StreamExecutor is acting upon.
   ABSL_DEPRECATED("Use platform() instead.")
@@ -99,8 +100,8 @@ class StreamExecutor {
   //    instantiation should not be loaded into more than once.
   //
   // If an error occurs, or there is no kernel available for the StreamExecutor
-  // platform, false is returned.
-  bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
+  // platform, error status is returned.
+  port::Status GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
   // Releases any state associated with the previously loaded kernel.
   void UnloadKernel(const KernelBase *kernel);
@@ -108,9 +109,10 @@ class StreamExecutor {
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
   // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns true.  Else returns false.
-  bool LoadModule(const MultiModuleLoaderSpec &spec,
-                  ModuleHandle *module_handle);
+  // the loaded module to `module_handle` and returns Status::OK.
+  // Otherwise, returns the error which has occurred.
+  port::Status LoadModule(const MultiModuleLoaderSpec &spec,
+                          ModuleHandle *module_handle);
 
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
@@ -184,9 +186,6 @@ class StreamExecutor {
   //
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
-  //
-  // TODO(jlebar): Change this to accept a DeviceMemoryBase by value, see
-  // discussion in cl/195744342.
   void Deallocate(DeviceMemoryBase *mem);
 
   // Retrieves a mapping of active opaque device memory pointer to a string
@@ -393,11 +392,12 @@ class StreamExecutor {
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size, int batch_size,
-      dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-      dnn::RnnMode rnn_mode, dnn::DataType data_type,
-      const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
-      ScratchAllocator *state_allocator);
+      int num_layers, int hidden_size, int input_size, int cell_size,
+      int batch_size, dnn::RnnInputMode input_mode,
+      dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
+      dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
+      float dropout, uint64 seed, ScratchAllocator *state_allocator,
+      bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -424,6 +424,19 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface *implementation();
 
+  // Creates a kernel which can be launched with stream.ThenLaunch, such that
+  // the types of the arguments provided for launch would have to match
+  // types of the arguments provided at creation time.
+  //
+  // The kernel has a name kernel_name, and is based from provided PTX in ptx,
+  // and (optional) compiled PTX in cubin_data.
+  // The canonical storage for both ptx and cubin_data should outlive the
+  // lifetime of the kernel.
+  template <typename... Args>
+  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+      absl::string_view kernel_name, absl::string_view ptx,
+      absl::Span<const uint8> cubin_data);
+
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
   // the type signature is only known at runtime; say, if an application
@@ -437,9 +450,9 @@ class StreamExecutor {
   //
   // This is called by Stream::Launch() to delegate to the platform's launch
   // implementation in StreamExecutorInterface::Launch().
-  bool Launch(Stream *stream, const ThreadDim &thread_dims,
-              const BlockDim &block_dims, const KernelBase &kernel,
-              const KernelArgsArrayBase &args);
+  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                      const BlockDim &block_dims, const KernelBase &kernel,
+                      const KernelArgsArrayBase &args);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -458,6 +471,19 @@ class StreamExecutor {
   // Returns null if there was an error initializing the DNN support for the
   // underlying platform.
   dnn::DnnSupport *AsDnn();
+
+  // Gets-or-creates (creates with memoization) a BlasSupport datatype that can
+  // be used to execute BLAS routines on the current platform. This is typically
+  // not user-facing, as users will use the Stream::ThenBlas* family of routines
+  // to entrain BLAS operations. See blas.h for additional details.
+  //
+  // Ownership is not transferred to the caller -- ownership is retained by this
+  // object for memoization. This BLAS interface is also only expected to be
+  // used by a Stream for entraining calls to BLAS functionality.
+  //
+  // Returns null if there was an error initializing the BLAS support for the
+  // underlying platform.
+  blas::BlasSupport *AsBlas();
 
   // Turns StreamExecutor operation tracing on or off.
   void EnableTracing(bool enable);
@@ -479,15 +505,7 @@ class StreamExecutor {
 
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
-  //
-  // Creates the allocator object on the first access, as the device ordinal
-  // of this stream_executor is not set in constructor.
-  StreamExecutorMemoryAllocator *GetAllocator() {
-    if (!allocator_.has_value()) {
-      allocator_.emplace(this);
-    }
-    return &allocator_.value();
-  }
+  StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -501,18 +519,10 @@ class StreamExecutor {
   template <typename... Args>
   friend struct ThenBlasImpl;
 
-  // Gets-or-creates (creates with memoization) a BlasSupport datatype that can
-  // be used to execute BLAS routines on the current platform. This is typically
-  // not user-facing, as users will use the Stream::ThenBlas* family of routines
-  // to entrain BLAS operations. See blas.h for additional details.
-  //
-  // Ownership is not transferred to the caller -- ownership is retained by this
-  // object for memoization. This BLAS interface is also only expected to be
-  // used by a Stream for entraining calls to BLAS functionality.
-  //
-  // Returns null if there was an error initializing the BLAS support for the
-  // underlying platform.
-  blas::BlasSupport *AsBlas();
+  // Synchronously allocates size bytes on the underlying platform and returns
+  // an opaque void* representing that allocation. In the case of failure,
+  // nullptr is returned.
+  void *Allocate(uint64 size);
 
   // Gets-or-creates (creates with memoization) an RngSupport datatype that can
   // be used for random-number-generation routines on the current platform.
@@ -530,11 +540,6 @@ class StreamExecutor {
 
   // Without blocking the device, retrieve the current stream status.
   port::Status GetStatus(Stream *stream);
-
-  // Synchronously allocates size bytes on the underlying platform and returns
-  // an opaque void* representing that allocation. In the case of failure,
-  // nullptr is returned.
-  void *Allocate(uint64 size);
 
   // Finds and retrieves device memory for the symbol on the underlying
   // platform.
@@ -719,7 +724,7 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
-  absl::optional<StreamExecutorMemoryAllocator> allocator_;
+  StreamExecutorMemoryAllocator allocator_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
@@ -762,6 +767,24 @@ class ScopedModuleHandle {
 ////////////
 // Inlines
 
+template <typename... Args>
+inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
+                                  absl::string_view ptx,
+                                  absl::Span<const uint8> cubin_data) {
+  auto kernel_base = absl::make_unique<TypedKernel<Args...>>(this);
+  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+
+  if (!cubin_data.empty()) {
+    loader_spec.AddCudaCubinInMemory(
+        reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
+  }
+
+  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
+  return std::move(kernel_base);
+}
+
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count) {
   uint64 bytes = sizeof(T) * element_count;
@@ -795,7 +818,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     std::vector<ElemT> local(values);
     if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT *>(&local[0]),
                                    ptr()->size())) {
-      Free();
+      TF_CHECK_OK(Free());
     }
   }
 }
@@ -852,7 +875,8 @@ inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
     kernel.PackParams(&kernel_args, args...);
     DCHECK(parent_ != nullptr);
     bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args);
+        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
+            .ok();
     if (!ok) {
       SetError();
       LOG(WARNING) << "parent failed to launch kernel: " << &kernel;

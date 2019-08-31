@@ -37,14 +37,14 @@ class SquareLinearOperatorCompositionTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   def setUp(self):
-    # Increase from 1e-6 to 1e-4
-    self._atol[dtypes.float32] = 1e-4
+    # Increase from 1e-6 to 1e-4 and 2e-4.
+    self._atol[dtypes.float32] = 2e-4
     self._atol[dtypes.complex64] = 1e-4
-    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.float32] = 2e-4
     self._rtol[dtypes.complex64] = 1e-4
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Cholesky not implemented.
     return ["cholesky"]
 

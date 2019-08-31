@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -80,13 +82,13 @@ class ScopedDeviceMemory {
 
   // Releases the memory that was provided in the constructor, through the
   // "parent" StreamExecutor.
-  ~ScopedDeviceMemory() { Free(); }
+  ~ScopedDeviceMemory() { TF_CHECK_OK(Free()); }
 
   // Moves ownership of the memory from other to this object.
   //
   // Postcondition: other == nullptr.
   ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) {
-    Free();
+    TF_CHECK_OK(Free());
     wrapped_ = other.Release();
     allocator_ = other.allocator_;
     device_ordinal_ = other.device_ordinal_;
@@ -132,7 +134,7 @@ class ScopedDeviceMemory {
   int device_ordinal() const { return device_ordinal_; }
 
   // Frees the existing memory, resets the wrapped memory to null.
-  void Free();
+  port::Status Free();
 
  private:
   DeviceMemory<ElemT> wrapped_;       // Value we wrap with scoped-release.
@@ -145,9 +147,10 @@ class ScopedDeviceMemory {
 // Type alias for compatibility with the previous managed memory implementation.
 using OwningDeviceMemory = ScopedDeviceMemory<uint8>;
 
-// Interface for device memory allocators used within the XLA service. An
-// allocator is responsible for allocating memory on all devices of a particular
-// platform.
+// Memory allocator interface for the device.
+//
+// Intended usage is through Allocate() functions which return an owning smart
+// pointer.
 class DeviceMemoryAllocator {
  public:
   // Parameter platform indicates which platform the allocator allocates memory
@@ -184,7 +187,9 @@ class DeviceMemoryAllocator {
     return Allocate(device_ordinal, size, retry_on_failure);
   }
 
-  // Must be a nop for null pointers.
+  // Must be a nop for null pointers. Should not be used.
+  //
+  // TODO(cheshire): Add deprecation notice.
   virtual port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
@@ -192,7 +197,17 @@ class DeviceMemoryAllocator {
 
   // Can we call Deallocate() as soon as a computation has been scheduled on
   // a stream, or do we have to wait for the computation to complete first?
-  virtual bool AllowsAsynchronousDeallocation() const = 0;
+  virtual bool AllowsAsynchronousDeallocation() const { return false; }
+
+  // Returns nullable stream pointer.
+  //
+  // If the pointer is non-null, then it is always safe to access the memory
+  // allocated by the allocator on the returned stream. This condition is not
+  // required though, as streams could be synchronized by other means.
+  //
+  // TODO(cheshire): clean up the interface, it might be cleaner to explicitly
+  // pass the stream to Compiler.
+  virtual Stream *GetStream() const { return nullptr; }
 
  protected:
   const Platform* platform_;
@@ -200,8 +215,6 @@ class DeviceMemoryAllocator {
 
 // Default memory allocator for a platform which uses
 // StreamExecutor::Allocate/Deallocate.
-//
-// Holds a mapping from device ordinals
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   // Create an allocator supporting a single device, corresponding to the passed
@@ -212,8 +225,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   //
   // Precondition: all stream_executors have different device ordinals.
   StreamExecutorMemoryAllocator(
-      const Platform* platform,
-      absl::Span<StreamExecutor* const> stream_executors);
+      const Platform *platform,
+      absl::Span<StreamExecutor *const> stream_executors);
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                               bool retry_on_failure) override;
@@ -228,23 +241,19 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  private:
   port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
-  // A mapping from device ordinals to StreamExecutors, for each device of
-  // the allocator's platform type. If an element does not exist in the
-  // mapping, the device with the respective device ordinal is not supported
-  // by this allocator.
-  std::map<int, StreamExecutor *> stream_executors_;
+  // Available stream executors. Each stream executor has a different device
+  // ordinal.
+  std::vector<StreamExecutor *> stream_executors_;
 };
 
 template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Free() {
+port::Status ScopedDeviceMemory<ElemT>::Free() {
   if (!wrapped_.is_null()) {
-    DCHECK(allocator_ != nullptr);
-    auto status = allocator_->Deallocate(device_ordinal_, wrapped_);
-    if (!status.ok()) {
-      LOG(WARNING) << "Deallocating buffer " << wrapped_.opaque() << " failed";
-    }
+    CHECK(allocator_ != nullptr) << "Owning pointer in inconsistent state";
+    TF_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
   }
   wrapped_ = DeviceMemory<ElemT>{};
+  return port::Status::OK();
 }
 
 }  // namespace stream_executor

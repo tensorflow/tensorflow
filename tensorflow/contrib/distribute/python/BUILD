@@ -1,16 +1,15 @@
 # Implementation of a prototype TF distributed computation library.
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -148,8 +147,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "nomsan",  # TODO(b/130299192)
+        "notap",  # TODO(b/130432997)
     ],
 )
 
@@ -204,6 +206,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/139307796
     ],
 )
 
@@ -271,6 +274,7 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Ignoring due to in contrib.
     deps = [
         ":mirrored_strategy",
         "//tensorflow/python/distribute:tpu_strategy",

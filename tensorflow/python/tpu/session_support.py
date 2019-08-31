@@ -145,12 +145,14 @@ class WorkerHeartbeatManager(object):
 
   # Default timeout is set to allow other shutdown triggered operations (log
   # flushing etc) to finish before terminating the worker.
-  def shutdown(self, wait_time_in_ms=60000):
+  def shutdown(self, wait_time_in_ms=60000, exit_code=None):
     """Shutdown all workers after `shutdown_timeout_secs`."""
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
         watchdog_config=event_pb2.WatchdogConfig(timeout_ms=wait_time_in_ms),
-        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT)
+        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT,
+        exit_code=event_pb2.RequestedExitCode(
+            exit_code=exit_code) if exit_code is not None else None)
     self.configure(req)
 
     # Wait for workers to shutdown.

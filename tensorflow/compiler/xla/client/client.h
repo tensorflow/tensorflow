@@ -42,7 +42,7 @@ class Client {
 
   // Compile the computation with the given argument shapes and returns the
   // handle to the compiled executable. The compiled executable is cached on the
-  // service, and the returned handle can be used for exection without
+  // service, and the returned handle can be used for execution without
   // re-compile.
   // * The shape and layout of the arguments being executed with will affect how
   //   the computation is compiled. If argument_shapes is empty, the parameters'

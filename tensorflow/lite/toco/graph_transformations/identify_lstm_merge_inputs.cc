@@ -169,23 +169,7 @@ namespace toco {
   model->operators.emplace(op_it, std::move(lstm_cell_op));
   AddMessageF("Creating compact LstmCell replacing previous lstm cell");
 
-  // Delete arrays and operators replaced by the LSTM cell operator. Order is
-  // important - DeleteArrayIfUnused() only succeeds if dependent operators
-  // have been removed first. Start at the output and work towards the input.
-  // Erase curr lstm op being replaced.
-  DeleteArrayIfUnused(src_op->inputs[kInputToInputWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kInputToForgetWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kInputToCellWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kInputToOutputWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kRecurrentToInputWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kRecurrentToForgetWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kRecurrentToCellWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kRecurrentToOutputWeightsTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kInputGateBiasTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kForgetGateBiasTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kCellGateBiasTensor], model);
-  DeleteArrayIfUnused(src_op->inputs[kOutputGateBiasTensor], model);
-  model->operators.erase(FindOp(*model, src_op));
+  DeleteOpAndArrays(model, src_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

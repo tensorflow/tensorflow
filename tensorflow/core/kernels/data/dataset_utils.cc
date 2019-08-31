@@ -15,134 +15,35 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/grappler_item_builder.h"
-#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-void AddFakeSinks(FunctionDef* function_def) {
-  int counter = 0;
-  for (const auto& output : function_def->signature().output_arg()) {
-    NodeDef* node = function_def->add_node_def();
-    tensorflow::grappler::function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("FakeSink", counter++), function_def, node);
-    node->set_op("Identity");
-    node->add_input(function_def->ret().at(output.name()));
-    (*node->mutable_attr())["T"].set_type(output.type());
-
-    (*function_def->mutable_ret())[output.name()] =
-        strings::StrCat(node->name(), ":output:0");
-  }
-}
-
-void RemoveFakeSinks(FunctionDef* function_def) {
-  // Map from identity node names to their input tensor strings
-  std::map<string, string> identity_map;
-  for (const auto& node : function_def->node_def()) {
-    if (node.op() == "Identity" && node.input_size() == 1) {
-      identity_map[node.name()] = node.input(0);
-    }
-  }
-  for (const auto& output_arg : function_def->signature().output_arg()) {
-    const string& tensor = function_def->ret().at(output_arg.name());
-    const string& output_node = tensor.substr(0, tensor.find(':'));
-    if (identity_map.find(output_node) != identity_map.end()) {
-      (*function_def->mutable_ret())[output_arg.name()] =
-          identity_map.at(output_node);
-    }
-  }
-}
-
-Status ApplyRewrites(OpKernelContext* ctx,
-                     const std::function<RewriterConfig(void)> config_factory,
-                     bool optimize_function_library, GraphDef* graph_def,
-                     string* output_node) {
-  // Add an identity node as the fetch node, otherwise we might get 'placeholder
-  // is both fed and fetched' errors in some cases when using input list with
-  // placeholder dataset nodes.
-  NodeDef* node = graph_def->mutable_node()->Add();
-  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
-                                                            node);
-  node->set_op("Identity");
-  node->add_input(*output_node);
-  (*node->mutable_attr())["T"].set_type(DT_VARIANT);
-  *output_node = node->name();
-
-  // Add fake sink node to graph and functions to allow rewriting the actual
-  // sink nodes.
-  //
-  // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals
-  // to be optimizable, we will no longer need this.
-  for (auto& function_def : *graph_def->mutable_library()->mutable_function()) {
-    AddFakeSinks(&function_def);
-  }
-
-  // Create metagraph.
-  MetaGraphDef meta_graph_def;
-  (*meta_graph_def.mutable_graph_def()) = *graph_def;
-
-  // Grappler determines fetch ops from collection 'train_op'.
-  CollectionDef collection_def;
-  auto node_list = collection_def.mutable_node_list();
-  node_list->add_value(*output_node);
-  (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
-
-  // Create Grappler item.
-  tensorflow::grappler::ItemConfig item_config;
-  item_config.apply_optimizations = true;
-  std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      tensorflow::grappler::GrapplerItemFromMetaGraphDef(
-          "graph", meta_graph_def, item_config);
-  grappler_item->optimization_options().optimize_function_library =
-      optimize_function_library;
-  std::unordered_map<string, tensorflow::DeviceProperties> device_map;
-  tensorflow::grappler::VirtualCluster cluster(device_map);
-
-  // Run data optimizer using grappler's meta optimizer.
-  tensorflow::ConfigProto config;
-  *config.mutable_graph_options()->mutable_rewrite_options() = config_factory();
-  TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      *grappler_item, config, ctx->device(), &cluster, graph_def));
-
-  // Remove fake sinks after optimizations are done.
-  //
-  // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals
-  // to be optimizable, we will no longer need this.
-  for (auto& function_def : *graph_def->mutable_library()->mutable_function()) {
-    RemoveFakeSinks(&function_def);
-  }
-
-  return Status::OK();
-}
+constexpr char kDelimiter[] = "@@";
 
 }  // anonymous namespace
 
 Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def) {
+  if (serialization_ctx.check_external_state()) {
+    TF_RETURN_IF_ERROR(dataset->CheckExternalState());
+  }
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);
   Node* output_node = nullptr;
   TF_RETURN_IF_ERROR(
       db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
-  // represents this Dataset.
+  // Insert a purely symbolic _Retval node to indicate to consumers which node
+  // represents `dataset`.
   ops::UnaryOp("_Retval", output_node,
                b.opts()
                    .WithName("dataset")
@@ -152,54 +53,20 @@ Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
   return Status::OK();
 }
 
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
-  std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.optimization_only = true;
-  SerializationContext serialization_ctx(params);
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
-
-  string output_node;
-  for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      output_node = node.input(0);
+Status ConnectCancellationManagers(CancellationManager* parent,
+                                   CancellationManager* child,
+                                   std::function<void()>* deregister_fn) {
+  if (parent) {
+    CancellationToken token = parent->get_cancellation_token();
+    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
+      return errors::Cancelled("Operation was cancelled");
     }
+    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
+  } else {
+    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
+               "not be propagated to the child cancellation manager.";
+    *deregister_fn = []() {};
   }
-
-  VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
-  VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
-
-  // Instantiate the optimized input pipeline by running the optimized graph
-  // using the optimized function library.
-  FunctionLibraryRuntime* flr = nullptr;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr = nullptr;
-  std::unique_ptr<FunctionLibraryDefinition> lib_def = nullptr;
-  TF_RETURN_IF_ERROR(
-      ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
-
-  // Some functions may have been modified without having their names
-  // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave).
-  TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
-
-  Graph graph(OpRegistry::Global());
-  TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
-  std::vector<Tensor> outputs;
-  GraphRunner graph_runner(flr->device());
-
-  TF_RETURN_IF_ERROR(
-      graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
-  (*rewritten_input)->Ref();
   return Status::OK();
 }
 
@@ -240,12 +107,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
-namespace {
-
-constexpr char kDelimiter[] = "@@";
-
-}  // namespace
-
 VariantTensorDataReader::VariantTensorDataReader(
     const tensorflow::VariantTensorData* data)
     : data_(data) {
@@ -261,7 +122,7 @@ Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key, tstring* val) {
   return ReadScalarInternal(key, val);
 }
 
@@ -296,7 +157,7 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
-                                            const string& val) {
+                                            const tstring& val) {
   return WriteScalarInternal(key, val);
 }
 

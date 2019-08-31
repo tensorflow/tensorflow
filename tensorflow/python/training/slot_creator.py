@@ -40,7 +40,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.eager import context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -110,12 +109,12 @@ def create_slot(primary, val, name, colocate_with_primary=True):
     A `Variable` object.
   """
   # Scope the slot name in the namespace of the primary variable.
-  # Set "primary.op.name + '/' + name" as default name, so the scope name of
+  # Set primary's name + '/' + name as default name, so the scope name of
   # optimizer can be shared when reuse is True. Meanwhile when reuse is False
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
   validate_shape = val.get_shape().is_fully_defined()
-  if context.executing_eagerly():
+  if isinstance(primary, variables.Variable):
     prefix = primary._shared_name  # pylint: disable=protected-access
   else:
     prefix = primary.op.name
@@ -152,7 +151,7 @@ def create_slot_with_initializer(primary, initializer, shape, dtype, name,
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
   validate_shape = shape.is_fully_defined()
-  if context.executing_eagerly():
+  if isinstance(primary, variables.Variable):
     prefix = primary._shared_name  # pylint: disable=protected-access
   else:
     prefix = primary.op.name

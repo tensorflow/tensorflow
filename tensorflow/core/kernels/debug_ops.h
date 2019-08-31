@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
 #ifdef TENSORFLOW_USE_SYCL
@@ -69,7 +69,7 @@ class CopyOp : public OpKernel {
       OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
                                                        &copied_tensor));
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
       bool off_host_input = device->device_type() == DEVICE_GPU &&

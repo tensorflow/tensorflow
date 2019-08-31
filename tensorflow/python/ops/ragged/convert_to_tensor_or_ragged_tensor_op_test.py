@@ -26,13 +26,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedConvertToTensorOrRaggedTensorTest(
-    ragged_test_util.RaggedTensorTestCase, parameterized.TestCase):
+class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
+                                              parameterized.TestCase):
 
   #=============================================================================
   # Tests where the 'value' param is a RaggedTensor
@@ -126,7 +125,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(
         value, dtype, preferred_dtype)
     self.assertEqual(value.ragged_rank, converted.ragged_rank)
     self.assertEqual(dtypes.as_dtype(expected_dtype), converted.dtype)
-    self.assertEqual(value.to_list(), self.eval_to_list(converted))
+    self.assertAllEqual(value, converted)
 
   @parameterized.parameters([
       dict(

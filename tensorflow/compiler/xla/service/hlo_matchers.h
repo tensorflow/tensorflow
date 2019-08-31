@@ -167,6 +167,27 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
   int64 rhs_contracting_dim_;
 };
 
+// Custom matcher for asynchronous copy (CopyStart/CopyDone pair) with specified
+// source and destination memory spaces.
+class HloAsyncCopyMatcher : public HloMatcher {
+ public:
+  HloAsyncCopyMatcher(int64 to_space, int64 from_space,
+                      ::testing::Matcher<const HloInstruction*> operand)
+      : HloMatcher(HloOpcode::kCopyDone,
+                   {::testing::MakeMatcher(
+                       new HloMatcher(HloOpcode::kCopyStart, {operand}))}),
+        to_space_(to_space),
+        from_space_(from_space) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  int64 to_space_;
+  int64 from_space_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -194,6 +215,8 @@ HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
+HLO_MATCHER(CopyDone);
+HLO_MATCHER(CopyStart);
 HLO_MATCHER(AllReduce);
 HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);
@@ -411,6 +434,16 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Dot(
   return ::testing::MakeMatcher(
       new ::xla::testing::HloDotWithContractingDimsMatcher(
           lhs_matcher, rhs_matcher, lhs_contracting_dim, rhs_contracting_dim));
+}
+
+// Matcher for asynchronous copies from one memory space to another. Implies
+// CopyDone(CopyStart(...)) where from_space and to_space is the source and
+// destination memory spaces, respectively.
+inline ::testing::Matcher<const ::xla::HloInstruction*> AsyncCopy(
+    int64 to_space, int64 from_space,
+    ::testing::Matcher<const HloInstruction*> operand_matcher) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloAsyncCopyMatcher(
+      to_space, from_space, operand_matcher));
 }
 
 #undef HLO_MATCHER

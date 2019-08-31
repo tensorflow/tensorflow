@@ -200,5 +200,33 @@ TEST(SplitVOpTest, TwoDimensionalInt16) {
       {{1, 2, 3}, {4, 5, 6}, {7, 8, 9, 10, 11, 12}});
 }
 
+TEST(SplitVOpTest, TwoDimensionalInt32) {
+  // Input shape: {4, 3}
+  // size_splits: {1, 1, 2}
+  // axis: 0
+  // We should have 3 outpus with shapes respectively:
+  //  output 1 : {1, 3}
+  //  output 2 : {1, 3}
+  //  output 3 : {2, 3}
+  Check<int32_t, TensorType_INT32>(
+      /*axis=*/0, {4, 3}, {3}, {{1, 3}, {1, 3}, {2, 3}},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 2},
+      {{1, 2, 3}, {4, 5, 6}, {7, 8, 9, 10, 11, 12}});
+}
+
+TEST(SplitVOpTest, TwoDimensionalInt64) {
+  // Input shape: {4, 3}
+  // size_splits: {1, 1, 2}
+  // axis: 0
+  // We should have 3 outpus with shapes respectively:
+  //  output 1 : {1, 3}
+  //  output 2 : {1, 3}
+  //  output 3 : {2, 3}
+  Check<int64_t, TensorType_INT64>(
+      /*axis=*/0, {4, 3}, {3}, {{1, 3}, {1, 3}, {2, 3}},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 2},
+      {{1, 2, 3}, {4, 5, 6}, {7, 8, 9, 10, 11, 12}});
+}
+
 }  // namespace
 }  // namespace tflite

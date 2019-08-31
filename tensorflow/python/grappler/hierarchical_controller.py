@@ -883,7 +883,7 @@ class HierarchicalController(Controller):
                                                  actions.read(i - 1))
       )
       if self.hparams.keep_prob is not None:
-        signal = nn_ops.dropout(signal, self.hparams.keep_prob)
+        signal = nn_ops.dropout(signal, rate=(1 - self.hparams.keep_prob))
       next_c, next_h = lstm(signal, prev_c, prev_h, w_lstm, forget_bias)
       query = math_ops.matmul(next_h, attn_w_2)
       query = array_ops.reshape(

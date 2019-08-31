@@ -191,7 +191,7 @@ struct LaunchConv2DBackpropFilterOp {
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -211,7 +211,7 @@ struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
                   const std::vector<int64>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Information about a single spatial dimension for a convolution
 // backpropagation.

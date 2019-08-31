@@ -1,14 +1,14 @@
 # Description:
 #   Optimization routines.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "opt_py",
@@ -233,8 +233,6 @@ py_test(
 py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",

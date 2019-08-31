@@ -84,7 +84,9 @@ static constexpr int kMaxAuxiliaryParameterCount = 3;
 // not no-ops on zero gradients, so we need to distinguish an accumulated
 // gradient of zero from one that has been cleared after its gradients have
 // already been applied to the parameters and accumulators.
-const float kGradientAccumulatorInitialValue = absl::bit_cast<float, uint32>(1);
+inline float GradientAccumulatorInitialValue() {
+  return absl::bit_cast<float, uint32>(1);
+}
 
 // Computes registration data for per table load Op. Each load Op transfers
 // the embedding parameters from the host memory to the TPU memory.
@@ -99,7 +101,7 @@ Status RegisterPerTableRetrieveOpsForAlgorithmBody(
     OpRegistrationData *op_reg_data);
 
 // Returns whether an optimization algorithm is only supported internally.
-// Returns an error if the algorithm is not recongized at all.
+// Returns an error if the algorithm is not recognized at all.
 Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
                                        bool *internal);
 

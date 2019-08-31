@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -139,19 +140,19 @@ class BigtableTableOp : public OpKernel {
       ResourceMgr* mgr = ctx->resource_manager();
       OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
 
-      BigtableClientResource* client_resource;
+      core::RefCountPtr<BigtableClientResource> client_resource;
       OP_REQUIRES_OK(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &client_resource));
-      core::ScopedUnref unref_client(client_resource);
 
       BigtableTableResource* resource;
-      OP_REQUIRES_OK(
-          ctx, mgr->LookupOrCreate<BigtableTableResource>(
-                   cinfo_.container(), cinfo_.name(), &resource,
-                   [this, client_resource](BigtableTableResource** ret) {
-                     *ret = new BigtableTableResource(client_resource, table_);
-                     return Status::OK();
-                   }));
+      OP_REQUIRES_OK(ctx,
+                     mgr->LookupOrCreate<BigtableTableResource>(
+                         cinfo_.container(), cinfo_.name(), &resource,
+                         [this, &client_resource](BigtableTableResource** ret) {
+                           *ret = new BigtableTableResource(
+                               client_resource.get(), table_);
+                           return Status::OK();
+                         }));
       initialized_ = true;
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
@@ -213,8 +214,8 @@ class ToBigtableOp : public AsyncOpKernel {
       std::vector<string> columns;
       columns.reserve(column_families_tensor->NumElements());
       for (uint64 i = 0; i < column_families_tensor->NumElements(); ++i) {
-        column_families.push_back(column_families_tensor->flat<string>()(i));
-        columns.push_back(columns_tensor->flat<string>()(i));
+        column_families.push_back(column_families_tensor->flat<tstring>()(i));
+        columns.push_back(columns_tensor->flat<tstring>()(i));
       }
 
       DatasetBase* dataset;
@@ -236,10 +237,9 @@ class ToBigtableOp : public AsyncOpKernel {
                         errors::InvalidArgument("timestamp must be >= -1"),
                         done);
 
-      BigtableTableResource* resource;
+      core::RefCountPtr<BigtableTableResource> resource;
       OP_REQUIRES_OK_ASYNC(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &resource), done);
-      core::ScopedUnref resource_cleanup(resource);
 
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
@@ -317,7 +317,7 @@ class ToBigtableOp : public AsyncOpKernel {
           "Iterator produced a set of Tensors shorter than expected");
     }
     ::google::cloud::bigtable::SingleRowMutation mutation(
-        std::move(tensors[0].scalar<string>()()));
+        std::move(tensors[0].scalar<tstring>()()));
     std::chrono::milliseconds timestamp(timestamp_int);
     for (size_t i = 1; i < tensors.size(); ++i) {
       if (!TensorShapeUtils::IsScalar(tensors[i].shape())) {
@@ -326,11 +326,11 @@ class ToBigtableOp : public AsyncOpKernel {
       if (timestamp_int == -1) {
         mutation.emplace_back(::google::cloud::bigtable::SetCell(
             column_families[i - 1], columns[i - 1],
-            std::move(tensors[i].scalar<string>()())));
+            std::move(tensors[i].scalar<tstring>()())));
       } else {
         mutation.emplace_back(::google::cloud::bigtable::SetCell(
             column_families[i - 1], columns[i - 1], timestamp,
-            std::move(tensors[i].scalar<string>()())));
+            std::move(tensors[i].scalar<tstring>()())));
       }
     }
     bulk_mutation->emplace_back(std::move(mutation));

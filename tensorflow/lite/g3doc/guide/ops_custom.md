@@ -19,7 +19,7 @@ Using custom operators consists of three steps.
     respectively. If you wish to test just your custom operator it is best to
     create a model with just your custom operator and using the
     [benchmark_model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/benchmark/benchmark_model_test.cc)
-    proggram
+    program
 
 Below we describe a complete example of defining Sin and some links to existing
 conversion process involving custom operators.

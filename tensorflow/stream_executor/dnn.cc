@@ -27,6 +27,14 @@ uint64 AlgorithmDesc::hash() const {
   return absl::Hash<decltype(p)>()(p);
 }
 
+string AlgorithmDesc::ToString() const {
+  if (tensor_ops_enabled()) {
+    return absl::StrCat(algo_id(), "#TC");
+  } else {
+    return absl::StrCat(algo_id());
+  }
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
@@ -223,15 +231,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  AlgorithmDesc::Index algo_id = -1;
+  string algo = "none";
   if (algorithm().has_value()) {
-    algo_id = algorithm()->algo_id();
+    algo = algorithm()->ToString();
   }
-  AlgorithmDesc::Index algo_id_no_scratch = -1;
+  string algo_no_scratch = "none";
   if (algorithm_no_scratch().has_value()) {
-    algo_id_no_scratch = algorithm_no_scratch()->algo_id();
+    algo_no_scratch = algorithm_no_scratch()->ToString();
   }
-  return absl::StrCat(algo_id, ", ", algo_id_no_scratch);
+  return absl::StrCat(algo, ", ", algo_no_scratch);
 }
 
 // -- BatchDescriptor
@@ -284,7 +292,7 @@ void BatchDescriptor::CloneFrom(const BatchDescriptor& other) {
 string BatchDescriptor::ToString() const {
   string spatial;
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&spatial, "%d ", spatial_size()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", spatial_size()[i]);
   }
   return absl::StrFormat(
       "{count: %d feature_map_count: %d spatial: %s "
@@ -302,7 +310,7 @@ string BatchDescriptor::ToShortString() const {
 
   string spatial = "s";
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&spatial, "%d ", spatial_size()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", spatial_size()[i]);
   }
 
   string suffix;
@@ -401,7 +409,7 @@ string FilterDescriptor::ToString() const {
       output_feature_map_count(), input_feature_map_count(),
       FilterLayoutString(layout()));
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&desc, "%d ", input_filter_dims()[i]);
+    absl::StrAppendFormat(&desc, "%d ", input_filter_dims()[i]);
   }
   absl::StrAppend(&desc, "}");
 
@@ -417,7 +425,7 @@ string FilterDescriptor::ToShortString() const {
 
   string spatial = "s";
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&spatial, "%d ", input_filter_dims()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", input_filter_dims()[i]);
   }
 
   switch (layout()) {
@@ -471,9 +479,9 @@ string ConvolutionDescriptor::ToString() const {
   string strides;
   string dilations;
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&padding, "%d ", this->padding()[i]);
-    absl::StrAppend(&strides, "%d ", this->strides()[i]);
-    absl::StrAppend(&dilations, "%d ", this->dilations()[i]);
+    absl::StrAppendFormat(&padding, "%d ", this->padding()[i]);
+    absl::StrAppendFormat(&strides, "%d ", this->strides()[i]);
+    absl::StrAppendFormat(&dilations, "%d ", this->dilations()[i]);
   }
 
   return absl::StrFormat(
@@ -486,13 +494,13 @@ string ConvolutionDescriptor::ToShortString() const {
   string desc;
   for (int i = 0; i < ndims(); i++) {
     if (i > 0) absl::StrAppend(&desc, "_");
-    absl::StrAppend(&desc, "p%d:%d", i, padding()[i]);
+    absl::StrAppendFormat(&desc, "p%d:%d", i, padding()[i]);
   }
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&desc, "_s%d:%d", i, strides()[i]);
+    absl::StrAppendFormat(&desc, "_s%d:%d", i, strides()[i]);
   }
   for (int i = 0; i < ndims(); i++) {
-    absl::StrAppend(&desc, "_d%d:%d", i, dilations()[i]);
+    absl::StrAppendFormat(&desc, "_d%d:%d", i, dilations()[i]);
   }
   return desc;
 }
@@ -524,9 +532,9 @@ string PoolingDescriptor::ToString() const {
 
   string window, strides, padding;
   for (int i = 0; i < ndims_; i++) {
-    absl::StrAppend(&window, "%d ", window_[i]);
-    absl::StrAppend(&strides, "%d ", strides_[i]);
-    absl::StrAppend(&padding, "%d", padding_[i]);
+    absl::StrAppendFormat(&window, "%d ", window_[i]);
+    absl::StrAppendFormat(&strides, "%d ", strides_[i]);
+    absl::StrAppendFormat(&padding, "%d", padding_[i]);
   }
 
   const char* propagate_string = propagate_nans_ ? "Yes" : "No";
@@ -539,9 +547,9 @@ string PoolingDescriptor::ToString() const {
 string PoolingDescriptor::ToShortString() const {
   string window, strides, padding;
   for (int i = 0; i < ndims_; i++) {
-    absl::StrAppend(&window, "_w%d:%d", i, window_[i]);
-    absl::StrAppend(&strides, "_s%d:%d", i, strides_[i]);
-    absl::StrAppend(&padding, "_p%d:%d", i, padding_[i]);
+    absl::StrAppendFormat(&window, "_w%d:%d", i, window_[i]);
+    absl::StrAppendFormat(&strides, "_s%d:%d", i, strides_[i]);
+    absl::StrAppendFormat(&padding, "_p%d:%d", i, padding_[i]);
   }
   return absl::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
                       window, strides, padding,

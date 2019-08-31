@@ -125,7 +125,7 @@ class StatsAggregatorV1(object):
 
   def __init__(self):
     """Creates a `StatsAggregator`."""
-    self._resource = ged_ops.experimental_stats_aggregator_handle()
+    self._resource = ged_ops.stats_aggregator_handle()
 
   def get_summary(self):
     """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
@@ -137,7 +137,7 @@ class StatsAggregatorV1(object):
     Returns:
       A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
-    return ged_ops.experimental_stats_aggregator_summary(self._resource)
+    return ged_ops.stats_aggregator_summary(self._resource)
 
 
 # TODO(b/116314787): Change this to StatsAggregatorV2 when we have stable

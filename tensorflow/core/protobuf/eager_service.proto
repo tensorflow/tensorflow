@@ -8,14 +8,8 @@ import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/versions.proto";
+import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
-
-message RemoteTensorHandle {
-  // The ID of the operation that produced this tensor.
-  int64 op_id = 1;
-  // The index into the outputs of the operation that produced this tensor.
-  int32 output_num = 2;
-}
 
 // A proto representation of an eager operation.
 message Operation {
@@ -44,6 +38,7 @@ message QueueItem {
   oneof item {
     RemoteTensorHandle handle_to_decref = 1;
     Operation operation = 2;
+    SendTensorOp send_tensor = 3;
   }
 }
 
@@ -67,23 +62,25 @@ message CreateContextRequest {
   // This is the version for all the ops that will be enqueued by the client.
   VersionDef version_def = 4;
 
-  // This ID will be used for all future communications. It is essential that
-  // both ends use this ID for selecting a rendezvous to get everything to
-  // match.
-  int64 rendezvous_id = 5;
-
   // Device attributes in the cluster
   repeated DeviceAttributes cluster_device_attributes = 6;
-}
 
-message CreateContextResponse {
   // The ID of the created context. This is usually a randomly generated number,
   // that will be used to identify the context in future requests to the
   // service. Contexts are not persisted through server restarts.
-  fixed64 context_id = 1;
+  // This ID will be used for all future communications as well. It is essential
+  // that both ends use this ID for selecting a rendezvous to get everything to
+  // match.
+  fixed64 context_id = 7;
 
+  reserved 5;
+}
+
+message CreateContextResponse {
   // List of devices that are locally accessible to the worker.
   repeated DeviceAttributes device_attributes = 2;
+
+  reserved 1;
 }
 
 message EnqueueRequest {
@@ -128,6 +125,19 @@ message RegisterFunctionRequest {
 }
 
 message RegisterFunctionResponse {}
+
+message SendTensorOp {
+  // All remote tensors are identified by <Op ID, Output num>. To mimic this
+  // situation when directly sending tensors, we include an "artificial" op ID
+  // (which would have corresponded to the _Recv op when not using SendTensor).
+  int64 op_id = 1;
+  // The index within the repeated field is the output number that will help
+  // uniquely identify (along with the above op_id) the particular tensor.
+  repeated TensorProto tensors = 2;
+
+  // The device on which the tensors should be resident.
+  string device_name = 3;
+}
 
 message SendTensorRequest {
   fixed64 context_id = 1;
@@ -176,6 +186,14 @@ service EagerService {
   // future calls to Enqueue.
   rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
 
+  // A streaming version of Enqueue.
+  // Current server implementation sends one response per received request.
+  // The benefit for using a streaming version is that subsequent requests
+  // can be sent without waiting for a response to the previous request. This
+  // synchronization is required in the regular Enqueue call because gRPC does
+  // not guarantee to preserve request order.
+  rpc StreamingEnqueue(stream EnqueueRequest) returns (stream EnqueueResponse);
+
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.
   rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse);
@@ -193,7 +211,10 @@ service EagerService {
   rpc RegisterFunction(RegisterFunctionRequest)
       returns (RegisterFunctionResponse);
 
+  // TODO(fishx): Remove this method.
   // An RPC to push tensors to the server. At times, certain environments don't
   // allow the server to connect back to the client.
-  rpc SendTensor(SendTensorRequest) returns (SendTensorResponse);
+  rpc SendTensor(SendTensorRequest) returns (SendTensorResponse) {
+    option deprecated = true;
+  }
 }

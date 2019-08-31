@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Need to #include Eigen's Tensor class first because Eigen/CXX11/FixedPoint
+// depends on the file but doesn't include it. This breaks compilation on
+// clang.
+// clang-format off
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+// clang-format on
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #include "tensorflow/core/platform/test.h"
@@ -146,12 +152,13 @@ TEST(EigenMkldnnTest, MkldnnGemm) {
   }
 }
 
-TEST(EigenMkldnnTest, MkldnnGemmQInt8) {
+TEST(EigenMkldnnTest, MkldnnGemmQInt8xQUInt8) {
   // Mkldnn pack and gemm are used only in Tensor contractions, and it's
   // guaranteed that Tensors will have ColMajor layout.
   static const int Options = ColMajor;
 
   using Tensor2dQInt8 = Eigen::Tensor<Eigen::QInt8, 2, Options, Index>;
+  using Tensor2dQUInt8 = Eigen::Tensor<Eigen::QUInt8, 2, Options, Index>;
   using Tensor2dQInt32 = Eigen::Tensor<Eigen::QInt32, 2, Options, Index>;
 
   int m = internal::random<int>(1, 1000);
@@ -161,8 +168,11 @@ TEST(EigenMkldnnTest, MkldnnGemmQInt8) {
   Tensor2dQInt8 lhs(m, k);
   lhs.setRandom();
 
-  Tensor2dQInt8 rhs(k, n);
+  Tensor2dQUInt8 rhs(k, n);
   rhs.setRandom();
+  // NOTE: 's8*u8 + s8*u8 -> s16' saturation might lead to incorrect results. In
+  // practice in FusedConv2DBiasActivationKernel we use 7 bit inputs.
+  rhs = rhs.clip(0, 127);
 
   Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
   contract_dims[0].first = 1;

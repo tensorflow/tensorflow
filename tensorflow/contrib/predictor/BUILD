@@ -1,12 +1,13 @@
 # `Predictor` classes provide an interface for efficient, repeated inference.
 
-package(default_visibility = ["//tensorflow/contrib/predictor:__subpackages__"])
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow/contrib/predictor:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "predictor",

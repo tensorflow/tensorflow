@@ -25,11 +25,12 @@ import re
 
 import numpy as np
 
-from tensorflow.contrib.compiler import jit
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -211,7 +212,7 @@ class XLATestCase(test.TestCase):
       A session to use when running a test case.
     """
     graph = ops.Graph()
-    config = config_pb2.ConfigProto()
+    config = context.context().config
 
     # Grappler can constant fold TensorListFromTensor ops into DT_VARIANT
     # constants which XLA does not understand.  So disable constant folding in

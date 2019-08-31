@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 # Pin to Java 1.7 to ensure broader compatibility for the Java bindings on
 # Android. Note also that the android_library bazel rule currently enforces
 # java 7

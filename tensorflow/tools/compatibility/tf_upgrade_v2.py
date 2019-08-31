@@ -78,6 +78,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         # },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
+            "hash_table_shared_name": None,
         },
         "tf.autograph.to_code": {
             "arg_types": None,
@@ -628,6 +629,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.train.sdca_fprint",
         "tf.train.sdca_optimizer",
         "tf.train.sdca_shrink_l1",
+        "tf.data.experimental.TensorStructure",
+        "tf.data.experimental.SparseTensorStructure",
+        "tf.data.experimental.RaggedTensorStructure",
+        "tf.data.experimental.TensorArrayStructure",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -682,6 +687,14 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "`tf.keras.layers.LayerNormalization` in TensorFlow 2.0. "
         "Note that, the default value of `epsilon` is changed to `1e-3` in the "
         "new API from `1e-12`, and this may introduce numerical differences. "
+        "Please check the new API and use that instead."
+    )
+
+    contrib_estimator_head_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.estimator.*_head` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.estimator.*Head` in TensorFlow 2.0. "
         "Please check the new API and use that instead."
     )
 
@@ -891,6 +904,20 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             assert_rank_comment,
         "tf.contrib.layers.layer_norm":
             contrib_layers_layer_norm_comment,
+        "tf.contrib.estimator.binary_classification_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.logistic_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_class_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_label_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.poisson_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.regression_head":
+            contrib_estimator_head_comment,
         "tf.contrib.summary.all_summary_ops":
             contrib_summary_comment,
         "tf.contrib.summary.audio":
@@ -973,6 +1000,12 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             deprecate_partition_strategy_comment,
         "tf.nn.sampled_softmax_loss":
             deprecate_partition_strategy_comment,
+        "tf.keras.estimator.model_to_estimator":
+            (ast_edits.WARNING,
+             "Estimators from <function name> will save object-based "
+             "checkpoints (format used by `keras_model.save_weights` and "
+             "`keras_model.load_weights`) by default in 2.0. To continue "
+             "saving name-based checkpoints, set `checkpoint_format='saver'`."),
         "tf.keras.initializers.Zeros":
             initializers_no_dtype_comment,
         "tf.keras.initializers.zeros":
@@ -1176,6 +1209,15 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.text": summary_api_comment,
     }
 
+    for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
+      warning = (
+          ast_edits.WARNING, (
+              "(Manual edit required) `{}` has been migrated to `{}` in "
+              "TensorFlow Addons. The API spec may have changed during the "
+              "migration. Please see https://github.com/tensorflow/addons "
+              "for more info.").format(symbol, replacement))
+      self.function_warnings[symbol] = warning
+
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
         "tf.nn.conv1d": {
@@ -1327,6 +1369,16 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     #   may get messy)
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
+    canned_estimator_msg_optimizer = (
+        "tf.keras.optimizers.* only, so the call was converted to compat.v1. "
+        "Please note that tf.train.Optimizers have one-to-one correspondents "
+        "in tf.keras.optimizers, so you may be able to convert to the new "
+        "optimizers directly (See https://www.tensorflow.org/api_docs/python"
+        "/tf/keras/optimizers). Checkpoint compatibility is not guaranteed, "
+        "but there is a checkpoint converter tool that you can use.")
+    canned_estimator_msg = (
+        "no longer takes `input_layer_partitioner` arg, and it supports "
+        + canned_estimator_msg_optimizer)
     self.function_transformers = {
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
@@ -1351,10 +1403,31 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         # TODO(b/129398290)
         # "tf.string_split": _string_split_transformer,
         "tf.strings.split": _string_split_rtype_transformer,
-        "tf.estimator.DNNEstimator":
+        "tf.estimator.BaselineEstimator":
             functools.partial(
                 _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
+                arg_name="optimizer",
+                message=("tf.estimator.BaselineEstimator supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["optimizer"],
+                message=("tf.estimator.BaselineClassifier supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message=("tf.estimator.BaselineRegressor supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.DNNEstimator":
+            functools.partial(
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
                 message="tf.estimator.DNNEstimator no longer takes "
                 "input_layer_partitioner, so the call was converted to "
                 "compat.v1."
@@ -1362,66 +1435,62 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.estimator.DNNClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.DNNRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.LinearEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearEstimator no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearEstimator " + canned_estimator_msg,
             ),
         "tf.estimator.LinearClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.LinearRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.DNNLinearCombinedEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedEstimator no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedEstimator "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedClassifier no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedClassifier "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedRegressor no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedRegressor "
+                         + canned_estimator_msg),
             ),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
@@ -1457,6 +1526,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "'merge_repeated' argument and behaves as if merge_repeated=False. "
             "This call site specifies something other than "
             "merge_repeated=False, so it was converted to compat.v1."),
+        "tf.nn.dilation2d": functools.partial(
+            _add_argument_transformer,
+            arg_name="data_format",
+            arg_value_ast=ast.Str("NHWC")),
         "tf.nn.erosion2d": functools.partial(
             _add_argument_transformer,
             arg_name="data_format",
@@ -1480,8 +1553,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             _contrib_layers_xavier_initializer_transformer,
         "tf.contrib.layers.variance_scaling_initializer":
             _contrib_layers_variance_scaling_initializer_transformer,
-        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
-        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
         "tf.initializers.uniform_unit_scaling":
             _add_uniform_scaling_initializer_transformer,
         "tf.uniform_unit_scaling_initializer":
@@ -1957,7 +2028,7 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
 
   Default value for tf.estimator.*Classifier and tf.estimator.*Regressor
   loss_reduction argument changed to SUM_OVER_BATCH_SIZE. So, we update
-  existing calls to use the old default value `tf.losses.Reduction.SUM`.
+  existing calls to use the old default value `tf.keras.losses.Reduction.SUM`.
 
   Note: to apply this transformation, symbol must be added
   to reordered_function_names above.
@@ -1965,9 +2036,7 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
   for keyword_arg in node.keywords:
     if keyword_arg.arg == "loss_reduction":
       return node
-  # TODO(annarev): this should be updated to tf.keras.losses.Reduction.SUM
-  # once b/125525822 is fixed.
-  default_value = "tf.compat.v1.losses.Reduction.SUM"
+  default_value = "tf.keras.losses.Reduction.SUM"
   # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
   ast_value = pasta.parse(default_value)
   node.keywords.append(ast.keyword(arg="loss_reduction", value=ast_value))
@@ -1979,13 +2048,52 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
   return node
 
 
+def _rename_if_any_arg_found_transformer(
+    parent,
+    node,
+    full_name,
+    name,
+    logs,
+    arg_names=None,
+    arg_ok_predicate=None,
+    remove_if_ok=False,
+    message=None):
+  """Replaces the given call with tf.compat.v1 if any of the arg_names is found.
+
+  Args:
+    parent: Parent of node.
+    node: ast.Call node to modify.
+    full_name: full name of function to modify.
+    name: name of function to modify.
+    logs: list of logs to append to.
+    arg_names: list of names of the argument to look for.
+    arg_ok_predicate: predicate callable with the ast of the argument value,
+      returns whether the argument value is allowed.
+    remove_if_ok: remove the argument if present and ok as determined by
+      arg_ok_predicate.
+    message: message to print if a non-ok arg is found (and hence, the function
+      is renamed to its compat.v1 version).
+
+  Returns:
+    node, if it was modified, else None.
+  """
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node,
+                                                   full_name, name, logs,
+                                                   arg_name, arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
+
+  return node
+
+
 def _rename_if_arg_found_and_add_loss_reduction_transformer(
     parent,
     node,
     full_name,
     name,
     logs,
-    arg_name=None,
+    arg_names=None,
     arg_ok_predicate=None,
     remove_if_ok=False,
     message=None):
@@ -1997,7 +2105,7 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     full_name: full name of function to modify
     name: name of function to modify
     logs: list of logs to append to
-    arg_name: name of the argument to look for
+    arg_names: list of names of the argument to look for
     arg_ok_predicate: predicate callable with the ast of the argument value,
       returns whether the argument value is allowed.
     remove_if_ok: remove the argument if present and ok as determined by
@@ -2009,13 +2117,15 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     node, if it was modified, else None.
   """
 
-  add_loss_node = _add_loss_reduction_transformer(parent, node, full_name, name,
-                                                  logs)
-  rename_node = _rename_if_arg_found_transformer(
-      parent, add_loss_node, full_name, name, logs, arg_name, arg_ok_predicate,
-      remove_if_ok, message)
+  node = _add_loss_reduction_transformer(parent, node, full_name, name, logs)
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node, full_name,
+                                                   name, logs, arg_name,
+                                                   arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
 
-  return rename_node
+  return node
 
 
 def _add_uniform_scaling_initializer_transformer(

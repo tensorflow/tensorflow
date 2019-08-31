@@ -54,6 +54,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertMatrixDiagV2ToV1);
+  transformations->Add(new ConvertMatrixSetDiagV2ToV1);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialPackToReshape);
@@ -65,6 +67,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new PropagateActivationFunctionIntoConstants);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
+  transformations->Add(new RemoveSuccesiveTranspose);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
@@ -102,6 +105,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyHardSwish);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -429,12 +433,25 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   CheckModelCounts(*model);
   CheckFinalDataTypesSatisfied(*model);
 
-  int64 ops_count;
+  // Estimate and log the number of arithmetic ops
+  int64 ops_count = 0;
   if (EstimateArithmeticOpsCount(*model, &ops_count)) {
-    LOG(INFO) << "Estimated count of arithmetic ops: " << 1e-9 * ops_count
-              << " billion (note that a multiply-add is counted as 2 ops).";
+    LOG(INFO) << "Estimated count of arithmetic ops: " << ops_count
+              << " ops, equivalently " << ops_count / 2 << " MACs";
   }
   model->ops_count = ops_count;
+  int64 params_count = 0;
+
+  // Compute and log the number of parameters
+  for (const auto& array_pair : model->GetArrayMap()) {
+    const Array& array = *array_pair.second;
+    if (!array.buffer) {
+      // not a parameter array
+      continue;
+    }
+    params_count += RequiredBufferSizeForShape(array.shape());
+  }
+  LOG(INFO) << "Number of parameters: " << params_count;
   return tensorflow::Status::OK();
 }
 
@@ -450,6 +467,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       params.enable_select_tf_ops =
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
+      params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
+
       if (toco_flags.post_training_quantize()) {
         if (toco_flags.quantize_to_float16()) {
           params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;

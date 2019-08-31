@@ -1,18 +1,20 @@
-package(default_visibility = [":experimental"])
-
-package_group(
-    name = "experimental",
-    packages = [
-        "//tensorflow/lite/experimental/...",
-    ],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_cc_shared_object",
     "tflite_copts",
+)
+
+package(
+    default_visibility = [":experimental"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "experimental",
+    packages = [
+        "//dart/tensorflow/...",  # whitelisted
+        "//tensorflow/lite/experimental/...",
+    ],
 )
 
 tflite_cc_shared_object(

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
@@ -100,8 +101,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type == kTfLiteInt16) {
     double real_multiplier =
         input1->params.scale * input2->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                       &data->output_shift);
   }
 
   return context->ResizeTensor(context, output, output_size);

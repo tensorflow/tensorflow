@@ -1,0 +1,7 @@
+path: "tensorflow.lite.experimental"
+tf_module {
+  member_method {
+    name: "load_delegate"
+    argspec: "args=[\'library\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

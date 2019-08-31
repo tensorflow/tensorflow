@@ -1,0 +1,26 @@
+path: "tensorflow.TensorArraySpec"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.tensor_array_ops.TensorArraySpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "value_type"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'element_shape\', \'dtype\', \'dynamic_size\', \'infer_shape\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'False\', \'True\'], "
+  }
+  member_method {
+    name: "from_value"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_compatible_type"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+}

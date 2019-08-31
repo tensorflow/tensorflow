@@ -110,6 +110,9 @@ class OneDeviceStrategyTest(
   def testAllReduceMeanGradientTape(self, distribution):
     self._test_all_reduce_mean_gradient_tape(distribution)
 
+  def testTrainableVariables(self, distribution):
+    self._test_trainable_variable(distribution)
+
 
 @combinations.generate(
     combinations.combine(

@@ -318,9 +318,14 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
         mul_op, graph,
         ['test/Mul_1/activation_Mul_quant/FakeQuantWithMinMaxVars'])
     add_op = graph.get_operation_by_name('test/add')
-    self._AssertOutputGoesToOps(
-        add_op, graph,
-        ['test/add/activation_Add_quant/FakeQuantWithMinMaxVars'])
+    if compat.forward_compatible(2019, 6, 21):
+      self._AssertOutputGoesToOps(
+          add_op, graph,
+          ['test/add/activation_AddV2_quant/FakeQuantWithMinMaxVars'])
+    else:
+      self._AssertOutputGoesToOps(
+          add_op, graph,
+          ['test/add/activation_Add_quant/FakeQuantWithMinMaxVars'])
 
   def testRewriteWithScope(self):
     self._RunTestOverExperimentalRewritesWithScope(

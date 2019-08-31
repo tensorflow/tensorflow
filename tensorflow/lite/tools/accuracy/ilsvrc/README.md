@@ -56,6 +56,10 @@ and the following optional parameters:
     Optionally, the computed accuracies can be output to a file as a
     string-serialized instance of tflite::evaluation::TopkAccuracyEvalMetrics.
 
+*   `num_ranks`: `int` (default=10) \
+    The number of top-K accuracies to return. For example, if num_ranks=5, top-1
+    to top-5 accuracy fractions are returned.
+
 The following optional parameters can be used to modify the inference runtime:
 
 *   `num_interpreter_threads`: `int` (default=1) \
@@ -80,7 +84,7 @@ category labels. The `validation_ground_truth.txt` can be converted by the follo
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python generate_validation_labels.py -- \
+python generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```
@@ -106,7 +110,7 @@ bazel build -c opt \
      (make the directory if required):
 
 ```
-adb push bazel-bin/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
+adb push bazel-bin/third_party/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.

@@ -124,6 +124,19 @@ TEST_F(FlatbufferConversionsTest, TestParseOpDataConv) {
   EXPECT_EQ(4, params->dilation_height_factor);
 }
 
+TEST_F(FlatbufferConversionsTest, ParseBadFullyConnected) {
+  const Operator* conv_op = BuildTestOperator(
+      BuiltinOptions_FullyConnectedOptions,
+      CreateFullyConnectedOptions(
+          builder_, ActivationFunctionType_RELU,
+          static_cast<FullyConnectedOptionsWeightsFormat>(-1), true)
+          .Union());
+  void* output_data = nullptr;
+  EXPECT_EQ(kTfLiteError,
+            ParseOpData(conv_op, BuiltinOperator_FULLY_CONNECTED,
+                        &mock_reporter_, &mock_allocator_, &output_data));
+}
+
 TEST_F(FlatbufferConversionsTest, TestParseOpDataCustom) {
   const Operator* custom_op =
       BuildTestOperator(BuiltinOptions_NONE, flatbuffers::Offset<void>());

@@ -13,31 +13,67 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
-#include "tensorflow/core/framework/dataset.h"
+
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
-namespace {
 
-class TakeDatasetOp : public UnaryDatasetOpKernel {
- public:
-  explicit TakeDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+/* static */ constexpr const char* const TakeDatasetOp::kDatasetType;
+/* static */ constexpr const char* const TakeDatasetOp::kInputDataset;
+/* static */ constexpr const char* const TakeDatasetOp::kCount;
+/* static */ constexpr const char* const TakeDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const TakeDatasetOp::kOutputShapes;
 
- protected:
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    // Create a new TakeDatasetOp::Dataset, and return it as the output.
-    int64 count;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
-    *output = new TakeDataset(ctx, count, input);
+constexpr char kCurIndex[] = "i";
+constexpr char kInputImplEmpty[] = "input_impl_empty";
+constexpr char kEmptyTake[] = "EmptyTake";
+constexpr char kFiniteTake[] = "FiniteTake";
+
+TakeDataset::TakeDataset(OpKernelContext* ctx, int64 count,
+                         const DatasetBase* input)
+    : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
+  input_->Ref();
+}
+
+TakeDataset::TakeDataset(DatasetContext::Params params, int64 count,
+                         const DatasetBase* input)
+    : DatasetBase(DatasetContext(std::move(params))),
+      count_(count),
+      input_(input) {
+  input_->Ref();
+}
+
+TakeDataset::~TakeDataset() { input_->Unref(); }
+
+const DataTypeVector& TakeDataset::output_dtypes() const {
+  return input_->output_dtypes();
+}
+
+const std::vector<PartialTensorShape>& TakeDataset::output_shapes() const {
+  return input_->output_shapes();
+}
+
+string TakeDataset::DebugString() const {
+  return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
+}
+
+int64 TakeDataset::Cardinality() const {
+  int64 n = input_->Cardinality();
+  if (n == kUnknownCardinality) {
+    return kUnknownCardinality;
   }
-};
+  if (n == kInfiniteCardinality) {
+    return count_;
+  }
+  return std::min(n, count_);
+}
 
-REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU), TakeDatasetOp);
-}  // namespace
+Status TakeDataset::CheckExternalState() const {
+  return input_->CheckExternalState();
+}
 
 class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
@@ -105,12 +141,11 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
   Status SaveInternal(IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
     if (input_impl_) {
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
     } else {
-      TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name("input_impl_empty"), ""));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
     return Status::OK();
   }
@@ -118,8 +153,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
-    if (!reader->Contains(full_name("input_impl_empty"))) {
+    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
+    if (!reader->Contains(full_name(kInputImplEmpty))) {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     } else {
       input_impl_.reset();
@@ -138,11 +173,11 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 std::unique_ptr<IteratorBase> TakeDataset::MakeIteratorInternal(
     const string& prefix) const {
   if (count_ == 0) {
-    return absl::make_unique<EmptyIterator>(
-        EmptyIterator::Params{this, strings::StrCat(prefix, "::EmptyTake")});
+    return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+        this, name_utils::IteratorPrefix(kEmptyTake, prefix)});
   } else {
-    return absl::make_unique<FiniteIterator>(
-        FiniteIterator::Params{this, strings::StrCat(prefix, "::FiniteTake")});
+    return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+        this, name_utils::IteratorPrefix(kFiniteTake, prefix)});
   }
 }
 
@@ -157,5 +192,19 @@ Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
   return Status::OK();
 }
 
+TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {}
+
+void TakeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                DatasetBase** output) {
+  // Create a new TakeDatasetOp::Dataset, and return it as the output.
+  int64 count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  *output = new TakeDataset(ctx, count, input);
+}
+
+namespace {
+REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU), TakeDatasetOp);
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

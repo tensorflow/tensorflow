@@ -48,6 +48,7 @@ inline float CalculateResizeScale(int64 in_size, int64 out_size,
 // Half pixel scaler scales assuming that the pixel centers are at 0.5, i.e. the
 // floating point coordinates of the top,left pixel is 0.5,0.5.
 struct HalfPixelScaler {
+  HalfPixelScaler(){};
   inline float operator()(const int x, const float scale) const {
     // Note that we subtract 0.5 from the return value, as the existing bilinear
     // sampling code etc assumes pixels are in the old coordinate system.
@@ -59,6 +60,7 @@ struct HalfPixelScaler {
 // translation leading to inconsistent results. For example, a flip then a
 // resize gives different results then a resize then a flip.
 struct LegacyScaler {
+  LegacyScaler(){};
   inline float operator()(const int x, const float scale) const {
     return static_cast<float>(x) * scale;
   }

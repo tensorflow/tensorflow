@@ -398,6 +398,18 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       self.assertEqual(42., self.evaluate(v.mirrored))
 
   @test_util.run_in_graph_and_eager_modes
+  def testAssertConsumedNoCheckpoint(self):
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    v = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(v.initializer)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    self.evaluate(trackable_utils.gather_initializers(ckpt))
+    save_path = ckpt.save(file_prefix=prefix)
+    status = ckpt.restore(save_path=save_path)
+    del ckpt
+    status.assert_consumed()
+
+  @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     model = MyModel()
     optimizer = adam.Adam(0.001)
@@ -1401,8 +1413,9 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
     six.assertCountEqual(
         self,
-        [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
-        trackable_utils.list_objects(save_template))
+        [id(v1_save), id(v2_save), id(manual_scope),
+         id(manual_scope_v), id(save_template)],
+        map(id, trackable_utils.list_objects(save_template)))
     manual_dep, = manual_scope._checkpoint_dependencies
     self.assertEqual("in_manual_scope", manual_dep.name)
     self.assertIs(manual_scope_v, manual_dep.ref)
@@ -1412,7 +1425,9 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     optimizer.minimize(v1_save.read_value,
                        var_list=[v1_save])
     self.evaluate([v.initializer for v in save_template.variables])
-    self.evaluate([v.initializer for v in optimizer.variables()])
+    optimizer_variables = optimizer.variables() + list(
+        optimizer._hyper.values())
+    self.evaluate([v.initializer for v in optimizer_variables])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
     checkpoint_directory = self.get_temp_dir()

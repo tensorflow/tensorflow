@@ -20,7 +20,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_adjoint
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -31,6 +33,7 @@ linalg = linalg_lib
 LinearOperatorAdjoint = linear_operator_adjoint.LinearOperatorAdjoint  # pylint: disable=invalid-name
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorAdjointTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -138,6 +141,8 @@ class LinearOperatorAdjointTest(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
 
   def test_matmul_adjoint_complex_operator(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
     matrix2 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
     full_matrix1 = linalg.LinearOperatorFullMatrix(matrix1)
@@ -158,6 +163,13 @@ class LinearOperatorAdjointTest(
         self.evaluate(
             full_matrix1.matmul(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
+
+  def test_matvec(self):
+    matrix = np.array([[1., 2.], [3., 4.]])
+    x = np.array([1., 2.])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.assertAllClose(matrix.dot(x), self.evaluate(operator.matvec(x)))
+    self.assertAllClose(matrix.T.dot(x), self.evaluate(operator.H.matvec(x)))
 
   def test_solve_adjoint_operator(self):
     matrix1 = self.evaluate(
@@ -188,6 +200,8 @@ class LinearOperatorAdjointTest(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
 
   def test_solve_adjoint_complex_operator(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = self.evaluate(linear_operator_test_util.random_tril_matrix(
         [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
                             1j * linear_operator_test_util.random_tril_matrix(
@@ -219,7 +233,22 @@ class LinearOperatorAdjointTest(
             full_matrix1.solve(
                 full_matrix2, adjoint=True, adjoint_arg=True).to_dense()))
 
+  def test_solvevec(self):
+    matrix = np.array([[1., 2.], [3., 4.]])
+    inv_matrix = np.linalg.inv(matrix)
+    x = np.array([1., 2.])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.assertAllClose(inv_matrix.dot(x), self.evaluate(operator.solvevec(x)))
+    self.assertAllClose(
+        inv_matrix.T.dot(x), self.evaluate(operator.H.solvevec(x)))
 
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[1., 2.], [3., 4.]])
+    operator = LinearOperatorAdjoint(linalg.LinearOperatorFullMatrix(matrix))
+    self.check_tape_safe(operator)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorAdjointNonSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Tests done in the base class NonSquareLinearOperatorDerivedClassTest."""

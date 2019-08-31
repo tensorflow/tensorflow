@@ -36,7 +36,7 @@ namespace xla {
 //
 // The steps are:
 // 1) Find CMARs followed by simple ops followed by CRARs.
-// 2) Group CMARs by all_reduce_id. They must all be rewritten.
+// 2) Group CMARs by channel_id. They must all be rewritten.
 // 3) Prove that the CMAR patterns in each core produce the same result.
 // 4) Eliminate the CMAR, and if it feeds an addition/subtraction, divide the
 //    other operand by the number of spatial partitions.
@@ -104,7 +104,7 @@ class ArCrsCombiner : public HloModulePass {
       }
       pieces.push_back(instruction->name());
       pieces.push_back(")[id:");
-      pieces.push_back(std::to_string(*(ar->all_reduce_id())));
+      pieces.push_back(std::to_string(*(ar->channel_id())));
       pieces.push_back(",dist:");
       pieces.push_back(std::to_string(distance));
       pieces.push_back("]");

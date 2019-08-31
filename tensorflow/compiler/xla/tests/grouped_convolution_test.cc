@@ -81,6 +81,7 @@ static std::vector<GroupedConvolution2DSpec> GetConv2DTestCases() {
     config.kernel_layout = {3, 2, 1, 0};
 
     if (activation_size == 1 && kernel_size == 2) {
+      config.stride = config.pad = config.lhs_dilate = -1;
       // Test for outer dim.
       config.output_dims = {batch, activation_size + kernel_size - 1,
                             activation_size + kernel_size, output_feature};
@@ -224,6 +225,13 @@ string BuildHloTextGroupedConvolution2D(const GroupedConvolution2DSpec& spec,
 XLA_TEST_P(GroupedConvolution2DTest, DoIt) {
   const GroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
+
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (use_bfloat16) {
+    return;
+  }
+#endif
+
   const string hlo_text = BuildHloTextGroupedConvolution2D(spec, use_bfloat16);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},

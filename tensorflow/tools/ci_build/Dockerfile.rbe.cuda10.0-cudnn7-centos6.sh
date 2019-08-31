@@ -34,7 +34,7 @@
 WORKDIR="$(mktemp -d)"
 BASE="$(pwd)"
 cp -R "${BASE}/"* "${WORKDIR}/"
-cp "/tmp/nv-tensorrt-repo-rhel7-cuda10.0-trt5.0.2.6-ga-20181010-1-1.x86_64.rpm" "${WORKDIR}/tensorrt.rpm"
+cp "/tmp/nv-tensorrt-repo-rhel7-cuda10.0-trt5.1.5.0-ga-20190427-1-1.x86_64.rpm" "${WORKDIR}/tensorrt.rpm"
 cd "${WORKDIR}"
 docker build -f Dockerfile.rbe.cuda10.0-cudnn7-centos6 \
        --tag "gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-centos6" .

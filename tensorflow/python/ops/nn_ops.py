@@ -23,7 +23,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -34,6 +33,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+from tensorflow.python.ops import control_flow_ops
+# copybara:strip_end
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -43,6 +46,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
@@ -58,7 +62,7 @@ def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
   if value is None:
     value = [1]
-  elif not isinstance(value, collections.Sized):
+  elif not isinstance(value, collections_abc.Sized):
     value = [value]
 
   current_n = len(value)
@@ -281,7 +285,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
-    data_format: A `string`, only `"NCHW"` is currently supported.
+    data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
       `[1, rate_height, rate_width, 1]`.
@@ -290,8 +294,8 @@ def dilation2d_v2(
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if data_format != "NCHW":
-    raise ValueError("Data formats other than NCHW are not yet supported")
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
@@ -919,6 +923,22 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  run_context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while run_context is not None and not isinstance(
+      run_context, control_flow_ops.XLAControlFlowContext):
+    run_context = run_context.outer_context
+  return run_context
+
+
+# copybara:strip_end
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -926,40 +946,58 @@ def convolution_internal(
     padding="VALID",
     data_format=None,
     dilations=None,
-    name=None):
+    name=None,
+    call_from_convolution=True):
   """Internal function which performs rank agnostic convolution."""
-  with ops.name_scope(name, "convolution", [input, filters]) as name:
-    if isinstance(input.shape, tensor_shape.TensorShape) and \
+  if isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape.rank is not None:
-      n = len(input.shape) - 2
-    elif not isinstance(input.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif not isinstance(input.shape, tensor_shape.TensorShape) and \
         input.shape is not None:
-      n = len(input.shape) - 2
-    elif isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(input.shape) - 2
+  elif isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape.rank is not None:
-      n = len(filters.shape) - 2
-    elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
+    n = len(filters.shape) - 2
+  elif not isinstance(filters.shape, tensor_shape.TensorShape) and \
         filters.shape is not None:
-      n = len(filters.shape) - 2
-    else:
-      raise ValueError("rank of input or filter must be known")
+    n = len(filters.shape) - 2
+  else:
+    raise ValueError("rank of input or filter must be known")
 
-    if not 1 <= n <= 3:
-      raise ValueError(
-          "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+  if not 1 <= n <= 3:
+    raise ValueError(
+        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
 
-    if data_format is None:
-      channel_index = n + 1
-    else:
-      channel_index = 1 if data_format.startswith("NC") else n + 1
+  if data_format is None:
+    channel_index = n + 1
+  else:
+    channel_index = 1 if data_format.startswith("NC") else n + 1
 
-    strides = _get_sequence(strides, n, channel_index, "strides")
-    dilations = _get_sequence(dilations, n, channel_index, "dilations")
+  strides = _get_sequence(strides, n, channel_index, "strides")
+  dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
+  # copybara:strip_begin
+  # TODO(b/138808492): Remove code inside copybara
+  # to make TPU code and CPU code consistent.
+  scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
+  if not call_from_convolution and _enclosing_tpu_context() is not None:
+    scope = scopes[n]
+  else:
+    scope = "convolution"
+  # copybara:strip_end
+  # copybara:insert scope = "convolution"
+
+  with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    if all(i == 1 for i in dilations):
-      # fast path if no dilation as gradient only supported on GPU for dilations
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+      # fast path for TPU or if no dilation as gradient only supported on GPU
+      # for dilations
+    # copybara:strip_end
+    # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1056,7 +1094,9 @@ class Convolution(object):
     self.filter_shape = filter_shape
     self.data_format = data_format
     self.strides = strides
+    self.padding = padding
     self.name = name
+    self.dilation_rate = dilation_rate
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
@@ -1076,7 +1116,24 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    return self.conv_op(inp, filter)
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # TPU convolution supports dilations greater than 1.
+    if _enclosing_tpu_context() is not None:
+      return convolution_internal(
+          inp,
+          filter,
+          strides=self.strides,
+          padding=self.padding,
+          data_format=self.data_format,
+          dilations=self.dilation_rate,
+          name=self.name,
+          call_from_convolution=False)
+    else:
+      return self.conv_op(inp, filter)
+    # copybara:strip_end
+    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -2283,7 +2340,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -2601,10 +2659,10 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if isinstance(output_shape, collections.Sized):
-      n = len(output_shape) - 2
-    elif isinstance(output_shape, ops.Tensor):
+    if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
+    elif isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")
 
@@ -2636,7 +2694,7 @@ def bias_add(value, bias, data_format=None, name=None):
   Args:
     value: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
       `int16`, `int8`, `complex64`, or `complex128`.
-    bias: A 1-D `Tensor` with size matching the last dimension of `value`.
+    bias: A 1-D `Tensor` with size matching the channel dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
     data_format: A string. 'N...C' and 'NC...' are supported.
@@ -2743,7 +2801,7 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models. 
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:
@@ -2759,12 +2817,9 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.cast(features, dtypes.float32)
-    if compat.forward_compatible(2018, 11, 1):
-      if isinstance(alpha, np.ndarray):
-        alpha = alpha.item()
-      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
-    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features, name=name)
+    if isinstance(alpha, np.ndarray):
+      alpha = alpha.item()
+    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
 def _flatten_outer_dims(logits):
@@ -3598,8 +3653,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.avg_pool(
@@ -3746,6 +3801,10 @@ def max_pool(value,
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
+    if ((np.isscalar(ksize) and ksize == 0) or
+        (isinstance(ksize,
+                    (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
+      raise ValueError("ksize cannot be zero.")
 
     return gen_nn_ops.max_pool(
         value,
@@ -3785,8 +3844,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.max_pool(
@@ -4233,7 +4292,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:

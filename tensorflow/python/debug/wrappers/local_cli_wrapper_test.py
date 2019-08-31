@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -35,6 +36,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -109,7 +113,10 @@ class LocalCLIDebuggerWrapperSessionForTest(
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
 
-    readline_cli = ui_factory.get_ui("readline")
+    readline_cli = ui_factory.get_ui(
+        "readline",
+        config=cli_config.CLIConfig(
+            config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
     self._register_this_run_info(readline_cli)
 
     while True:
@@ -452,7 +459,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebuggingMakeCallableFromOptionsWithTwoFeedsWorks(self):
     ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
@@ -479,7 +487,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
     variable_1 = variables.VariableV1(
@@ -822,6 +831,40 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     run_output = wrapped_sess.run([])
     self.assertEqual([], run_output)
+
+  def testDebuggingKerasFitWithSkippedRunsWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"], ["run", "-t", "10"]], self.sess)
+
+    backend.set_session(wrapped_sess)
+
+    model = sequential.Sequential()
+    model.add(core.Dense(4, input_shape=[2], activation="relu"))
+    model.add(core.Dense(1))
+    model.compile(loss="mse", optimizer="sgd")
+
+    x = np.zeros([8, 2])
+    y = np.zeros([8, 1])
+    model.fit(x, y, epochs=2)
+
+    self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
+
+  def testDebuggingKerasFitWithProfilingWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run", "-p"]] * 10, self.sess)
+
+    backend.set_session(wrapped_sess)
+
+    model = sequential.Sequential()
+    model.add(core.Dense(4, input_shape=[2], activation="relu"))
+    model.add(core.Dense(1))
+    model.compile(loss="mse", optimizer="sgd")
+
+    x = np.zeros([8, 2])
+    y = np.zeros([8, 1])
+    model.fit(x, y, epochs=2)
+
+    self.assertEqual(0, len(wrapped_sess.observers["debug_dumps"]))
 
   def testRunsWithEmptyNestedFetchWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

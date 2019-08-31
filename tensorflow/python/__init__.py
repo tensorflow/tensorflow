@@ -47,6 +47,7 @@ import traceback
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -100,9 +101,7 @@ from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
-from tensorflow.python.tpu import bfloat16 as _
-from tensorflow.python.tpu import tpu as _
-from tensorflow.python.tpu import tpu_optimizer as _
+from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 
@@ -115,6 +114,8 @@ from tensorflow.python.ops import gen_boosted_trees_ops as _gen_boosted_trees_op
 # Import cudnn rnn ops to make sure their ops are registered.
 from tensorflow.python.ops import gen_cudnn_rnn_ops as _
 
+# Import rnn_ops to make sure their ops are registered.
+from tensorflow.python.ops import gen_rnn_ops as _
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -141,6 +142,13 @@ from tensorflow.python.eager.context import executing_eagerly
 from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
+
+# Check whether TF2_BEHAVIOR is turned on.
+from tensorflow.python.eager import monitoring as _monitoring
+from tensorflow.python import tf2 as _tf2
+_tf2_gauge = _monitoring.BoolGauge('/tensorflow/api/tf2_enable',
+                                   'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Necessary for the symbols in this module to be taken into account by
 # the namespace management system (API decorators).

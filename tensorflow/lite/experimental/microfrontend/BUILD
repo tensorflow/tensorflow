@@ -11,9 +11,8 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 cc_library(
     name = "audio_microfrontend",
@@ -76,7 +75,6 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":audio_microfrontend_op",
-        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:common_shapes",

@@ -524,8 +524,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
           parameters=parameters,
           graph_parents=(
               distribution._graph_parents  # pylint: disable=protected-access
-              + [loc_ for loc_ in loc if loc_ is not None]
-              + [p for scale_ in scale for p in scale_.graph_parents]),
+              + [loc_ for loc_ in loc if loc_ is not None]),
           name=name)
 
   @property
@@ -1060,5 +1059,5 @@ def softmax(x, axis, name=None):
     if axis_ is not None:
       axis = np.int(ndims + axis_ if axis_ < 0 else axis_)
     else:
-      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      axis = array_ops.where_v2(axis < 0, ndims + axis, axis)
   return nn_ops.softmax(x, axis=axis)

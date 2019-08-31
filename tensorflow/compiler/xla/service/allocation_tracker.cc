@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -237,7 +238,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   Allocation& allocation = it->second;
   TF_RET_CHECK(allocation.ref_count >= 1);
   if (allocation.ref_count == 1) {
-    allocation.device_memory.Free();
+    TF_RETURN_IF_ERROR(allocation.device_memory.Free());
     allocation_map.erase(it);
   } else {
     allocation.ref_count--;

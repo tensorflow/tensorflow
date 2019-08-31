@@ -34,15 +34,17 @@ _TPU_FC_TO_SCOPE = '_tpu_feature_column_scope'
 _SUPPORTED_SEQUENCE_COLUMNS = (fc._SequenceCategoricalColumn,
                                fc_lib.SequenceCategoricalColumn)
 
+_SUPPORTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.IdentityCategoricalColumn,
+                                     fc_lib.VocabularyFileCategoricalColumn,
+                                     fc_lib.VocabularyListCategoricalColumn,
+                                     fc_lib.WeightedCategoricalColumn,
+                                     fc_lib.SequenceCategoricalColumn)
 _SUPPORTED_CATEGORICAL_COLUMNS = (fc._IdentityCategoricalColumn,
                                   fc._VocabularyFileCategoricalColumn,
                                   fc._VocabularyListCategoricalColumn,
                                   fc._WeightedCategoricalColumn,
-                                  fc_lib.IdentityCategoricalColumn,
-                                  fc_lib.VocabularyFileCategoricalColumn,
-                                  fc_lib.VocabularyListCategoricalColumn,
-                                  fc_lib.WeightedCategoricalColumn
-                                 ) + _SUPPORTED_SEQUENCE_COLUMNS
+                                  fc._SequenceCategoricalColumn
+                                 ) + _SUPPORTED_CATEGORICAL_COLUMNS_V2
 _SEQUENCE_FEATURE_LENGTH_POSTFIX = '_seq_length_'
 
 
@@ -51,7 +53,7 @@ def embedding_column(categorical_column,
                      combiner='mean',
                      initializer=None,
                      max_sequence_length=0,
-                     partition_strategy='div'):
+                     learning_rate_fn=None):
   """TPU embedding_column for `tf.feature_column.embedding_column`.
 
   Note that the interface for TPU embedding_column is different from the non-TPU
@@ -78,11 +80,8 @@ def embedding_column(categorical_column,
       length. Any sequence shorter then this will be padded with 0 embeddings
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
-    partition_strategy: Determines how tensors are sharded on the tpu hosts. See
-      `tf.nn.safe_embedding_lookup_sparse` for more details. Allowed value are
-      `"div"` and `"mod"'. If `"mod"` is used, evaluation and exporting the
-      model to CPU will not work. In order to do this, you must shuffle the
-      embedding tensors into a single shard.
+    learning_rate_fn: A function that takes global step and returns learning
+      rate for the embedding table.
 
   Returns:
     A  _TPUEmbeddingColumn.
@@ -129,7 +128,7 @@ def embedding_column(categorical_column,
       max_norm=None,
       trainable=True,
       max_sequence_length=max_sequence_length,
-      partition_strategy=partition_strategy)
+      learning_rate_fn=learning_rate_fn)
   # For Embedding column, the initializer is hidden inside the creator Fn, which
   # is not accessiable later. So, we attach it to a speicial field. Also note
   # that non-TPU Embedding column and non-TPU shared Embedding column handle the
@@ -144,7 +143,7 @@ def shared_embedding_columns(categorical_columns,
                              initializer=None,
                              shared_embedding_collection_name=None,
                              max_sequence_lengths=None,
-                             partition_strategy='div'):
+                             learning_rate_fn=None):
   """List of dense columns that convert from sparse, categorical input.
 
   Note that the interface for TPU embedding_column is different from the non-TPU
@@ -177,9 +176,8 @@ def shared_embedding_columns(categorical_columns,
       to sequence columns specify the max sequence length for the column. Any
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
-    partition_strategy: Determines how tensors are sharded on the tpu hosts. See
-      `tf.nn.safe_embedding_lookup_sparse` for more details. Allowed value are
-      `"div"` and `"mod"'.
+    learning_rate_fn: A function that takes global step and returns learning
+      rate for the embedding table.
 
   Returns:
     A  _TPUEmbeddingColumn.
@@ -250,7 +248,7 @@ def shared_embedding_columns(categorical_columns,
         max_norm=None,
         trainable=True,
         max_sequence_length=max_sequence_length,
-        partition_strategy=partition_strategy)
+        learning_rate_fn=learning_rate_fn)
     tpu_columns.append(column)
 
   return tpu_columns
@@ -259,10 +257,13 @@ def shared_embedding_columns(categorical_columns,
 class _TPUBaseEmbeddingColumn(object):
   """Base class for TPU Embedding Column."""
 
-  def __init__(self, categorical_column, max_sequence_length=0,
-               partition_strategy='div'):
+  def __init__(self,
+               categorical_column,
+               max_sequence_length=0,
+               learning_rate_fn=None):
     self._tpu_categorical_column = categorical_column
     self._max_sequence_length = max_sequence_length
+    self._learning_rate_fn = learning_rate_fn
     if (self.is_sequence_column() and max_sequence_length < 1):
       raise ValueError('max_sequence_length must be greater than 0 for '
                        'sequence columns. Got max_sequence_length={} for '
@@ -272,10 +273,6 @@ class _TPUBaseEmbeddingColumn(object):
       raise ValueError('Non zero max_seq_length={} specified for non '
                        'sequence column {}.'.format(max_sequence_length,
                                                     categorical_column.name))
-    self._partition_strategy = partition_strategy
-    if partition_strategy not in ('mod', 'div'):
-      raise ValueError('partition_strategy must be one of `mod` or `div`. '
-                       'Received {}.'.format(partition_strategy))
 
   def get_combiner(self):
     """Returns the embedding combiner."""
@@ -315,13 +312,13 @@ class _TPUBaseEmbeddingColumn(object):
   def get_max_sequence_length(self):
     return self._max_sequence_length
 
+  def get_learning_rate_fn(self):
+    return self._learning_rate_fn
+
   def get_sequence_length_feature_key_name(self):
     """Get the key for the associated sequence length feature."""
     return get_sequence_length_feature_key_name_from_feature_key_name(
         self.get_feature_key_name())
-
-  def get_partition_strategy(self):
-    return self._partition_strategy
 
 
 class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
@@ -337,7 +334,7 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
               max_norm=None,
               trainable=True,
               max_sequence_length=0,
-              partition_strategy='div'):
+              learning_rate_fn=None):
     # Note, args ckpt_to_load_from, tensor_name_in_ckpt, max_norm and trainable
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
@@ -362,10 +359,12 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
                max_norm=None,
                trainable=True,
                max_sequence_length=0,
-               partition_strategy='div'):
-    _TPUBaseEmbeddingColumn.__init__(self, categorical_column,
-                                     max_sequence_length=max_sequence_length,
-                                     partition_strategy=partition_strategy)
+               learning_rate_fn=None):
+    _TPUBaseEmbeddingColumn.__init__(
+        self,
+        categorical_column,
+        max_sequence_length=max_sequence_length,
+        learning_rate_fn=learning_rate_fn)
     self._key = None
 
   def get_combiner(self):
@@ -406,18 +405,12 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('Export saved model does not support MOD '
-                                  'sharded embeddings.')
       def host_computation():
         return fc._EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
       return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('TPUEmbedding on CPU does not support MOD '
-                                  'sharded embeddings.')
       return fc._EmbeddingColumn._get_dense_tensor(
           self, inputs, weight_collections, trainable)
 
@@ -434,18 +427,12 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
   def _get_sequence_dense_tensor(
       self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('Export saved model does not support MOD '
-                                  'sharded embeddings.')
       def host_computation():
         return fc._EmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
       return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('TPUEmbedding on CPU does not support MOD '
-                                  'sharded embeddings.')
       return fc._EmbeddingColumn._get_sequence_dense_tensor(
           self, inputs, weight_collections, trainable)
 
@@ -479,7 +466,7 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
               max_norm=None,
               trainable=True,
               max_sequence_length=0,
-              partition_strategy='div'):
+              learning_rate_fn=None):
     return fc._SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -503,11 +490,13 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
                max_norm=None,
                trainable=True,
                max_sequence_length=0,
-               partition_strategy='div'):
+               learning_rate_fn=None):
 
-    _TPUBaseEmbeddingColumn.__init__(self, categorical_column,
-                                     max_sequence_length=max_sequence_length,
-                                     partition_strategy=partition_strategy)
+    _TPUBaseEmbeddingColumn.__init__(
+        self,
+        categorical_column,
+        max_sequence_length=max_sequence_length,
+        learning_rate_fn=learning_rate_fn)
     self._key = None
 
   def get_combiner(self):
@@ -548,18 +537,12 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('Export saved model does not support MOD '
-                                  'sharded embeddings.')
       def host_computation():
         return fc._SharedEmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
       return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('TPUEmbedding on CPU does not support MOD '
-                                  'sharded embeddings.')
       return fc._SharedEmbeddingColumn._get_dense_tensor(
           self, inputs, weight_collections, trainable)
 
@@ -577,18 +560,12 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
   def _get_sequence_dense_tensor(
       self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('Export saved model does not support MOD '
-                                  'sharded embeddings.')
       def host_computation():
         return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
       return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
-      if self._partition_strategy == 'mod':
-        raise NotImplementedError('TPUEmbedding on CPU does not support MOD '
-                                  'sharded embeddings.')
       return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
           self, inputs, weight_collections, trainable)
 

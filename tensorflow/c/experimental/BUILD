@@ -1,14 +1,16 @@
 # Description:
 # Experimental C APIs for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 tf_cuda_library(
     name = "rendezvous_internal",

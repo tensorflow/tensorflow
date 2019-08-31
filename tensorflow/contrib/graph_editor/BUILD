@@ -1,13 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "graph_editor_py",
@@ -24,6 +25,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:op_selector",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "@six_archive//:six",

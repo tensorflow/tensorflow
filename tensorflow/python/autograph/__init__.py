@@ -40,7 +40,7 @@ from tensorflow.python.autograph.impl.api import AutoGraphError
 from tensorflow.python.autograph.impl.api import convert
 from tensorflow.python.autograph.impl.api import converted_call
 from tensorflow.python.autograph.impl.api import do_not_convert
-from tensorflow.python.autograph.impl.api import RunMode
+from tensorflow.python.autograph.impl.api import StackTraceMapper
 from tensorflow.python.autograph.impl.api import to_code
 from tensorflow.python.autograph.impl.api import to_graph
 from tensorflow.python.autograph.lang.directives import set_element_type
@@ -55,7 +55,7 @@ _allowed_symbols = [
     'AutoGraphError',
     'ConversionOptions',
     'Feature',
-    'RunMode',
+    'StackTraceMapper',
     'convert',
     'converted_call',
     'do_not_convert',

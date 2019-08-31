@@ -66,39 +66,27 @@ std::string GetAddTableCode(int src_count) {
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id,
+std::vector<ComputeTaskDescriptorPtr> Add(int id,
+                                          const std::vector<ValueId> input_ids,
                                           ValueId output_id,
                                           const AddAttributes& attr,
                                           const RuntimeOptions& options) {
-  auto add_buffer =
-      absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-  if (!add_buffer) {
-    return {};
-  }
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source =
-      R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-    device FLT4* const add_buf) {
-      return value + add_buf[gid.z];
-  })";
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  auto coeffs = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(add_buffer->data)
-                    : VectorFloatToHalf(add_buffer->data);
-  desc->immutable_buffers = {
-      {"device FLT4* const", coeffs},
-  };
-  return {desc};
-}
 
-std::vector<ComputeTaskDescriptorPtr> AddTable(int id,
-                                               std::vector<ValueId> input_ids,
-                                               ValueId output_id) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
+  // Add scalar
+  const float* add_value = absl::get_if<float>(&attr.param);
+  if (add_value) {
+    desc->is_linkable = true;
+    desc->shader_source =
+        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
+      return value + )" +
+        std::to_string(*add_value) + ";}";
+    desc->input_buffers = {{input_ids[0]}};
+    desc->output_buffer = {output_id};
+    return {desc};
+  }
+
   desc->is_linkable = false;
   desc->shader_source = GetAddTableCode(input_ids.size());
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -33,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/stream.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -144,7 +145,13 @@ Status PartitionedCallOp::FillOutputDevices(
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(ArgNumType(attrs, ret_def, &is_type_list, &dtypes));
     for (DataType dtype : dtypes) {
-      if (MTypeFromDType(dtype) == HOST_MEMORY) {
+      if (dtype == DT_RESOURCE) {
+        // Resource memory type is HOST_MEMORY, however the actual resource
+        // might be allocated on a device. We leave output device for resource
+        // outputs empty, and rely on a Placer and colocation constraints to
+        // infer correct placement for the function output.
+        opts->output_devices.push_back("");
+      } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
         opts->output_devices.push_back(cpu_device.name());
       } else {
         opts->output_devices.push_back(opts->target);
@@ -281,6 +288,10 @@ REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
+REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
+
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
                         PartitionedCallOp);

@@ -1,14 +1,13 @@
 # Description: Batching scheduling library.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 py_library(
@@ -34,6 +33,7 @@ py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
+    python_version = "PY2",
     shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [

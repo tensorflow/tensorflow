@@ -29,11 +29,11 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
 
   // Updates *workers with strings naming the remote worker tasks to
   // which open channels have been established.
-  virtual void ListWorkers(std::vector<string>* workers) const {
+  void ListWorkers(std::vector<string>* workers) const override {
     return wrapped_->ListWorkers(workers);
   }
-  virtual void ListWorkersInJob(const string& job_name,
-                                std::vector<string>* workers) const {
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {
     return wrapped_->ListWorkersInJob(job_name, workers);
   }
 
@@ -41,49 +41,50 @@ class WorkerCacheWrapper : public WorkerCacheInterface {
   // or can be constructed, returns a pointer to a WorkerInterface object
   // wrapping that channel. The returned value must be destroyed by
   // calling `this->ReleaseWorker(target, ret)`
-  // TODO(mrry): rename this to GetOrCreateWorker() or something that
-  // makes it more obvious that this method returns a potentially
-  // shared object.
-  virtual WorkerInterface* CreateWorker(const string& target) {
-    return wrapped_->CreateWorker(target);
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
+    return wrapped_->GetOrCreateWorker(target);
   }
 
-  // Release a worker previously returned by this->CreateWorker(target).
+  // Release a worker previously returned by this->GetOrCreateWorker(target).
   //
   // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
   // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
   //                    per-rpc-subsystem WorkerInterface creator.
-  virtual void ReleaseWorker(const string& target, WorkerInterface* worker) {
+  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
     return wrapped_->ReleaseWorker(target, worker);
+  }
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
   // Set *locality with the DeviceLocality of the specified remote device
   // within its local environment.  Returns true if *locality
   // was set, using only locally cached data.  Returns false
   // if status data for that device was not available.  Never blocks.
-  virtual bool GetDeviceLocalityNonBlocking(const string& device,
-                                            DeviceLocality* locality) {
+  bool GetDeviceLocalityNonBlocking(const string& device,
+                                    DeviceLocality* locality) override {
     return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
 
   // Set *locality with the DeviceLocality of the specified remote device
   // within its local environment.  Callback gets Status::OK if *locality
   // was set.
-  virtual void GetDeviceLocalityAsync(const string& device,
-                                      DeviceLocality* locality,
-                                      StatusCallback done) {
+  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+                              StatusCallback done) override {
     return wrapped_->GetDeviceLocalityAsync(device, locality, std::move(done));
   }
 
   // Start/stop logging activity.
-  virtual void SetLogging(bool active) { wrapped_->SetLogging(active); }
+  void SetLogging(bool active) override { wrapped_->SetLogging(active); }
 
   // Discard any saved log data.
-  virtual void ClearLogs() { wrapped_->ClearLogs(); }
+  void ClearLogs() override { wrapped_->ClearLogs(); }
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.
-  virtual bool RetrieveLogs(int64 step_id, StepStats* ss) {
+  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
     return wrapped_->RetrieveLogs(step_id, ss);
   }
 

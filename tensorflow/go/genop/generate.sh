@@ -41,7 +41,7 @@ then
   then
     echo "Protocol buffer compiler protoc not found in PATH or in ${PROTOC}"
     echo "Perhaps build it using:"
-    echo "bazel build --config opt @protobuf_archive//:protoc"
+    echo "bazel build --config opt @com_google_protobuf//:protoc"
     exit 1
   fi
   PROTOC=$PATH_PROTOC

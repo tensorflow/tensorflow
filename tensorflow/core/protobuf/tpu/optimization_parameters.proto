@@ -166,7 +166,7 @@ message MdlAdagradLightParameters {
   float initial_benefit = 15;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/AdadeltaOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
 message AdadeltaParameters {
   float rho = 1;
@@ -175,12 +175,51 @@ message AdadeltaParameters {
   float initial_update = 4;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/ProximalAdagradOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
   float initial_accumulator = 3;
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of online Yogi.
+message OnlineYogiParameters {
+  // The L1 regularization parameter (used analogously to the one in FTRL).
+  float l1 = 1;
+
+  // The L2 regularization parameter (used analogously to the one in FTRL).
+  float l2 = 2;
+
+  // \beta_2 from Algorithm 2 in the paper.
+  float beta2 = 3;
+
+  // Initial value of V variable in paper.
+  float initial_v = 4;
+
+  // Initial value of linear variable in FTRL.
+  float initial_linear = 5;
+
+  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
+  message SignActivation {}
+
+  // x -> tanh(x * 10)
+  message TanhActivation {}
+
+  // Activation to use to replace sign function in v_t update in Algorithm 2 of
+  // paper.
+  oneof activation {
+    SignActivation sign = 6;
+    TanhActivation tanh = 7;
+  }
 }
 
 // Status of using gradient accumulation (doing two passes over the input
@@ -207,17 +246,6 @@ message HotIdReplicationConfiguration {
     DISABLED = 2;
   }
   Status status = 1;
-
-  // The following field(s) are never expected to be set by the TF model.
-  // However, a TF model could set them if it chooses to. If the fields are not
-  // set, meaningful default values will be chosen by the TPU software.
-
-  // The maximum number of slots reserved in HBM (across the entire TPU system)
-  // for storing the replicas of hot IDs for the embedding table. In future, the
-  // number of replicas for a particular hot ID could be adjusted based on its
-  // frequency. The max_slot_count value captures the total number of replicas
-  // across all hot IDs for the table.
-  int32 max_slot_count = 4;
 }
 
 message OptimizationParameters {
@@ -264,6 +292,7 @@ message OptimizationParameters {
     MdlAdagradLightParameters mdl_adagrad_light = 11;
     AdadeltaParameters adadelta = 12;
     ProximalAdagradParameters proximal_adagrad = 14;
+    OnlineYogiParameters online_yogi = 20;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

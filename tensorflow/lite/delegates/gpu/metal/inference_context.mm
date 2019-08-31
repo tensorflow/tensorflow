@@ -88,7 +88,7 @@ using ::tflite::gpu::TensorUsageRecord;
 
   // TODO(ypisarchyk): it make sense to move it to separate function
   // Generate usage records for each intermediate tensor in order of their first_task
-  std::vector<TensorUsageRecord> usageRecords;
+  std::vector<TensorUsageRecord<size_t>> usageRecords;
   std::map<ValueId, size_t> usageRecordIds;
   for (uint32_t i = 0; i < taskDescriptors.size(); ++i) {
     auto outputId = taskDescriptors[i]->output_buffer.id;
@@ -111,8 +111,8 @@ using ::tflite::gpu::TensorUsageRecord;
     }
   }
 
-  tflite::gpu::ObjectsAssignment assignment;
-  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY, &assignment));
+  tflite::gpu::ObjectsAssignment<size_t> assignment;
+  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
   auto objectsCount = assignment.object_sizes.size();
   std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
   size_t dataTypeSize = _options.storage_precision == RuntimeOptions::Precision::FP32

@@ -79,8 +79,12 @@ class Calibrator {
 
 KernelEvalFuncPtr Calibrator::GetKernelInvoke(const TfLiteNode* node) const {
   auto op_info = node_ptr_opinfo_map_.at(node);
+  if (op_info.is_custom_op) {
+    return logging_op_resolver_->GetWrappedKernelInvoke(op_info.name.c_str(),
+                                                        op_info.version);
+  }
   return logging_op_resolver_->GetWrappedKernelInvoke(op_info.builtin_op_code,
-                                                      1);
+                                                      op_info.version);
 }
 
 // A registry of |Calibrator| objects per |TfLiteContext|.
@@ -199,6 +203,9 @@ std::vector<int> GetLoggableTensorIndices(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* tensor_buffers) {
   std::vector<int> loggable;
   for (auto tensor_index : tensor_indices) {
+    if (tensor_index == kOptionalTensor) {
+      continue;
+    }
     auto tensor = tensors->Get(tensor_index);
     auto buffer_index = tensor->buffer();
     const bool has_no_buffer =
@@ -282,7 +289,8 @@ TfLiteStatus BuildLoggingInterpreter(
   auto operators = primary_subgraph->operators();
   auto tensors = primary_subgraph->tensors();
   std::unordered_map<int, OperatorInfo> node_to_opinfo;
-  BuiltinOpsSet op_and_versions;
+  BuiltinOpsSet builtin_op_and_versions;
+  CustomOpsSet custom_op_and_versions;
 
   for (size_t i = 0; i < operators->size(); i++) {
     OperatorInfo op_info;
@@ -292,6 +300,7 @@ TfLiteStatus BuildLoggingInterpreter(
     op_info.builtin_op_code = operator_code->builtin_code();
     op_info.name = GetOpName(*operator_code);
     op_info.is_custom_op = operator_code->custom_code() != nullptr;
+    op_info.version = operator_code->version();
 
     auto op_inputs = op->inputs();
     auto op_outputs = op->outputs();
@@ -301,21 +310,25 @@ TfLiteStatus BuildLoggingInterpreter(
         GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
     op_info.loggable_outputs =
         GetLoggableTensorIndices(op_info.outputs, tensors, tensor_buffers);
-    if (!op_info.is_custom_op) {
-      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
-                                                operator_code->version());
-    } else {
+    if (op_info.is_custom_op) {
       op_info.registration =
           op_resolver.FindOp(op_info.name.c_str(), operator_code->version());
+      custom_op_and_versions.insert(
+          {op_info.name.c_str(), operator_code->version()});
+    } else {
+      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
+                                                operator_code->version());
+      builtin_op_and_versions.insert(
+          {op_info.builtin_op_code, operator_code->version()});
     }
     node_to_opinfo[i] = op_info;
-    op_and_versions.insert({op_info.builtin_op_code, operator_code->version()});
   }
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
   auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
-      op_and_versions, op_resolver, LoggingEval);
+      builtin_op_and_versions, custom_op_and_versions, op_resolver,
+      LoggingEval);
   tflite::InterpreterBuilder(model, *logging_op_resolver)(interpreter);
 
   if (!(*interpreter)) {

@@ -1,10 +1,4 @@
 op {
   graph_op_name: "MatrixSetDiag"
-  endpoint {
-    name: "linalg.set_diag"
-  }
-  endpoint {
-    name: "matrix_set_diag"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

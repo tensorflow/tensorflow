@@ -35,15 +35,18 @@ namespace functor {
 //   input: [D1, D2, ... , DN]
 //   ->
 //   output: [Di, ... , DN] where i belongs to set [1,N]
-template <typename T, typename AccumT, typename BinaryFunctor>
+template <typename InputT, typename AccumT, typename OutputT,
+          typename BinaryFunctor>
 struct ReduceOuterDimensions {
+  ReduceOuterDimensions() {}
+
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
                   const Tensor& input, Tensor* output) const {
     // Compute inner and outer dim after reshaping into 2d tensor.
     const int num_output_dims = output->dims();
-    auto output_dims = output->template flat<T>().dimensions();
+    auto output_dims = output->template flat<OutputT>().dimensions();
 
     Eigen::Index inner_dim = 1, outer_dim = 1;
     for (int i = 0; i < num_dims - num_output_dims; ++i)
@@ -53,8 +56,8 @@ struct ReduceOuterDimensions {
 
     if (1 == outer_dim) {
       // Nothing to do but passing input to output.
-      output->template flat<T>() =
-          input.template flat<T>().reshape(output_dims);
+      output->template flat<OutputT>() =
+          input.template flat<OutputT>().reshape(output_dims);
       return;
     }
 
@@ -62,13 +65,15 @@ struct ReduceOuterDimensions {
     const Eigen::Index num_threads = device.numThreads();
 
     // If the inner dim parallelism is large enough
-    if (inner_dim > num_threads * 16) {
+    // TODO(ezhulenev): There seems to be no benefits in going this route. Check
+    // if this can be improved, or use better heuristic?
+    if (inner_dim > num_threads * 32) {
       // Do not create more blocks than there are threads in a pool.
       const Eigen::Index num_blocks = num_threads;
 
       // Block size along the outer dimension.
       const Eigen::Index inner_block_size = Eigen::divup(inner_dim, num_blocks);
-      const T* input_data = input.template flat<T>().data();
+      const InputT* input_data = input.template flat<InputT>().data();
 
       // Allocate temporary buffer for partial reductions.
       Eigen::Tensor<AccumT, 1, Eigen::RowMajor, Eigen::Index> buffer(
@@ -81,7 +86,7 @@ struct ReduceOuterDimensions {
           Eigen::Unaligned>;
 
       using Input = Eigen::TensorMap<
-          Eigen::Tensor<const T, 1, Eigen::RowMajor, Eigen::Index>,
+          Eigen::Tensor<const InputT, 1, Eigen::RowMajor, Eigen::Index>,
           Eigen::Unaligned>;
 
       const auto compute = [inner_dim, outer_dim, num_blocks, inner_block_size,
@@ -93,7 +98,7 @@ struct ReduceOuterDimensions {
         inner_dim_limit = std::min(inner_dim, inner_dim_limit);
         Eigen::Index my_job_len = inner_dim_limit - inner_dim_start;
 
-        const T* my_job_start = input_data + inner_dim_start;
+        const InputT* my_job_start = input_data + inner_dim_start;
         Buffer buf(buffer_data + inner_dim_start, my_job_len);
 
         for (Eigen::Index i = 0; i < outer_dim; ++i) {
@@ -106,7 +111,7 @@ struct ReduceOuterDimensions {
 
       // Compute cost of reducing a single block.
       const Eigen::Index compute_size = outer_dim * inner_block_size;
-      const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
+      const Eigen::Index compute_input_bytes = compute_size * sizeof(InputT);
       const Eigen::TensorOpCost cost(
           compute_input_bytes,
           0,  // We'll be mostly writing to L1, assume store cost is 0
@@ -115,8 +120,8 @@ struct ReduceOuterDimensions {
       device.parallelFor(num_blocks, cost, compute);
 
       // Write final result to the output.
-      output->template flat<T>() =
-          buffer.template cast<T>().reshape(output_dims);
+      output->template flat<OutputT>() =
+          buffer.template cast<OutputT>().reshape(output_dims);
     } else {
       // Compute block size along the outer dimension for efficiency.
       const Eigen::Index parallel_cell_size = inner_dim;
@@ -135,7 +140,7 @@ struct ReduceOuterDimensions {
       // Block size along the outer dimension.
       const Eigen::Index outer_block_size = Eigen::divup(outer_dim, num_blocks);
 
-      const T* input_data = input.template flat<T>().data();
+      const InputT* input_data = input.template flat<InputT>().data();
 
       // Allocate temporary buffer for partial reductions.
       Tensor buffer(DataTypeToEnum<AccumT>::v(), {num_blocks, inner_dim});
@@ -147,7 +152,7 @@ struct ReduceOuterDimensions {
           Eigen::Unaligned>;
 
       using Input = Eigen::TensorMap<
-          Eigen::Tensor<const T, 1, Eigen::RowMajor, Eigen::Index>,
+          Eigen::Tensor<const InputT, 1, Eigen::RowMajor, Eigen::Index>,
           Eigen::Unaligned>;
 
       const auto compute = [inner_dim, num_blocks, outer_block_size,
@@ -169,7 +174,7 @@ struct ReduceOuterDimensions {
 
       // Compute cost of reducing a single block.
       const Eigen::Index compute_size = outer_block_size * inner_dim;
-      const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
+      const Eigen::Index compute_input_bytes = compute_size * sizeof(InputT);
       const Eigen::TensorOpCost cost(
           compute_input_bytes,
           0,  // We'll be mostly writing to L1, assume store cost is 0
@@ -186,7 +191,8 @@ struct ReduceOuterDimensions {
                                           const decltype(buf)>(buf0, buf);
       }
       // Write final result to the output.
-      output->template flat<T>() = buf0.template cast<T>().reshape(output_dims);
+      output->template flat<OutputT>() =
+          buf0.template cast<OutputT>().reshape(output_dims);
     }
   }
 };
@@ -196,8 +202,11 @@ struct ReduceOuterDimensions {
 //   input: [D1, D2, ... , DN]
 //   ->
 //   output: [Di, ... , Dj] where i & j belongs to set [1,N].
-template <typename T, typename AccumT, typename BinaryFunctor, typename Reducer>
+template <typename InputT, typename AccumT, typename OutputT,
+          typename BinaryFunctor, typename Reducer>
 struct ReduceMiddleDimensions {
+  ReduceMiddleDimensions() {}
+
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
@@ -205,7 +214,7 @@ struct ReduceMiddleDimensions {
                   const int axis_begin_dim) const {
     // Compute dims after reshaping into 3d tensor.
     const int num_output_dims = output->dims();
-    auto output_dims = output->template flat<T>().dimensions();
+    auto output_dims = output->template flat<OutputT>().dimensions();
 
     Eigen::Index inner_dim = 1, middle_dim = 1, outer_dim = 1;
     for (int i = 0; i < axis_begin_dim; ++i) outer_dim *= input_dims[i];
@@ -216,12 +225,12 @@ struct ReduceMiddleDimensions {
 
     if ((1 == inner_dim * outer_dim)) {
       // Nothing to do.
-      output->template flat<T>() =
-          input.template flat<T>().reshape(output_dims);
+      output->template flat<OutputT>() =
+          input.template flat<OutputT>().reshape(output_dims);
       return;
     } else if (1 == inner_dim) {
       // Equivalent to ReduceOuterDimensions.
-      const ReduceOuterDimensions<T, AccumT, BinaryFunctor> redux;
+      const ReduceOuterDimensions<InputT, AccumT, OutputT, BinaryFunctor> redux;
       redux(device, input_dims, input, output);
       return;
     }
@@ -245,7 +254,7 @@ struct ReduceMiddleDimensions {
     const Eigen::Index outer_block_size =
         Eigen::divup(total_workload, num_blocks);
 
-    const T* input_data = input.template flat<T>().data();
+    const InputT* input_data = input.template flat<InputT>().data();
 
     // Allocate temporary buffer for partial reductions.
     Eigen::Tensor<AccumT, 2> buffer(num_blocks, middle_dim);
@@ -253,10 +262,10 @@ struct ReduceMiddleDimensions {
     AccumT* buffer_data = buffer.data();
 
     using Buffer = Eigen::TensorMap<Eigen::Tensor<AccumT, 1>>;
-    using Input = Eigen::TensorMap<Eigen::Tensor<const T, 1>>;
+    using Input = Eigen::TensorMap<Eigen::Tensor<const InputT, 1>>;
 
     Eigen::array<Eigen::Index, 1> reduction_axis = {0};
-    const Reducer reducer;
+    Reducer reducer;
     const BinaryFunctor binary_op;
 
     const auto compute = [inner_dim, middle_dim, input_data, buffer_data,
@@ -299,7 +308,7 @@ struct ReduceMiddleDimensions {
 
     // Compute cost of reducing a single block.
     const Eigen::Index compute_size = outer_block_size * inner_dim;
-    const Eigen::Index compute_input_bytes = compute_size * sizeof(T);
+    const Eigen::Index compute_input_bytes = compute_size * sizeof(InputT);
     const Eigen::TensorOpCost cost(
         compute_input_bytes,
         0,  // We'll be mostly writing to L1, assume store cost is 0
@@ -320,7 +329,8 @@ struct ReduceMiddleDimensions {
     }
 
     // Write final result to the output.
-    output->template flat<T>() = buf0.template cast<T>().reshape(output_dims);
+    output->template flat<OutputT>() =
+        buf0.template cast<OutputT>().reshape(output_dims);
   }
 };
 

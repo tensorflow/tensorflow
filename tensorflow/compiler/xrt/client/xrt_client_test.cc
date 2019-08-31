@@ -76,19 +76,20 @@ TEST_F(XrtClientTest, XrtGrpcEagerClientWorks) {
 
   // Create and destroy a context to verify we can make RPCs.
   eager::CreateContextRequest request;
+  uint64 context_id = random::New64();
   ServerDef* server_def = request.mutable_server_def();
   *server_def->mutable_cluster() = cluster_def_;
   server_def->set_job_name("localhost");
   server_def->set_protocol("grpc");
   request.set_keep_alive_secs(60);
-  request.set_rendezvous_id(random::New64());
+  request.set_context_id(context_id);
 
   eager::CreateContextResponse create_response;
   TF_ASSERT_OK(client->SyncCall(&XrtGrpcEagerClient::CreateContextAsync,
                                 &request, &create_response));
 
   eager::CloseContextRequest close_request;
-  close_request.set_context_id(create_response.context_id());
+  close_request.set_context_id(context_id);
 
   eager::CloseContextResponse close_response;
   TF_ASSERT_OK(client->SyncCall(&XrtGrpcEagerClient::CloseContextAsync,

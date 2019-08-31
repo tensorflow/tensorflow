@@ -188,9 +188,8 @@ TransposeOperator* TransposeInput(const string& input, Model* model) {
     auto* matmul_op = new TensorFlowMatMulOperator;
     matmul_op->inputs = {input_lhs, input_rhs};
     matmul_op->outputs = batch_op->outputs;
-    tail_it = model->operators.emplace(tail_it, matmul_op) + 1;
-    CHECK_EQ(tail_it->get(), batch_op);
-    model->operators.erase(tail_it);
+    model->operators.emplace(tail_it, matmul_op);
+    DeleteOpAndArrays(model, batch_op);
     *modified = true;
     return ::tensorflow::Status::OK();
   }
@@ -254,16 +253,7 @@ TransposeOperator* TransposeInput(const string& input, Model* model) {
   reshape_result_op->outputs = {batch_op->outputs[0]};
   model->operators.emplace(tail_it, reshape_result_op);
 
-  // Remove the old batch matmul now that we've unrolled.
-  batch_op_it = model->operators.begin();
-  for (; batch_op_it != model->operators.end(); ++batch_op_it) {
-    if (batch_op_it->get() == batch_op) {
-      break;
-    }
-  }
-  CHECK(batch_op_it != model->operators.end());
-  CHECK(batch_op_it->get() == batch_op);
-  model->operators.erase(batch_op_it);
+  DeleteOpAndArrays(model, batch_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

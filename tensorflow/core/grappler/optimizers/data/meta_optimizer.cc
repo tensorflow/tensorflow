@@ -36,7 +36,8 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 14> kTFDataOptimizations = {
+constexpr std::array<const char*, 16> kTFDataOptimizations = {
+    "make_stateless",
     "noop_elimination",
     "shuffle_and_repeat_fusion",
     "map_fusion",
@@ -50,7 +51,8 @@ constexpr std::array<const char*, 14> kTFDataOptimizations = {
     "latency_all_edges",
     "make_sloppy",
     "parallel_batch",
-    "slack"};
+    "slack",
+    "inject_prefetch"};
 
 // Standard grappler optimizations, in the order we want to perform them.
 constexpr std::array<const char*, 5> kGrapplerOptimizations = {

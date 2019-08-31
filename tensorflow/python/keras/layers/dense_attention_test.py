@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -118,6 +120,18 @@ class BaseDenseAttentionTest(test.TestCase):
     # expected100 = softmax(scores)[1, 0] * 2.6 = 2.6
     expected = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_serialization(self):
+    # Test serialization with causal
+    layer = dense_attention.BaseDenseAttention(causal=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.causal, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.BaseDenseAttention.from_config(config)
+    self.assertEqual(new_layer.causal, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -413,6 +427,32 @@ class AttentionTest(test.TestCase):
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
 
+  def test_override_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking()(np.array([[[1.1]]], dtype=np.float32))
+    mask = np.array([[False]], dtype=np.bool_)
+    actual = attention_layer([q, q], mask=[mask, mask])
+    self.assertAllClose([[[0]]], actual)
+
+  def test_implicit_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking(1.1)(np.array([[[1.1], [1]]], dtype=np.float32))
+    v = core.Masking(1.2)(np.array([[[1.2], [1]]], dtype=np.float32))
+    actual = attention_layer([q, v])
+    self.assertAllClose([[[0], [1]]], actual)
+
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.Attention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.Attention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class AdditiveAttentionTest(test.TestCase):
@@ -646,6 +686,18 @@ class AdditiveAttentionTest(test.TestCase):
     # pylint:enable=line-too-long
     expected = np.array([[[1.15497245968], [0.]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.AdditiveAttention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.AdditiveAttention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes

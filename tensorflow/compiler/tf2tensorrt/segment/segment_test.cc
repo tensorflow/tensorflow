@@ -77,7 +77,7 @@ class SegmentTest : public ::testing::Test {
     EXPECT_EQ(expected_segments.size(), segments.size());
     for (int i = 0; i < segments.size(); ++i) {
       std::set<string> segment_node_names;
-      for (const Node* node : segments[i].first) {
+      for (const Node* node : segments[i]) {
         segment_node_names.insert(node->name());
       }
       const auto& expected = expected_segments[i];
@@ -260,6 +260,23 @@ TEST_F(SegmentTest, BigIfElse) {
                                      "add4", "add5", "add6", "add7"};
   RunTest(&g, all_adds - "add2", all_adds, all_adds,
           {{"add0", "add1"}, {"add3", "add4", "add5", "add6", "add7"}});
+}
+
+TEST_F(SegmentTest, IdentityOps) {
+  Scope s = Scope::NewRootScope();
+  auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT);
+  auto identity0 = ops::Identity(s.WithOpName("identity0"), feed);
+  auto identity1 = ops::Identity(s.WithOpName("identity1"), identity0);
+  auto identity2 = ops::Identity(s.WithOpName("identity2"), identity1);
+  auto identity3 = ops::Identity(s.WithOpName("identity3"), identity2);
+  Graph g(OpRegistry::Global());
+  TF_EXPECT_OK(s.ToGraph(&g));
+
+  const std::set<string> all_identities = {"identity0", "identity1",
+                                           "identity2", "identity3"};
+  // Identity ops are not counted as effective ops in the segment, so no segment
+  // will be formed in this case.
+  RunTest(&g, all_identities, all_identities, all_identities, {});
 }
 
 }  // namespace test

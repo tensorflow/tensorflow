@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -31,6 +32,7 @@ namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
 const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
+extern const int64 kMaxConstantSize;
 
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
@@ -47,7 +49,9 @@ class ConstantFolding : public GraphOptimizer {
 
   ~ConstantFolding() override {}
 
-  string name() const override { return "constant folding"; };
+  string name() const override { return "constant_folding"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
@@ -56,10 +60,13 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
+
+  bool GetTensorFromConstNode(const string& node_name_or_input, Tensor* tensor);
 
   Status MaterializeShapes(const GraphProperties& properties);
 
@@ -69,9 +76,11 @@ class ConstantFolding : public GraphOptimizer {
                                      const GraphProperties& properties);
   Status MaterializeConstantValuedNode(NodeDef* node,
                                        const GraphProperties& properties);
+  Status MaterializeOutputValues(NodeDef* node,
+                                 const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
-  bool IsFoldable(const NodeDef& node) const;
+  bool IsFoldable(const NodeDef& node, const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -100,8 +109,13 @@ class ConstantFolding : public GraphOptimizer {
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
+
+  // Notice: Destroys *value.
+  Status ReplaceOperationWithConstantTensor(DataType dtype, TensorProto* value,
+                                            NodeDef* node, GraphDef* graph);
+
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  Status FoldGraph(GraphDef* output,
+  Status FoldGraph(const GraphProperties& properties, GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
 
   bool IsSimplifiableReshape(const NodeDef& node,
@@ -239,8 +253,9 @@ class ConstantFolding : public GraphOptimizer {
   void RemoveSplitOrSplitV(const GraphProperties& properties,
                            GraphDef* optimized_graph, NodeDef* node);
 
-  bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
-                   GraphDef* optimized_graph, NodeDef* node);
+  bool GetConcatAxis(const NodeDef& node, int* axis);
+  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
+                   NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);

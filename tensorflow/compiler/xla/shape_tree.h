@@ -129,7 +129,7 @@ class ShapeTree {
   // this ShapeTree object, and also that the Shape is consistent with it.
   void replace_shape_ptr(const Shape* shape) {
     if (shape_storage_ != nullptr) {
-      CHECK_EQ(*shape, *shape_storage_);
+      DCHECK_EQ(*shape, *shape_storage_);
       shape_storage_ = nullptr;
     }
     shape_ = shape;

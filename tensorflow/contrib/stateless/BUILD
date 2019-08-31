@@ -1,13 +1,13 @@
 # Stateless random ops
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "stateless",

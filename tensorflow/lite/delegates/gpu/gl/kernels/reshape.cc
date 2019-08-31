@@ -76,6 +76,7 @@ class Reshape : public NodeShader {
             {"output_channels", output->tensor.shape.c},
         },
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),

@@ -42,28 +42,54 @@ def try_import(name):  # pylint: disable=invalid-name
 fftpack = try_import("scipy.fftpack")
 
 
-def _np_dct1(signals, norm=None):
+def _modify_input_for_dct(signals, n=None):
+  """ This is a supporting function for the numpy implementation
+
+  of DCT operations. If n < signal size, it returns the first n elements,
+  else it pads the signal with zeros.
+  """
+  signal = np.array(signals)
+  if n is None or n == signal.shape[-1]:
+    signal_mod = signal
+  elif n >= 1:
+    signal_len = signal.shape[-1]
+    if n <= signal_len:
+      signal_mod = signal[..., 0:n]
+    else:
+      output_shape = list(signal.shape)
+      output_shape[-1] = n
+      signal_mod = np.zeros(output_shape)
+      signal_mod[..., 0:signal.shape[-1]] = signal
+  if n:
+    assert signal_mod.shape[-1] == n
+  return signal_mod
+
+
+def _np_dct1(signals, n=None, norm=None):
   """Computes the DCT-I manually with NumPy."""
   # X_k = (x_0 + (-1)**k * x_{N-1} +
   #       2 * sum_{n=0}^{N-2} x_n * cos(\frac{pi}{N-1} * n * k)  k=0,...,N-1
   del norm
-  dct_size = signals.shape[-1]
-  dct = np.zeros_like(signals)
+  signals_mod = _modify_input_for_dct(signals, n=n)
+  dct_size = signals_mod.shape[-1]
+  dct = np.zeros_like(signals_mod)
   for k in range(dct_size):
     phi = np.cos(np.pi * np.arange(1, dct_size - 1) * k / (dct_size - 1))
-    dct[..., k] = 2 * np.sum(signals[..., 1:-1] * phi, axis=-1) + (
-        signals[..., 0] + (-1) ** k * signals[..., -1])
+    dct[..., k] = 2 * np.sum(
+        signals_mod[..., 1:-1] * phi, axis=-1) + (
+            signals_mod[..., 0] + (-1)**k * signals_mod[..., -1])
   return dct
 
 
-def _np_dct2(signals, norm=None):
+def _np_dct2(signals, n=None, norm=None):
   """Computes the DCT-II manually with NumPy."""
   # X_k = sum_{n=0}^{N-1} x_n * cos(\frac{pi}{N} * (n + 0.5) * k)  k=0,...,N-1
-  dct_size = signals.shape[-1]
-  dct = np.zeros_like(signals)
+  signals_mod = _modify_input_for_dct(signals, n=n)
+  dct_size = signals_mod.shape[-1]
+  dct = np.zeros_like(signals_mod)
   for k in range(dct_size):
     phi = np.cos(np.pi * (np.arange(dct_size) + 0.5) * k / dct_size)
-    dct[..., k] = np.sum(signals * phi, axis=-1)
+    dct[..., k] = np.sum(signals_mod * phi, axis=-1)
   # SciPy's `dct` has a scaling factor of 2.0 which we follow.
   # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
   if norm == "ortho":
@@ -76,24 +102,25 @@ def _np_dct2(signals, norm=None):
   return dct
 
 
-def _np_dct3(signals, norm=None):
+def _np_dct3(signals, n=None, norm=None):
   """Computes the DCT-III manually with NumPy."""
   # SciPy's `dct` has a scaling factor of 2.0 which we follow.
   # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
-  dct_size = signals.shape[-1]
-  signals = np.array(signals)  # make a copy so we can modify
+  signals_mod = _modify_input_for_dct(signals, n=n)
+  dct_size = signals_mod.shape[-1]
+  signals_mod = np.array(signals_mod)  # make a copy so we can modify
   if norm == "ortho":
-    signals[..., 0] *= np.sqrt(4.0 / dct_size)
-    signals[..., 1:] *= np.sqrt(2.0 / dct_size)
+    signals_mod[..., 0] *= np.sqrt(4.0 / dct_size)
+    signals_mod[..., 1:] *= np.sqrt(2.0 / dct_size)
   else:
-    signals *= 2.0
-  dct = np.zeros_like(signals)
+    signals_mod *= 2.0
+  dct = np.zeros_like(signals_mod)
   # X_k = 0.5 * x_0 +
   #       sum_{n=1}^{N-1} x_n * cos(\frac{pi}{N} * n * (k + 0.5))  k=0,...,N-1
-  half_x0 = 0.5 * signals[..., 0]
+  half_x0 = 0.5 * signals_mod[..., 0]
   for k in range(dct_size):
     phi = np.cos(np.pi * np.arange(1, dct_size) * (k + 0.5) / dct_size)
-    dct[..., k] = half_x0 + np.sum(signals[..., 1:] * phi, axis=-1)
+    dct[..., k] = half_x0 + np.sum(signals_mod[..., 1:] * phi, axis=-1)
   return dct
 
 
@@ -103,20 +130,22 @@ NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
 
 class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
-  def _compare(self, signals, norm, dct_type, atol=5e-4, rtol=5e-4):
+  def _compare(self, signals, n, norm, dct_type, atol=5e-4, rtol=5e-4):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
-    np_dct = NP_DCT[dct_type](signals, norm)
-    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm).eval()
+    np_dct = NP_DCT[dct_type](signals, n=n, norm=norm)
+    tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm).eval()
     self.assertAllClose(np_dct, tf_dct, atol=atol, rtol=rtol)
-    np_idct = NP_IDCT[dct_type](signals, norm)
+    np_idct = NP_IDCT[dct_type](signals, n=None, norm=norm)
     tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm).eval()
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
     if fftpack:
-      scipy_dct = fftpack.dct(signals, type=dct_type, norm=norm)
+      scipy_dct = fftpack.dct(signals, n=n, type=dct_type, norm=norm)
       self.assertAllClose(scipy_dct, tf_dct, atol=atol, rtol=rtol)
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
       self.assertAllClose(scipy_idct, tf_idct, atol=atol, rtol=rtol)
     # Verify inverse(forward(s)) == s, up to a normalization factor.
+    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct without n.
+    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm).eval()
     tf_idct_dct = dct_ops.idct(
         tf_dct, type=dct_type, norm=norm).eval()
     tf_dct_idct = dct_ops.dct(
@@ -139,17 +168,22 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     with spectral_ops_test_util.fft_kernel_label_map():
       with self.session(use_gpu=True):
         signals = np.random.rand(*shape).astype(np.float32)
+        n = np.random.randint(1, 2 * signals.shape[-1])
+        n = np.random.choice([None, n])
         # Normalization not implemented for orthonormal.
-        self._compare(signals, norm=None, dct_type=1)
+        self._compare(signals, n, norm=None, dct_type=1)
         for norm in (None, "ortho"):
-          self._compare(signals, norm, 2)
-          self._compare(signals, norm, 3)
+          self._compare(signals, n=n, norm=norm, dct_type=2)
+          self._compare(signals, n=n, norm=norm, dct_type=3)
 
   def test_error(self):
     signals = np.random.rand(10)
     # Unsupported type.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=5)
+    # Invalid n.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, n=-2)
     # DCT-I normalization not implemented.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=1, norm="ortho")
@@ -159,8 +193,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # Unknown normalization.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, norm="bad")
-    with self.assertRaises(NotImplementedError):
-      dct_ops.dct(signals, n=10)
     with self.assertRaises(NotImplementedError):
       dct_ops.dct(signals, axis=0)
 

@@ -43,6 +43,8 @@ port::StatusOr<void*> GetCusolverDsoHandle();
 port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+port::StatusOr<void*> GetNvInferDsoHandle();
+port::StatusOr<void*> GetNvInferPluginDsoHandle();
 
 port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
@@ -55,6 +57,11 @@ port::StatusOr<void*> GetHipDsoHandle();
 // dynamically loaded. Error status is returned when any of the libraries cannot
 // be dlopened.
 port::Status MaybeTryDlopenGPULibraries();
+
+// The following method tries to dlopen all necessary TensorRT libraries when
+// these libraries should be dynamically loaded. Error status is returned when
+// any of the libraries cannot be dlopened.
+port::Status TryDlopenTensorRTLibraries();
 }  // namespace DsoLoader
 
 // Wrapper around the DsoLoader that prevents us from dlopen'ing any of the DSOs

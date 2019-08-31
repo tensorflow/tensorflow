@@ -43,6 +43,8 @@ limitations under the License.
 
 namespace xla {
 
+class ShapeIndexView;
+
 // An index for specifying a particular nested subshape within a shape. Used in
 // ShapeUtil::GetSubshape and other interfaces. Shapes are recursive data
 // structures (trees) and ShapeIndex defines a path through the tree where each
@@ -68,6 +70,8 @@ class ShapeIndex {
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
   template <typename InputIt>
   ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
+
+  explicit ShapeIndex(ShapeIndexView v);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -137,6 +141,10 @@ class ShapeIndexView {
     CHECK(!empty());
     return indices_.front();
   }
+  int64 back() const {
+    CHECK(!empty());
+    return indices_.back();
+  }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
     result.indices_.remove_prefix(1);
@@ -160,6 +168,9 @@ class ShapeIndexView {
  private:
   absl::Span<const int64> indices_;
 };
+
+inline ShapeIndex::ShapeIndex(ShapeIndexView v)
+    : ShapeIndex(v.begin(), v.end()) {}
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
@@ -400,7 +411,8 @@ class ShapeUtil {
                                    absl::Span<const int64> dimensions,
                                    absl::Span<const int64> minor_to_major,
                                    absl::Span<const Tile> tiles = {},
-                                   int64 element_size_in_bits = 0);
+                                   int64 element_size_in_bits = 0,
+                                   int64 memory_space = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
@@ -723,6 +735,21 @@ class ShapeUtil {
   // Compute a hash for `shape`.
   static size_t Hash(const Shape& shape);
 
+  // About 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
+  // normalized shape of `b` or the 0-2-1 shape.
+  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
+                                                             const Shape& b);
+
  private:
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
@@ -750,7 +777,7 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);

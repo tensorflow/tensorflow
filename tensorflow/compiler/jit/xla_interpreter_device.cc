@@ -63,7 +63,8 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   registration.cluster_control_trigger = true;
   registration.elide_assert_and_checknumerics = true;
   registration.cluster_variant_ops = true;
-  registration.cluster_slow_and_inaccurate_ops = true;
+  registration.cluster_slow_ops = true;
+  registration.cluster_inaccurate_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
                                            registration);
 

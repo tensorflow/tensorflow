@@ -182,6 +182,7 @@ class Conv(Layer):
       op_padding = self.padding
     if not isinstance(op_padding, (list, tuple)):
       op_padding = op_padding.upper()
+
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.shape,
@@ -322,6 +323,19 @@ class Conv1D(Conv):
       the output of the layer (its "activation")..
     kernel_constraint: Constraint function applied to the kernel matrix.
     bias_constraint: Constraint function applied to the bias vector.
+
+  Examples:
+    ```python
+    # Small convolutional model for 128-length vectors with 6 timesteps
+    # model.input_shape == (None, 6, 128)
+    
+    model = Sequential()
+    model.add(Conv1D(32, 3, 
+              activation='relu', 
+              input_shape=(6, 128)))
+    
+    # now: model.output_shape == (None, 4, 32)
+    ```
 
   Input shape:
     3D tensor with shape: `(batch_size, steps, input_dim)`
@@ -1771,6 +1785,7 @@ class DepthwiseConv2D(Conv2D):
     if len(input_shape) < 4:
       raise ValueError('Inputs to `DepthwiseConv2D` should have rank 4. '
                        'Received input shape:', str(input_shape))
+    input_shape = tensor_shape.TensorShape(input_shape)
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1972,7 +1987,11 @@ class UpSampling2D(Layer):
         interpolation=self.interpolation)
 
   def get_config(self):
-    config = {'size': self.size, 'data_format': self.data_format}
+    config = {
+        'size': self.size,
+        'data_format': self.data_format,
+        'interpolation': self.interpolation
+    }
     base_config = super(UpSampling2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -2492,7 +2511,7 @@ class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
   Arguments:
-    cropping: Int, or tuple of 23ints, or tuple of 3 tuples of 2 ints.
+    cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.
       - If tuple of 3 ints: interpreted as two different

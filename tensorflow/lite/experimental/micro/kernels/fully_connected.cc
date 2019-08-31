@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -75,6 +77,29 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
+                               TfLiteFullyConnectedParams* params, OpData* data,
+                               const TfLiteTensor* input,
+                               const TfLiteTensor* filter,
+                               const TfLiteTensor* bias, TfLiteTensor* output) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  // TODO(b/138810107): Figure out whether output shift should be inverted
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
@@ -157,6 +182,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       return EvalFloat(context, node, params, data, input, filter, bias,
                        output);
+    case kTfLiteInt8:
+      return EvalQuantizedInt8(context, node, params, data, input, filter, bias,
+                               output);
+
     case kTfLiteUInt8:
       return EvalQuantized(context, node, params, data, input, filter, bias,
                            output);

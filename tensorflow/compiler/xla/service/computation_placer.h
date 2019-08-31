@@ -47,6 +47,9 @@ class DeviceAssignment : public Array2D<int> {
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
 
+  // Finds the replica ID for the given device.
+  StatusOr<int> ReplicaIdForDeviceOrdinal(int device_ordinal) const;
+
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;
 

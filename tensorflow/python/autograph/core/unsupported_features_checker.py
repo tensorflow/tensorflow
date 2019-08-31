@@ -21,18 +21,17 @@ from __future__ import print_function
 import gast
 
 
-class UnsupportedFeaturesChecker(gast.NodeTransformer):
+class UnsupportedFeaturesChecker(gast.NodeVisitor):
   """Quick check for Python features we know we don't support.
 
   Any features detected will cause AutoGraph to not compile a function.
   """
 
-  # TODO(b/124103128): Implement support for `global` statements
-  def visit_Global(self, node):
-    raise NotImplementedError('The global keyword is not yet supported.')
-
-  def visit_Nonlocal(self, node):
-    raise NotImplementedError('The nonlocal keyword is not yet supported.')
+  def visit_Attribute(self, node):
+    if (node.attr is not None
+        and node.attr.startswith('__') and not node.attr.endswith('__')):
+      raise NotImplementedError(
+          'Mangled names are not yet supported by AutoGraph')
 
   # These checks could potentially be replaced with inspect.isgeneratorfunction
   # to avoid a getsource/parse/ast-walk round trip.
@@ -45,4 +44,3 @@ class UnsupportedFeaturesChecker(gast.NodeTransformer):
 
 def verify(node):
   UnsupportedFeaturesChecker().visit(node)
-

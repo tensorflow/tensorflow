@@ -17,7 +17,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -25,6 +24,8 @@
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -39,6 +40,8 @@ class HloRematerialization : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
 
+  using CompactShapeFunction = std::function<StatusOr<Shape>(const Shape&)>;
+
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
@@ -46,23 +49,34 @@ class HloRematerialization : public HloModulePass {
     int64 after_bytes;
   };
 
+  static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
+
   // Constructor parameters:
   //
   //   size_function: Function which returns the size in bytes of the top-level
   //     buffer of the given shape.
   //
   //   memory_limit_bytes: The threshold number of bytes to reduce memory use to
-  //     via rematerialization.
+  //     via rematerialization. Size of aliased outputs should be subtracted
+  //     from this.
   //
   //   sizes: Pointer to data structure which records the peak memory usage of
   //     the HLO module before/after rematerialization. Value are set during
   //     Run(). Can be nullptr.
-  HloRematerialization(const ShapeSizeFunction& size_function,
-                       int64 memory_limit_bytes, RematerializationSizes* sizes)
+  //
+  //   compact_shape_function: Function which returns the compact form of a
+  //   shape. If nullptr is provided, an default identity function is used.
+  explicit HloRematerialization(
+      const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
+      RematerializationSizes* sizes,
+      CompactShapeFunction compact_shape_function = nullptr)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
-        sizes_(sizes) {}
-  ~HloRematerialization() {}
+        sizes_(sizes),
+        compact_shape_function_(compact_shape_function == nullptr
+                                    ? DefaultCompactShapeFunction
+                                    : std::move(compact_shape_function)) {}
+  ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
 
@@ -79,9 +93,9 @@ class HloRematerialization : public HloModulePass {
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                          HloSchedule* schedule,
-                                          int64 memory_limit_bytes);
+  virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
+                                                  HloSchedule* schedule,
+                                                  int64 memory_limit_bytes);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
@@ -108,6 +122,10 @@ class HloRematerialization : public HloModulePass {
   // Pointer to data structure which records the peak memory usage of the HLO
   // module before/after rematerialization
   RematerializationSizes* sizes_;
+
+  // Converts a shape into compact form, returns the same shape if a shape is
+  // already considered compact.
+  const CompactShapeFunction compact_shape_function_;
 
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;

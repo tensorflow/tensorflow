@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -71,7 +72,8 @@ def RunLSTM(sess,
             is_training=True,
             dropout=0.,
             num_dirs=True,
-            dtype=dtypes.float32):
+            dtype=dtypes.float32,
+            num_proj=None):
   # TODO(jamesqin): add multi-layer tests.
   # TODO(jamesqin): add multi-dir tests
   assert num_layers == 1
@@ -91,10 +93,12 @@ def RunLSTM(sess,
   inputs_dynamic = array_ops.placeholder(
       dtype, shape=[None, None, None], name="inputs")
   inputs = inputs_dynamic if dynamic_shape_input else inputs_static
+  unified_num_units = num_proj if num_proj else num_units
+  unified_num_proj = num_proj if num_proj else None
   initial_h_op = variable_scope.get_variable(
       "initial_h_op",
-      initializer=np.random.rand(batch_size,
-                                 num_units).astype(dtype.as_numpy_dtype),
+      initializer=np.random.rand(batch_size, unified_num_units).astype(
+          dtype.as_numpy_dtype),
       dtype=dtype)
   initial_c_op = variable_scope.get_variable(
       "initial_c_op",
@@ -115,13 +119,19 @@ def RunLSTM(sess,
   with variable_scope.variable_scope("test", initializer=initializer):
     w = variable_scope.get_variable(
         "rnn/lstm_cell/kernel",
-        shape=[input_size + num_units, num_units * 4],
+        shape=[input_size + unified_num_units, num_units * 4],
         dtype=dtype)
     b = variable_scope.get_variable(
         "rnn/lstm_cell/bias", shape=[num_units * 4], dtype=dtype)
+    if num_proj:
+      pw = variable_scope.get_variable(
+          "rnn/lstm_cell/projection/kernel",
+          shape=[num_units, num_proj],
+          dtype=dtype)
 
     # canonical lstm. must set forget_bias to 0. to align with cudnn lstm.
-    cell = rnn_cell_impl.LSTMCell(num_units, forget_bias=0., reuse=True)
+    cell = rnn_cell_impl.LSTMCell(
+        num_units, forget_bias=0., reuse=True, num_proj=unified_num_proj)
     outputs_op, state_tuple_op = rnn.dynamic_rnn(
         cell,
         inputs_static,
@@ -134,8 +144,13 @@ def RunLSTM(sess,
 
   # Convert to cudnn opaque param.
   format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterLSTM(
-      num_layers, num_units, input_size)
-  opaque_params = format_converter.tf_canonical_to_opaque([w, b])
+      num_layers, num_units, input_size, num_proj=unified_num_proj)
+  if num_proj:
+    opaque_params = format_converter.tf_canonical_to_opaque([w, b], [
+        pw,
+    ])
+  else:
+    opaque_params = format_converter.tf_canonical_to_opaque([w, b])
 
   cu_initial_h_op = array_ops.expand_dims(
       initial_h_op, axis=(0 if time_major else 1))
@@ -150,16 +165,22 @@ def RunLSTM(sess,
       time_major=time_major,
       dropout=dropout,
       is_training=is_training,
-      rnn_mode=cudnn_rnn_ops.CUDNN_LSTM)
+      rnn_mode=cudnn_rnn_ops.CUDNN_LSTM,
+      num_proj=unified_num_proj)
   # Remove the trivial 1st dimension.
   cu_state_tuple_op = rnn_cell_impl.LSTMStateTuple(
       c=array_ops.squeeze(cu_c_op, axis=0 if time_major else 1),
       h=array_ops.squeeze(cu_h_op, axis=0 if time_major else 1))
 
   if is_training:
-    (inp_grad_op, hgrad_op,
-     cgrad_op, wgrad_op, bgrad_op) = gradients_impl.gradients(
-         outputs_op, [inputs_static, initial_h_op, initial_c_op, w, b])
+    if num_proj:
+      (inp_grad_op, hgrad_op, cgrad_op,
+       wgrad_op, bgrad_op, pwgrad_op) = gradients_impl.gradients(
+           outputs_op, [inputs_static, initial_h_op, initial_c_op, w, b, pw])
+    else:
+      (inp_grad_op, hgrad_op,
+       cgrad_op, wgrad_op, bgrad_op) = gradients_impl.gradients(
+           outputs_op, [inputs_static, initial_h_op, initial_c_op, w, b])
 
     (cu_inp_grad_op, cu_hgrad_op,
      cu_cgrad_op, opaque_grad_op) = gradients_impl.gradients(
@@ -170,10 +191,16 @@ def RunLSTM(sess,
     # Remove the trivial 1st dimension
     cu_cgrad_op = array_ops.squeeze(cu_cgrad_op, axis=0 if time_major else 1)
 
-    cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
-        opaque_grad_op)
+    if num_proj:
+      cu_wgrad_op, cu_bgrad_op, cu_pwgrad_op = \
+          format_converter.opaque_to_tf_canonical(opaque_grad_op)
+    else:
+      cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
+          opaque_grad_op)
     cu_wgrad_op = cu_wgrad_op[0]
     cu_bgrad_op = cu_bgrad_op[0]
+    if num_proj:
+      cu_pwgrad_op = cu_pwgrad_op[0]
     # cudnn lstm has 2 biases each gate. When converting to tf canonical format,
     # the two biases are summed into one. Thus here bias gradient should be
     # halved when comparing with tf lstm.
@@ -183,17 +210,32 @@ def RunLSTM(sess,
   sess.run(init_op)
 
   if is_training:
-    outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad = sess.run([
-        outputs_op, state_tuple_op, inp_grad_op,
-        (hgrad_op, cgrad_op), wgrad_op, bgrad_op
-    ])
-    (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
-     cu_bgrad) = sess.run(
-         [
-             cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
-             (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
-         ],
-         feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+    if num_proj:
+      (outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad,
+       pwgrad) = sess.run([
+           outputs_op, state_tuple_op, inp_grad_op, (hgrad_op, cgrad_op),
+           wgrad_op, bgrad_op, pwgrad_op
+       ])
+      (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
+       cu_bgrad, cu_pwgrad) = sess.run(
+           [
+               cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
+               (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op,
+               cu_pwgrad_op
+           ],
+           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+    else:
+      outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad = sess.run([
+          outputs_op, state_tuple_op, inp_grad_op, (hgrad_op, cgrad_op),
+          wgrad_op, bgrad_op
+      ])
+      (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
+       cu_bgrad) = sess.run(
+           [
+               cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
+               (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
+           ],
+           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -205,11 +247,20 @@ def RunLSTM(sess,
     logging.vlog(1, "cu_state_grad: %s" % str(cu_state_grad))
     logging.vlog(1, "wgrad: %s" % str(wgrad))
     logging.vlog(1, "bgrad: %s" % str(bgrad))
+    if num_proj:
+      logging.vlog(1, "pwgrad: %s" % str(bgrad))
     logging.vlog(1, "cu_wgrad: %s" % str(cu_wgrad))
     logging.vlog(1, "cu_bgrad: %s" % str(cu_bgrad))
-    return (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
-            cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad,
-            cu_bgrad)
+    if num_proj:
+      logging.vlog(1, "cu_pwgrad: %s" % str(cu_bgrad))
+    if num_proj:
+      return (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
+              cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, pwgrad,
+              cu_wgrad, cu_bgrad, cu_pwgrad)
+    else:
+      return (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
+              cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad,
+              cu_bgrad)
   else:
     outputs, state_tuple = sess.run([outputs_op, state_tuple_op])
     cu_outputs, cu_state_tuple = sess.run([cu_outputs_op, cu_state_tuple_op],
@@ -255,7 +306,6 @@ NAMED_RNN_TESTCASES = ({
     "time": 32,
     "num_layers": 1,
 })
-
 
 def ExpandNamedTestCases(inputs, *remove_keys, **extra_configs):
   """Expands testcase with new config dimensions.
@@ -349,19 +399,35 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                             time_major,
                             dynamic_shape_input=False,
                             rtol=3e-6,
-                            atol=3e-6):
+                            atol=3e-6,
+                            num_proj=None):
     with self.session(use_gpu=True) as sess:
-      (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad, cu_inp_grad,
-       state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad, cu_bgrad) = RunLSTM(
-           sess,
-           num_units,
-           input_size,
-           batch_size,
-           time,
-           num_layers,
-           variable_seq_lengths=variable_seq_lengths,
-           time_major=time_major,
-           dynamic_shape_input=dynamic_shape_input)
+      if num_proj is not None and num_proj != 0:
+        (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
+         cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, pwgrad, cu_wgrad,
+         cu_bgrad, cu_pwgrad) = RunLSTM(
+             sess,
+             num_units,
+             input_size,
+             batch_size,
+             time,
+             num_layers,
+             variable_seq_lengths=variable_seq_lengths,
+             dynamic_shape_input=dynamic_shape_input,
+             num_proj=num_proj)
+      else:
+        (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
+         cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad,
+         cu_bgrad) = RunLSTM(
+             sess,
+             num_units,
+             input_size,
+             batch_size,
+             time,
+             num_layers,
+             variable_seq_lengths=variable_seq_lengths,
+             dynamic_shape_input=dynamic_shape_input,
+             num_proj=num_proj)
 
       self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
       for s, cu_s in zip(state_tuple, cu_state_tuple):
@@ -371,6 +437,8 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(inp_grad, cu_inp_grad, rtol=rtol, atol=atol)
       self.assertAllClose(bgrad, cu_bgrad, rtol=rtol, atol=atol)
       self.assertAllClose(wgrad, cu_wgrad, rtol=rtol, atol=atol)
+      if num_proj is not None and num_proj != 0:
+        self.assertAllClose(pwgrad, cu_pwgrad, rtol=rtol, atol=atol)
 
   @parameterized.named_parameters(
       ExpandNamedTestCases(
@@ -378,20 +446,27 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               "variable_seq_lengths": [True, False],
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
+              "use_proj": [True, False],
           }))
   @test_util.run_gpu_only
   def test_training(self, num_units, input_size, batch_size, time, num_layers,
-                    variable_seq_lengths, time_major, dynamic_shape_input):
-    self._test_training_helper(
-        num_units,
-        input_size,
-        batch_size,
-        time,
-        num_layers,
-        dtypes.float32,
-        variable_seq_lengths=variable_seq_lengths,
-        time_major=time_major,
-        dynamic_shape_input=dynamic_shape_input)
+                    variable_seq_lengths, time_major, dynamic_shape_input,
+                    use_proj):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if use_proj and num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      self._test_training_helper(
+          num_units,
+          input_size,
+          batch_size,
+          time,
+          num_layers,
+          dtypes.float32,
+          variable_seq_lengths=variable_seq_lengths,
+          time_major=time_major,
+          dynamic_shape_input=dynamic_shape_input,
+          num_proj=num_proj if use_proj else None)
 
   @parameterized.named_parameters(
       ExpandNamedTestCases(
@@ -399,52 +474,29 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               "variable_seq_lengths": [True, False],
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
+              "use_proj": [True, False],
           }))
   @test_util.run_gpu_only
   def test_training_fp16(self, num_units, input_size, batch_size, time,
                          num_layers, variable_seq_lengths, time_major,
-                         dynamic_shape_input):
-    self._test_training_helper(
-        num_units,
-        input_size,
-        batch_size,
-        time,
-        num_layers,
-        dtypes.float16,
-        rtol=5e-3,
-        atol=5e-4,
-        variable_seq_lengths=variable_seq_lengths,
-        time_major=time_major,
-        dynamic_shape_input=dynamic_shape_input)
-
-  @parameterized.named_parameters(
-      ExpandNamedTestCases(
-          NAMED_RNN_TESTCASES, **{
-              "variable_seq_lengths": [True, False],
-              "time_major": [True, False],
-              "dynamic_shape_input": [True, False],
-          }))
-  @test_util.run_gpu_only
-  def test_inference(self, num_units, input_size, batch_size, time, num_layers,
-                     variable_seq_lengths, time_major, dynamic_shape_input):
-    with self.session(use_gpu=True) as sess:
-      (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
-          sess,
+                         dynamic_shape_input, use_proj):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if use_proj and num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      self._test_training_helper(
           num_units,
           input_size,
           batch_size,
           time,
           num_layers,
-          is_training=False,
+          dtypes.float16,
+          rtol=5e-3,
+          atol=5e-4,
           variable_seq_lengths=variable_seq_lengths,
           time_major=time_major,
-          dynamic_shape_input=dynamic_shape_input)
-
-      self.assertAllClose(outputs, cu_outputs)
-      # h
-      self.assertAllClose(state_tuple.h, cu_state_tuple.h)
-      # c
-      self.assertAllClose(state_tuple.c, cu_state_tuple.c)
+          dynamic_shape_input=dynamic_shape_input,
+          num_proj=num_proj if use_proj else None)
 
   @parameterized.named_parameters(
       ExpandNamedTestCases(
@@ -452,33 +504,75 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               "variable_seq_lengths": [True, False],
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
+              "use_proj": [True, False],
+          }))
+  @test_util.run_gpu_only
+  def test_inference(self, num_units, input_size, batch_size, time, num_layers,
+                     variable_seq_lengths, time_major, dynamic_shape_input,
+                     use_proj):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if use_proj and num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      with self.session(use_gpu=True) as sess:
+        (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            variable_seq_lengths=variable_seq_lengths,
+            time_major=time_major,
+            dynamic_shape_input=dynamic_shape_input,
+            num_proj=num_proj if use_proj else None)
+
+        self.assertAllClose(outputs, cu_outputs)
+        # h
+        self.assertAllClose(state_tuple.h, cu_state_tuple.h)
+        # c
+        self.assertAllClose(state_tuple.c, cu_state_tuple.c)
+
+  @parameterized.named_parameters(
+      ExpandNamedTestCases(
+          NAMED_RNN_TESTCASES, **{
+              "variable_seq_lengths": [True, False],
+              "time_major": [True, False],
+              "dynamic_shape_input": [True, False],
+              "use_proj": [True, False],
           }))
   @test_util.run_gpu_only
   def test_inference_fp16(self, num_units, input_size, batch_size, time,
                           num_layers, variable_seq_lengths, time_major,
-                          dynamic_shape_input):
-    with self.session(use_gpu=True) as sess:
-      (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
-          sess,
-          num_units,
-          input_size,
-          batch_size,
-          time,
-          num_layers,
-          is_training=False,
-          dtype=dtypes.float16,
-          variable_seq_lengths=variable_seq_lengths,
-          time_major=time_major,
-          dynamic_shape_input=dynamic_shape_input)
+                          dynamic_shape_input, use_proj):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if use_proj and num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      with self.session(use_gpu=True) as sess:
+        (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            dtype=dtypes.float16,
+            variable_seq_lengths=variable_seq_lengths,
+            time_major=time_major,
+            dynamic_shape_input=dynamic_shape_input,
+            num_proj=num_proj if use_proj else None)
 
-      rtol, atol = 5e-3, 5e-4
-      self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
-      # h
-      self.assertAllClose(
-          state_tuple.h, cu_state_tuple.h, rtol=rtol, atol=atol)
-      # c
-      self.assertAllClose(
-          state_tuple.c, cu_state_tuple.c, rtol=rtol, atol=atol)
+        rtol, atol = 5e-3, 5e-4
+        self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
+        # h
+        self.assertAllClose(
+            state_tuple.h, cu_state_tuple.h, rtol=rtol, atol=atol)
+        # c
+        self.assertAllClose(
+            state_tuple.c, cu_state_tuple.c, rtol=rtol, atol=atol)
 
   @parameterized.named_parameters(
       ExpandNamedTestCases(
@@ -486,49 +580,56 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               "variable_seq_lengths": [True, False],
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
+              "use_proj": [True, False],
           }))
   @test_util.run_gpu_only
   def test_inference_with_dropout(self, num_units, input_size, batch_size, time,
                                   num_layers, variable_seq_lengths, time_major,
-                                  dynamic_shape_input):
+                                  dynamic_shape_input, use_proj):
     """Validates that dropout does not affect Cudnn Rnn inference."""
-    # Hand-picked dropouts are used below (0. and 1.)
-    with ops.Graph().as_default() as g:
-      with self.session(use_gpu=True, graph=g) as sess:
-        # 1st time w/o dropout.
-        (_, cu_outputs, _, cu_state_tuple) = RunLSTM(
-            sess,
-            num_units,
-            input_size,
-            batch_size,
-            time,
-            num_layers,
-            is_training=False,
-            dropout=0.,
-            variable_seq_lengths=variable_seq_lengths,
-            time_major=time_major,
-            dynamic_shape_input=dynamic_shape_input)
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if use_proj and num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      # Hand-picked dropouts are used below (0. and 1.)
+      with ops.Graph().as_default() as g:
+        with self.session(use_gpu=True, graph=g) as sess:
+          # 1st time w/o dropout.
+          (_, cu_outputs, _, cu_state_tuple) = RunLSTM(
+              sess,
+              num_units,
+              input_size,
+              batch_size,
+              time,
+              num_layers,
+              is_training=False,
+              dropout=0.,
+              variable_seq_lengths=variable_seq_lengths,
+              time_major=time_major,
+              dynamic_shape_input=dynamic_shape_input,
+              num_proj=num_proj if use_proj else None)
 
-    with ops.Graph().as_default() as g:
-      with self.session(use_gpu=True, graph=g) as sess:
-        (_, cu_outputs2, _, cu_state_tuple2) = RunLSTM(
-            sess,
-            num_units,
-            input_size,
-            batch_size,
-            time,
-            num_layers,
-            is_training=False,
-            dropout=1.,
-            variable_seq_lengths=variable_seq_lengths,
-            time_major=time_major,
-            dynamic_shape_input=dynamic_shape_input)
+      with ops.Graph().as_default() as g:
+        with self.session(use_gpu=True, graph=g) as sess:
+          (_, cu_outputs2, _, cu_state_tuple2) = RunLSTM(
+              sess,
+              num_units,
+              input_size,
+              batch_size,
+              time,
+              num_layers,
+              is_training=False,
+              dropout=1.,
+              variable_seq_lengths=variable_seq_lengths,
+              time_major=time_major,
+              dynamic_shape_input=dynamic_shape_input,
+              num_proj=num_proj if use_proj else None)
 
-    self.assertAllClose(cu_outputs, cu_outputs2)
-    # h
-    self.assertAllClose(cu_state_tuple.h, cu_state_tuple2.h)
-    # c
-    self.assertAllClose(cu_state_tuple.c, cu_state_tuple2.c)
+      self.assertAllClose(cu_outputs, cu_outputs2)
+      # h
+      self.assertAllClose(cu_state_tuple.h, cu_state_tuple2.h)
+      # c
+      self.assertAllClose(cu_state_tuple.c, cu_state_tuple2.c)
 
 
 def RunGRU(sess,
@@ -890,40 +991,68 @@ class CudnnParamsFormatConverterTest(test_util.TensorFlowTestCase,
                                      parameterized.TestCase):
   """Class for testing various format converters."""
 
-  def _test_lstm_helper(self, num_units, input_size, num_layers, direction):
+  def _test_lstm_helper(self,
+                        num_units,
+                        input_size,
+                        num_layers,
+                        direction,
+                        num_proj=None):
     with self.session(use_gpu=True) as sess:
       random_seed.set_random_seed(0)
       np.random.seed(0)
 
       num_dirs = 1 if direction == cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION else 2
       format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterLSTM(
-          num_layers, num_units, input_size, direction=direction)
+          num_layers,
+          num_units,
+          input_size,
+          direction=direction,
+          num_proj=num_proj if num_proj else None)
 
-      ws, bs = [], []
+      ws, bs, pws = [], [], []
       for _ in range(num_layers * num_dirs):
         w = constant_op.constant(
-            np.random.rand(input_size + num_units, 4 * num_units),
+            np.random.rand(input_size + (num_proj if num_proj else num_units),
+                           4 * num_units),
             dtype=dtypes.float32)
         b = constant_op.constant(
             np.random.rand(4 * num_units), dtype=dtypes.float32)
         ws.append(w)
         bs.append(b)
+        if num_proj:
+          pw = constant_op.constant(
+              np.random.rand(num_units, num_proj), dtype=dtypes.float32)
+          pws.append(pw)
 
-      opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
+      if num_proj:
+        opaque_params = format_converter.tf_canonical_to_opaque(ws + bs, pws)
+      else:
+        opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
+
       opaque_params_size = cudnn_rnn_ops.cudnn_rnn_opaque_params_size(
           cudnn_rnn_ops.CUDNN_LSTM,
           num_layers,
           num_units,
           input_size,
-          direction=direction)
+          direction=direction,
+          num_proj=num_proj if num_proj else None)
 
-      ws_r, bs_r = format_converter.opaque_to_tf_canonical(opaque_params)
+      if num_proj:
+        ws_r, bs_r, pws_r = format_converter.opaque_to_tf_canonical(
+            opaque_params)
+        ws, ws_r, pws, bs, bs_r, pws_r = sess.run(
+            [ws, ws_r, pws, bs, bs_r, pws_r])
+      else:
+        ws_r, bs_r = format_converter.opaque_to_tf_canonical(opaque_params)
+        ws, ws_r, bs, bs_r = sess.run([ws, ws_r, bs, bs_r])
 
       # Test tf_canonical_to_opaque() followed by opaque_to_tf_canonical()
       # returns the original input.
-      ws, ws_r, bs, bs_r = sess.run([ws, ws_r, bs, bs_r])
       for w, w_r in zip(ws, ws_r):
         self.assertAllClose(w, w_r)
+      if num_proj:
+        for pw, pw_r in zip(pws, pws_r):
+          self.assertAllClose(pw, pw_r)
       for b, b_r in zip(bs, bs_r):
         self.assertAllClose(b, b_r)
 
@@ -942,6 +1071,22 @@ class CudnnParamsFormatConverterTest(test_util.TensorFlowTestCase,
     self._test_lstm_helper(num_units, input_size, num_layers,
                            cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
 
+  @parameterized.named_parameters(
+      (c["testcase_name"], c["num_units"], c["input_size"], c["num_layers"])
+      for c in NAMED_RNN_TESTCASES)
+  @test_util.run_gpu_only
+  def test_lstmp(self, num_units, input_size, num_layers):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      self._test_lstm_helper(
+          num_units,
+          input_size,
+          num_layers,
+          cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION,
+          num_proj=num_proj)
+
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])
                                   for c in NAMED_RNN_TESTCASES)
@@ -949,6 +1094,22 @@ class CudnnParamsFormatConverterTest(test_util.TensorFlowTestCase,
   def test_lstm_bidi(self, num_units, input_size, num_layers):
     self._test_lstm_helper(num_units, input_size, num_layers,
                            cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
+
+  @parameterized.named_parameters(
+      (c["testcase_name"], c["num_units"], c["input_size"], c["num_layers"])
+      for c in NAMED_RNN_TESTCASES)
+  @test_util.run_gpu_only
+  def test_lstmp_bidi(self, num_units, input_size, num_layers):
+    with compat.forward_compatibility_horizon(2019, 6, 27):
+      num_proj = num_units // 2
+      if num_proj == 0:
+        self.skipTest("num_proj cannot be 0")
+      self._test_lstm_helper(
+          num_units,
+          input_size,
+          num_layers,
+          cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION,
+          num_proj=num_proj)
 
   def _test_gru_helper(self, num_units, input_size, num_layers, direction):
     with self.session(use_gpu=True) as sess:

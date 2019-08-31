@@ -29,10 +29,37 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
+namespace stream_executor {
+namespace cuda {
+class RedzoneAllocator;
+}
+}  // namespace stream_executor
+
 namespace tensorflow {
 
 class NodeDef;
 class AutotuneResult;
+
+// Return whether the redzone check is disabled.
+//
+// Controlled by the TF_DISABLE_RZ_CHECK environment variable.
+bool RedzoneCheckDisabled();
+
+// Return an allocated buffer with redzones the size of `buffer`. Does
+// *not* copy the contents of the `buffer` into the newly allocated buffer:
+// assumes that buffer is a pure out-parameter.
+//
+// Returns `buffer` if RedzoneCheckDisabled() is true.
+//
+// On error, return `buffer`, and log an error message (once).
+se::DeviceMemoryBase WrapRedzoneBestEffort(
+    se::cuda::RedzoneAllocator* rz_allocator, se::DeviceMemoryBase buffer);
+
+// Check the passed allocator for redzone violations.
+// If violations have occurred, mark the corresponding autotune result
+// as a failure.
+void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
+                   tensorflow::AutotuneResult* autotune_result);
 
 template <typename T>
 inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
@@ -190,6 +217,9 @@ class AutoTuneSingleton {
 // Logs convolution results to customized back-storage.
 void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             se::dnn::DataType element_type,
+                            se::DeviceMemoryBase input_buffer,
+                            se::DeviceMemoryBase filter_buffer,
+                            se::DeviceMemoryBase output_buffer,
                             const se::dnn::BatchDescriptor& input_desc,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
@@ -199,7 +229,10 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
 
 // Logs fused convolution results to customized back-storage.
 void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,

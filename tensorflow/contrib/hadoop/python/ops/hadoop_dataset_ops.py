@@ -20,9 +20,9 @@ from __future__ import print_function
 from tensorflow.contrib.hadoop.python.ops import gen_dataset_ops
 from tensorflow.contrib.hadoop.python.ops import hadoop_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import deprecation
 
 
@@ -58,11 +58,10 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     variant_tensor = gen_dataset_ops.sequence_file_dataset(
-        self._filenames, self._element_structure._flat_types)  # pylint: disable=protected-access
+        self._filenames, self._flat_types)
     super(SequenceFileDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return structure.NestedStructure(
-        (structure.TensorStructure(dtypes.string, []),
-         structure.TensorStructure(dtypes.string, [])))
+  def element_spec(self):
+    return (tensor_spec.TensorSpec([], dtypes.string),
+            tensor_spec.TensorSpec([], dtypes.string))

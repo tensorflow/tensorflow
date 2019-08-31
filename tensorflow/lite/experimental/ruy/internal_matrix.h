@@ -90,9 +90,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_INTERNAL_MATRIX_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_INTERNAL_MATRIX_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <utility>
 
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
@@ -100,6 +103,8 @@ limitations under the License.
 namespace ruy {
 
 // KernelLayout describes small-scale block structure in a packed matrix layout.
+// It's a runtime (as opposed to compile-time-constant) version of the
+// FixedKernelLayout struct used to declare kernel layouts.
 //
 // This is is sometimes known as "tiling" in other contexts.
 //
@@ -115,16 +120,6 @@ struct KernelLayout {
   Order order = Order::kColMajor;
   std::uint8_t rows = 1;
   std::uint8_t cols = 1;
-};
-
-// Compile time version of KernelLayout, suitable for template metaprogramming.
-// In particular, partial template specializations of Kernel use this type to
-// statically declare their kernel format.
-template <Order tOrder, int tRows, int tCols>
-struct FixedKernelLayout {
-  static constexpr Order kOrder = tOrder;
-  static constexpr int kRows = tRows;
-  static constexpr int kCols = tCols;
 };
 
 // A packed matrix has a small-scale block structure that is not present in in

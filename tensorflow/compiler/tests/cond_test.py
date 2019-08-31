@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.client import session
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -46,12 +48,52 @@ class CondTest(xla_test.XLATestCase):
       def f():
         ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
         output = control_flow_ops.cond(
-            constant_op.constant(
-                True), lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
+            constant_op.constant(True),
+            lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
 
         return output.stack()
 
       output_t = f()
+      self.assertAllEqual([5.], self.evaluate(output_t))
+
+      xla_context.Exit()
+
+  def testCondAndTensorArrayInDefun_constFolding(self):
+    g = ops.Graph()
+    with session.Session(graph=g), g.as_default(), self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+
+      @function.defun
+      def f():
+        ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
+        output = control_flow_ops.cond(
+            constant_op.constant(False),
+            lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
+
+        return output.stack()
+
+      output_t = f()
+      self.assertAllEqual([10.], self.evaluate(output_t))
+
+      xla_context.Exit()
+
+  def testCondAndTensorArray_xlaCompile(self):
+    self.skipTest("b/127846988")
+    # Fails with "Uninitialized arguments" in XlaIfOp::Compile
+    with self.session(), self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+
+      def f():
+        ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
+        output = control_flow_ops.cond(
+            constant_op.constant(True),
+            lambda: ta.write(0, 5.), lambda: ta.write(0, 10.))
+
+        return output.stack()
+
+      output_t, = xla.compile(f)
       self.assertAllEqual([5.], self.evaluate(output_t))
 
       xla_context.Exit()
@@ -195,6 +237,28 @@ class CondTest(xla_test.XLATestCase):
         return output.stack()
 
       output_t = f()
+      self.assertAllEqual([10.], self.evaluate(output_t))
+
+      xla_context.Exit()
+
+  def testSwitchCaseAndTensorArray_xlaCompile(self):
+    self.skipTest("b/127846988")
+    with self.session(), self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+
+      def f():
+        ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=1)
+        output = control_flow_ops.switch_case(
+            constant_op.constant(1), {
+                0: lambda: ta.write(0, 5.),
+                1: lambda: ta.write(0, 10.),
+                2: lambda: ta.write(0, 15.),
+            })
+
+        return output.stack()
+
+      output_t, = xla.compile(f)
       self.assertAllEqual([10.], self.evaluate(output_t))
 
       xla_context.Exit()

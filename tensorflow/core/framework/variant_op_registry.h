@@ -437,10 +437,10 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ_HELPER(ctr, T, type_name) \
   REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)
 
-#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)        \
-  static variant_op_registry_fn_registration::UnaryVariantDecodeRegistration< \
-      T>                                                                      \
-      register_unary_variant_op_decoder_fn_##ctr(type_name)
+#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name) \
+  static ::tensorflow::variant_op_registry_fn_registration::           \
+      UnaryVariantDecodeRegistration<T>                                \
+          register_unary_variant_op_decoder_fn_##ctr(type_name)
 
 // ****** NOTE ******
 // FOR INTERNAL USE ONLY.  IF YOU USE THIS WE MAY BREAK YOUR CODE.
@@ -506,12 +506,12 @@ class UnaryVariantBinaryOpRegistration {
   REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(ctr, op, device, T, \
                                                 type_index, unary_op_function)
 
-#define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(                         \
-    ctr, op, device, T, type_index, unary_op_function)                         \
-  static variant_op_registry_fn_registration::UnaryVariantUnaryOpRegistration< \
-      T>                                                                       \
-      register_unary_variant_op_decoder_fn_##ctr(op, device, type_index,       \
-                                                 unary_op_function)
+#define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(                       \
+    ctr, op, device, T, type_index, unary_op_function)                       \
+  static ::tensorflow::variant_op_registry_fn_registration::                 \
+      UnaryVariantUnaryOpRegistration<T>                                     \
+          register_unary_variant_op_decoder_fn_##ctr(op, device, type_index, \
+                                                     unary_op_function)
 
 // Register a binary_op variant function with the signature:
 //    Status BinaryOpFn(OpKernelContext* ctx, const T& a, const T& b, T* out);
@@ -529,7 +529,7 @@ class UnaryVariantBinaryOpRegistration {
 
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ(                      \
     ctr, op, device, T, type_index, binary_op_function)                      \
-  static variant_op_registry_fn_registration::                               \
+  static ::tensorflow::variant_op_registry_fn_registration::                 \
       UnaryVariantBinaryOpRegistration<T>                                    \
           register_unary_variant_op_decoder_fn_##ctr(op, device, type_index, \
                                                      binary_op_function)

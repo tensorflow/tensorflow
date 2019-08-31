@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "flat_map_dataset";
-constexpr char kOpName[] = "FlatMapDataset";
 
 class FlatMapDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,12 +39,13 @@ class FlatMapDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def =
-        test::function::NDef(kNodeName, kOpName, {"input_dataset"},
-                             {{"f", func},
-                              {"Targuments", {}},
-                              {"output_types", output_types},
-                              {"output_shapes", output_shapes}});
+    NodeDef node_def = test::function::NDef(
+        kNodeName, name_utils::OpName(FlatMapDatasetOp::kDatasetType),
+        {FlatMapDatasetOp::kInputDataset},
+        {{FlatMapDatasetOp::kFunc, func},
+         {FlatMapDatasetOp::kTarguments, {}},
+         {FlatMapDatasetOp::kOutputTypes, output_types},
+         {FlatMapDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -72,47 +73,47 @@ struct TestCase {
 };
 
 TestCase MakeTensorSliceDatasetFuncTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          FunctionDefHelper::FunctionRef(
-              /*name*/ "MakeTensorSliceDataset",
-              /*attrs*/ {{"Toutput_types", DataTypeVector({DT_INT64})},
-                         {"output_shapes", std::vector<PartialTensorShape>(
-                                               {PartialTensorShape({1})})}}),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {7}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {8})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {0, 4, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      FunctionDefHelper::FunctionRef(
+          /*name*/ "MakeTensorSliceDataset",
+          /*attrs*/ {{"Toutput_types", DataTypeVector({DT_INT64})},
+                     {"output_shapes", std::vector<PartialTensorShape>(
+                                           {PartialTensorShape({1})})}}),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {0}),
+       CreateTensor<int64>(TensorShape{1}, {1}),
+       CreateTensor<int64>(TensorShape{1}, {2}),
+       CreateTensor<int64>(TensorShape{1}, {3}),
+       CreateTensor<int64>(TensorShape{1}, {4}),
+       CreateTensor<int64>(TensorShape{1}, {5}),
+       CreateTensor<int64>(TensorShape{1}, {6}),
+       CreateTensor<int64>(TensorShape{1}, {7}),
+       CreateTensor<int64>(TensorShape{1}, {8})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {0, 4, 11}};
 }
 
 // Test case 2: test the case if the function does not return a single scalar
 // of dtype DT_VARIANT.
 TestCase InvalidFuncTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          FunctionDefHelper::FunctionRef(/*name*/ "NonZero",
-                                         /*attrs*/ {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::NonZero()},
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      FunctionDefHelper::FunctionRef(/*name*/ "NonZero",
+                                     /*attrs*/ {{"T", DT_INT64}}),
+      /*func_lib*/ {test::function::NonZero()},
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {}};
 }
 
 class ParameterizedFlatMapDatasetOpTest
@@ -135,7 +136,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, GetNext) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -184,7 +186,8 @@ TEST_F(FlatMapDatasetOpTest, InvalidFunc) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -224,7 +227,8 @@ TEST_F(FlatMapDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -253,7 +257,8 @@ TEST_F(FlatMapDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -263,7 +268,8 @@ TEST_F(FlatMapDatasetOpTest, DatasetTypeString) {
                              &flat_map_dataset));
   core::ScopedUnref scoped_unref(flat_map_dataset);
 
-  EXPECT_EQ(flat_map_dataset->type_string(), kOpName);
+  EXPECT_EQ(flat_map_dataset->type_string(),
+            name_utils::OpName(FlatMapDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedFlatMapDatasetOpTest, DatasetOutputDtypes) {
@@ -282,7 +288,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -312,7 +319,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -342,7 +350,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -353,40 +362,6 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(flat_map_dataset);
 
   EXPECT_EQ(flat_map_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_F(FlatMapDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = MakeTensorSliceDatasetFuncTestCase();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> flat_map_dataset_kernel;
-  TF_ASSERT_OK(CreateFlatMapDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &flat_map_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
-  std::unique_ptr<OpKernelContext> flat_map_dataset_context;
-  TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
-                                           &inputs, &flat_map_dataset_context));
-  DatasetBase *flat_map_dataset;
-  TF_ASSERT_OK(CreateDataset(flat_map_dataset_kernel.get(),
-                             flat_map_dataset_context.get(),
-                             &flat_map_dataset));
-  core::ScopedUnref scoped_unref(flat_map_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(flat_map_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedFlatMapDatasetOpTest, IteratorOutputDtypes) {
@@ -405,7 +380,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -442,7 +418,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -479,7 +456,8 @@ TEST_F(FlatMapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));
@@ -496,7 +474,9 @@ TEST_F(FlatMapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(flat_map_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
                                               &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::FlatMap");
+  EXPECT_EQ(
+      iterator->prefix(),
+      name_utils::IteratorPrefix(FlatMapDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedFlatMapDatasetOpTest, Roundtrip) {
@@ -515,7 +495,8 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
 
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> flat_map_dataset_context;
   TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
                                            &inputs, &flat_map_dataset_context));

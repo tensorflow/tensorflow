@@ -26,8 +26,8 @@ __global__ void AddOneKernel(const int* in, const int N, int* out) {
 }
 
 void AddOneKernelLauncher(const int* in, const int N, int* out) {
-  TF_CHECK_OK(::tensorflow::CudaLaunchKernel(AddOneKernel, 32, 256, 0, nullptr,
-                                             in, N, out));
+  TF_CHECK_OK(::tensorflow::GpuLaunchKernel(AddOneKernel, 32, 256, 0, nullptr,
+                                            in, N, out));
 }
 
 #endif

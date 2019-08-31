@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import six
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -28,6 +29,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -48,7 +50,7 @@ class VocabInfo(
   See `tf.estimator.WarmStartSettings` for examples of using
   VocabInfo to warm-start.
 
-  Attributes:
+  Args:
     new_vocab: [Required] A path to the new vocabulary file (used with the model
       to be trained).
     new_vocab_size: [Required] An integer indicating how many entries of the new
@@ -68,8 +70,14 @@ class VocabInfo(
       linear weights for binary classification / regression).  An axis of 1
       could be used for warm-starting output layers with class vocabularies.
 
-      For example:
+  Returns:
+    A `VocabInfo` which represents the vocabulary information for warm-starting.
 
+  Raises:
+    ValueError: `axis` is neither 0 or 1.
+
+      Example Usage:
+```python
       embeddings_vocab_info = tf.VocabInfo(
           new_vocab='embeddings_vocab',
           new_vocab_size=100,
@@ -98,7 +106,8 @@ class VocabInfo(
           backup_initializer=tf.compat.v1.zeros_initializer(),
           axis=0)
 
-      Currently, only axis=0 and axis=1 are supported.
+      #Currently, only axis=0 and axis=1 are supported.
+  ```
   """
 
   def __new__(cls,
@@ -247,7 +256,6 @@ def _warm_start_var_with_vocab(var,
     # Assume tensor name remains the same.
     prev_tensor_name = _infer_var_name(var)
 
-  # TODO(eddz): Fix functionality for rank-1 Variables (like FC biases).
   total_v_first_axis = sum(v.get_shape().as_list()[0] for v in var)
   for v in var:
     v_shape = v.get_shape().as_list()
@@ -361,6 +369,45 @@ def _get_grouped_variables(vars_to_warm_start):
   return grouped_variables
 
 
+def _get_object_checkpoint_renames(path, variable_names):
+  """Returns a dictionary mapping variable names to checkpoint keys.
+
+  The warm-starting utility expects variable names to match with the variable
+  names in the checkpoint. For object-based checkpoints, the variable names
+  and names in the checkpoint are different. Thus, for object-based checkpoints,
+  this function is used to obtain the map from variable names to checkpoint
+  keys.
+
+  Args:
+    path: path to checkpoint directory or file.
+    variable_names: list of variable names to load from the checkpoint.
+
+  Returns:
+    If the checkpoint is object-based, this function returns a map from variable
+    names to their corresponding checkpoint keys.
+    If the checkpoint is name-based, this returns an empty dict.
+
+  Raises:
+    ValueError: If the object-based checkpoint is missing variables.
+  """
+  fname = checkpoint_utils._get_checkpoint_filename(path)  # pylint: disable=protected-access
+  try:
+    names_to_keys = saver_lib.object_graph_key_mapping(fname)
+  except errors.NotFoundError:
+    # If an error is raised from `object_graph_key_mapping`, then the
+    # checkpoint is name-based. There are no renames, so return an empty dict.
+    return {}
+
+  missing_names = set(variable_names) - set(names_to_keys.keys())
+  if missing_names:
+    raise ValueError(
+        "Attempting to warm-start from an object-based checkpoint, but found "
+        "that the checkpoint did not contain values for all variables. The "
+        "following variables were missing: {}"
+        .format(missing_names))
+  return {name: names_to_keys[name] for name in variable_names}
+
+
 @tf_export(v1=["train.warm_start"])
 def warm_start(ckpt_to_initialize_from,
                vars_to_warm_start=".*",
@@ -412,12 +459,20 @@ def warm_start(ckpt_to_initialize_from,
       a stronger check for variable configuration than relying on users to
       examine the logs.
   """
+  logging.info("Warm-starting from: {}".format(ckpt_to_initialize_from))
+  grouped_variables = _get_grouped_variables(vars_to_warm_start)
+
   if var_name_to_vocab_info is None:
     var_name_to_vocab_info = {}
-  if var_name_to_prev_var_name is None:
-    var_name_to_prev_var_name = {}
-  logging.info("Warm-starting from: %s", (ckpt_to_initialize_from,))
-  grouped_variables = _get_grouped_variables(vars_to_warm_start)
+
+  if not var_name_to_prev_var_name:
+    # Detect whether the checkpoint is object-based, in which case the
+    # var_name_to_prev_var_name dictionary should map variable names to
+    # checkpoint keys. If the user has specified var_name_to_prev_var_name, we
+    # do not override it.
+    var_name_to_prev_var_name = _get_object_checkpoint_renames(
+        ckpt_to_initialize_from, grouped_variables.keys())
+
   warmstarted_count = 0
 
   # Keep track of which var_names in var_name_to_prev_var_name and

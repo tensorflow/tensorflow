@@ -49,6 +49,27 @@ TEST(ControlFlowOpsTest, Merge_ShapeFn) {
   INFER_OK(op, "[2,1];[2,1];[2,1]", "in0;[]");
 }
 
+TEST(ControlFlowOpsTest, SwitchN_ShapeFn) {
+  ShapeInferenceTestOp op("_SwitchN");
+
+  int n = 5;
+  TF_ASSERT_OK(NodeDefBuilder("test", "_SwitchN")
+                   .Input({"d", 0, DT_FLOAT})
+                   .Input({"bi", 0, DT_INT32})
+                   .Attr("num_outs", n)
+                   .Finalize(&op.node_def));
+
+  // Non-scalar output_index.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[2]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[?]");
+  // The second input should always be scalar. Outputs are 5x the first input.
+  INFER_OK(op, "?;?", "in0;in0;in0;in0;in0");
+  INFER_OK(op, "[2,?];?", "in0;in0;in0;in0;in0");
+  INFER_OK(op, "[2,?];[]", "in0;in0;in0;in0;in0");
+  INFER_OK(op, "[2,3];[]", "in0;in0;in0;in0;in0");
+}
+
 TEST(ControlFlowOpsTest, RefSelect_ShapeFn) {
   ShapeInferenceTestOp op("RefSelect");
 

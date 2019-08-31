@@ -2,16 +2,17 @@
 #   Contains ops for statistical distributions (with pdf, cdf, sample, etc...).
 #   APIs here are meant to evolve over time.
 
-package(default_visibility = [
-    "//learning/brain/contrib/bayesflow:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//learning/brain/contrib/bayesflow:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "bijectors_py",
@@ -151,6 +152,9 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "no_oss",  # b/134605801
+    ],
 )
 
 cuda_py_test(
@@ -276,6 +280,10 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
+    ],
+    tags = [
+        # TODO(b/134605801): Re-enable this test.
+        "no_oss",
     ],
 )
 
@@ -505,6 +513,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = ["nomsan"],  # disable to avoid false positives from scipy.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -514,6 +523,9 @@ cuda_py_test(
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_oss",  # b/134605801
     ],
 )
 

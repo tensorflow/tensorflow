@@ -22,7 +22,6 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
 from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -332,7 +331,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
     def dataset_fn():
       return dataset_ops.Dataset.range(10).map(
           lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
-          num_parallel_calls=optimization.AUTOTUNE)
+          num_parallel_calls=dataset_ops.AUTOTUNE)
 
     self.parallelCallsStats(
         dataset_fn, {"ParallelMapDataset"}, 10, function_processing_time=True)
@@ -348,7 +347,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
       return dataset_ops.Dataset.range(1).interleave(
           interleave_fn,
           cycle_length=1,
-          num_parallel_calls=optimization.AUTOTUNE)
+          num_parallel_calls=dataset_ops.AUTOTUNE)
 
     self.parallelCallsStats(dataset_fn, {"ParallelInterleaveDatasetV2"}, 10)
 
@@ -358,12 +357,12 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
       return dataset_ops.Dataset.range(100).apply(
           batching.map_and_batch(
               lambda x: array_ops.tile([x], ops.convert_to_tensor([2])),
-              num_parallel_calls=optimization.AUTOTUNE,
+              num_parallel_calls=dataset_ops.AUTOTUNE,
               batch_size=16))
 
     num_output = 100 // 16 + 1
     self.parallelCallsStats(
-        dataset_fn, {"ExperimentalMapAndBatchDataset"},
+        dataset_fn, {"MapAndBatchDataset"},
         num_output,
         check_elements=False,
         function_processing_time=True)
@@ -392,7 +391,7 @@ class FeatureStatsDatasetTest(
       num_output = total_records // batch_size + 1
 
     self.parallelCallsStats(
-        dataset_fn, {"ExperimentalParseExampleDataset"},
+        dataset_fn, {"ParseExampleDataset"},
         num_output,
         check_elements=False)
 
@@ -410,19 +409,19 @@ class FeatureStatsDatasetTest(
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "features_count"), total_records)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "feature_values_count"), total_records)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "features_count"), total_records * 4)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 

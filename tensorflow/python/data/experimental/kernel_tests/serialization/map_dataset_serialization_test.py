@@ -53,10 +53,7 @@ class MapDatasetSerializationTest(
         .repeat(self._num_epochs))
 
   def testSaveRestoreCore(self):
-    self.run_core_tests(
-        self._build_ds,
-        lambda: self._build_ds(multiplier=15.0),
-        self._num_outputs)
+    self.run_core_tests(self._build_ds, self._num_outputs)
 
   def testSaveStatefulFunction(self):
 
@@ -68,7 +65,7 @@ class MapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(100).map(_map_fn)
 
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
   def testCaptureVariableInMapFn(self):
 
@@ -78,7 +75,7 @@ class MapDatasetSerializationTest(
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda _: counter_var.assign_add(1)))
 
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
   def testCaptureConstantInMapFn(self):
 
@@ -87,7 +84,7 @@ class MapDatasetSerializationTest(
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda x: x + constant_var))
 
-    self.run_core_tests(_build_ds, None, 10)
+    self.run_core_tests(_build_ds, 10)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
@@ -100,7 +97,7 @@ class MapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
-    self.run_core_tests(_build_ds, None, num_outputs)
+    self.run_core_tests(_build_ds, num_outputs)
 
   def testBuildDefunInMapFn(self):
     num_outputs = 100
@@ -119,7 +116,7 @@ class MapDatasetSerializationTest(
 
       return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
-    self.run_core_tests(_build_ds, None, num_outputs)
+    self.run_core_tests(_build_ds, num_outputs)
 
   def testSparseCore(self):
 
@@ -133,8 +130,7 @@ class MapDatasetSerializationTest(
       return dataset_ops.Dataset.range(num_outputs).map(_sparse)
 
     num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs),
-                        lambda: _build_ds(int(num_outputs / 2)), num_outputs)
+    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,10 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow/compiler/xla/client:friends"])
+package(
+    default_visibility = ["//tensorflow/compiler/xla/client:friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -295,6 +296,8 @@ cc_library(
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
     deps = [
+        ":arithmetic",
+        ":constants",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -472,11 +475,6 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
-    # Blacklisted because the tests are flaky.
-    blacklisted_backends = [
-        "cpu",
-        "gpu",
-    ],
     real_hardware_only = True,
     shard_count = 10,
     tags = ["optonly"],

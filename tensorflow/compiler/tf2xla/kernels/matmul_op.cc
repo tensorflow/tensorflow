@@ -67,9 +67,9 @@ class MatMulOp : public XlaOpKernel {
 
     OP_REQUIRES(ctx,
                 a_shape.dim_size(first_index) == b_shape.dim_size(second_index),
-                errors::InvalidArgument("Matrix size-compatible: In[0]: ",
-                                        a_shape.DebugString(), ", In[1]: ",
-                                        b_shape.DebugString()));
+                errors::InvalidArgument(
+                    "Matrix size-incompatible: In[0]: ", a_shape.DebugString(),
+                    ", In[1]: ", b_shape.DebugString()));
 
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);

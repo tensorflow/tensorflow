@@ -26,6 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 namespace calibration {
+
 // A resolver that replaces the kernel invocations with a wrapper
 // eval function.
 class LoggingOpResolver : public OpResolver {
@@ -33,23 +34,27 @@ class LoggingOpResolver : public OpResolver {
   // Creates an instance of |LoggingOpResolver|.
   // All |TfLiteRegistration.invoke| functions are replaced by
   // |logging_eval_fn|.
-  // TODO(shashishekhar): This interface needs to change for custom ops and
+  // TODO(shashishekhar): This interface needs to change for
   // BuiltinOps that need special logging implementations.
-  LoggingOpResolver(const BuiltinOpsSet& ops_to_replace,
+  LoggingOpResolver(const BuiltinOpsSet& builtin_ops_to_replace,
+                    const CustomOpsSet& custom_ops_to_replace,
                     const OpResolver& base_resolver,
                     KernelEvalFuncPtr logging_eval_fn);
 
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override;
-
   KernelEvalFuncPtr GetWrappedKernelInvoke(BuiltinOperator op,
                                            int version) const;
+
   const TfLiteRegistration* FindOp(const char* op, int version) const override;
+  KernelEvalFuncPtr GetWrappedKernelInvoke(const char* op, int version) const;
 
  private:
   BuiltinOpsMap<std::unique_ptr<TfLiteRegistration>>
       builtin_op_registration_map_;
   BuiltinOpsMap<KernelEvalFuncPtr> builtin_op_evalfn_map_;
+  CustomOpsMap<std::unique_ptr<TfLiteRegistration>> custom_op_registration_map_;
+  CustomOpsMap<KernelEvalFuncPtr> custom_op_evalfn_map_;
 };
 
 }  // namespace calibration

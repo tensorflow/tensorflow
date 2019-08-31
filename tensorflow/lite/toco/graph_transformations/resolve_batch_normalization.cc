@@ -136,14 +136,7 @@ namespace toco {
         offset_float_data[i] - mean_float_data[i] * multiplier_float_data[i];
   }
 
-  // Remove the old param arrays
-  DeleteArrayIfUsedOnce(bn_op->inputs[1], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[2], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[3], model);
-
-  // Remove the old operator
-  DCHECK_EQ(bn_it->get(), bn_op);
-  model->operators.erase(bn_it);
+  DeleteOpAndArrays(model, bn_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

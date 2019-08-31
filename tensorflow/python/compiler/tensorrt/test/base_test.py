@@ -33,43 +33,33 @@ from tensorflow.python.platform import test
 
 class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing single segment."""
+    dtype = inp.dtype
+    conv_filter = constant_op.constant(
+        [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
+        name="weights",
+        dtype=dtype)
+    conv = nn.conv2d(
+        input=inp,
+        filter=conv_filter,
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        name="conv")
+    bias = constant_op.constant([4., 1.5, 2., 3., 5., 7.],
+                                name="bias",
+                                dtype=dtype)
+    added = nn.bias_add(conv, bias, name="bias_add")
+    relu = nn.relu(added, "relu")
+    identity = array_ops.identity(relu, "identity")
+    pool = nn_ops.max_pool(
+        identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
+    return array_ops.squeeze(pool, name="output_0")
+
+  def GetParams(self):
     # TODO(aaroey): test graph with different dtypes.
-    dtype = dtypes.float32
-    input_name = "input"
-    input_dims = [100, 24, 24, 2]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-      with g.device("/GPU:0"):
-        conv_filter = constant_op.constant(
-            [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
-            name="weights",
-            dtype=dtype)
-        conv = nn.conv2d(
-            input=inp,
-            filter=conv_filter,
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            name="conv")
-        bias = constant_op.constant([4., 1.5, 2., 3., 5., 7.],
-                                    name="bias",
-                                    dtype=dtype)
-        added = nn.bias_add(conv, bias, name="bias_add")
-        relu = nn.relu(added, "relu")
-        identity = array_ops.identity(relu, "identity")
-        pool = nn_ops.max_pool(
-            identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
-      array_ops.squeeze(pool, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[100, 6, 6, 6]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 24, 24, 2]],
+                            [[100, 6, 6, 6]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -83,50 +73,40 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing multiple segment."""
+    dtype = inp.dtype
+    conv_filter = constant_op.constant(
+        [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
+        name="weights",
+        dtype=dtype)
+    conv = nn.conv2d(
+        input=inp,
+        filter=conv_filter,
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        name="conv")
+    c1 = constant_op.constant(
+        np.random.randn(12, 12, 6), dtype=dtype, name="c1")
+    p = math_ops.mul(conv, c1, name="mul")
+    c2 = constant_op.constant(
+        np.random.randn(12, 12, 6), dtype=dtype, name="c2")
+    q = math_ops.div(conv, c2, name="div")
+
+    edge = self.trt_incompatible_op(q, name="incompatible")
+    edge = math_ops.div(edge, edge, name="div1")
+    r = math_ops.add(edge, edge, name="add")
+
+    p = math_ops.sub(p, edge, name="sub")
+    q = math_ops.mul(q, edge, name="mul1")
+    s = math_ops.add(p, q, name="add1")
+    s = math_ops.sub(s, r, name="sub1")
+    return array_ops.squeeze(s, name="output_0")
+
+  def GetParams(self):
     # TODO(aaroey): test graph with different dtypes.
-    dtype = dtypes.float32
-    input_name = "input"
-    input_dims = [100, 24, 24, 2]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        conv_filter = constant_op.constant(
-            [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
-            name="weights",
-            dtype=dtype)
-        conv = nn.conv2d(
-            input=inp,
-            filter=conv_filter,
-            strides=[1, 2, 2, 1],
-            padding="SAME",
-            name="conv")
-        c1 = constant_op.constant(
-            np.random.randn(12, 12, 6), dtype=dtype, name="c1")
-        p = math_ops.mul(conv, c1, name="mul")
-        c2 = constant_op.constant(
-            np.random.randn(12, 12, 6), dtype=dtype, name="c2")
-        q = math_ops.div(conv, c2, name="div")
-
-        edge = self.trt_incompatible_op(q, name="incompatible")
-        edge = math_ops.div(edge, edge, name="div1")
-        r = math_ops.add(edge, edge, name="add")
-
-        p = math_ops.sub(p, edge, name="sub")
-        q = math_ops.mul(q, edge, name="mul1")
-        s = math_ops.add(p, q, name="add1")
-        s = math_ops.sub(s, r, name="sub1")
-      array_ops.squeeze(s, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[100, 12, 12, 6]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 24, 24, 2]],
+                            [[100, 12, 12, 6]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -149,36 +129,27 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing two segment."""
-    input_name = "input"
-    input_dims = [2, 32, 32, 3]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        n = inp
-        for i in range(2):
-          c = constant_op.constant(1.0, name="c%d" % i)
-          n = math_ops.add(n, c, name="add%d" % i)
-          n = math_ops.mul(n, n, name="mul%d" % i)
-        edge = self.trt_incompatible_op(n, name="incompatible")
-        with g.control_dependencies([edge]):
-          c = constant_op.constant(1.0, name="c2")
-          n = math_ops.add(n, c, name="add2")
-        n = math_ops.mul(n, n, name="mul2")
-        c = constant_op.constant(1.0, name="c3")
-        n = math_ops.add(n, c, name="add3")
-        n = math_ops.mul(n, n, name="mul3")
-      array_ops.squeeze(n, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims]])
+    n = inp
+    for i in range(2):
+      c = constant_op.constant(1.0, name="c%d" % i)
+      n = math_ops.add(n, c, name="add%d" % i)
+      n = math_ops.mul(n, n, name="mul%d" % i)
+    edge = self.trt_incompatible_op(n, name="incompatible")
+    with ops.control_dependencies([edge]):
+      c = constant_op.constant(1.0, name="c2")
+      n = math_ops.add(n, c, name="add2")
+    n = math_ops.mul(n, n, name="mul2")
+    c = constant_op.constant(1.0, name="c3")
+    n = math_ops.add(n, c, name="add3")
+    n = math_ops.mul(n, n, name="mul3")
+    return array_ops.squeeze(n, name="output_0")
+
+  def GetParams(self):
+    shapes = [[2, 32, 32, 3]]
+    return self.BuildParams(self.GraphFn, dtypes.float32, input_shapes=shapes,
+                            output_shapes=shapes)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -198,40 +169,31 @@ class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
 class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing multiple segment."""
-    input_name = "input"
-    input_dims = [2, 32, 32, 3]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        n = inp
-        c = constant_op.constant(1.0, name="c")
-        # Adds control dependency from the constant op to a trt incompatible op,
-        # and adds control dependency from the trt incompatible op to all other
-        # ops, to make sure the constant op cannot be contracted with any trt
-        # segment that depends on it.
-        with g.control_dependencies([c]):
-          d = self.trt_incompatible_op(n, name="incompatible")
-        with g.control_dependencies([d]):
-          n = math_ops.add(n, c, name="add")
-          n = math_ops.mul(n, n, name="mul")
-          n = math_ops.add(n, n, name="add1")
-        n = self.trt_incompatible_op(n, name="incompatible1")
-        with g.control_dependencies([d]):
-          n = math_ops.add(n, c, name="add2")
-          n = math_ops.mul(n, n, name="mul1")
-          n = math_ops.add(n, n, name="add3")
-      array_ops.squeeze(n, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims]])
+    n = inp
+    c = constant_op.constant(1.0, name="c")
+    # Adds control dependency from the constant op to a trt incompatible op,
+    # and adds control dependency from the trt incompatible op to all other
+    # ops, to make sure the constant op cannot be contracted with any trt
+    # segment that depends on it.
+    with ops.control_dependencies([c]):
+      d = self.trt_incompatible_op(n, name="incompatible")
+    with ops.control_dependencies([d]):
+      n = math_ops.add(n, c, name="add")
+      n = math_ops.mul(n, n, name="mul")
+      n = math_ops.add(n, n, name="add1")
+    n = self.trt_incompatible_op(n, name="incompatible1")
+    with ops.control_dependencies([d]):
+      n = math_ops.add(n, c, name="add2")
+      n = math_ops.mul(n, n, name="mul1")
+      n = math_ops.add(n, n, name="add3")
+    return array_ops.squeeze(n, name="output_0")
+
+  def GetParams(self):
+    shapes = [[2, 32, 32, 3]]
+    return self.BuildParams(self.GraphFn, dtypes.float32, input_shapes=shapes,
+                            output_shapes=shapes)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -243,28 +205,19 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
 
 class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing single segment."""
-    input_name = "input"
-    input_dims = [2, 32, 32, 3]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        n = inp
-        c = constant_op.constant(1.0, name="c")
-        n = math_ops.add(n, c, name="add")
-        n = math_ops.mul(n, n, name="mul")
-        n = math_ops.add(n, n, name="add1")
-      array_ops.squeeze(n, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims]])
+    n = inp
+    c = constant_op.constant(1.0, name="c")
+    n = math_ops.add(n, c, name="add")
+    n = math_ops.mul(n, n, name="mul")
+    n = math_ops.add(n, n, name="add1")
+    return array_ops.squeeze(n, name="output_0")
+
+  def GetParams(self):
+    shapes = [[2, 32, 32, 3]]
+    return self.BuildParams(self.GraphFn, dtypes.float32, input_shapes=shapes,
+                            output_shapes=shapes)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -273,32 +226,23 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
 class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing multiple segment."""
-    input_name = "input"
-    input_dims = [2, 32, 32, 3]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        n = inp
-        c = constant_op.constant(1.0, name="c")
-        n = math_ops.add(n, c, name="add")
-        n = math_ops.mul(n, n, name="mul")
-        n = math_ops.add(n, n, name="add1")
-        n = self.trt_incompatible_op(n, name="incompatible1")
-        n = math_ops.add(n, c, name="add2")
-        n = math_ops.mul(n, n, name="mul1")
-        n = math_ops.add(n, n, name="add3")
-      array_ops.squeeze(n, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims]])
+    n = inp
+    c = constant_op.constant(1.0, name="c")
+    n = math_ops.add(n, c, name="add")
+    n = math_ops.mul(n, n, name="mul")
+    n = math_ops.add(n, n, name="add1")
+    n = self.trt_incompatible_op(n, name="incompatible1")
+    n = math_ops.add(n, c, name="add2")
+    n = math_ops.mul(n, n, name="mul1")
+    n = math_ops.add(n, n, name="add3")
+    return array_ops.squeeze(n, name="output_0")
+
+  def GetParams(self):
+    shapes = [[2, 32, 32, 3]]
+    return self.BuildParams(self.GraphFn, dtypes.float32, input_shapes=shapes,
+                            output_shapes=shapes)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -314,40 +258,31 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
 class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
 
-  def GetParams(self):
+  def GraphFn(self, inp):
     """Create a graph containing multiple segment."""
-    input_name = "input"
-    input_dims = [2, 32, 32, 3]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-      with g.device("/GPU:0"):
-        c1 = constant_op.constant(1.0, name="c1")
-        c2 = constant_op.constant(1.0, name="c2")
-        d1 = constant_op.constant(1.0, name="d1")
-        d2 = self.trt_incompatible_op(inp, name="d2")
-        with g.control_dependencies([d1, d2]):
-          add = math_ops.add(inp, c1, name="add")
-        with g.control_dependencies([d1, d2]):
-          mul = math_ops.mul(add, add, name="mul")
-        with g.control_dependencies([d1, d2]):
-          add1 = math_ops.add(mul, mul, name="add1")
-        edge = self.trt_incompatible_op(add1, name="incompatible")
-        with g.control_dependencies([d1, d2, add, mul]):
-          add2 = math_ops.add(edge, c2, name="add2")
-        with g.control_dependencies([d1, d2, add1, mul]):
-          mul1 = math_ops.mul(add2, add2, name="mul1")
-        with g.control_dependencies([d1, d2, add, add1]):
-          add3 = math_ops.add(mul1, mul1, name="add3")
-      array_ops.squeeze(add3, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[input_dims]])
+    c1 = constant_op.constant(1.0, name="c1")
+    c2 = constant_op.constant(1.0, name="c2")
+    d1 = constant_op.constant(1.0, name="d1")
+    d2 = self.trt_incompatible_op(inp, name="d2")
+    with ops.control_dependencies([d1, d2]):
+      add = math_ops.add(inp, c1, name="add")
+    with ops.control_dependencies([d1, d2]):
+      mul = math_ops.mul(add, add, name="mul")
+    with ops.control_dependencies([d1, d2]):
+      add1 = math_ops.add(mul, mul, name="add1")
+    edge = self.trt_incompatible_op(add1, name="incompatible")
+    with ops.control_dependencies([d1, d2, add, mul]):
+      add2 = math_ops.add(edge, c2, name="add2")
+    with ops.control_dependencies([d1, d2, add1, mul]):
+      mul1 = math_ops.mul(add2, add2, name="mul1")
+    with ops.control_dependencies([d1, d2, add, add1]):
+      add3 = math_ops.add(mul1, mul1, name="add3")
+    return array_ops.squeeze(add3, name="output_0")
+
+  def GetParams(self):
+    shapes = [[2, 32, 32, 3]]
+    return self.BuildParams(self.GraphFn, dtypes.float32, input_shapes=shapes,
+                            output_shapes=shapes)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

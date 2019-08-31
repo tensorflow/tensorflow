@@ -66,9 +66,7 @@ def bytes_produced_stats(tag):
 
   def _apply_fn(dataset):
     return _StatsDataset(
-        dataset,
-        gen_experimental_dataset_ops.experimental_bytes_produced_stats_dataset,
-        tag)
+        dataset, gen_experimental_dataset_ops.bytes_produced_stats_dataset, tag)
 
   return _apply_fn
 
@@ -91,8 +89,7 @@ def latency_stats(tag):
 
   def _apply_fn(dataset):
     return _StatsDataset(
-        dataset,
-        gen_experimental_dataset_ops.experimental_latency_stats_dataset, tag)
+        dataset, gen_experimental_dataset_ops.latency_stats_dataset, tag)
 
   return _apply_fn
 
@@ -107,5 +104,5 @@ class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
     variant_tensor = self._op_function(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._tag,
-        **dataset_ops.flat_structure(self))
+        **self._flat_structure)
     super(_StatsDataset, self).__init__(input_dataset, variant_tensor)

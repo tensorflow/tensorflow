@@ -274,12 +274,16 @@ Status FunctionalizeControlFlowPass::Run(
       n->ClearAttr(func_attr);
       func.set_name(new_func_name);
       n->AddAttr(func_attr, func);
-
       fld_modified = true;
     }
   }
 
-  if (fld_modified) {
+  // TODO(ylc, endlessroad): Change this to "if (fld_modified")"
+  if (false) {
+    if (VLOG_IS_ON(4)) {
+      DumpGraphToFile("functionalize_control_flow_before_prune", *graph,
+                      options.flib_def);
+    }
     TF_RETURN_IF_ERROR(
         PruneUnreachableFunctionsFromGraph(*graph, options.flib_def));
   }

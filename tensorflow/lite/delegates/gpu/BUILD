@@ -1,6 +1,9 @@
-package(default_visibility = ["//visibility:public"])
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Primary purpose of this config is to replace ::util::Status with our custom
 # light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
@@ -11,6 +14,14 @@ licenses(["notice"])  # Apache 2.0
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
+)
+
+config_setting(
+    name = "tflite_gpu_extra_gles_deps",
+    values = {
+        "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
+        "cpu": "k8",
+    },
 )
 
 cc_library(
@@ -41,6 +52,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:command_queue",
         "//tensorflow/lite/delegates/gpu/gl:compiler",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
         "//tensorflow/lite/delegates/gpu/gl/converters:bhwc_to_phwc4",
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",
@@ -55,14 +67,13 @@ cc_library(
             "//tensorflow/lite/schema:schema_fbs",
         ],
         ":tflite_gpu_binary_release": [],
-    }),
+    }) + tflite_extra_gles_deps(),
 )
 
 objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
-    copts = ["-std=c++11"],
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -85,10 +96,22 @@ objc_library(
     ],
 )
 
+objc_library(
+    name = "metal_delegate_internal",
+    hdrs = ["metal_delegate_internal.h"],
+    copts = ["-std=c++11"],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+    ],
+)
+
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
-    linkopts = select({
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_gpu_gl.so",
+    ] + select({
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
@@ -114,4 +137,28 @@ cc_binary(
         "notap",
     ],
     deps = [":metal_delegate"],
+)
+
+cc_library(
+    name = "api",
+    srcs = ["api.cc"],
+    hdrs = ["api.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/gl:portable",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
+        "@opencl_headers",
+    ],
+)
+
+cc_library(
+    name = "spi",
+    hdrs = ["spi.h"],
+    deps = [
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
 )

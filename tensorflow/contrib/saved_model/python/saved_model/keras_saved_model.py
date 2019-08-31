@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras import saving
+from tensorflow.python.keras.saving import saved_model_experimental
 
 
 # TODO(kathywu): Remove all contrib callers, switch to tf.keras.
-save_keras_model = saving.export_saved_model
-load_keras_model = saving.load_from_saved_model
+save_keras_model = saved_model_experimental.export_saved_model
+load_keras_model = saved_model_experimental.load_from_saved_model

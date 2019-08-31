@@ -3,6 +3,9 @@
     "optionSet" : {
       "ProjectPrioritizesSwift" : {
         "p" : "YES"
+      },
+      "SwiftForcesdSYMs" : {
+        "p" : "NO"
       }
     }
   },

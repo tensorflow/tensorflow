@@ -141,6 +141,7 @@ class OpLevelCostEstimator {
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
   Costs PredictGatherOrSlice(const OpContext& op_context) const;
+  Costs PredictScatter(const OpContext& op_context) const;
   Costs PredictMaxPool(const OpContext& op_context) const;
   Costs PredictMaxPoolGrad(const OpContext& op_context) const;
   Costs PredictAvgPool(const OpContext& op_context) const;

@@ -402,10 +402,6 @@ GENERATE_PYTHON_OP_LIB("contrib_nearest_neighbor_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nearest_neighbor/ops/gen_nearest_neighbor_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_resampler_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/resampler/ops/gen_resampler_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_lstm_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_seq2seq_beam_search_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/ops/gen_beam_search_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
@@ -670,44 +666,6 @@ if(WIN32)
         SOURCES "${tf_nearest_neighbor_srcs}"
         DEPENDS pywrap_tensorflow_internal tf_python_ops
         DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nearest_neighbor/python/ops/)
-endif(WIN32)
-
-if(WIN32)
-    # include contrib/rnn as .so
-    #
-    set(tf_gru_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.h"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.h"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc"
-    )
-    set(tf_gru_gpu_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops_gpu.cu.cc"
-    )
-
-    set(tf_lstm_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.h"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.h"
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc"
-    )
-    set(tf_lstm_gpu_srcs
-        "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops_gpu.cu.cc"
-    )
-
-    AddUserOps(TARGET _gru_ops
-        SOURCES "${tf_gru_srcs}"
-        GPUSOURCES ${tf_gru_gpu_srcs}
-        DEPENDS pywrap_tensorflow_internal tf_python_ops
-        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
-
-    AddUserOps(TARGET _lstm_ops
-        SOURCES "${tf_lstm_srcs}"
-        GPUSOURCES ${tf_lstm_gpu_srcs}
-        DEPENDS pywrap_tensorflow_internal tf_python_ops
-        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
 endif(WIN32)
 
 # include contrib/seq2seq as .so

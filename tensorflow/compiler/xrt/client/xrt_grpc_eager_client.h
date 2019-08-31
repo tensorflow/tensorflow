@@ -23,6 +23,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_CLIENT_XRT_GRPC_EAGER_CLIENT_H_
 #define TENSORFLOW_COMPILER_XRT_CLIENT_XRT_GRPC_EAGER_CLIENT_H_
 
+#include <unordered_map>
+
 #include "grpcpp/generic/generic_stub.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -71,9 +73,6 @@ class XrtGrpcEagerClient {
                              eager::RegisterFunctionResponse* response,
                              StatusCallback done,
                              CallOptions* call_opts = nullptr);
-  void SendTensorAsync(const eager::SendTensorRequest* request,
-                       eager::SendTensorResponse* response, StatusCallback done,
-                       CallOptions* call_opts = nullptr);
 
   // The following two methods are actually from the WorkerService API, not
   // EagerService, but are necessary for using remote Eager, and we include them

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
@@ -124,11 +125,12 @@ void Benchmark() {
       for (const auto& result : results) {
         printf(",%.4g", 2.0e-9 * shape.rows * shape.cols * shape.depth /
                             result->latency);
-        if (getenv("RUY_BENCHMARK_PMU")) {
-          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g", result->l1_refill_rate,
-                 result->l2_refill_rate, result->l3_refill_rate,
-                 result->mispred_rate, result->frontend_stall_rate,
-                 result->backend_stall_rate);
+        if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g",
+                 result->l1_refill_rate, result->l2_refill_rate,
+                 result->l3_refill_rate, result->l1tlb_refill_rate,
+                 result->l2tlb_refill_rate, result->mispred_rate,
+                 result->frontend_stall_rate, result->backend_stall_rate);
         }
       }
       printf("\n");
@@ -139,11 +141,12 @@ void Benchmark() {
             "%s,%dx%dx%d,%.4g", PathName(*result).c_str(), shape.rows,
             shape.depth, shape.cols,
             2.0e-9 * shape.rows * shape.cols * shape.depth / result->latency);
-        if (getenv("RUY_BENCHMARK_PMU")) {
-          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g", result->l1_refill_rate,
-                 result->l2_refill_rate, result->l3_refill_rate,
-                 result->mispred_rate, result->frontend_stall_rate,
-                 result->backend_stall_rate);
+        if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+          printf(",%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g,%.3g",
+                 result->l1_refill_rate, result->l2_refill_rate,
+                 result->l3_refill_rate, result->l1tlb_refill_rate,
+                 result->l2tlb_refill_rate, result->mispred_rate,
+                 result->frontend_stall_rate, result->backend_stall_rate);
         }
         printf("\n");
       }

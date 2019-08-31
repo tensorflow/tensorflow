@@ -85,6 +85,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "SaveOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TPU"
     mtype: "<type \'str\'>"
   }
@@ -186,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "simple_save"

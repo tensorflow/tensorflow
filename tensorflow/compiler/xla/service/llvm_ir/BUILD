@@ -1,9 +1,15 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
-licenses(["notice"])  # Apache 2.0
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -19,11 +25,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
 )
 
 cc_library(
@@ -140,29 +141,11 @@ cc_library(
 )
 
 cc_library(
-    name = "kernel_tiling",
-    srcs = ["kernel_tiling.cc"],
-    hdrs = ["kernel_tiling.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/gpu:target_util",
-        "//tensorflow/core:lib",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
     name = "fused_ir_emitter",
     srcs = ["fused_ir_emitter.cc"],
     hdrs = ["fused_ir_emitter.h"],
     deps = [
         ":ir_array",
-        ":kernel_tiling",
         ":llvm_util",
         ":loop_emitter",
         ":tuple_ops",

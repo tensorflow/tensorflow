@@ -80,8 +80,116 @@ in the Android Gradle documentation.
 
 In some cases, you might wish to use a local build of TensorFlow Lite. For
 example, you may be building a custom binary that includes
-[operations selected from TensorFlow](https://www.tensorflow.org/lite/guide/ops_select).
+[operations selected from TensorFlow](https://www.tensorflow.org/lite/guide/ops_select),
+or you may wish to make local changes to TensorFlow Lite.
 
-In this case, follow the
-[custom AAR build instructions](https://www.tensorflow.org/lite/guide/ops_select#android_aar)
-to create your own AAR and include it in your app.
+#### Install Bazel and Android Prerequisites
+
+Bazel is the primary build system for TensorFlow. To build with Bazel, it and
+the Android NDK and SDK must be installed on your system.
+
+1.  Install the latest version of Bazel as per the instructions
+    [on the Bazel website](https://bazel.build/versions/master/docs/install.html).
+2.  The Android NDK is required to build the native (C/C++) TensorFlow Lite
+    code. The current recommended version is 17c, which may be found
+    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-17c-downloads).
+3.  The Android SDK and build tools may be obtained
+    [here](https://developer.android.com/tools/revisions/build-tools.html), or
+    alternatively as part of
+    [Android Studio](https://developer.android.com/studio/index.html). Build
+    tools API >= 23 is the recommended version for building TensorFlow Lite.
+
+#### Configure WORKSPACE and .bazelrc
+
+Run the `./configure` script in the root TensorFlow checkout directory, and
+answer "Yes" when the script asks to interactively configure the `./WORKSPACE`
+for Android builds. The script will attempt to configure settings using the
+following environment variables:
+
+*   `ANDROID_SDK_HOME`
+*   `ANDROID_SDK_API_LEVEL`
+*   `ANDROID_NDK_HOME`
+*   `ANDROID_NDK_API_LEVEL`
+
+If these variables aren't set, they must be provided interactively in the script
+prompt. Successful configuration should yield entries similar to the following
+in the `.tf_configure.bazelrc` file in the root folder:
+
+```shell
+build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r17c"
+build --action_env ANDROID_NDK_API_LEVEL="18"
+build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
+build --action_env ANDROID_SDK_API_LEVEL="23"
+build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
+```
+
+#### Build and Install
+
+Once Bazel is properly configured, you can build the TensorFlow Lite AAR from
+the root checkout directory as follows:
+
+```sh
+bazel build --cxxopt='-std=c++11' -c opt         \
+  --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+  //tensorflow/lite/java:tensorflow-lite
+```
+
+This will generate an AAR file in `bazel-genfiles/tensorflow/lite/java/`. Note
+that this builds a "fat" AAR with several different architectures; if you don't
+need all of them, use the subset appropriate for your deployment environment.
+From there, there are several approaches you can take to use the .aar in your
+Android Studio project.
+
+##### Add AAR directly to project
+
+Move the `tensorflow-lite.aar` file into a directory called `libs` in your
+project. Modify your app's `build.gradle` file to reference the new directory
+and replace the existing TensorFlow Lite dependency with the new local library,
+e.g.:
+
+```
+allprojects {
+    repositories {
+        jcenter()
+        flatDir {
+            dirs 'libs'
+        }
+    }
+}
+
+dependencies {
+    compile(name:'tensorflow-lite', ext:'aar')
+}
+```
+
+##### Install AAR to local Maven repository
+
+Execute the following command from your root checkout directory:
+
+```sh
+mvn install:install-file \
+  -Dfile=bazel-genfiles/tensorflow/lite/java/tensorflow-lite.aar \
+  -DgroupId=org.tensorflow \
+  -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
+```
+
+In your app's `build.gradle`, ensure you have the `mavenLocal()` dependency and
+replace the standard TensorFlow Lite dependency with the one that has support
+for select TensorFlow ops:
+
+```
+allprojects {
+    repositories {
+        jcenter()
+        mavenLocal()
+    }
+}
+
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+}
+```
+
+Note that the `0.1.100` version here is purely for the sake of
+testing/development. With the local AAR installed, you can use the standard
+[TensorFlow Lite Java inference APIs](inference.md) in your app code.

@@ -110,6 +110,15 @@ XlaComputation CreateScalarOrComputation(PrimitiveType type,
                                     const XlaOp& rhs) { return Or(lhs, rhs); });
 }
 
+XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
+                                                       XlaBuilder* builder) {
+  XlaComputation reducer =
+      (primitive_util::IsIntegralType(type) || type == PRED)
+          ? CreateScalarOrComputation(type, builder)
+          : CreateScalarAddComputation(type, builder);
+  return reducer;
+}
+
 XlaOp Any(XlaOp predicates) {
   XlaBuilder* builder = predicates.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {

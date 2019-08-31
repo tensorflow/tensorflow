@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
+from absl.testing import parameterized
 import tensorflow.compat.v2 as tf
 
-from tensorflow.examples.saved_model.integration_tests import integration_scripts
+from tensorflow.examples.saved_model.integration_tests import distribution_strategy_utils as ds_utils
+from tensorflow.examples.saved_model.integration_tests import integration_scripts as scripts
+from tensorflow.python.distribute import combinations
 
 
-class SavedModelTest(integration_scripts.TestCase):
+class SavedModelTest(scripts.TestCase, parameterized.TestCase):
 
   def __init__(self, method_name="runTest", has_extra_deps=False):
     super(SavedModelTest, self).__init__(method_name)
@@ -59,40 +64,68 @@ class SavedModelTest(integration_scripts.TestCase):
         "use_model_in_sequential_keras", model_dir=export_dir)
 
   def test_text_embedding_in_dataset(self):
-    if tf.test.is_gpu_available():
-      self.skipTest("b/132156097 - fails if there is a gpu available")
-
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
     self.assertCommandSucceeded(
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
-  def test_mnist_cnn(self):
-    self.skipIfMissingExtraDeps()
-    export_dir = self.get_temp_dir()
-    self.assertCommandSucceeded(
-        "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
-    self.assertCommandSucceeded(
-        "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
+  TEST_MNIST_CNN_GENERATE_KWARGS = dict(
+      combinations=(
+          combinations.combine(
+              # Test all combinations with tf.saved_model.save().
+              # Test all combinations using tf.keras.models.save_model()
+              # for both the reusable and the final full model.
+              use_keras_save_api=True,
+              named_strategy=list(ds_utils.named_strategies.values()),
+              retrain_flag_value=["true", "false"],
+              regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
+          ) + combinations.combine(
+              # Test few critcial combinations with raw tf.saved_model.save(),
+              # including export of a reusable SavedModel that gets assembled
+              # manually, including support for adjustable hparams.
+              use_keras_save_api=False,
+              named_strategy=None,
+              retrain_flag_value=["true", "false"],
+              regularization_loss_multiplier=[None, 2],  # Test for b/134528831.
+          )),
+      test_combinations=[combinations.NamedGPUCombination()])
 
-  def test_mnist_cnn_with_mirrored_strategy(self):
+  @combinations.generate(**TEST_MNIST_CNN_GENERATE_KWARGS)
+  def test_mnist_cnn(self, use_keras_save_api, named_strategy,
+                     retrain_flag_value, regularization_loss_multiplier):
+
     self.skipIfMissingExtraDeps()
-    self.skipTest(
-        "b/129134185 - saved model and distribution strategy integration")
-    export_dir = self.get_temp_dir()
+
+    fast_test_mode = True
+    temp_dir = self.get_temp_dir()
+    feature_extrator_dir = os.path.join(temp_dir, "mnist_feature_extractor")
+    full_model_dir = os.path.join(temp_dir, "full_model")
+
     self.assertCommandSucceeded(
         "export_mnist_cnn",
-        export_dir=export_dir,
-        fast_test_mode="true")
+        fast_test_mode=fast_test_mode,
+        export_dir=feature_extrator_dir,
+        use_keras_save_api=use_keras_save_api)
+
+    use_kwargs = dict(fast_test_mode=fast_test_mode,
+                      input_saved_model_dir=feature_extrator_dir,
+                      retrain=retrain_flag_value,
+                      output_saved_model_dir=full_model_dir,
+                      use_keras_save_api=use_keras_save_api)
+    if named_strategy:
+      use_kwargs["strategy"] = str(named_strategy)
+    if regularization_loss_multiplier is not None:
+      use_kwargs[
+          "regularization_loss_multiplier"] = regularization_loss_multiplier
+    self.assertCommandSucceeded("use_mnist_cnn", **use_kwargs)
+
     self.assertCommandSucceeded(
-        "use_mnist_cnn",
-        export_dir=export_dir,
-        fast_test_mode="true",
-        use_mirrored_strategy=True,
-    )
+        "deploy_mnist_cnn",
+        fast_test_mode=fast_test_mode,
+        saved_model_dir=full_model_dir)
 
 
 if __name__ == "__main__":
-  integration_scripts.MaybeRunScriptInstead()
+  scripts.MaybeRunScriptInstead()
   tf.test.main()

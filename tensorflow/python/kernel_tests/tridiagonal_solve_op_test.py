@@ -618,8 +618,7 @@ class TridiagonalSolveOpTest(test.TestCase):
 
   class TridiagonalSolveBenchmark(test.Benchmark):
     sizes = [(100000, 1, 1), (1000000, 1, 1), (10000000, 1, 1), (100000, 10, 1),
-             (100000, 100, 1), (10000, 1, 100), (10000, 1, 1000),
-             (10000, 1, 10000)]
+             (100000, 100, 1), (10000, 1, 10), (10000, 1, 100)]
 
     pivoting_options = [(True, "pivoting"), (False, "no_pivoting")]
 
@@ -628,8 +627,8 @@ class TridiagonalSolveOpTest(test.TestCase):
       data = np.random.normal(size=(batch_size, matrix_size, 3 + num_rhs))
       diags = np.stack([data[:, :, 0], data[:, :, 1], data[:, :, 2]], axis=-2)
       rhs = data[:, :, 3:]
-      return (ops.convert_to_tensor(diags, dtype=dtypes.float64),
-              ops.convert_to_tensor(rhs, dtype=dtypes.float64))
+      return (variables.Variable(diags, dtype=dtypes.float64),
+              variables.Variable(rhs, dtype=dtypes.float64))
 
     def benchmarkTridiagonalSolveOp(self):
       devices = [("/cpu:0", "cpu")]

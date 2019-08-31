@@ -32,7 +32,6 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _ADD = lambda x, y: x + y
@@ -1005,6 +1004,16 @@ class ComplexMakeRealImagTest(test.TestCase):
       self._compareMake(real, 12.0, use_gpu)
       self._compareMake(23.0, imag, use_gpu)
 
+  def testRealImagNumericType(self):
+    for use_gpu in [True, False]:
+      for value in [1., 1j, 1. + 1j]:
+        np_real, np_imag = np.real(value), np.imag(value)
+        with test_util.device(use_gpu=use_gpu):
+          tf_real = math_ops.real(value)
+          tf_imag = math_ops.imag(value)
+          self.assertAllEqual(np_real, self.evaluate(tf_real))
+          self.assertAllEqual(np_imag, self.evaluate(tf_imag))
+
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
@@ -1177,51 +1186,6 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareMulGradient(data)
 
 
-class AccumulateTest(test.TestCase):
-
-  def testSimple(self):
-    with self.cached_session():
-      random_arrays = [
-          np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
-      ]
-      random_tensors = [
-          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
-          for x in random_arrays
-      ]
-      tf_val = math_ops.accumulate_n(random_tensors)
-      np_val = random_arrays[0]
-      for random_array in random_arrays[1:]:
-        np_val += random_array
-      self.assertAllClose(np_val, self.evaluate(tf_val))
-
-  def testZeroArgs(self):
-    with self.cached_session():
-      with self.assertRaises(ValueError):
-        tf_val = math_ops.accumulate_n([])
-        self.evaluate(tf_val)
-
-  def testWrongShape(self):
-    with self.cached_session():
-      with self.assertRaises(ValueError):
-        a = variables.Variable(0.2)
-        b = variables.Variable(0.1)
-        math_ops.accumulate_n([a, b], shape=[2, 2])  # Should be shape=[]
-
-  def testWrongType(self):
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        a = variables.Variable(0.2, dtype=np.float32)
-        b = variables.Variable(0.1, dtype=np.float32)
-        math_ops.accumulate_n([a, b], tensor_dtype=np.int32)
-
-  def testWrongTypeOneInput(self):
-    # Scenario that used to trigger a bug, even when testWrongType() worked
-    with self.cached_session():
-      with self.assertRaises(TypeError):
-        a = variables.Variable(0.2, dtype=np.float32)
-        math_ops.accumulate_n([a], tensor_dtype=np.int32)
-
-
 class PolyvalTest(test.TestCase):
 
   def _runtest(self, dtype, degree):
@@ -1268,7 +1232,7 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 6, 14):
+    if not compat.forward_compatible(2019, 9, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

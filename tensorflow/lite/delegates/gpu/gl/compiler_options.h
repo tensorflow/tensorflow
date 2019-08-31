@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OPTIONS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_OPTIONS_H_
 
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 
 namespace tflite {
@@ -59,6 +58,10 @@ struct CompilationOptions {
 
   // Fuses consequent nodes which have auto output and auto input.
   bool auto_input_fusion = true;
+
+  // If true sampler2D and texelFetch will be used to access read only textures.
+  // This feature is not supported yet by the OpenGL runtime.
+  bool sampler_textures = false;
 };
 
 }  // namespace gl

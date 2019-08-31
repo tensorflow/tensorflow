@@ -25,7 +25,6 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -52,6 +51,12 @@ class FromTensorsTest(test_base.DatasetTestBase):
         nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)))
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  def testFromTensorsDataset(self):
+    """Test a dataset that represents a dataset."""
+    dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
+    dataset = dataset.flat_map(lambda x: x)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
 
   def testFromTensorsTensorArray(self):
     """Test a dataset that represents a TensorArray."""
@@ -292,7 +297,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEqual([3], get_next().shape)
 
   # TODO(b/121264236): needs mechanism for multiple device in eager mode.
-  def testSkipEagerSplitPipelineFailsWithPlacementError(self):
+  def testSkipEagerSplitPipeline(self):
     with session.Session(
         target="",
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
@@ -305,22 +310,19 @@ class FromTensorsTest(test_base.DatasetTestBase):
       # Initialize the variables before creating to iterator, to avoid the
       # placement algorithm overriding the DT_RESOURCE colocation constraints.
       with ops.device("/cpu:0"):
-        var_0 = resource_variable_ops.ResourceVariable(initial_value=0)
+        var_0 = resource_variable_ops.ResourceVariable(initial_value=1)
         dataset = dataset.map(lambda x: x + var_0.read_value())
       sess.run(var_0.initializer)
 
       with ops.device("/cpu:1"):
-        var_1 = resource_variable_ops.ResourceVariable(initial_value=0)
+        var_1 = resource_variable_ops.ResourceVariable(initial_value=1)
         dataset = dataset.map(lambda x: x + var_1.read_value())
       sess.run(var_1.initializer)
 
       iterator = dataset_ops.make_initializable_iterator(dataset)
       sess.run(iterator.initializer)
 
-      with self.assertRaisesRegexp(
-          errors.FailedPreconditionError,
-          "Error while reading resource variable Variable"):
-        sess.run(iterator.get_next())
+      self.assertEqual(sess.run(iterator.get_next()), 2)
 
 
 if __name__ == "__main__":

@@ -164,7 +164,7 @@ struct CompareAndBitpack<CPUDevice, T> {
 
 }  // namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_COMPARE_AND_BITPACK(type)                                    \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -193,6 +193,6 @@ TF_CALL_bool(DECLARE_GPU_SPEC)
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

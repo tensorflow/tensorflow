@@ -1,10 +1,6 @@
 # Description:
 #   Contains typical networks definitions.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
@@ -12,7 +8,10 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow_models:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(

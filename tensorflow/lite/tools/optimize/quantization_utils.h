@@ -89,8 +89,7 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
-                                             int number_of_dimension,
-                                             int dimension_index);
+                                             int number_of_dimension);
 
 // Quantize weight with or without per channel.
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,

@@ -36,7 +36,7 @@ class DecodeLibsvmOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     Tensor* label_tensor;
     OP_REQUIRES_OK(

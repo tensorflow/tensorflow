@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.DenseFeatures"
 tf_class {
-  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.DenseFeatures\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.dense_features.DenseFeatures\'>"
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2._BaseFeaturesLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -33,6 +33,10 @@ tf_class {
   }
   member {
     name: "input_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_spec"
     mtype: "<type \'property\'>"
   }
   member {
@@ -148,12 +152,16 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count_params"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_config"
-    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_config"

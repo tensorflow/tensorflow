@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_custom_gemv.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
-#include "tensorflow/lite/kernels/tflite_with_ruy.h"
 
 #ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"

@@ -20,7 +20,7 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, double,
           complex64, complex128);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
 #endif
 
@@ -30,7 +30,7 @@ REGISTER2(UnaryOp, SYCL, "Tanh", functor::tanh, float, double);
 
 REGISTER5(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, double, complex64, complex128);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, double);
 #endif

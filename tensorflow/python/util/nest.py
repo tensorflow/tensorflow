@@ -38,8 +38,9 @@ import collections as _collections
 
 import six as _six
 
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -103,13 +104,15 @@ def _is_namedtuple(instance, strict=False):
   Returns:
     True if `instance` is a `namedtuple`.
   """
-  return _pywrap_tensorflow.IsNamedtuple(instance, strict)
+  return _pywrap_utils.IsNamedtuple(instance, strict)
 
 
 # See the swig file (util.i) for documentation.
-_is_mapping = _pywrap_tensorflow.IsMapping
-_is_attrs = _pywrap_tensorflow.IsAttrs
-_is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
+_is_mapping = _pywrap_utils.IsMapping
+_is_mapping_view = _pywrap_utils.IsMappingView
+_is_attrs = _pywrap_utils.IsAttrs
+_is_composite_tensor = _pywrap_utils.IsCompositeTensor
+_is_type_spec = _pywrap_utils.IsTypeSpec
 
 
 def _sequence_like(instance, args):
@@ -117,7 +120,8 @@ def _sequence_like(instance, args):
 
   Args:
     instance: an instance of `tuple`, `list`, `namedtuple`, `dict`,
-        `collections.OrderedDict`, or `composite_tensor.Composite_Tensor`.
+        `collections.OrderedDict`, or `composite_tensor.Composite_Tensor`
+        or `type_spec.TypeSpec`.
     args: elements to be converted to the `instance` type.
 
   Returns:
@@ -130,13 +134,27 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in instance)
+    instance_type = type(instance)
+    if instance_type == _collections.defaultdict:
+      d = _collections.defaultdict(instance.default_factory)
+      for key in instance:
+        d[key] = result[key]
+      return d
+    else:
+      return instance_type((key, result[key]) for key in instance)
+  elif _is_mapping_view(instance):
+    # We can't directly construct mapping views, so we create a list instead
+    return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
     assert len(args) == 1
-    metadata = instance._component_metadata()  # pylint: disable=protected-access
-    return type(instance)._from_components(args[0], metadata)  # pylint: disable=protected-access
+    spec = instance._type_spec  # pylint: disable=protected-access
+    return spec._from_components(args[0])  # pylint: disable=protected-access
+  elif _is_type_spec(instance):
+    # Pack a CompositeTensor's components according to a TypeSpec.
+    assert len(args) == 1
+    return instance._from_components(args[0])  # pylint: disable=protected-access
   elif isinstance(instance, _six.moves.range):
     return _sequence_like(list(instance), args)
   else:
@@ -164,7 +182,7 @@ def _yield_sorted_items(iterable):
   Yields:
     The iterable's (key, value) pairs, in order of sorted keys.
   """
-  if isinstance(iterable, _collections.Mapping):
+  if isinstance(iterable, _collections_abc.Mapping):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -180,29 +198,33 @@ def _yield_sorted_items(iterable):
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
     yield type(iterable).__name__, iterable._to_components()  # pylint: disable=protected-access
+  elif _is_type_spec(iterable):
+    # Note: to allow CompositeTensors and their TypeSpecs to have matching
+    # structures, we need to use the same key string here.
+    yield iterable.value_type.__name__, iterable._component_specs  # pylint: disable=protected-access
   else:
     for item in enumerate(iterable):
       yield item
 
 
 # See the swig file (util.i) for documentation.
-is_sequence = _pywrap_tensorflow.IsSequence
+is_sequence = _pywrap_utils.IsSequence
 
 
 # See the swig file (util.i) for documentation.
-is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
+is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 
 
 @tf_export("nest.is_nested")
 def is_nested(seq):
-  """Returns true if its input is a collections.Sequence (except strings).
+  """Returns true if its input is a collections.abc.Sequence (except strings).
 
   Args:
     seq: an input sequence.
 
   Returns:
-    True if the sequence is a not a string and is a collections.Sequence or a
-    dict.
+    True if the sequence is a not a string and is a collections.abc.Sequence
+    or a dict.
   """
   return is_sequence(seq)
 
@@ -238,11 +260,11 @@ def flatten(structure, expand_composites=False):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
-  return _pywrap_tensorflow.Flatten(structure, expand_composites)
+  return _pywrap_utils.Flatten(structure, expand_composites)
 
 
 # See the swig file (util.i) for documentation.
-_same_namedtuples = _pywrap_tensorflow.SameNamedtuples
+_same_namedtuples = _pywrap_utils.SameNamedtuples
 
 
 class _DotString(object):
@@ -293,8 +315,8 @@ def assert_same_structure(nest1, nest2, check_types=True,
       their substructures. Only possible if `check_types` is `True`.
   """
   try:
-    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types,
-                                           expand_composites)
+    _pywrap_utils.AssertSameStructure(nest1, nest2, check_types,
+                                      expand_composites)
   except (ValueError, TypeError) as e:
     str1 = str(map_structure(lambda _: _DOT, nest1))
     str2 = str(map_structure(lambda _: _DOT, nest2))
@@ -334,7 +356,7 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value do not have the same structure layout, or
     if keys are not unique.
   """
-  if not isinstance(dictionary, (dict, _collections.Mapping)):
+  if not isinstance(dictionary, (dict, _collections_abc.Mapping)):
     raise TypeError("input must be a dictionary")
   flat_dictionary = {}
   for i, v in _six.iteritems(dictionary):
@@ -495,14 +517,13 @@ def map_structure(func, *structure, **kwargs):
   if not structure:
     raise ValueError("Must provide at least one structure")
 
-  check_types = True
-  expand_composites = False
+  check_types = kwargs.pop("check_types", True)
+  expand_composites = kwargs.pop("expand_composites", False)
+
   if kwargs:
-    check_types = kwargs.pop("check_types", check_types)
-    expand_composites = kwargs.pop("expand_composites", expand_composites)
-    if kwargs:
-      raise ValueError("Only valid keyword arguments are check_types "
-                       "and expand_composites")
+    raise ValueError(
+        "Only valid keyword arguments are `check_types` and "
+        "`expand_composites`, not: `%s`" % ("`, `".join(kwargs.keys())))
 
   for other in structure[1:]:
     assert_same_structure(structure[0], other, check_types=check_types,
@@ -700,17 +721,40 @@ def assert_shallow_structure(shallow_tree,
               input_type=type(input_tree),
               shallow_type=type(shallow_tree)))
 
-      elif not (isinstance(shallow_tree, _collections.Mapping)
-                and isinstance(input_tree, _collections.Mapping)):
+      elif ((_is_composite_tensor(shallow_tree) or
+             _is_composite_tensor(input_tree)) and
+            (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):
+        pass  # Compatibility will be checked below.
+
+      elif not (isinstance(shallow_tree, _collections_abc.Mapping) and
+                isinstance(input_tree, _collections_abc.Mapping)):
         raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
 
-    if _is_composite_tensor(shallow_tree):
-      if not _is_composite_tensor(input_tree):
-        raise TypeError("If shallow structure is a CompositeTensor, input "
-                        "must also be a CompositeTensor.  Input has type: %s." %
-                        type(input_tree))
+    if _is_composite_tensor(shallow_tree) or _is_composite_tensor(input_tree):
+      if not (
+          (_is_composite_tensor(input_tree) or _is_type_spec(input_tree)) and
+          (_is_composite_tensor(shallow_tree) or _is_type_spec(shallow_tree))):
+        raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
+            input_type=type(input_tree),
+            shallow_type=type(shallow_tree)))
+      type_spec_1 = (shallow_tree if _is_type_spec(shallow_tree) else
+                     shallow_tree._type_spec)  # pylint: disable=protected-access
+      type_spec_2 = (input_tree if _is_type_spec(input_tree) else
+                     input_tree._type_spec)  # pylint: disable=protected-access
+      try:
+        _ = type_spec_1.most_specific_compatible_type(type_spec_2)
+      except (TypeError, ValueError) as e:
+        raise ValueError(
+            "Incompatible CompositeTensor TypeSpecs: %s vs. %s -- %s" %
+            (type_spec_1, type_spec_2, e))
+
+    elif _is_type_spec(shallow_tree):
+      if not _is_type_spec(input_tree):
+        raise TypeError("If shallow structure is a TypeSpec, input must also "
+                        "be a TypeSpec.  Input has type: %s."
+                        % type(input_tree))
     else:
       if check_subtrees_length and len(input_tree) != len(shallow_tree):
         raise ValueError(
@@ -721,7 +765,7 @@ def assert_shallow_structure(shallow_tree,
             _INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
                 input_size=len(input_tree), shallow_size=len(shallow_tree)))
 
-    if isinstance(shallow_tree, _collections.Mapping):
+    if isinstance(shallow_tree, _collections_abc.Mapping):
       absent_keys = set(shallow_tree) - set(input_tree)
       if absent_keys:
         raise ValueError(_SHALLOW_TREE_HAS_INVALID_KEYS
@@ -1283,5 +1327,6 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
-_pywrap_tensorflow.RegisterType("Mapping", _collections.Mapping)
-_pywrap_tensorflow.RegisterType("Sequence", _collections.Sequence)
+_pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
+_pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
+_pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)

@@ -42,6 +42,11 @@ Status BackwardsConstAnalysis(
       return true;
     });
 
+// Given an op kernel and function library runtime, return all the indices of
+// inputs that need to be compile time constant.
+Status GetCompileTimeConstInputs(const OpKernel* op_kernel,
+                                 std::vector<int>* const_input_idxs,
+                                 FunctionLibraryRuntime* flib_runtime);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_CONST_ANALYSIS_H_

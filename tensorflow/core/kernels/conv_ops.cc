@@ -18,17 +18,20 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/conv_ops.h"
 
 #include <string.h>
 
+#include <atomic>
 #include <map>
+#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -54,11 +57,16 @@ limitations under the License.
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -141,15 +149,21 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const std::vector<int64>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
-      ctx->SetStatus(
-          errors::Unimplemented("Generic conv implementation only supports "
-                                "NHWC tensor format for now."));
+      ctx->SetStatus(errors::Unimplemented(
+          "The Conv2D op currently only supports the NHWC tensor format on the "
+          "CPU. The op was given the format: ",
+          ToString(data_format)));
       return;
     }
     const int64 in_depth = GetTensorDim(input, data_format, 'C');
     OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
-                errors::Unimplemented("Generic conv implementation does not "
-                                      "support grouped convolutions for now."));
+                errors::Unimplemented(
+                    "The Conv2D op currently does not support grouped "
+                    "convolutions on the CPU. A grouped convolution was "
+                    "attempted to be run because the input depth of ",
+                    in_depth, " does not match the filter input depth of ",
+                    filter.dim_size(2)));
+
     for (int64 explicit_padding : explicit_paddings) {
       if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
         ctx->SetStatus(errors::InvalidArgument("filter too large"));
@@ -562,15 +576,7 @@ template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
-// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
-bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
-  int major, minor;
-  CHECK(stream_exec  // Crash OK
-            .GetDeviceDescription()
-            .cuda_compute_capability(&major, &minor));
-  return major >= 7;
-}
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
@@ -914,28 +920,28 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
-  ConvParameters conv_parameters = {
-      in_batch,                 // batch
-      in_depths,                // in_depths
-      {{in_rows,                // in_rows
-        in_cols}},              // in_cols
-      compute_data_format,      // compute_data_format
-      out_depths,               // out_depths
-      {{patch_rows,             // filter_rows
-        patch_cols,             // filter_cols
-        patch_depths}},         // filter_depths
-      {{row_dilation,           // dilation_rows
-        col_dilation}},         // dilation_cols
-      {{row_stride,             // stride_rows
-        col_stride}},           // stride_cols
-      {{common_padding_rows,    // padding_rows
-        common_padding_cols}},  // padding_cols
-      dtype,                    // tensor datatype
-      device_id,                // device_id
-  };
+  ConvParameters conv_parameters = {in_batch,             // batch
+                                    in_depths,            // in_depths
+                                    {{in_rows,            // in_rows
+                                      in_cols}},          // in_cols
+                                    compute_data_format,  // compute_data_format
+                                    out_depths,           // out_depths
+                                    {{patch_rows,         // filter_rows
+                                      patch_cols,         // filter_cols
+                                      patch_depths}},     // filter_depths
+                                    {{row_dilation,       // dilation_rows
+                                      col_dilation}},     // dilation_cols
+                                    {{row_stride,         // stride_rows
+                                      col_stride}},       // stride_cols
+                                    {{common_padding_rows,    // padding_rows
+                                      common_padding_cols}},  // padding_cols
+                                    dtype,                    // tensor datatype
+                                    device_id,                // device_id
+                                    conv_desc.group_count()};
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
     OP_REQUIRES(
         ctx,
@@ -946,17 +952,33 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         errors::Unknown("Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
+
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                            se::cuda::PtxCompilationOptions());
+    se::DeviceMemory<T> output_tensor(
+        WrapRedzoneBestEffort(&rz_allocator, output_ptr));
+
     std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
+      se::cuda::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      se::ScratchAllocator* allocator_used =
+          !RedzoneCheckDisabled()
+              ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+              : static_cast<se::ScratchAllocator*>(&scratch_allocator);
+
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
               ->ThenConvolveWithAlgorithm(
                   input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                  output_desc, &output_ptr, &scratch_allocator,
+                  output_desc, &output_tensor, allocator_used,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status && profile_result.is_valid()) {
@@ -965,16 +987,40 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
         result.mutable_conv()->set_tensor_ops_enabled(
             profile_algorithm.tensor_ops_enabled());
-        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+
+        result.set_scratch_bytes(
+            !RedzoneCheckDisabled()
+                ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+                : scratch_allocator.TotalByteSize());
         *result.mutable_run_time() = proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+        CheckRedzones(rz_scratch_allocator, &result);
+        CheckRedzones(rz_allocator, &result);
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                           se::dnn::ToDataType<T>::value, input_desc,
-                           filter_desc, output_desc, conv_desc,
-                           stream->parent(), results);
+                           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
+                           output_tensor, input_desc, filter_desc, output_desc,
+                           conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    ProfileResult best_result;
+    bool miopen_find_status =
+        stream
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        AlgorithmConfig(), &best_result)
+            .ok();
+
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                errors::NotFound("Failed to find conv algorithm!"));
+
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
@@ -1063,6 +1109,6 @@ template struct LaunchConv2DOp<GPUDevice, float>;
 template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

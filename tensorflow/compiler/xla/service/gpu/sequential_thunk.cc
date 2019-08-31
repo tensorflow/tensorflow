@@ -33,13 +33,11 @@ Status SequentialThunk::Initialize(const GpuExecutable& executable,
   return Status::OK();
 }
 
-Status SequentialThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   for (const auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(
-        thunk->ExecuteOnStream(buffer_allocations, stream, profiler));
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return Status::OK();
 }

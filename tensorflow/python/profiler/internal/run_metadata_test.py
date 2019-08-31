@@ -129,7 +129,10 @@ class RunMetadataTest(test.TestCase):
 
     ret = _extract_node(run_meta, 'MatMul')
     self.assertEqual(len(ret['gpu:0']), 1)
-    self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
+    if not test.is_built_with_rocm():
+      # skip this check for the ROCm platform
+      # stream level tracing is not yet supported on the ROCm platform
+      self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
 
   @test_util.run_deprecated_v1
   def testAllocationHistory(self):
@@ -234,7 +237,11 @@ class RunMetadataTest(test.TestCase):
       for node in ret['gpu:0']:
         total_cpu_execs += node.op_end_rel_micros
 
-      self.assertGreaterEqual(len(ret['gpu:0/stream:all']), 4, '%s' % run_meta)
+      if not test.is_built_with_rocm():
+        # skip this check for the ROCm platform
+        # stream level tracing is not yet supported on the ROCm platform
+        self.assertGreaterEqual(
+            len(ret['gpu:0/stream:all']), 4, '%s' % run_meta)
 
 
 if __name__ == '__main__':

@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
@@ -261,3 +263,37 @@ def gather_nd(params, indices, batch_dims=0, name=None):
 
       # Gather using the flattened index tuples and params.
       return gather(flattened_params, flattened_index_tuples)
+
+
+#===============================================================================
+# Gradient for the RaggedGather kernel
+#===============================================================================
+@ops.RegisterGradient('RaggedGather')
+def _ragged_gather_grad(op, *grads):
+  """Gradient for RaggedGather op."""
+  param_nested_splits = op.inputs[:-2]
+  param_inner_values = op.inputs[-2]
+  indices = op.inputs[-1]
+  grad_inner_values = grads[-1]
+
+  # For each row in `params`, find the range of values in `params.inner_values`
+  # that is covered by that row.  In particular, the values in row `i` are
+  # `param_inner_values[combined_splits[i]:combined_splits[i+1]`.
+  combined_splits = param_nested_splits[0]
+  for row_splits in param_nested_splits[1:]:
+    combined_splits = array_ops.gather(row_splits, combined_splits)
+
+  # The outer dimensions of `indices` correspond 1:1 with the outer dimensions
+  # of `ragged_grad` that are encoded by `grad_nested_splits`.  Thus, the
+  # flattened `indices` correspond 1:1 with `grad_inner_values`.
+  flat_indices = array_ops.reshape(indices, [-1])
+
+  # Build an IndexedSlices where the values are taken from `flat_grad`.
+  grad_indices = ragged_math_ops.range(
+      array_ops.gather(combined_splits, flat_indices),
+      array_ops.gather(combined_splits[1:], flat_indices)).values
+
+  param_inner_values_grad = indexed_slices.IndexedSlices(
+      values=grad_inner_values, indices=grad_indices,
+      dense_shape=array_ops.shape(param_inner_values))
+  return [None for _ in param_nested_splits] + [param_inner_values_grad, None]

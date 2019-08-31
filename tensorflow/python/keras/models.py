@@ -25,13 +25,16 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine.base_layer import AddMetric
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -52,6 +55,74 @@ def share_weights(layer):
 
 def _clone_layer(layer):
   return layer.__class__.from_config(layer.get_config())
+
+
+def _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes):
+  """Inserts ancillary layers into the model with the proper order."""
+  # Sort `AddMetric` layers so they agree with metrics_names.
+  metric_layers = [
+      layer for layer in ancillary_layers if isinstance(layer, AddMetric)
+  ]
+  metric_layers.sort(key=lambda layer: metrics_names.index(layer.metric_name))
+  ancillary_layers = [
+      layer for layer in ancillary_layers if not isinstance(layer, AddMetric)
+  ] + metric_layers
+  model._insert_layers(ancillary_layers, relevant_nodes=list(new_nodes))
+
+
+def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):
+  """Uses the layers in `layer_map` to make new nodes based on `nodes_by_depth`.
+
+  Args:
+    nodes_by_depth: Provides structure information to create new nodes.
+    layer_fn: Function to clone layers.
+    layer_map: Map from layers in `model` to new layers.
+    tensor_map: Map from tensors in `model` to newly compute tensors.
+
+  Returns:
+    A set of new nodes. `layer_map` and `tensor_map` are updated.
+  """
+  # Iterated over every node in the reference model, in depth order.
+  new_nodes = set()
+  depth_keys = list(nodes_by_depth.keys())
+  depth_keys.sort(reverse=True)
+  for depth in depth_keys:
+    nodes = nodes_by_depth[depth]
+    for node in nodes:
+      # Recover the corresponding layer.
+      layer = node.outbound_layer
+
+      # Get or create layer.
+      if layer not in layer_map:
+        new_layer = layer_fn(layer)
+        layer_map[layer] = new_layer
+        layer = new_layer
+      else:
+        # Reuse previously cloned layer.
+        layer = layer_map[layer]
+        # Don't call InputLayer multiple times.
+        if isinstance(layer, InputLayer):
+          continue
+
+      # If all previous input tensors are available in tensor_map,
+      # then call node.inbound_layer on them.
+      if all(
+          tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
+        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
+                                              node.input_tensors)
+        # Call layer.
+        kwargs = node.arguments or {}
+        output_tensors = layer(computed_tensors, **kwargs)
+
+        # Thread-safe way to keep track of what node was created.
+        first_output_tensor = nest.flatten(output_tensors)[0]
+        new_nodes.add(
+            layer._inbound_nodes[first_output_tensor._keras_history.node_index])
+
+        for x, y in zip(
+            nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
+          tensor_map[x] = y
+  return new_nodes
 
 
 def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
@@ -97,16 +168,13 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
                      'but got a subclass model instead.')
 
   layer_map = {}  # Cache for created layers.
-  tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
+  tensor_map = object_identity.ObjectIdentityDictionary(
+  )  # Map {reference_tensor: corresponding_tensor}
   if input_tensors is None:
     # Create placeholders to build the model on top of.
     input_tensors = []
     for layer in model._input_layers:
-      input_tensor = Input(
-          batch_shape=layer._batch_input_shape,
-          dtype=layer.dtype,
-          sparse=layer.sparse,
-          name=layer.name)
+      input_tensor = Input(**layer.get_config())
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
       newly_created_input_layer = input_tensor._keras_history.layer
@@ -116,8 +184,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     # If tensor comes from an input layer: cache the input layer.
     input_tensors = nest.flatten(input_tensors)
     input_tensors_ = []
-    for i in range(len(input_tensors)):
-      input_tensor = input_tensors[i]
+    for i, input_tensor in enumerate(input_tensors):
       if not K.is_keras_tensor(input_tensor):
         original_input_layer = model._input_layers[i]
         name = original_input_layer.name
@@ -138,48 +205,9 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
-  new_nodes = set()
-
-  # Iterated over every node in the reference model, in depth order.
-  depth_keys = list(model._nodes_by_depth.keys())
-  depth_keys.sort(reverse=True)
-  for depth in depth_keys:
-    nodes = model._nodes_by_depth[depth]
-    for node in nodes:
-      # Recover the corresponding layer.
-      layer = node.outbound_layer
-
-      # Get or create layer.
-      if layer not in layer_map:
-        new_layer = layer_fn(layer)
-        layer_map[layer] = new_layer
-        layer = new_layer
-      else:
-        # Reuse previously cloned layer.
-        layer = layer_map[layer]
-        # Don't call InputLayer multiple times.
-        if isinstance(layer, InputLayer):
-          continue
-
-      # If all previous input tensors are available in tensor_map,
-      # then call node.inbound_layer on them.
-      if all(
-          tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
-        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
-                                              node.input_tensors)
-        # Call layer.
-        kwargs = node.arguments or {}
-        output_tensors = layer(computed_tensors, **kwargs)
-
-        # Thread-safe way to keep track of what node was created.
-        first_output_tensor = nest.flatten(output_tensors)[0]
-        new_nodes.add(
-            layer._inbound_nodes[first_output_tensor._keras_history.node_index])
-
-        for x, y in zip(
-            nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
-          tensor_map[x] = y
-
+  # Has the side effect of filling out `layer_map` and `tensor_map`.
+  new_nodes = _make_new_nodes(model._nodes_by_depth, layer_fn, layer_map,
+                              tensor_map)
   # Check that we did compute the model outputs,
   # then instantiate a new model from inputs and outputs.
   output_tensors = []
@@ -189,18 +217,45 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
   output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
+  metrics_names = model.metrics_names
   model = Model(input_tensors, output_tensors, name=model.name)
   # Layers not directly tied to outputs of the Model, such as loss layers
-  # created in `add_loss`.
+  # created in `add_loss` and `add_metric`.
   ancillary_layers = [
       layer for layer in layer_map.values() if layer not in model.layers
   ]
   if ancillary_layers:
-    nodes = set(
-        nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
-    relevant_nodes = list(nodes.intersection(new_nodes))
-    model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+    _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes)
   return model
+
+
+def _remove_ancillary_layers(model, layer_map, layers):
+  """Removes and returns any ancillary layers from `layers` based on `model`.
+
+  Ancillary layers are part of the model topology but not used to compute the
+  model outputs, e.g., layers from `add_loss` and `add_metric`.
+
+  Args:
+    model: A Keras Model.
+    layer_map: A map to from layers in the `model` to those in `layers`.
+    layers: A list of all layers.
+
+  Returns:
+    Two lists of layers: (1) `layers` with the ancillary layers removed, and (2)
+    the ancillary layers.
+  """
+  ancillary_layers = []  # Additional layers for computing losses and metrics.
+  if not model._is_graph_network:
+    return layers, ancillary_layers
+
+  # Ancillary layers are those with depth < 0.
+  depths = [depth for depth in model._nodes_by_depth.keys() if depth < 0]
+  depths.sort(reverse=True)  # Order topologically from inputs to outputs.
+  for depth in depths:
+    for node in model._nodes_by_depth[depth]:
+      ancillary_layers.append(layer_map[node.outbound_layer])
+
+  return [l for l in layers if l not in ancillary_layers], ancillary_layers
 
 
 def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
@@ -239,45 +294,73 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
+  layers = []  # Layers needed to compute the model's outputs.
+  layer_map = {}
   # Use model._layers to ensure that all layers are cloned. The model's layers
   # property will exclude the initial InputLayer (if it exists) in the model,
   # resulting in a different Sequential model structure.
-  if input_tensors is None:
-    layers = []
-    for layer in model._layers:
-      if isinstance(layer, InputLayer):
-        layers.append(_clone_layer(layer))
-      else:
-        layers.append(layer_fn(layer))
-    return Sequential(layers=layers, name=model.name)
-  else:
-    # If input tensors are provided, the original model's InputLayer is
-    # overwritten with a different InputLayer.
-    layers = [
-        layer_fn(layer)
-        for layer in model._layers
-        if not isinstance(layer, InputLayer)
-    ]
-    if len(generic_utils.to_list(input_tensors)) != 1:
-      raise ValueError('To clone a `Sequential` model, we expect '
-                       ' at most one tensor '
-                       'as part of `input_tensors`.')
+  for layer in model._layers:
+    if isinstance(layer, InputLayer) and input_tensors is not None:
+      # If input tensors are provided, the original model's InputLayer is
+      # overwritten with a different InputLayer.
+      continue
+    cloned_layer = (
+        _clone_layer(layer)
+        if isinstance(layer, InputLayer) else layer_fn(layer))
+    layers.append(cloned_layer)
+    layer_map[layer] = cloned_layer
+  layers, ancillary_layers = _remove_ancillary_layers(model, layer_map, layers)
 
+  if input_tensors is None:
+    cloned_model = Sequential(layers=layers, name=model.name)
+  elif len(generic_utils.to_list(input_tensors)) != 1:
+    raise ValueError('To clone a `Sequential` model, we expect '
+                     ' at most one tensor '
+                     'as part of `input_tensors`.')
+  else:
+    # Overwrite the original model's input layer.
     if isinstance(input_tensors, tuple):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
       origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
-        return Sequential(layers=[origin_layer] + layers, name=model.name)
+        cloned_model = Sequential(
+            layers=[origin_layer] + layers, name=model.name)
       else:
         raise ValueError('Cannot clone a `Sequential` model on top '
                          'of a tensor that comes from a Keras layer '
                          'other than an `InputLayer`. '
                          'Use the functional API instead.')
-    input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
-    input_layer = input_tensor._keras_history.layer
-    return Sequential(layers=[input_layer] + layers, name=model.name)
+    else:
+      input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
+      input_layer = input_tensor._keras_history.layer
+      cloned_model = Sequential(layers=[input_layer] + layers, name=model.name)
+
+  if not ancillary_layers:
+    return cloned_model
+
+  tensor_map = {}  # Maps tensors from `model` to those in `cloned_model`.
+  for depth, cloned_nodes in cloned_model._nodes_by_depth.items():
+    nodes = model._nodes_by_depth[depth]
+    # This should be safe in a Sequential model. In an arbitrary network, you
+    # need to sort using the outbound layer of the node as a key.
+    for cloned_node, node in zip(cloned_nodes, nodes):
+      if isinstance(cloned_node.output_tensors, list):
+        for j, output_tensor in enumerate(cloned_node.output_tensors):
+          tensor_map[node.output_tensors[j]] = output_tensor
+      else:
+        tensor_map[node.output_tensors] = cloned_node.output_tensors
+  # Ancillary nodes have negative depth.
+  new_nodes = _make_new_nodes(
+      {
+          depth: nodes
+          for depth, nodes in model._nodes_by_depth.items()
+          if depth < 0
+      }, layer_fn, layer_map, tensor_map)
+  _insert_ancillary_layers(cloned_model, ancillary_layers, model.metrics_names,
+                           new_nodes)
+  return cloned_model
 
 
 @keras_export('keras.models.clone_model')
@@ -493,8 +576,8 @@ def clone_and_build_model(
   Args:
     model: `tf.keras.Model` object. Can be Functional, Sequential, or
       sub-classed.
-    input_tensors: Optional list of input tensors to build the model upon. If
-      not provided, placeholders will be created.
+    input_tensors: Optional list or dictionary of input tensors to build the
+      model upon. If not provided, placeholders will be created.
     target_tensors: Optional list of target tensors for compiling the model. If
       not provided, placeholders will be created.
     custom_objects: Optional dictionary mapping string names to custom classes
@@ -509,10 +592,10 @@ def clone_and_build_model(
       optimizer if the clone is compiled. This argument is used when a Keras
       model is cloned into an Estimator model function, because Estimators
       create their own global step variable.
-    optimizer_config: Optimizer config dictionary returned from `get_config()`.
-      This argument should be defined if `clone_and_build_model` is called in
-      a different graph or session from the original model, and the optimizer is
-      an instance of `OptimizerV2`.
+    optimizer_config: Optimizer config dictionary or list of dictionary
+      returned from `get_config()`. This argument should be defined if
+      `clone_and_build_model` is called in a different graph or session from
+      the original model, and the optimizer is an instance of `OptimizerV2`.
 
   Returns:
     Clone of the model.
@@ -546,16 +629,24 @@ def clone_and_build_model(
       clone._set_inputs(
           K.placeholder(model._build_input_shape, dtype=model.inputs[0].dtype))
   else:
-    if not in_place_reset:
-      raise ValueError(
-          'This model is a subclassed model. '
-          'Such a model cannot be cloned, but there is a workaround where '
-          'the model is reset in-place. To use this, please set the argument '
-          '`in_place_reset` to `True`. This will reset the attributes in the '
-          'original model. To restore the attributes, call '
-          '`in_place_subclassed_model_state_restoration(model)`.')
-    clone = model
-    _in_place_subclassed_model_reset(clone)
+    try:
+      # Prefer clonining the model if serial/deserial logic is implemented for
+      # subclassed model.
+      clone = model.__class__.from_config(model.get_config())
+    except NotImplementedError:
+      logging.warning('This model is a subclassed model. Please implement '
+                      '`get_config` and `from_config` to better support '
+                      'cloning the model.')
+      if not in_place_reset:
+        raise ValueError(
+            'This model is a subclassed model. '
+            'Such a model cannot be cloned, but there is a workaround where '
+            'the model is reset in-place. To use this, please set the argument '
+            '`in_place_reset` to `True`. This will reset the attributes in the '
+            'original model. To restore the attributes, call '
+            '`in_place_subclassed_model_state_restoration(model)`.')
+      clone = model
+      _in_place_subclassed_model_reset(clone)
     if input_tensors is not None:
       if isinstance(input_tensors, (list, tuple)) and len(input_tensors) == 1:
         input_tensors = input_tensors[0]
@@ -567,11 +658,27 @@ def clone_and_build_model(
           orig_optimizer.optimizer, optimizer_iterations)
       K.track_tf_optimizer(optimizer)
     else:
-      optimizer_config = optimizer_config or orig_optimizer.get_config()
-      optimizer = orig_optimizer.__class__.from_config(optimizer_config)
+      if not isinstance(orig_optimizer, (tuple, list)):
+        orig_optimizer = [orig_optimizer]
+      if optimizer_config is None:
+        optimizer = [
+            opt.__class__.from_config(opt.get_config())
+            for opt in orig_optimizer
+        ]
+      elif isinstance(optimizer_config, dict):
+        optimizer = [orig_optimizer[0].__class__.from_config(optimizer_config)]
+      else:
+        # optimizer config is list of dict, same order as orig_optimizer.
+        optimizer = [
+            opt.__class__.from_config(opt_config)
+            for (opt, opt_config) in zip(orig_optimizer, optimizer_config)
+        ]
       if optimizer_iterations is not None:
-        optimizer.iterations = optimizer_iterations
+        for opt in optimizer:
+          opt.iterations = optimizer_iterations
 
+      if len(optimizer) == 1:
+        optimizer = optimizer[0]
     clone.compile(
         optimizer,
         model.loss,

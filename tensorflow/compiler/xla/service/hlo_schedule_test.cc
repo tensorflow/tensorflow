@@ -53,7 +53,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {
@@ -87,7 +87,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {
@@ -136,7 +136,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {
@@ -180,7 +180,7 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {
@@ -241,7 +241,7 @@ ENTRY %WhileLoop () -> s32[] {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {
@@ -310,7 +310,7 @@ ENTRY %WhileLoop () -> s32[] {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
       ScheduleModule(module.get(), [](const BufferValue& buffer) {

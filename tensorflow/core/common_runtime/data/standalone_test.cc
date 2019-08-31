@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/data/standalone.h"
+
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/data/standalone.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -26,7 +27,7 @@ namespace data {
 namespace standalone {
 namespace {
 
-constexpr const char* const kGraphProto = R"proto(
+constexpr const char* const kRangeGraphProto = R"proto(
   node {
     name: "Const/_0"
     op: "Const"
@@ -89,7 +90,95 @@ constexpr const char* const kGraphProto = R"proto(
     input: "Const/_2"
     attr {
       key: "output_shapes"
-      value { list { shape { unknown_rank: true } } }
+      value { list { shape {} } }
+    }
+    attr {
+      key: "output_types"
+      value { list { type: DT_INT64 } }
+    }
+  }
+  node {
+    name: "dataset"
+    op: "_Retval"
+    input: "RangeDataset/_3"
+    attr {
+      key: "T"
+      value { type: DT_VARIANT }
+    }
+    attr {
+      key: "index"
+      value { i: 0 }
+    }
+  }
+  library {}
+  versions { producer: 96 }
+)proto";
+
+// range(10).map(lambda x: x*x)
+constexpr const char* const kMapGraphProto = R"proto(
+  node {
+    name: "Const/_0"
+    op: "Const"
+    attr {
+      key: "dtype"
+      value { type: DT_INT64 }
+    }
+    attr {
+      key: "value"
+      value {
+        tensor {
+          dtype: DT_INT64
+          tensor_shape {}
+          int64_val: 0
+        }
+      }
+    }
+  }
+  node {
+    name: "Const/_1"
+    op: "Const"
+    attr {
+      key: "dtype"
+      value { type: DT_INT64 }
+    }
+    attr {
+      key: "value"
+      value {
+        tensor {
+          dtype: DT_INT64
+          tensor_shape {}
+          int64_val: 10
+        }
+      }
+    }
+  }
+  node {
+    name: "Const/_2"
+    op: "Const"
+    attr {
+      key: "dtype"
+      value { type: DT_INT64 }
+    }
+    attr {
+      key: "value"
+      value {
+        tensor {
+          dtype: DT_INT64
+          tensor_shape {}
+          int64_val: 1
+        }
+      }
+    }
+  }
+  node {
+    name: "RangeDataset/_3"
+    op: "RangeDataset"
+    input: "Const/_0"
+    input: "Const/_1"
+    input: "Const/_2"
+    attr {
+      key: "output_shapes"
+      value { list { shape {} } }
     }
     attr {
       key: "output_types"
@@ -106,7 +195,7 @@ constexpr const char* const kGraphProto = R"proto(
     }
     attr {
       key: "f"
-      value { func { name: "Dataset_map_<lambda>_10" } }
+      value { func { name: "__inference_Dataset_map_<lambda>_67" } }
     }
     attr {
       key: "output_shapes"
@@ -125,44 +214,74 @@ constexpr const char* const kGraphProto = R"proto(
       value { b: true }
     }
   }
+  node {
+    name: "dataset"
+    op: "_Retval"
+    input: "MapDataset/_4"
+    attr {
+      key: "T"
+      value { type: DT_VARIANT }
+    }
+    attr {
+      key: "index"
+      value { i: 0 }
+    }
+  }
   library {
     function {
       signature {
-        name: "Dataset_map_<lambda>_10"
-        input_arg { name: "arg0" type: DT_INT64 }
-        output_arg { name: "mul" type: DT_INT64 }
-        description: "Wrapper for passing nested structures to and from tf.data functions."
+        name: "__inference_Dataset_map_<lambda>_67"
+        input_arg { name: "args_0" type: DT_INT64 }
+        output_arg { name: "identity" type: DT_INT64 }
       }
       node_def {
-        name: "mul_0"
+        name: "mul"
         op: "Mul"
-        input: "arg0"
-        input: "arg0"
+        input: "args_0"
+        input: "args_0"
         attr {
           key: "T"
           value { type: DT_INT64 }
         }
       }
-      ret { key: "mul" value: "mul_0:z:0" }
+      node_def {
+        name: "Identity"
+        op: "Identity"
+        input: "mul:z:0"
+        attr {
+          key: "T"
+          value { type: DT_INT64 }
+        }
+      }
+      ret { key: "identity" value: "Identity:output:0" }
+      arg_attr {
+        key: 0
+        value {
+          attr {
+            key: "_user_specified_name"
+            value { s: "args_0" }
+          }
+        }
+      }
     }
   }
-  versions { producer: 27 min_consumer: 12 }
+  versions { producer: 96 min_consumer: 12 }
 )proto";
 
 TEST(Scalar, Standalone) {
-  GraphDef graph_def;
-  protobuf::TextFormat::ParseFromString(kGraphProto, &graph_def);
   struct TestCase {
-    string fetch_node;
+    string graph_string;
     std::vector<int64> expected_outputs;
   };
   auto test_cases = {
-      TestCase{"RangeDataset/_3", {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
-      TestCase{"MapDataset/_4", {0, 1, 4, 9, 16, 25, 36, 49, 64, 81}},
+      TestCase{kRangeGraphProto, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
+      TestCase{kMapGraphProto, {0, 1, 4, 9, 16, 25, 36, 49, 64, 81}},
   };
   for (auto test_case : test_cases) {
+    GraphDef graph_def;
+    protobuf::TextFormat::ParseFromString(test_case.graph_string, &graph_def);
     std::unique_ptr<Dataset> dataset;
-    auto s = Dataset::FromGraph({}, graph_def, test_case.fetch_node, &dataset);
+    auto s = Dataset::FromGraph({}, graph_def, &dataset);
     TF_EXPECT_OK(s);
     std::unique_ptr<Iterator> iterator;
     s = dataset->MakeIterator(&iterator);

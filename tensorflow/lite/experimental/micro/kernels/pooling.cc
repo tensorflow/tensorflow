@@ -44,9 +44,10 @@ TfLiteStatus CalculateOpData(const TfLiteContext* context,
   int out_height, out_width;
 
   data->padding = ComputePaddingHeightWidth(
-      params->stride_height, params->stride_width, /* dilation_rate= */ 1,
-      height, width, params->filter_height, params->filter_width,
-      params->padding, params->padding, &out_height, &out_width);
+      params->stride_height, params->stride_width,
+      /*dilation_rate_height=*/1,
+      /*dilation_rate_width=*/1, height, width, params->filter_height,
+      params->filter_width, params->padding, &out_height, &out_width);
 
   return kTfLiteOk;
 }

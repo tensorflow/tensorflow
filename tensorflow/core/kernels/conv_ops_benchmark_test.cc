@@ -306,7 +306,7 @@ static Graph* FusedConv2DWithBatchNorm(
 //   FW: filter width
 
 // -------------------------------------------------------------------------- //
-// Following benchmarks are always using 'float' data type with NHWC layout.
+// The following benchmarks are always using 'float' data type with NHWC layout.
 // -------------------------------------------------------------------------- //
 
 #define BM_SETUP(N, H, W, C, type, LABEL, NAME)                               \
@@ -551,9 +551,9 @@ BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
 //     FW: filter width
 
 // -------------------------------------------------------------------------- //
-// Following benchmarks are used to compare different data format performance
-// for different data types. They make sense only when CUDA enabled, because on
-// CPU we only support data in NHWC.
+// The following benchmarks are used to compare different data format
+// performance for different data types. They make sense only when CUDA enabled,
+// because on CPU we only support data in NHWC.
 // -------------------------------------------------------------------------- //
 
 #define BM_LONG_NAME(name, type, T, FORMAT, N, H, W, C, FW, FH, FC) \
@@ -574,27 +574,33 @@ using fp32 = float;
 using fp16 = Eigen::half;
 
 // ResNet50-ish convolutions.
-#define BENCHMARK_DTYPE(BATCH, T)                             \
-  BM_Conv2DFmt(T, NHWC, BATCH, 56, 56, 64, 1, 1, 64, gpu);    \
-  BM_Conv2DFmt(T, NHWC, BATCH, 56, 56, 64, 1, 1, 256, gpu);   \
-  BM_Conv2DFmt(T, NHWC, BATCH, 56, 56, 256, 1, 1, 64, gpu);   \
-  BM_Conv2DFmt(T, NHWC, BATCH, 56, 56, 64, 3, 3, 64, gpu);    \
-                                                              \
-  BM_Conv2DFmt(T, NHWC, BATCH, 28, 28, 128, 1, 1, 128, gpu);  \
-  BM_Conv2DFmt(T, NHWC, BATCH, 28, 28, 128, 1, 1, 512, gpu);  \
-  BM_Conv2DFmt(T, NHWC, BATCH, 28, 28, 512, 1, 1, 128, gpu);  \
-  BM_Conv2DFmt(T, NHWC, BATCH, 28, 28, 512, 3, 3, 128, gpu);  \
-                                                              \
-  BM_Conv2DFmt(T, NHWC, BATCH, 14, 14, 256, 1, 1, 256, gpu);  \
-  BM_Conv2DFmt(T, NHWC, BATCH, 14, 14, 256, 1, 1, 1024, gpu); \
-  BM_Conv2DFmt(T, NHWC, BATCH, 14, 14, 1024, 1, 1, 256, gpu); \
-  BM_Conv2DFmt(T, NHWC, BATCH, 14, 14, 256, 3, 3, 256, gpu);
+#define BENCHMARK_DTYPE(DATA_FORMAT, BATCH, T)                       \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 1, 1, 64, gpu);    \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 1, 1, 256, gpu);   \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 256, 1, 1, 64, gpu);   \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 56, 56, 64, 3, 3, 64, gpu);    \
+                                                                     \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 128, 1, 1, 128, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 128, 1, 1, 512, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 512, 1, 1, 128, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 28, 28, 512, 3, 3, 128, gpu);  \
+                                                                     \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 1, 1, 256, gpu);  \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 1, 1, 1024, gpu); \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 1024, 1, 1, 256, gpu); \
+  BM_Conv2DFmt(T, DATA_FORMAT, BATCH, 14, 14, 256, 3, 3, 256, gpu);
 
-BENCHMARK_DTYPE(32, fp32);
-BENCHMARK_DTYPE(32, fp16);
+BENCHMARK_DTYPE(NHWC, 32, fp32);
+BENCHMARK_DTYPE(NCHW, 32, fp32);
 
-BENCHMARK_DTYPE(64, fp32);
-BENCHMARK_DTYPE(64, fp16);
+BENCHMARK_DTYPE(NHWC, 32, fp16);
+BENCHMARK_DTYPE(NCHW, 32, fp16);
+
+BENCHMARK_DTYPE(NHWC, 64, fp32);
+BENCHMARK_DTYPE(NCHW, 64, fp32);
+
+BENCHMARK_DTYPE(NHWC, 64, fp16);
+BENCHMARK_DTYPE(NCHW, 64, fp16);
 
 #endif  // GOOGLE_CUDA
 

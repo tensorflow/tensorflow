@@ -31,6 +31,10 @@ namespace xla {
 // else.
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
 
+// Returns a mask where the 'diagonal'-th diagonal is true and everything else
+// is false.
+XlaOp GetDiagonalMask(XlaOp x, int diagonal = 0);
+
 // Get the diagonals of the last two dimensions. Use k>0 for diagonals above the
 // main diagonal, and k<0 for diagonals below the main diagonal.
 //

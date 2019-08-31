@@ -622,6 +622,82 @@ TEST_F(NonMaxSuppressionV4OpTest, TestSelectFromThreeClustersPadFiveScoreThr) {
 }
 
 //
+// NonMaxSuppressionV5Op Tests
+//
+
+class NonMaxSuppressionV5OpTest : public OpsTestBase {
+ protected:
+  void MakeOp() {
+    TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV5")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("pad_to_max_output_size", true)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
+TEST_F(NonMaxSuppressionV5OpTest, TestSelectFromThreeClustersPadFive) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {5});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 5, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+
+  const auto expected_scores =
+      test::AsTensor<float>({.95f, .9f, .3f, 0.0f, 0.0f});
+  test::ExpectTensorNear<float>(expected_scores, *GetOutput(1), 1e-2);
+
+  Tensor expected_num_valid = test::AsScalar<int>(3);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(2));
+}
+
+TEST_F(NonMaxSuppressionV5OpTest, TestSelectFromThreeClustersWithSoftNMS) {
+  // In the above TestSelectFromThreeClusters test, we select boxes with indices
+  // 3, 0, 5, where box 0 suppresses box 1 because of a high IOU overlap.
+  // In this test we have the same boxes and box 0 soft-suppresses box 1, but
+  // not enough to cause it to fall under `score_threshold` (which is 0.0) or
+  // the score of box 5, so in this test, box 1 ends up being selected before
+  // box 5.
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {6});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  AddInputFromArray<float>(TensorShape({}), {0.5f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({6}));
+  test::FillValues<int>(&expected, {3, 0, 1, 5, 4, 2});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({6}));
+  test::FillValues<float>(&expected_scores,
+                          {0.95, 0.9, 0.384, 0.3, 0.256, 0.197});
+  test::ExpectTensorNear<float>(expected_scores, *GetOutput(1), 1e-2);
+
+  Tensor expected_num_valid = test::AsScalar<int>(6);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(2));
+}
+
+//
 // NonMaxSuppressionWithOverlapsOp Tests
 //
 

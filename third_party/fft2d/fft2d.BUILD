@@ -1,5 +1,5 @@
 # 2D Fast Fourier Transform package
-# from http://momonga.t.u-tokyo.ac.jp/~ooura/fft.html
+# from http://momonga.t.u-tokyo.ac.jp/~ooura/fft2d.html
 
 package(
     default_visibility = ["//visibility:public"],
@@ -8,10 +8,11 @@ package(
 # Unrestricted use; can only distribute original package.
 licenses(["notice"])
 
-exports_files(["fft/readme.txt"])
+exports_files(["fft2d/readme2d.txt"])
 
 FFT2D_SRCS = [
-    "fft/fftsg.c",
+    "fft2d/fftsg.c",
+    "fft2d/fftsg2d.c",
 ]
 
 config_setting(
@@ -22,7 +23,7 @@ config_setting(
 # This is the main 2D FFT library.  The 2D FFTs in this library call
 # 1D FFTs.  In addition, fast DCTs are provided for the special case
 # of 8x8 and 16x16.  This code in this library is referred to as
-# "Version II" on http://momonga.t.u-tokyo.ac.jp/~ooura/fft.html.
+# "Version II" on http://momonga.t.u-tokyo.ac.jp/~ooura/fft2d.html.
 cc_library(
     name = "fft2d",
     srcs = FFT2D_SRCS,

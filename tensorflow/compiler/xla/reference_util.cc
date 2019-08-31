@@ -199,59 +199,6 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
       xla::MakePadding(dim_lengths, window, stride, padding));
 }
 
-/* static */ std::unique_ptr<Array2D<float>>
-ReferenceUtil::ReduceWindow2DGeneric(
-    const Array2D<float>& operand, float init,
-    const std::function<float(float, float)>& reduce_func,
-    absl::Span<const int64> window, absl::Span<const int64> stride,
-    absl::Span<const std::pair<int64, int64>> padding) {
-  std::vector<int64> dim_lengths{operand.height(), operand.width()};
-
-  // window_counts is the dimensions of the output.
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
-    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
-    window_counts[i] =
-        window_util::StridedBound(padded_width, window[i], stride[i]);
-    pad_low[i] = padding[i].first;
-  }
-  auto result =
-      absl::make_unique<Array2D<float>>(window_counts[0], window_counts[1]);
-
-  // Do a full 2D reduce window.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
-      int64 i0_base = i0 * stride[0] - pad_low[0];
-      int64 i1_base = i1 * stride[1] - pad_low[1];
-
-      float val = init;
-      for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-        for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-          int64 i_adjusted = i0_base + i0_win;
-          int64 j_adjusted = i1_base + i1_win;
-          if (i_adjusted >= 0 && j_adjusted >= 0 && i_adjusted < operand.n1() &&
-              j_adjusted < operand.n2()) {
-            val = reduce_func(val, operand(i_adjusted, j_adjusted));
-          }
-        }
-      }
-      (*result)(i0, i1) = val;
-    }
-  }
-  return result;
-}
-
-/* static  */ std::unique_ptr<Array2D<float>> ReferenceUtil::ReduceWindow2DAdd(
-    const Array2D<float>& operand, float init, absl::Span<const int64> window,
-    absl::Span<const int64> stride, Padding padding) {
-  const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
-  std::vector<int64> dim_lengths{operand.height(), operand.width()};
-  return ReduceWindow2DGeneric(
-      operand, init, add_reduce, window, stride,
-      xla::MakePadding(dim_lengths, window, stride, padding));
-}
-
 /* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
     const Array3D<float>& operand, float init, absl::Span<const int64> window,
     absl::Span<const int64> stride, Padding padding) {

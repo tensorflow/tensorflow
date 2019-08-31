@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
@@ -219,7 +220,10 @@ int ReadMultiDimensionalStringArray(JNIEnv* env, TfLiteTensor* tensor,
     for (int i = 0; i < len; ++i) {
       const tflite::StringRef strref =
           tflite::GetString(tensor, start_str_index + num_strings_read);
-      jstring string_dest = env->NewStringUTF(strref.str);
+      // Makes sure the string is null terminated before passing to
+      // NewStringUTF.
+      std::string str(strref.str, strref.len);
+      jstring string_dest = env->NewStringUTF(str.data());
       env->SetObjectArrayElement(object_array, i, string_dest);
       env->DeleteLocalRef(string_dest);
       ++num_strings_read;

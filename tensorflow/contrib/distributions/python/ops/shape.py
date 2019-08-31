@@ -457,9 +457,9 @@ class _DistributionShape(object):
         batch_shape = s[1:1+self.batch_ndims]
         # Since sample_dims=1 and is left-most, we add 1 to the number of
         # batch_ndims to get the event start dim.
-        event_start = array_ops.where(
-            math_ops.logical_and(expand_batch_dim, self._batch_ndims_is_0),
-            2, 1 + self.batch_ndims)
+        event_start = array_ops.where_v2(
+            math_ops.logical_and(expand_batch_dim, self._batch_ndims_is_0), 2,
+            1 + self.batch_ndims)
         event_shape = s[event_start:event_start+self.event_ndims]
       new_shape = array_ops.concat([sample_shape, batch_shape, event_shape], 0)
       x = array_ops.reshape(x, shape=new_shape)

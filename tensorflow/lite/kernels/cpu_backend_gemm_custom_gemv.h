@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/tflite_with_ruy.h"
 
 namespace tflite {
 namespace cpu_backend_gemm {
@@ -542,8 +541,10 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
       // being processed.
 
       // Add bias values.
-      int32x4_t bias_vec = vld1q_s32(params.bias + row);
-      reduced = vaddq_s32(reduced, bias_vec);
+      if (params.bias) {
+        int32x4_t bias_vec = vld1q_s32(params.bias + row);
+        reduced = vaddq_s32(reduced, bias_vec);
+      }
 
       // Get multiplier parameters.
       int32x4_t multiplier_fixedpoint;

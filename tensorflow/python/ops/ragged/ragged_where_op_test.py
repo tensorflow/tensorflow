@@ -20,13 +20,12 @@ from __future__ import print_function
 from absl.testing import parameterized
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.ops.ragged import ragged_where_op
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedWhereOpTest(test_util.TensorFlowTestCase,
                         parameterized.TestCase):
 
   @parameterized.parameters([
@@ -188,7 +187,7 @@ class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
   ])   # pyformat: disable
   def testRaggedWhere(self, condition, expected, x=None, y=None):
     result = ragged_where_op.where(condition, x, y)
-    self.assertRaggedEqual(result, expected)
+    self.assertAllEqual(result, expected)
 
   @parameterized.parameters([
       dict(

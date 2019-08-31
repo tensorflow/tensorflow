@@ -48,9 +48,7 @@ class TriangularSolveThunk : public Thunk {
   TriangularSolveThunk(const TriangularSolveThunk&) = delete;
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const se::blas::UpperLower uplo_;

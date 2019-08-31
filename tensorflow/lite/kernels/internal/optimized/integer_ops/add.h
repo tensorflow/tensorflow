@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {

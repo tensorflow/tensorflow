@@ -1,15 +1,13 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_platform_hdrs")
+
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
-)
-
-package(
-    default_visibility = [":friends"],
 )
 
 cc_library(

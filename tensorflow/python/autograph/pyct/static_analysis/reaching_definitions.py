@@ -34,6 +34,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
@@ -147,6 +148,24 @@ class Analyzer(cfg.GraphVisitor):
       kill = node_scope.modified | node_scope.deleted
       defs_out = gen | (defs_in - kill)
 
+    elif isinstance(node.ast_node, (gast.Global, gast.Nonlocal)):
+      # Special case for global and nonlocal: they generate a definition,
+      # but are not tracked by activity analysis.
+      if node not in self.gen_map:
+        node_symbols = {}
+        for s in node.ast_node.names:
+          qn = qual_names.QN(s)
+          if qn in defs_in.value:
+            # In Python 2, this is a syntax warning. In Python 3, it's an error.
+            raise ValueError(
+                '"{}" is assigned before global definition'.format(s))
+          def_ = self._definition_factory()
+          node_symbols[qn] = def_
+        self.gen_map[node] = _NodeState(node_symbols)
+
+      gen = self.gen_map[node]
+      defs_out = defs_in | gen
+
     else:
       # Nodes that don't have a scope annotation are assumed not to touch any
       # symbols.
@@ -215,12 +234,6 @@ class TreeAnnotator(transformer.Base):
     self.current_analyzer = parent_analyzer
 
     return node
-
-  def visit_Nonlocal(self, node):
-    raise NotImplementedError()
-
-  def visit_Global(self, node):
-    raise NotImplementedError()
 
   def visit_Name(self, node):
     if self.current_analyzer is None:

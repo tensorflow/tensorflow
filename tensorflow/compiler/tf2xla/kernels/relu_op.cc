@@ -15,12 +15,22 @@ limitations under the License.
 
 // Native XLA implementations of XLA Relu Ops
 
+#include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+
+namespace xla {
+XlaOp Relu(XlaOp x) { return Max(ScalarLike(x, 0), x); }
+
+XlaOp Relu6(XlaOp x) {
+  auto zero = ScalarLike(x, 0);
+  auto six = ScalarLike(x, 6);
+  return Clamp(zero, x, six);
+}
+}  // namespace xla
 
 namespace tensorflow {
 namespace {
@@ -30,9 +40,7 @@ class ReluOp : public XlaOpKernel {
   explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-    auto zero = XlaHelpers::Zero(builder, input_type(0));
-    ctx->SetOutput(0, xla::Max(zero, ctx->Input(0)));
+    ctx->SetOutput(0, xla::Relu(ctx->Input(0)));
   }
 };
 REGISTER_XLA_OP(Name("Relu"), ReluOp);
@@ -42,10 +50,7 @@ class Relu6Op : public XlaOpKernel {
   explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Clamp the scalar input between 0 and 6.
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-    auto zero = XlaHelpers::Zero(builder, input_type(0));
-    auto six = XlaHelpers::IntegerLiteral(builder, input_type(0), 6);
-    ctx->SetOutput(0, xla::Clamp(zero, ctx->Input(0), six));
+    ctx->SetOutput(0, xla::Relu6(ctx->Input(0)));
   }
 };
 REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
@@ -57,8 +62,9 @@ class LeakyReluOp : public XlaOpKernel {
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto features = ctx->Input("features");
-    auto output =
-        xla::Max(features, features * xla::ScalarLike(features, alpha_));
+    auto prod_with_alpha = features * xla::ScalarLike(features, alpha_);
+    auto gt_zero = xla::Gt(features, xla::ScalarLike(features, 0));
+    auto output = xla::Select(gt_zero, features, prod_with_alpha);
     ctx->SetOutput(0, output);
   }
   float alpha_;

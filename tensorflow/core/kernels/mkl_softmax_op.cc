@@ -15,19 +15,17 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
-#ifndef INTEL_MKL_ML_ONLY
 
+#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
-
-#include "mkldnn.hpp"
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
 using mkldnn::stream;
@@ -182,15 +180,15 @@ class MklSoftmaxOp : public OpKernel {
 
 /* Register DNN kernels for supported operations and supported types - right now
  * it is only Softmax and f32 */
-#define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)          \
-  REGISTER_KERNEL_BUILDER(Name("_MklSoftmax")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklSoftmaxOp<CPUDevice, type>);
+#define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)     \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklSoftmax")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklSoftmaxOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL_ML_ONLY
 #endif  // INTEL_MKL

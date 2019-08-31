@@ -23,6 +23,7 @@ import threading
 
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import device as pydev
@@ -30,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 
@@ -253,31 +253,28 @@ class CollectiveKeys(object):
 
   def __init__(self,
                group_key_start=1,
-               instance_key_start=100,
-               instance_key_with_id_start=10000):
+               op_instance_key_start=100,
+               variable_instance_key_start=1000000):
     """Initializes the object.
 
     Args:
       group_key_start: the starting integer of group key.
-      instance_key_start: the starting integer of instance key.
-      instance_key_with_id_start: the starting integer of instance key that is
-        recorded with an id.
+      op_instance_key_start: the starting integer of instance key for ops.
+      variable_instance_key_start: the starting integer of instance key for
+        variables.
     """
     self._group_key = group_key_start
     self._group_key_table = {}
 
-    # For instance keys with ids
-    self._instance_key_id_to_key_table = {}
-    self._instance_key_with_id_counter = instance_key_with_id_start
-
-    # For instance keys without ids
-    self._instance_key_start = instance_key_start
+    assert op_instance_key_start != variable_instance_key_start
+    self._op_instance_key_start = op_instance_key_start
+    self._variable_instance_key = variable_instance_key_start
 
   def _get_thread_local_object(self):
     # We make instance key without key ids thread local so that it will work
     # with MirroredStrategy and distribute coordinator.
-    if not hasattr(_thread_local, 'instance_key'):
-      _thread_local.instance_key = self._instance_key_start
+    if not hasattr(_thread_local, 'op_instance_key'):
+      _thread_local.op_instance_key = self._op_instance_key_start
     return _thread_local
 
   def get_group_key(self, devices):
@@ -304,25 +301,17 @@ class CollectiveKeys(object):
         self._group_key_table[key_id] = new_key
     return self._group_key_table[key_id]
 
-  def get_instance_key(self, key_id=None):
-    """Returns a new instance key for use in defining a collective op.
+  def get_op_instance_key(self):
+    """Returns a new instance key for use in defining a collective op."""
+    v = self._get_thread_local_object().op_instance_key
+    self._get_thread_local_object().op_instance_key += 1
+    return v
 
-    Args:
-      key_id: optional string. If set, key will be recorded and the same key
-        will be returned when the same key_id is provided. If not, an increasing
-        instance key will be returned.
-    """
-    if key_id:
-      with _lock:
-        if key_id not in self._instance_key_id_to_key_table:
-          self._instance_key_with_id_counter += 1
-          self._instance_key_id_to_key_table[key_id] = (
-              self._instance_key_with_id_counter)
-      return self._instance_key_id_to_key_table[key_id]
-    else:
-      v = self._get_thread_local_object().instance_key
-      self._get_thread_local_object().instance_key += 1
-      return v
+  def get_variable_instance_key(self):
+    """Returns a new instance key for use in creating a Variable."""
+    v = self._variable_instance_key
+    self._variable_instance_key += 1
+    return v
 
 
 def build_collective_reduce(input_tensors,
@@ -354,7 +343,7 @@ def build_collective_reduce(input_tensors,
   devices = [t.device for t in input_tensors]
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)
-  instance_key = collective_keys.get_instance_key()
+  instance_key = collective_keys.get_op_instance_key()
   subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
 
   def collective_all_reduce():
@@ -399,7 +388,7 @@ def build_collective_gather(input_tensors, num_workers, collective_keys):
   devices = [t.device for t in input_tensors]
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)
-  instance_key = collective_keys.get_instance_key()
+  instance_key = collective_keys.get_op_instance_key()
 
   def collective_all_gather():
     """Call collective allgather."""
@@ -587,7 +576,7 @@ def unpack_grad_tuple(gv, gpt):
      reduction.
   """
   elt_widths = [x.num_elements() for x in gpt.shapes]
-  with ops.device(gv[0][0].device):
+  with ops.device(gv[0].device):
     with ops.name_scope('unpack'):
       splits = array_ops.split(gv[0], elt_widths)
       unpacked_gv = []
@@ -688,14 +677,14 @@ def unpack_small_tensors(replica_grads, packing):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, ops.IndexedSlices) for v in values):
-    return gradients_util._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
+    return backprop.aggregate_indexed_slices_gradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, ops.IndexedSlices):
-    value = gradients_util._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
+    value = backprop.flatten_nested_indexed_slices(value)
     return ops.IndexedSlices(
         value.values / n, value.indices, value.dense_shape)
   else:

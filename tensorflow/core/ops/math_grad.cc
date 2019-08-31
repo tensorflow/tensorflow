@@ -439,6 +439,7 @@ Status AddGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Add", AddGrad);
+REGISTER_OP_GRADIENT("AddV2", AddGrad);
 
 Status SubGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

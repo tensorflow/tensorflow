@@ -24,4 +24,8 @@ tf_module {
     name: "TargetSpec"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
 }

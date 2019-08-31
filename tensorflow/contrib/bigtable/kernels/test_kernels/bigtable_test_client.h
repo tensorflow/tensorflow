@@ -106,6 +106,12 @@ class BigtableTestClient : public ::google::cloud::bigtable::DataClient {
                          const google::bigtable::v2::MutateRowsRequest& request,
                          grpc::CompletionQueue* cq) override;
 
+  virtual std::unique_ptr<::grpc::ClientAsyncReaderInterface<
+      ::google::bigtable::v2::ReadRowsResponse>>
+  PrepareAsyncReadRows(::grpc::ClientContext* context,
+                       const ::google::bigtable::v2::ReadRowsRequest& request,
+                       ::grpc::CompletionQueue* cq) override;
+
   std::shared_ptr<grpc::Channel> Channel() override;
 
  private:

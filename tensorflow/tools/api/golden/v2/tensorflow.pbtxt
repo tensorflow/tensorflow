@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "IndexedSlicesSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Module"
     mtype: "<type \'type\'>"
   }
@@ -37,7 +41,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptionalSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RaggedTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedTensorSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -49,6 +61,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SparseTensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Tensor"
     mtype: "<type \'type\'>"
   }
@@ -57,11 +73,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorArraySpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TensorShape"
     mtype: "<type \'type\'>"
   }
   member {
     name: "TensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TypeSpec"
     mtype: "<type \'type\'>"
   }
   member {
@@ -230,6 +254,10 @@ tf_module {
   }
   member {
     name: "metrics"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mixed_precision"
     mtype: "<type \'module\'>"
   }
   member {
@@ -546,7 +574,7 @@ tf_module {
   }
   member_method {
     name: "custom_gradient"
-    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'f\', \'primals\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "device"
@@ -622,7 +650,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -639,6 +667,10 @@ tf_module {
   member_method {
     name: "get_static_value"
     argspec: "args=[\'tensor\', \'partial\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "grad_pass_through"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gradients"
@@ -727,6 +759,10 @@ tf_module {
   member_method {
     name: "make_ndarray"
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_tensor_proto"
+    argspec: "args=[\'values\', \'dtype\', \'shape\', \'verify_shape\', \'allow_broadcast\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "map_fn"
@@ -829,6 +865,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "recompute_grad"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reduce_all"
     argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
@@ -863,6 +903,10 @@ tf_module {
   member_method {
     name: "register_tensor_conversion_function"
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'input\', \'repeats\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "required_space_to_batch_paddings"

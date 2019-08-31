@@ -3,12 +3,6 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -19,6 +13,13 @@ load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 exports_files(glob([
     "test/testdata/*",
@@ -64,6 +65,13 @@ py_library(
         ":trt_convert_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/tools:saved_model_utils",
     ],
 )
 
@@ -72,6 +80,7 @@ cuda_py_test(
     srcs = ["trt_convert_test.py"],
     additional_deps = [
         ":trt_convert_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -86,6 +95,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "nomac",
     ],
@@ -125,6 +135,7 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "nomac",
     ],
@@ -150,6 +161,7 @@ cuda_py_test(
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
+        "no_rocm",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",

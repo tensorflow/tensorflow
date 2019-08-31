@@ -18,6 +18,7 @@ The input CSV should have the following fields:
 - CNN
 - input resolution
 - end_point
+- FLOPS (Billion)
 - RF size hor
 - RF size ver
 - effective stride hor
@@ -46,11 +47,10 @@ cmd_args = None
 def main(unused_argv):
   with open(cmd_args.markdown_path, 'w') as f:
     # Write table header and field size.
-    f.write('CNN | resolution | end-point | RF | effective stride | '
-            'effective padding|\n')
-    f.write(
-        ':--------------------: | :----------: | :---------------: | :-----: |'
-        ' :----: | :----:|\n')
+    f.write('CNN | resolution | end-point | FLOPs (Billion) | RF | '
+            'effective stride | effective padding\n')
+    f.write(':--------------------: | :----------: | :---------------: | '
+            ':---------------: | :-----: | :----: | :----:\n')
     with open(cmd_args.csv_path) as csvfile:
       reader = csv.DictReader(csvfile)
       for row in reader:
@@ -59,10 +59,10 @@ def main(unused_argv):
         assert row['effective stride hor'] == row['effective stride ver']
         assert row['effective padding hor'] == row['effective padding ver']
 
-        f.write('%s|%s|%s|%s|%s|%s\n' %
+        f.write('%s|%s|%s|%s|%s|%s|%s\n' %
                 (row['CNN'], row['input resolution'], row['end_point'],
-                 row['RF size hor'], row['effective stride hor'],
-                 row['effective padding hor']))
+                 row['FLOPs (Billion)'], row['RF size hor'],
+                 row['effective stride hor'], row['effective padding hor']))
 
 
 if __name__ == '__main__':

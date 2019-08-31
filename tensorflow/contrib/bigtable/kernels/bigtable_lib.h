@@ -25,7 +25,7 @@ namespace tensorflow {
 
 Status GcpStatusToTfStatus(const ::google::cloud::Status& status);
 
-string RegexFromStringSet(const std::vector<string>& strs);
+string RegexFromStringSet(const std::vector<tstring>& strs);
 
 class BigtableClientResource : public ResourceBase {
  public:
@@ -114,6 +114,15 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
   virtual Status ParseRow(IteratorContext* ctx,
                           const ::google::cloud::bigtable::Row& row,
                           std::vector<Tensor>* out_tensors) = 0;
+
+  Status SaveInternal(IteratorStateWriter* writer) override {
+    return errors::Unimplemented("SaveInternal is currently not supported");
+  }
+
+  Status RestoreInternal(IteratorContext* ctx,
+                         IteratorStateReader* reader) override {
+    return errors::Unimplemented("RestoreInternal is currently not supported");
+  }
 
  private:
   Status EnsureIteratorInitialized() EXCLUSIVE_LOCKS_REQUIRED(mu_) {

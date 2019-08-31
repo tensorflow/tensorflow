@@ -49,6 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
+_TF_MIN_BAZEL_VERSION = '0.24.1'
+_TF_MAX_BAZEL_VERSION = '0.26.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -234,7 +236,9 @@ def setup_python(environ_cp):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  _ = get_python_major_version(python_bin_path)
+  python_major_version = get_python_major_version(python_bin_path)
+  if python_major_version == '2':
+    write_to_bazelrc('build --host_force_python=PY2')
 
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows() or is_cygwin():
@@ -1141,78 +1145,6 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
-def set_mpi_home(environ_cp):
-  """Set MPI_HOME."""
-
-  default_mpi_home = which('mpirun') or which('mpiexec') or ''
-  default_mpi_home = os.path.dirname(os.path.dirname(default_mpi_home))
-
-  def valid_mpi_path(mpi_home):
-    exists = (
-        os.path.exists(os.path.join(mpi_home, 'include')) and
-        (os.path.exists(os.path.join(mpi_home, 'lib')) or
-         os.path.exists(os.path.join(mpi_home, 'lib64')) or
-         os.path.exists(os.path.join(mpi_home, 'lib32'))))
-    if not exists:
-      print(
-          'Invalid path to the MPI Toolkit. %s or %s or %s or %s cannot be found'
-          % (os.path.join(mpi_home, 'include'),
-             os.path.exists(os.path.join(mpi_home, 'lib')),
-             os.path.exists(os.path.join(mpi_home, 'lib64')),
-             os.path.exists(os.path.join(mpi_home, 'lib32'))))
-    return exists
-
-  _ = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='MPI_HOME',
-      var_default=default_mpi_home,
-      ask_for_var='Please specify the MPI toolkit folder.',
-      check_success=valid_mpi_path,
-      error_msg='',
-      suppress_default_error=True)
-
-
-def set_other_mpi_vars(environ_cp):
-  """Set other MPI related variables."""
-  # Link the MPI header files
-  mpi_home = environ_cp.get('MPI_HOME')
-  symlink_force('%s/include/mpi.h' % mpi_home, 'third_party/mpi/mpi.h')
-
-  # Determine if we use OpenMPI or MVAPICH, these require different header files
-  # to be included here to make bazel dependency checker happy
-  if os.path.exists(os.path.join(mpi_home, 'include/mpi_portable_platform.h')):
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpi_portable_platform.h'),
-        'third_party/mpi/mpi_portable_platform.h')
-    # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI=False',
-                 'MPI_LIB_IS_OPENMPI=True')
-  else:
-    # MVAPICH / MPICH
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpio.h'), 'third_party/mpi/mpio.h')
-    symlink_force(
-        os.path.join(mpi_home, 'include/mpicxx.h'), 'third_party/mpi/mpicxx.h')
-    # TODO(gunan): avoid editing files in configure
-    sed_in_place('third_party/mpi/mpi.bzl', 'MPI_LIB_IS_OPENMPI=True',
-                 'MPI_LIB_IS_OPENMPI=False')
-
-  if os.path.exists(os.path.join(mpi_home, 'lib/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib/libmpi.so'), 'third_party/mpi/libmpi.so')
-  elif os.path.exists(os.path.join(mpi_home, 'lib64/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib64/libmpi.so'), 'third_party/mpi/libmpi.so')
-  elif os.path.exists(os.path.join(mpi_home, 'lib32/libmpi.so')):
-    symlink_force(
-        os.path.join(mpi_home, 'lib32/libmpi.so'), 'third_party/mpi/libmpi.so')
-
-  else:
-    raise ValueError(
-        'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
-        (mpi_home, mpi_home, mpi_home))
-
-
 def system_specific_test_config(env):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
@@ -1391,7 +1323,8 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.2')
+  current_bazel_version = check_bazel_version(_TF_MIN_BAZEL_VERSION,
+                                              _TF_MAX_BAZEL_VERSION)
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1423,7 +1356,7 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  xla_enabled_by_default = is_linux()
+  xla_enabled_by_default = is_linux() or is_macos()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 xla_enabled_by_default, 'xla')
 
@@ -1544,11 +1477,6 @@ def main():
     raise UserInputError('SYCL / CUDA / ROCm are mututally exclusive. '
                          'At most 1 GPU platform can be configured.')
 
-  set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
-  if environ_cp.get('TF_NEED_MPI') == '1':
-    set_mpi_home(environ_cp)
-    set_other_mpi_vars(environ_cp)
-
   set_cc_opt_flags(environ_cp)
   set_system_libs_flag(environ_cp)
   if is_windows():
@@ -1575,20 +1503,17 @@ def main():
         'details.')
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
-  config_info_line('gdr', 'Build with GDR support.')
-  config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')
+  config_info_line('v2', 'Build TensorFlow 2.x instead of 1.x.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')
   config_info_line('nogcp', 'Disable GCP support.')
   config_info_line('nohdfs', 'Disable HDFS support.')
-  config_info_line('noignite', 'Disable Apache Ignite support.')
-  config_info_line('nokafka', 'Disable Apache Kafka support.')
   config_info_line('nonccl', 'Disable NVIDIA NCCL support.')
 
 

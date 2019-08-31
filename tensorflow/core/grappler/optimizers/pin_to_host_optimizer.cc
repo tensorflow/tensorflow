@@ -102,7 +102,8 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   if (!properties->has_properties()) {
     // This is an expensive call, call it lazily.
     TF_RETURN_IF_ERROR(properties->InferStatically(
-        /*assume_valid_feeds=*/false));
+        /*assume_valid_feeds=*/false, /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
   }
   const auto& output_properties = properties->GetOutputProperties(node.name());
   if (port_id >= output_properties.size()) {
@@ -252,7 +253,8 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   if (!properties->has_properties()) {
     // This is an expensive call, call it lazily.
     TF_RETURN_IF_ERROR(properties->InferStatically(
-        /*assume_valid_feeds=*/false));
+        /*assume_valid_feeds=*/false, /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
     if (!IsTensorSmall(prop)) {

@@ -36,7 +36,7 @@ class ScatterTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseHloString(hlo_text, config));
+                            ParseAndReturnUnverifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
@@ -158,7 +158,7 @@ ENTRY main {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text, config));
+                          ParseAndReturnUnverifiedModule(hlo_text, config));
   auto actual = ExecuteAndTransfer(std::move(module), {&permutation});
   Literal expected =
       LiteralUtil::CreateR2<int32>({{3, 0, 2, 1}, {1, 3, 2, 0}, {3, 2, 0, 1}});

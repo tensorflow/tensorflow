@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/model.h"
+
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -66,7 +68,7 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
   if (mmap_file && MMAPAllocation::IsSupported()) {
-      allocation.reset(new MMAPAllocation(filename, error_reporter));
+    allocation.reset(new MMAPAllocation(filename, error_reporter));
   } else {
     allocation.reset(new FileCopyAllocation(filename, error_reporter));
   }
@@ -157,6 +159,22 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
   return model;
 }
 
+string FlatBufferModel::GetMinimumRuntime() const {
+  if (!model_ || !model_->metadata()) return "";
+
+  for (int i = 0; i < model_->metadata()->size(); ++i) {
+    auto metadata = model_->metadata()->Get(i);
+    if (metadata->name()->str() == "min_runtime_version") {
+      auto buf = metadata->buffer();
+      auto* buffer = (*model_->buffers())[buf];
+      auto* array = buffer->data();
+      return string(reinterpret_cast<const char*>(array->data()),
+                    array->size());
+    }
+  }
+  return "";
+}
+
 bool FlatBufferModel::CheckModelIdentifier() const {
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
@@ -201,16 +219,49 @@ InterpreterBuilder::~InterpreterBuilder() {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
+  // Reset state.
+  flatbuffer_op_index_to_registration_.clear();
+  unresolved_custom_ops_.clear();
+
   auto opcodes = model_->operator_codes();
   if (!opcodes) {
     return status;
   }
+  int num_custom_ops = 0;
+  for (const OperatorCode* opcode : *opcodes) {
+    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+      num_custom_ops++;
+    }
+  }
+  unresolved_custom_ops_.reserve(num_custom_ops);
   for (const OperatorCode* opcode : *opcodes) {
     const TfLiteRegistration* registration = nullptr;
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
                                        &registration);
     if (status != kTfLiteOk) {
-      return status;
+      if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
+        return status;
+      }
+      // If it's an unresolved custom op, allow it for now. It might be resolved
+      // by a delegate later.
+      if (!opcode->custom_code()) {
+        error_reporter_->Report(
+            "Operator with CUSTOM builtin_code has no custom_code.\n");
+        return status;
+      }
+      const auto* op_name = opcode->custom_code()->c_str();
+      TfLiteRegistration unresolved_op{nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       /*invoke*/ &UnresolvedOpInvoke,
+                                       nullptr,
+                                       BuiltinOperator_CUSTOM,
+                                       op_name,
+                                       1};
+      unresolved_custom_ops_.push_back(unresolved_op);
+      registration = &unresolved_custom_ops_.back();
+      has_flex_op_ |= IsFlexOp(op_name);
+      status = kTfLiteOk;
     }
     flatbuffer_op_index_to_registration_.push_back(registration);
   }
@@ -276,20 +327,31 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           EnumNameBuiltinOperator(op_type));
     }
 
-    if (op->custom_options()) {
-      subgraph->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()),
-          reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, registration);
+    if (op_type == BuiltinOperator_CUSTOM) {
+      if (op->custom_options()) {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()),
+            reinterpret_cast<const char*>(op->custom_options()->data()),
+            op->custom_options()->size(), nullptr, registration);
+      } else {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
+            nullptr, registration);
+      }
     } else {
       void* builtin_data = nullptr;
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      subgraph->AddNodeWithParameters(FlatBufferIntArrayToVector(op->inputs()),
-                                      FlatBufferIntArrayToVector(op->outputs()),
-                                      nullptr, 0, builtin_data, registration);
+      subgraph->AddNodeWithParameters(
+          FlatBufferIntArrayToVector(op->inputs()),
+          FlatBufferIntArrayToVector(op->outputs()),
+          FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
+          builtin_data, registration);
     }
   }
 
@@ -298,7 +360,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
 TfLiteStatus InterpreterBuilder::ParseQuantization(
     const QuantizationParameters* src_quantization,
-    TfLiteQuantization* quantization) {
+    TfLiteQuantization* quantization, const std::vector<int>& dims) {
   quantization->type = kTfLiteNoQuantization;
   if (!src_quantization || !src_quantization->scale() ||
       src_quantization->scale()->size() == 0) {
@@ -324,11 +386,26 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   // Affine-quantization.
   quantization->type = kTfLiteAffineQuantization;
   const size_t num_scales = src_quantization->scale()->size();
+
+  // Ensure that the quantization dimension is valid.
   if (src_quantization->quantized_dimension() < 0 ||
-      src_quantization->quantized_dimension() >= num_scales) {
+      (!dims.empty() &&
+       src_quantization->quantized_dimension() >= dims.size())) {
     error_reporter_->Report(
-        "quantized_dimension must be in range [0, %d). Was %d.", num_scales,
+        "quantized_dimension must be in range [0, %d). Was %d.", dims.size(),
         src_quantization->quantized_dimension());
+    return kTfLiteError;
+  }
+
+  // Ensure that the number of scales is 1 for per-layer quantization, and
+  // matches number of quantization dimensions for per-axis quantization.
+  if (num_scales != 1 &&
+      (!dims.empty() &&
+       num_scales != dims[src_quantization->quantized_dimension()])) {
+    error_reporter_->Report(
+        "num_scales must be 1 for per-layer quantization, or %d for per-axis "
+        "quantization, but got %d.",
+        dims[src_quantization->quantized_dimension()], num_scales);
     return kTfLiteError;
   }
 
@@ -400,7 +477,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
-    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
+    if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
       status = kTfLiteError;
       continue;
     }
@@ -437,25 +514,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 }
 
 TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
-  // TODO(b/117561550): Move flex delegate application to the OpResolver.
-  if (AcquireFlexDelegate == nullptr) {
+  // Apply Flex delegate if applicable.
+  if (!has_flex_op_ || AcquireFlexDelegate == nullptr) {
     return kTfLiteOk;
-  }
-
-  bool has_flex_op = false;
-  for (const auto* registration : flatbuffer_op_index_to_registration_) {
-    if ((registration->builtin_code == BuiltinOperator_CUSTOM) &&
-        IsFlexOp(registration->custom_name)) {
-      has_flex_op = true;
-      break;
-    }
-  }
-
-  if (!has_flex_op) {
-    return kTfLiteOk;
-  }
-
-  if (auto flex_delegate = AcquireFlexDelegate()) {
+  } else if (auto flex_delegate = AcquireFlexDelegate()) {
     return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
   }
 

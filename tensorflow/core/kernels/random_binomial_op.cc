@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -95,7 +96,7 @@ double stirling_approx_tail(double k) {
     return kTailValues[static_cast<int>(k)];
   }
   double kp1sq = (k + 1) * (k + 1);
-  return (1 / 12 - (1 / 360 + 1 / 1260 / kp1sq) / kp1sq) / (k + 1);
+  return (1.0 / 12 - (1.0 / 360 + 1.0 / 1260 / kp1sq) / kp1sq) / (k + 1);
 }
 
 // We use a transformation-rejection algorithm from
@@ -206,7 +207,17 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
         // Calculate normalized samples, then convert them.
         // Determine the method to use.
         double dcount = static_cast<double>(count);
-        if (prob <= T(0.5)) {
+        if (dcount <= 0.0 || prob <= T(0.0)) {
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(0.0);
+            sample++;
+          }
+        } else if (prob >= T(1.0)) {
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(dcount);
+            sample++;
+          }
+        } else if (prob <= T(0.5)) {
           double dp = static_cast<double>(prob);
           if (count * prob >= T(10)) {
             while (sample < limit_sample) {
@@ -220,7 +231,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
               sample++;
             }
           }
-        } else {
+        } else if (prob > T(0.5)) {
           T q = T(1) - prob;
           double dcount = static_cast<double>(count);
           double dq = static_cast<double>(q);
@@ -236,6 +247,14 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                   dcount - binomial_inversion(dcount, dq, &gen_copy));
               sample++;
             }
+          }
+        } else {  // prob is NaN
+          // TODO(srvasude): What should happen if prob is NaN but the output
+          // type is an integer (which doesn't have a sentinel for NaN)?  Fail
+          // the whole batch sample?  Return a specialized sentinel like -1?
+          while (sample < limit_sample) {
+            output(sample) = static_cast<U>(NAN);
+            sample++;
           }
         }
       }
@@ -371,10 +390,9 @@ class RandomBinomialOp : public OpKernel {
               "Input probs should have length 1 or shape[0], got shape: ",
               probs_tensor.shape().DebugString()));
     }
-    Var* var = nullptr;
+    core::RefCountPtr<Var> var;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &var));
 
-    ScopedUnlockUnrefVar var_guard(var);
     Tensor* var_tensor = var->tensor();
     OP_REQUIRES(
         ctx, var_tensor->dtype() == STATE_ELEMENT_DTYPE,
@@ -404,7 +422,6 @@ class RandomBinomialOp : public OpKernel {
     auto philox = GetPhiloxRandomFromMem(var_data);
     UpdateMemWithPhiloxRandom(
         philox, num_batches * 2 * 100 * (samples_per_batch + 3) / 4, var_data);
-    var_guard.Release();
 
     auto binomial_functor = functor::RandomBinomialFunctor<Device, T, U>();
     binomial_functor(ctx, ctx->eigen_device<Device>(), num_batches,

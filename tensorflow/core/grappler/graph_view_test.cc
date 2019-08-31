@@ -98,7 +98,7 @@ TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
 
 TEST_F(GraphViewTest, ParseSingleExample) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Const<string>(s.WithOpName("a"), "", {});
+  Output a = ops::Const<tstring>(s.WithOpName("a"), "", {});
   Output b = ops::Const<int64>(s.WithOpName("b"), 1, {1, 1});
   ops::ParseSingleExample c(s.WithOpName("c"), a, {b, b}, 2, {"w", "x"},
                             {"y", "z"}, {DT_INT64, DT_INT64}, {{1}, {1}});

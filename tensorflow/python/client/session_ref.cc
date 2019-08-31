@@ -474,6 +474,13 @@ Status SessionRef::RunCallable(CallableHandle handle,
 }
 
 Status SessionRef::ReleaseCallable(CallableHandle handle) {
+  {
+    mutex_lock l(run_lock_);
+    if (session_ == nullptr) {
+      // Session already closed. Do nothing.
+      return Status::OK();
+    }
+  }
   LOG_AND_RUN_OPERATION(ReleaseCallable, handle);
 }
 

@@ -1,12 +1,13 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_copts = ["-Wall"]
 
@@ -90,7 +91,8 @@ cc_test(
         "//tensorflow/core:framework_lite",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

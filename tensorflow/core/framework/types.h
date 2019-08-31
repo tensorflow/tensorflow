@@ -71,9 +71,10 @@ class DeviceType {
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
-TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
-TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
+TF_EXPORT extern const char* const DEVICE_DEFAULT;  // "DEFAULT"
+TF_EXPORT extern const char* const DEVICE_CPU;      // "CPU"
+TF_EXPORT extern const char* const DEVICE_GPU;      // "GPU"
+TF_EXPORT extern const char* const DEVICE_SYCL;     // "SYCL"
 
 template <typename Device>
 struct DeviceName {};
@@ -390,7 +391,7 @@ MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
 MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
 MATCH_TYPE_AND_ENUM(int16, DT_INT16);
 MATCH_TYPE_AND_ENUM(int8, DT_INT8);
-MATCH_TYPE_AND_ENUM(string, DT_STRING);
+MATCH_TYPE_AND_ENUM(tstring, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
 MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
 MATCH_TYPE_AND_ENUM(int64, DT_INT64);

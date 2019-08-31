@@ -20,6 +20,7 @@ import os
 import tempfile
 import time
 
+import unittest
 import six
 
 from tensorflow.contrib.summary import summary as summary_ops
@@ -237,6 +238,8 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
     with self.assertRaises(TypeError):
       summary_ops.graph('')
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testGraphSummary(self):
     training_util.get_or_create_global_step()
     name = 'hi'

@@ -144,6 +144,15 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
   Note that in case of ties the identity of the return value is not guaranteed.
 
+  For example:
+  ```python
+  A=tf.constant([2,20,30,3,6]) # Constant 1-D Tensor
+  tf.math.argmax(A) # output 2 as index 2 (A[2]) is maximum in tensor A
+  B=tf.constant([[2,20,30,3,6],[3,11,16,1,8],[14,45,23,5,27]])
+  tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
+  tf.math.argmax(B,1) # [2, 2, 1]
+  ```
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -322,7 +331,7 @@ def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -478,6 +487,9 @@ def complex(real, imag, name=None):
 
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
+
+  Raises:
+    TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
   imag = ops.convert_to_tensor(imag, name="imag")
@@ -519,6 +531,7 @@ def real(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
@@ -552,6 +565,7 @@ def imag(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -591,6 +605,7 @@ def angle(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Angle", [input]) as name:
+    input = ops.convert_to_tensor(input, name="input")
     if input.dtype.is_complex:
       return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
     else:
@@ -628,7 +643,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
-@tf_export("dtypes.cast", "cast")
+@tf_export("cast", "dtypes.cast")
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -640,7 +655,7 @@ def cast(x, dtype, name=None):
 
   ```python
   x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
+  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
   ```
 
   The operation supports data types (for `x` and `dtype`) of
@@ -1095,11 +1110,6 @@ def div_no_nan(x, y, name=None):
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
@@ -1173,6 +1183,17 @@ truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
 
 
+def _add_dispatch(x, y, name=None):
+  """Dispatches to add for strings and add_v2 for all other types."""
+  if fwd_compat.forward_compatible(2019, 6, 25):
+    if x.dtype == dtypes.string:
+      return gen_math_ops.add(x, y, name=name)
+    else:
+      return gen_math_ops.add_v2(x, y, name=name)
+  else:
+    return gen_math_ops.add(x, y, name=name)
+
+
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
   is_tensor_y = isinstance(y, ops.Tensor)
@@ -1195,7 +1216,7 @@ _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_mul, "mul",
                               sparse_tensor.SparseTensor)
 
-_OverrideBinaryOperatorHelper(gen_math_ops.add, "add")
+_OverrideBinaryOperatorHelper(_add_dispatch, "add")
 _OverrideBinaryOperatorHelper(gen_math_ops.sub, "sub")
 _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
@@ -1247,6 +1268,30 @@ ops.Tensor._override_operator("__lt__", gen_math_ops.less)
 ops.Tensor._override_operator("__le__", gen_math_ops.less_equal)
 ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
+
+
+def tensor_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  g = getattr(self, "graph", None)
+  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
+      (g is None or g._building_function)):  # pylint: disable=protected-access
+    return gen_math_ops.equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is other
+
+
+def tensor_not_equals(self, other):
+  """Compares two tensors element-wise for equality."""
+  if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
+    return gen_math_ops.not_equal(self, other)
+  else:
+    # In legacy graph mode, tensor equality is object equality
+    return self is not other
+
+
+ops.Tensor._override_operator("__eq__", tensor_equals)
+ops.Tensor._override_operator("__ne__", tensor_not_equals)
 
 
 @tf_export("range")
@@ -2414,6 +2459,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])
 @deprecation.deprecated_endpoints("trace")
+@dispatch.add_dispatch_support
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -2687,7 +2733,7 @@ def matvec(a,
 
   # `a` * `b`
   # [ 58,  64]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
 
 
   # 3-D tensor `a`
@@ -2707,7 +2753,7 @@ def matvec(a,
   # `a` * `b`
   # [[ 86, 212],
   #  [410, 563]]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
   ```
 
   Args:
@@ -2762,6 +2808,22 @@ def _calc_mat_mul_flops(graph, node):
     k = int(a_shape[0])
   else:
     k = int(a_shape[1])
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  output_count = np.prod(output_shape.as_list())
+  return ops.OpStats("flops", (k * output_count * 2))
+
+
+@ops.RegisterStatistics("BatchMatMul", "flops")
+def _calc_batch_mat_mul_flops(graph, node):
+  """Calculates the compute resources needed for BatchMatMul."""
+  transpose_a = node.attr["transpose_a"].b
+  a_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  a_shape.assert_is_fully_defined()
+  if transpose_a:
+    k = int(a_shape[-2])
+  else:
+    k = int(a_shape[-1])
   output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
   output_shape.assert_is_fully_defined()
   output_count = np.prod(output_shape.as_list())
@@ -2892,13 +2954,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`, but
-  does not wait for all of its inputs to be ready before beginning to sum.
-  This approach can save memory if inputs are ready at different times, since
-  minimum temporary storage is proportional to the output size rather than the
-  inputs' size.
-
-  `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
+  `accumulate_n` performs the same operation as `tf.math.add_n`.
 
   For example:
 
@@ -2958,14 +3014,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.executing_eagerly():
-    # TemporaryVariable not currently supported in eager mode; fall back
-    # onto AddN for now.
-    # TODO(frreiss) remove this once the lifetime of eager variables gets
-    # addressed
-    return add_n(inputs, name=name)
-  else:
-    return gen_math_ops.accumulate_nv2(inputs, name=name, shape=shape)  # pylint: disable=protected-access
+  return add_n(inputs, name=name)
 
 
 @ops.RegisterGradient("AccumulateNV2")
@@ -3034,6 +3083,26 @@ def bincount(arr,
   value in `weights` at each index where the corresponding value in `arr` is
   `i`.
 
+  ```python
+  values = tf.constant([1,1,2,3,2,4,4,5])
+  tf.math.bincount(values) #[0 2 2 1 2 1]
+  ```
+  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
+                  will be the vector length.
+
+  Each bin value in the output indicates number of occurrences of the particular
+  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
+  two times in `values`.
+
+  ```python
+  values = tf.constant([1,1,2,3,2,4,4,5])
+  weights = tf.constant([1,5,0,1,0,5,4,5])
+  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
+  ```
+  Bin will be incremented by the corresponding weight instead of 1.
+  Here, index 1 in output has a value 6. This is the summation of weights
+  corresponding to the value in `values`.
+
   Args:
     arr: An int32 tensor of non-negative values.
     weights: If non-None, must be the same shape as arr. For each value in
@@ -3049,6 +3118,10 @@ def bincount(arr,
   Returns:
     A vector with the same dtype as `weights` or the given `dtype`. The bin
     values.
+
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
+
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
@@ -3208,6 +3281,61 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
 
+@tf_export("math.cumulative_logsumexp", v1=["math.cumulative_logsumexp"])
+def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
+  """Compute the cumulative log-sum-exp of the tensor `x` along `axis`.
+
+  By default, this op performs an inclusive cumulative log-sum-exp, which means
+  that the first element of the input is identical to the first element of
+  the output.
+
+  This operation is significantly more numerically stable than the equivalent
+  tensorflow operation `tf.math.log(tf.math.cumsum(tf.math.exp(x)))`, although
+  computes the same result given infinite numerical precision. However, note
+  that in some cases, it may be less stable than `tf.math.reduce_logsumexp`
+  for a given element, as it applies the "log-sum-exp trick" in a different
+  way.
+
+  More precisely, where `tf.math.reduce_logsumexp` uses the following trick:
+
+  ```
+  log(sum(exp(x))) == log(sum(exp(x - max(x)))) + max(x)
+  ```
+
+  it cannot be directly used here as there is no fast way of applying it
+  to each prefix `x[:i]`. Instead, this function implements a prefix
+  scan using pairwise log-add-exp, which is a commutative and associative
+  (up to floating point precision) operator:
+
+  ```
+  log_add_exp(x, y) = log(exp(x) + exp(y))
+                    = log(1 + exp(min(x, y) - max(x, y))) + max(x, y)
+  ```
+
+  However, reducing using the above operator leads to a different computation
+  tree (logs are taken repeatedly instead of only at the end), and the maximum
+  is only computed pairwise instead of over the entire prefix. In general, this
+  leads to a different and slightly less precise computation.
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `float16`, `float32`,
+      `float64`.
+    axis: A `Tensor` of type `int32` or `int64` (default: 0). Must be in the
+      range `[-rank(x), rank(x))`.
+    exclusive: If `True`, perform exclusive cumulative log-sum-exp.
+    reverse: If `True`, performs the cumulative log-sum-exp in the reverse
+      direction.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same shape and type as `x`.
+  """
+  with ops.name_scope(name, "CumulativeLogsumexp", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops.cumulative_logsumexp(
+        x, axis, exclusive=exclusive, reverse=reverse, name=name)
+
+
 @tf_export("math.conj", v1=["math.conj", "conj"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
@@ -3297,7 +3425,9 @@ def reduced_shape(input_shape, axes):
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
-  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+  """ Helper function for unsorted_segment_mean/_sqrtN.
+
+  Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
@@ -3320,7 +3450,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3366,7 +3496,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
   This operator is similar to the unsorted segment sum operator found
@@ -3408,16 +3538,19 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
 
 @tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
-def sparse_segment_sum(data, indices, segment_ids, name=None,
+def sparse_segment_sum(data,
+                       indices,
+                       segment_ids,
+                       name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3486,7 +3619,65 @@ def sparse_segment_sum_v2(data,
                           segment_ids,
                           num_segments=None,
                           name=None):
-  return sparse_segment_mean(
+  r"""Computes the sum along sparse segments of a tensor.
+
+  Read [the section on
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
+  for an explanation of segments.
+
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  For example:
+
+  ```python
+  c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+  # Select two rows, one segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+  # => [[0 0 0 0]]
+
+  # Select two rows, two segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+  # => [[ 1  2  3  4]
+  #     [-1 -2 -3 -4]]
+
+  # With missing segment ids.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 2]),
+                        num_segments=4)
+  # => [[ 1  2  3  4]
+  #     [ 0  0  0  0]
+  #     [-1 -2 -3 -4]
+  #     [ 0  0  0  0]]
+
+  # Select all rows, two segments.
+  tf.sparse.segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+  # => [[0 0 0 0]
+  #     [5 6 7 8]]
+
+  # Which is equivalent to:
+  tf.math.segment_sum(c, tf.constant([0, 0, 1]))
+  ```
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_sum(
       data, indices, segment_ids, name=name, num_segments=num_segments)
 
 
@@ -3500,11 +3691,12 @@ def sparse_segment_mean(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3545,11 +3737,12 @@ def sparse_segment_mean_v2(data,
   r"""Computes the mean along sparse segments of a tensor.
 
   Read [the section on
-  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3619,7 +3812,12 @@ def sparse_segment_sqrt_n_v2(data,
                              name=None):
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
-  `N` is the size of the segment being reduced.
+  Read [the section on
+  segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
+  for an explanation of segments.
+
+  Like `tf.sparse.segment_mean`, but instead of dividing by the size of the
+  segment, `N`, divide by `sqrt(N)` instead.
 
   Args:
     data: A `Tensor` with data that will be assembled in the output.
@@ -3642,7 +3840,7 @@ def sparse_segment_sqrt_n_v2(data,
 
 @tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
-  r"""Tensor contraction of a and b along specified axes.
+  r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
   from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
@@ -3650,7 +3848,8 @@ def tensordot(a, b, axes, name=None):
   contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
   as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
   `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors.
+  integers that specify valid axes for each of the tensors. Additionally
+  outer product is supported by passing `axes=0`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
@@ -3660,7 +3859,10 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  Example 3: When `a` and `b` are matrices (order 2), the case `axes=0` gives
+  the outer product, a tensor of order 4.
+
+  Example 4: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
   tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
@@ -3677,7 +3879,8 @@ def tensordot(a, b, axes, name=None):
       b in order. If axes is a list or `Tensor` the first and second row contain
       the set of unique integers specifying axes along which the contraction is
       computed, for `a` and `b`, respectively. The number of axes for `a` and
-      `b` must be equal.
+      `b` must be equal. If `axes=0`, computes the outer product between `a` and
+      `b`.
     name: A name for the operation (optional).
 
   Returns:
@@ -3849,3 +4052,35 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.reciprocal_no_nan")
+def reciprocal_no_nan(x, name=None):
+  """Performs a safe reciprocal operation, element wise.
+
+  If a particular element is zero, the reciprocal for that element is
+  also set to zero.
+
+  For example:
+  ```python
+  x = tf.constant([2.0, 0.5, 0, 1], dtype=tf.float32)
+  tf.math.reciprocal_no_nan(x)  # [ 0.5, 2, 0.0, 1.0 ]
+  ```
+
+  Args:
+    x: A `Tensor` of type `float16`, `float32`, `float64` `complex64` or
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of same shape and type as `x`.
+
+  Raises:
+    TypeError: x must be of a valid dtype.
+
+  """
+
+  with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
+    x = ops.convert_to_tensor(x, name="x")
+    one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
+    return gen_math_ops.div_no_nan(one, x, name=scope)

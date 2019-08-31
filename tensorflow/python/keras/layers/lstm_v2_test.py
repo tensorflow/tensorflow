@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for UnifiedLSTM layer."""
+"""Tests for V2 LSTM layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -42,7 +43,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
@@ -140,7 +140,9 @@ class LSTMV2Test(keras_parameterized.TestCase):
       output = layer(inputs, initial_state=initial_state[0])
     else:
       output = layer(inputs, initial_state=initial_state)
-    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+    self.assertTrue(
+        any(initial_state[0] is t
+            for t in layer._inbound_nodes[0].input_tensors))
 
     model = keras.models.Model([inputs] + initial_state, output)
     model.compile(
@@ -292,7 +294,9 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
     layer = layer_class(units)
     output = layer(inputs)
-    assert initial_state[0] in layer._inbound_nodes[0].input_tensors
+    self.assertTrue(
+        any(initial_state[0] is t
+            for t in layer._inbound_nodes[0].input_tensors))
 
     model = keras.models.Model(inputs, output)
     model.compile(
@@ -306,9 +310,8 @@ class LSTMV2Test(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
-  # Due to b/120160788.
   @test_util.run_v2_only
-  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
+  def test_lstm_v2_feature_parity_with_canonical_lstm(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -352,7 +355,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
-  def DISABLED_test_implementation_mode_LSTM(self, implementation_mode):
+  def test_implementation_mode_LSTM(self, implementation_mode):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -444,9 +447,9 @@ class LSTMV2Test(keras_parameterized.TestCase):
     y_ref = lstm_model.predict(x_train)
     weights = lstm_model.get_weights()
 
-    unified_lstm_model = build_model(rnn.LSTM)
-    unified_lstm_model.set_weights(weights)
-    y = unified_lstm_model.predict(x_train)
+    lstm_v2_model = build_model(rnn.LSTM)
+    lstm_v2_model.set_weights(weights)
+    y = lstm_v2_model.predict(x_train)
 
     self.assertAllClose(y, y_ref)
 
@@ -482,7 +485,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       ('no_bias', False, 'zeros'),
       ('random_bias', True, 'random_uniform'),
   )
-  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
+  def test_lstm_model_save_load(self, use_bias, bias_initializer):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
     h5_path = os.path.join(temp_dir, 'test.h5')
@@ -515,7 +518,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y, y_ref)
     self.assertAllClose(layer.get_weights(), new_layer.get_weights())
 
-  def test_unified_lstm_output_on_multiple_kernel(self):
+  def test_lstm_output_on_multiple_kernel(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -539,7 +542,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
       gpu_model.set_weights(weights)
     y_2 = gpu_model.predict(x_train)
 
-    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
+    # Note that CuDNN uses 'sigmoid' as activation, so the LSTM V2 uses
     # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
     # the same output.
     with test_util.device(use_gpu=True):
@@ -553,7 +556,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_1, y_2)
     self.assertAllClose(y_2, y_3)
 
-  def DISABLED_test_return_sequences_LSTM(self):
+  def test_return_sequences_LSTM(self):
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -565,6 +568,21 @@ class LSTMV2Test(keras_parameterized.TestCase):
             'return_sequences': True
         },
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_float64_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.LSTM,
+        kwargs={
+            'units': units,
+            'return_sequences': True,
+            'dtype': 'float64'
+        },
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
 
   def test_regularizers_LSTM(self):
     embedding_dim = 4
@@ -587,8 +605,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  # Run in V2 only due to b/120160788.
-  @test_util.run_v2_only
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -606,8 +622,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -676,9 +695,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
         rnn.LSTM(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
 
   def test_dropout_LSTM(self):
@@ -695,115 +716,213 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_bidirectional(self):
+    batch = 128
+    timestep = 20
+    vocab_size = 1000
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, 64),
+        keras.layers.Bidirectional(rnn.LSTM(
+            64, return_sequences=True)),
+        keras.layers.Bidirectional(rnn.LSTM(32)),
+        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ])
 
-class LSTMLayerGraphOnlyTest(test.TestCase):
+    model.compile(loss='binary_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
 
-  # Need session for test
+    x = np.random.randint(0, vocab_size, size=(batch, timestep))
+    y = np.random.randint(0, 1, size=(batch))
+    model.fit(x, y, epochs=1, shuffle=False)
+    model.evaluate(x, y)
+    model.predict(x)
+
+  @test_util.run_v2_only
+  def test_explicit_device_with_go_backward_and_mask(self):
+    batch_size = 8
+    timestep = 7
+    masksteps = 5
+    units = 4
+
+    inputs = np.random.randn(batch_size, timestep, units).astype(np.float32)
+    mask = np.ones((batch_size, timestep)).astype(np.bool)
+    mask[:, masksteps:] = 0
+
+    # Test for V1 behavior.
+    lstm_v1 = rnn_v1.LSTM(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
+
+    # Test for V2 behavior.
+    lstm = rnn.LSTM(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed = lstm(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
+
   @test_util.run_deprecated_v1
-  def test_unifiedLSTM(self):
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+  def test_v1_session_behavior(self):
+    # See b/139132348 for more details.
+    x = np.random.uniform(size=(100, 4, 8))
+    y = np.random.uniform(size=(100, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).shuffle(100).batch(32)
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+    inp = keras.layers.Input(shape=(4, 8))
+    layer = rnn.LSTM(1)(inp)
+    layer = keras.layers.Dense(1)(layer)
 
-      layer = rnn.LSTM(rnn_state_size, return_runtime=True)
+    model = keras.models.Model(inp, layer)
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
+    model.compile(loss='mse', optimizer='sgd')
+    model.fit(dataset)
 
-      outputs, runtime = layer(inputs)
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
 
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+@keras_parameterized.run_all_keras_modes(config=_config)
+class LSTMGraphRewriteTest(keras_parameterized.TestCase):
 
-  # Need session for test
-  @test_util.run_deprecated_v1
-  def test_unifiedLSTM_with_cond(self):
+  input_shape = 10
+  output_shape = 8
+  rnn_state_size = 8
+  timestep = 4
+  batch = 100
+  epoch = 1
+
+  def _test_runtime_with_model(self, model):
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    existing_loss = 0
+    for _ in range(self.epoch):
+      history = model.fit(x_train, y_train)
+      loss_value = history.history['loss'][0]
+
+      self.assertNotEqual(existing_loss, loss_value)
+      existing_loss = loss_value
+
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+  @test_util.run_v2_only
+  def test_LSTM_runtime(self):
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+
+    outputs, runtime = layer(inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
+
+  @test_util.run_v2_only
+  def test_LSTM_runtime_with_mask(self):
+    # Masking will affect which backend is selected based on whether the mask
+    # is strictly right padded.
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+    masked_inputs = keras.layers.Masking()(inputs)
+
+    outputs, runtime = layer(masked_inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(x_train, y_train)
+
+    # Verify unpadded data.
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Update x/y to be right padded by setting the last timestep to 0
+    x_train[:, -1, :] = 0
+    y_train[:, -1] = 0
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Further update x/y to be mix padded (masks in the middle), and verify
+    # only cpu kernel can be selected.
+    x_train[:, -3, :] = 0
+    y_train[:, -3] = 0
+    _, runtime_value = model.predict(x_train)
+    self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+  @test_util.run_v2_only
+  def test_LSTM_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
 
-      layer = rnn.LSTM(rnn_state_size, return_runtime=True)
+    zeros = array_ops.zeros([self.batch, self.output_shape])
+    dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
+    a = constant_op.constant(0)
+    b = constant_op.constant(1)
+    # Will always run the lstm layer.
+    outputs, runtime = control_flow_ops.cond(
+        gen_math_ops.less(a, b),
+        lambda: layer(inputs),
+        lambda: (zeros, dummy_runtime))
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
-
-      zeros = array_ops.zeros([batch, output_shape])
-      dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
-      a = constant_op.constant(0)
-      b = constant_op.constant(1)
-      # Will always run the lstm layer.
-      outputs, runtime = control_flow_ops.cond(
-          gen_math_ops.less(a, b),
-          lambda: layer(inputs),
-          lambda: (zeros, dummy_runtime))
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
-
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
 
 
-class UnifiedLSTMPerformanceTest(test.Benchmark):
+class LSTMPerformanceTest(test.Benchmark):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -839,7 +958,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
 
   def _time_performance_run_unifed_lstm_gpu(
       self, test_config, x_train, y_train):
-    # Get performance number for Unified_LSTM with grappler swap the impl
+    # Get performance number for lstm_v2 with grappler swap the impl
     input_shape = test_config['input_shape']
     rnn_state_size = test_config['rnn_state_size']
     timestep = test_config['timestep']
@@ -855,7 +974,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
     sec_per_epoch = self._measure_performance(
         test_config, model, x_train, y_train)
     logging.info('Average performance for %s per epoch is: %s',
-                 'Unified LSTM', sec_per_epoch)
+                 'LSTM V2', sec_per_epoch)
     return sec_per_epoch
 
   def _time_performance_run_normal_lstm(
@@ -905,20 +1024,20 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
 
     cudnn_sec_per_epoch = self._time_performance_run_cudnn_lstm(
         test_config, x_train, y_train)
-    unified_lstm_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
+    lstm_v2_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
         test_config, x_train, y_train)
     normal_lstm_sec_per_epoch = self._time_performance_run_normal_lstm(
         test_config, x_train, y_train)
 
-    cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
-    unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
+    cudnn_vs_v2 = cudnn_sec_per_epoch / lstm_v2_sec_per_epoch
+    v2_vs_normal = normal_lstm_sec_per_epoch / lstm_v2_sec_per_epoch
 
     self.report_benchmark(name='keras_cudnn_lstm_' + mode,
                           wall_time=cudnn_sec_per_epoch,
                           iters=test_config['epoch'],
                           extras=test_config)
-    self.report_benchmark(name='keras_unified_lstm_' + mode,
-                          wall_time=unified_lstm_sec_per_epoch,
+    self.report_benchmark(name='keras_lstm_v2_' + mode,
+                          wall_time=lstm_v2_sec_per_epoch,
                           iters=test_config['epoch'],
                           extras=test_config)
     self.report_benchmark(name='keras_canonical_lstm_' + mode,
@@ -926,10 +1045,10 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
                           iters=test_config['epoch'],
                           extras=test_config)
 
-    logging.info('Expect the performance of Unified LSTM is within 80% of '
-                 'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
-    logging.info('Expect the performance of Unified LSTM is more than 5 times'
-                 ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
+    logging.info('Expect the performance of LSTM V2 is within 80% of '
+                 'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_v2 * 100))
+    logging.info('Expect the performance of LSTM V2 is more than 5 times'
+                 ' of normal LSTM, got {0:.2f}'.format(v2_vs_normal))
 
   def benchmark_performance_graph(self):
     with context.graph_mode(), session_lib.Session(config=_config):

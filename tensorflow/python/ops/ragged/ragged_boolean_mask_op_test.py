@@ -27,12 +27,11 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedBooleanMaskOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
   # Define short constants for true & false, so the data & mask can be lined
   # up in the examples below.  This makes it easier to read the examples, to
@@ -243,7 +242,7 @@ class RaggedBooleanMaskOpTest(ragged_test_util.RaggedTensorTestCase,
   ])  # pyformat: disable
   def testBooleanMask(self, descr, data, mask, expected):
     actual = ragged_array_ops.boolean_mask(data, mask)
-    self.assertRaggedEqual(actual, expected)
+    self.assertAllEqual(actual, expected)
 
   def testErrors(self):
     if not context.executing_eagerly():

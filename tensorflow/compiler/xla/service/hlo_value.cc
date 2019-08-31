@@ -257,6 +257,14 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   return out;
 }
 
+bool InstructionValueSet::IsAmbiguous() const {
+  bool ambiguous = false;
+  for (auto& iter : *this) {
+    ambiguous |= iter.second.values().size() > 1;
+  }
+  return ambiguous;
+}
+
 bool InstructionValueSet::AssignUnionOf(
     absl::Span<const InstructionValueSet* const> inputs) {
   CHECK_GT(inputs.size(), 0);

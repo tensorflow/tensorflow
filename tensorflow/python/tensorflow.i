@@ -21,7 +21,6 @@ limitations under the License.
 
 %include "tensorflow/python/util/port.i"
 %include "tensorflow/python/util/py_checkpoint_reader.i"
-%include "tensorflow/python/util/stat_summarizer.i"
 %include "tensorflow/python/util/tfprof.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
@@ -36,6 +35,8 @@ limitations under the License.
 
 %include "tensorflow/python/lib/core/bfloat16.i"
 
+%include "tensorflow/lite/toco/python/toco.i"
+
 %include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/quantize_training.i"
 
@@ -47,11 +48,12 @@ limitations under the License.
 
 %include "tensorflow/python/util/transform_graph.i"
 
-%include "tensorflow/python/util/util.i"
-
 %include "tensorflow/python/grappler/cluster.i"
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
 %include "tensorflow/python/grappler/graph_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
+
+%include "tensorflow/python/util/traceme.i"
+%include "tensorflow/python/util/scoped_annotation.i"

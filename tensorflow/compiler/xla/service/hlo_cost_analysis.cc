@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -31,10 +32,10 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char HloCostAnalysis::kFlopsKey[];
-constexpr char HloCostAnalysis::kTranscendentalsKey[];
-constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kOptimalSecondsKey[];
+constexpr const char HloCostAnalysis::kFlopsKey[];
+constexpr const char HloCostAnalysis::kTranscendentalsKey[];
+constexpr const char HloCostAnalysis::kBytesAccessedKey[];
+constexpr const char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -152,6 +153,12 @@ int64 HloCostAnalysis::FusionParameterReadBytes(
       case HloOpcode::kDynamicSlice:
         size += hlo == user->operand(0) ? GetShapeSize(user->shape())
                                         : GetShapeSize(hlo->shape());
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
+        // Uses the same shape as 'update' which is operand 1.
+        size += hlo == user->operand(0)
+                    ? GetShapeSize(user->operand(1)->shape())
+                    : GetShapeSize(hlo->shape());
         break;
       case HloOpcode::kBroadcast:
       case HloOpcode::kReshape:
@@ -413,6 +420,14 @@ Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCopyDone(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return Status::OK();
 }
@@ -655,6 +670,11 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleRngGetAndUpdateState(
+    const HloInstruction* random) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   if (fusion->IsCustomFusion()) {
     for (const HloInstruction* hlo :
@@ -685,17 +705,18 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
           if (fusion->fused_expression_root()->opcode() ==
               HloOpcode::kDynamicUpdateSlice) {
             current_properties_[kBytesAccessedKey] += GetShapeSize(
-                fusion->fused_expression_root()->operand(0)->shape());
+                fusion->fused_expression_root()->operand(1)->shape());
             return;
           }
         } else if (shape_index.size() == 1) {
-          if (fusion->fused_expression_root()
-                  ->operand(shape_index[0])
-                  ->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          if (fusion->fused_expression_root()->opcode() == HloOpcode::kTuple &&
+              fusion->fused_expression_root()
+                      ->operand(shape_index[0])
+                      ->opcode() == HloOpcode::kDynamicUpdateSlice) {
             current_properties_[kBytesAccessedKey] +=
                 GetShapeSize(fusion->fused_expression_root()
                                  ->operand(shape_index[0])
-                                 ->operand(0)
+                                 ->operand(1)
                                  ->shape());
             return;
           }
@@ -855,20 +876,25 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
 
 StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessNestedSubcomputation(HloComputation* computation) {
-  HloCostAnalysis visitor(shape_size_, per_second_rates_);
-  visitor.ReserveVisitStates(computation->instruction_count());
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  return visitor.properties();
+  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
+  visitor->ReserveVisitStates(computation->instruction_count());
+  TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
+  return visitor->properties();
 }
 
 StatusOr<HloCostAnalysis::Properties>
 HloCostAnalysis::ProcessUnnestedSubcomputation(HloComputation* computation) {
-  HloCostAnalysis visitor(shape_size_, per_second_rates_);
-  visitor.ReserveVisitStates(computation->instruction_count());
-  TF_RETURN_IF_ERROR(computation->Accept(&visitor));
-  hlo_properties_.insert(visitor.hlo_properties_.begin(),
-                         visitor.hlo_properties_.end());
-  return visitor.properties();
+  auto visitor = CreateNestedCostAnalysis(shape_size_, per_second_rates_);
+  visitor->ReserveVisitStates(computation->instruction_count());
+  TF_RETURN_IF_ERROR(computation->Accept(visitor.get()));
+  hlo_properties_.insert(visitor->hlo_properties_.begin(),
+                         visitor->hlo_properties_.end());
+  return visitor->properties();
+}
+
+std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis(
+    const ShapeSizeFunction& shape_size, const Properties& per_second_rates) {
+  return absl::WrapUnique(new HloCostAnalysis(shape_size, per_second_rates));
 }
 
 }  // namespace xla

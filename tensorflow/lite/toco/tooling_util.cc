@@ -165,19 +165,33 @@ bool DeleteArrayIfUnused(const string& array_name, Model* model) {
   return false;
 }
 
-bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
-  if (IsDiscardableArray(*model, array_name) &&
-      CountOpsWithInput(*model, array_name) == 1 &&
-      GetOpWithOutput(*model, array_name) == nullptr) {
-    model->EraseArray(array_name);
-    return true;
+bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+                                    const Operator* op, Model* model) {
+  if (!IsDiscardableArray(*model, array_name)) {
+    return false;
   }
-  return false;
+  if (CountOpsWithInput(*model, array_name) > 1) {
+    return false;
+  }
+  const Operator* op_having_this_as_input = GetOpWithInput(*model, array_name);
+  if (op_having_this_as_input && op_having_this_as_input != op) {
+    return false;
+  }
+  const Operator* op_having_this_as_output =
+      GetOpWithOutput(*model, array_name);
+  if (op_having_this_as_output && op_having_this_as_output != op) {
+    return false;
+  }
+  model->EraseArray(array_name);
+  return true;
 }
 
-void DeleteOpAndArraysIfUnused(Model* model, const Operator* op) {
+void DeleteOpAndArrays(Model* model, const Operator* op) {
   for (const string& array_name : op->inputs) {
-    DeleteArrayIfUsedOnce(array_name, model);
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
+  }
+  for (const string& array_name : op->outputs) {
+    DeleteArrayIfUnusedOutsideOfOp(array_name, op, model);
   }
   auto op_it = FindOp(*model, op);
   CHECK(op_it != model->operators.end());
@@ -322,6 +336,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(DepthToSpace)
     HANDLE_OPERATORTYPENAME_CASE(SpaceToDepth)
     HANDLE_OPERATORTYPENAME_CASE(FullyConnected)
+    HANDLE_OPERATORTYPENAME_CASE(HardSwish)
     HANDLE_OPERATORTYPENAME_CASE(Dequantize)
     HANDLE_OPERATORTYPENAME_CASE(L2Normalization)
     HANDLE_OPERATORTYPENAME_CASE(LocalResponseNormalization)
@@ -432,6 +447,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
     HANDLE_OPERATORTYPENAME_CASE(MatrixDiag)
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -1032,18 +1049,20 @@ void CheckEachArray(const Model& model) {
     const auto& array = array_entry.second;
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
-    CHECK(!array->buffer || !array->alloc);
+    CHECK(!array->buffer || !array->alloc) << "Tensor: " << array_entry.first;
     if (array->buffer) {
       // If there is a buffer, its type should be consistent with data_type.
-      CHECK(array->buffer->type == array->data_type);
+      CHECK(array->buffer->type == array->data_type)
+          << "Tensor: " << array_entry.first;
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape());
+      CHECK(array->has_shape()) << array_entry.first;
       // Constant buffer should has a valid shape.
       CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
-               RequiredBufferSizeForShape(array->shape()));
+               RequiredBufferSizeForShape(array->shape()))
+          << "Tensor: " << array_entry.first;
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not

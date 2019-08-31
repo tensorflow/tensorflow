@@ -28,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
@@ -49,7 +48,7 @@ def sqrt_n(values):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedSegmentOpsTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
   def expected_value(self, data, segment_ids, num_segments, combiner):
@@ -110,7 +109,7 @@ class RaggedSegmentOpsTest(ragged_test_util.RaggedTensorTestCase,
                                    combiner)
 
     segmented = segment_op(rt, segment_ids, num_segments)
-    self.assertRaggedEqual(segmented, expected)
+    self.assertAllEqual(segmented, expected)
 
   @parameterized.parameters(
       (ragged_math_ops.segment_sum, sum, [0, 0, 1, 1, 2, 2]),
@@ -146,7 +145,7 @@ class RaggedSegmentOpsTest(ragged_test_util.RaggedTensorTestCase,
                                    combiner)
 
     segmented = segment_op(rt, segment_ids, num_segments)
-    self.assertRaggedAlmostEqual(segmented, expected, places=5)
+    self.assertAllClose(segmented, expected)
 
   def testRaggedRankTwo(self):
     rt = ragged_factory_ops.constant([
@@ -161,14 +160,14 @@ class RaggedSegmentOpsTest(ragged_test_util.RaggedTensorTestCase,
                  [],                                # row 1
                  [[411, 412], [321, 322], [331]]    # row 2
                 ]  # pyformat: disable
-    self.assertRaggedEqual(segmented1, expected1)
+    self.assertAllEqual(segmented1, expected1)
 
     segment_ids2 = [1, 2, 1, 1]
     segmented2 = ragged_math_ops.segment_sum(rt, segment_ids2, 3)
     expected2 = [[],
                  [[111+411, 112+412, 113, 114], [121+321, 322], [331]],
                  []]  # pyformat: disable
-    self.assertRaggedEqual(segmented2, expected2)
+    self.assertAllEqual(segmented2, expected2)
 
   def testRaggedSegmentIds(self):
     rt = ragged_factory_ops.constant([
@@ -182,7 +181,7 @@ class RaggedSegmentOpsTest(ragged_test_util.RaggedTensorTestCase,
     expected = [[],
                 [111+321, 112+322, 113, 114],
                 [121+331+411, 412]]  # pyformat: disable
-    self.assertRaggedEqual(segmented, expected)
+    self.assertAllEqual(segmented, expected)
 
   def testShapeMismatchError1(self):
     dt = constant_op.constant([1, 2, 3, 4, 5, 6])

@@ -83,7 +83,7 @@ class VariableScopeTest(test.TestCase):
     vs = variable_scope._get_default_variable_store()
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    self.assertEqual(v, v1)
+    self.assertIs(v, v1)
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
@@ -99,7 +99,7 @@ class VariableScopeTest(test.TestCase):
     # No check by default, so we can both create and get existing names.
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    self.assertEqual(v, v1)
+    self.assertIs(v, v1)
 
     # When reuse is False, we fail when variables are already there.
     vs.get_variable("w", [1], reuse=False)  # That's ok.
@@ -248,8 +248,9 @@ class VariableScopeTest(test.TestCase):
         _ = d2(x)
         self.assertEqual(len(d2.variables), 2)
         v3, v4 = d2.variables
-        self.assertEqual(v1, v3)
-        self.assertEqual(v2, v4)
+        self.assertIs(v1, v3)
+        self.assertIs(v2, v4)
+
       f()
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -783,7 +784,7 @@ class VariableScopeTest(test.TestCase):
 
         with variable_scope.variable_scope(tower_a, reuse=True):
           va2 = variable_scope.get_variable("v", [1])
-          self.assertEqual(va2, va)
+          self.assertIs(va2, va)
 
         with variable_scope.variable_scope("towerB"):
           vb = variable_scope.get_variable("v", [1])
@@ -795,7 +796,7 @@ class VariableScopeTest(test.TestCase):
 
         with variable_scope.variable_scope("towerA", reuse=True):
           va2 = variable_scope.get_variable("v", [1])
-          self.assertEqual(va2, va)
+          self.assertIs(va2, va)
 
         with variable_scope.variable_scope("foo"):
           with variable_scope.variable_scope("bar"):
@@ -803,7 +804,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(v.name, "root/foo/bar/v:0")
             with variable_scope.variable_scope(tower_a, reuse=True):
               va3 = variable_scope.get_variable("v", [1])
-              self.assertEqual(va, va3)
+              self.assertIs(va, va3)
 
         with self.assertRaises(ValueError):
           with variable_scope.variable_scope(tower_a, reuse=True):
@@ -1240,24 +1241,24 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.get_variable(
-            "testGetTrainableVariables_e", [],
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.get_variable(
             "testGetTrainableVariables_e", [],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_f", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
@@ -1280,26 +1281,26 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.variable(
-            1.0,
-            name="testGetTrainableVariables_e",
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.variable(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_f",
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
@@ -1446,7 +1447,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       v = variable_scope.get_variable("name0", shape=(3, 1, 1))
     with variable_scope.variable_scope("scope0", reuse=True):
       v_reused = variable_scope.get_variable("name0")
-    self.assertEqual(v, v_reused)
+    self.assertIs(v, v_reused)
 
   def testNoReuseInEagerByDefault(self):
     with context.eager_mode():
@@ -1550,8 +1551,8 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
         new_scope, reuse=True, custom_getter=custom_getter):
       v4 = variable_scope.get_variable("v3", [1])
 
-    self.assertEqual(v, v2)
-    self.assertEqual(v3, v4)
+    self.assertIs(v, v2)
+    self.assertIs(v3, v4)
     self.assertEqual(3, called[0])  # skipped one in the first new_scope
 
   @test_util.run_in_graph_and_eager_modes
