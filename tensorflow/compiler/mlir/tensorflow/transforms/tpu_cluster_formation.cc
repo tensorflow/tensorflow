@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Region.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
@@ -131,13 +130,7 @@ bool ShouldMoveOpAfterCluster(
     Block* block, Operation* op,
     const llvm::SmallSetVector<Operation*, 8>& cluster_ops,
     const llvm::SmallSetVector<Operation*, 8>& preceding_users) {
-  bool move = false;
-
-  op->walk([&](Operation* op) {
-    // TODO(lyandy): Update with new walk that can be interrupted once its
-    // available.
-    if (move) return;
-
+  auto result = op->walk([&](Operation* op) {
     for (Value* operand : op->getOperands()) {
       Operation* def = operand->getDefiningOp();
       // Operands may not have a defining op (BlockArgument) or is from a
@@ -147,13 +140,13 @@ bool ShouldMoveOpAfterCluster(
       if (cluster_ops.count(def) != 0 || preceding_users.count(def) != 0) {
         // Op is a user of a cluster or another op that is a user of the
         // cluster (transitively), but is before the cluster.
-        move = true;
-        break;
+        return WalkResult::interrupt();
       }
     }
+    return WalkResult::advance();
   });
 
-  return move;
+  return result.wasInterrupted();
 }
 
 // Collects ops that are before ops in the cluster but are users of other ops
