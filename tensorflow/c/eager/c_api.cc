@@ -122,7 +122,7 @@ tensorflow::Status GetAllRemoteDevices(
     n.WaitForNotification();
   }
   std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::DeviceMgr(std::move(remote_devices)));
+      new tensorflow::StaticDeviceMgr(std::move(remote_devices)));
 
   TF_RETURN_IF_ERROR(status);
 
@@ -385,7 +385,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(std::move(devices)));
+      new tensorflow::StaticDeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());

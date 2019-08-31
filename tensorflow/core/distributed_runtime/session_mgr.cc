@@ -101,7 +101,7 @@ Status SessionMgr::CreateSession(
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
-    auto device_mgr = MakeUnique<DeviceMgr>(std::move(renamed_devices));
+    auto device_mgr = MakeUnique<StaticDeviceMgr>(std::move(renamed_devices));
     LookupLocalDevice cb = [&device_mgr](StringPiece name, Device** device) {
       return device_mgr->LookupDevice(name, device);
     };
@@ -109,7 +109,7 @@ Status SessionMgr::CreateSession(
                     &cluster_devices);
     std::unique_ptr<DeviceMgr> remote_devices;
     if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<DeviceMgr>(std::move(cluster_devices));
+      remote_devices = MakeUnique<StaticDeviceMgr>(std::move(cluster_devices));
 
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(
@@ -122,7 +122,7 @@ Status SessionMgr::CreateSession(
                     &cluster_devices);
     std::unique_ptr<DeviceMgr> remote_devices;
     if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<DeviceMgr>(std::move(cluster_devices));
+      remote_devices = MakeUnique<StaticDeviceMgr>(std::move(cluster_devices));
     // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.

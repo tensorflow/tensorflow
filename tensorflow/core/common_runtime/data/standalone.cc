@@ -47,7 +47,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
 
   // Instantiate enough of the TF runtime to run `graph` on a single CPU device.
-  auto device_mgr = absl::make_unique<DeviceMgr>(DeviceFactory::NewDevice(
+  auto device_mgr = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
       "CPU", params.session_options, "/job:localhost/replica:0/task:0"));
   Device* device = device_mgr->ListDevices()[0];
   // Clone the `FunctionLibraryDefinition` to extend its lifetime extends beyond

@@ -117,7 +117,8 @@ class NcclTestBase : public ::testing::Test {
       device_names.push_back(device->name());
       VLOG(2) << device->name();
     }
-    if (!dev_mgr_) dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+    if (!dev_mgr_)
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
         /*gpu_ring_order=*/nullptr);

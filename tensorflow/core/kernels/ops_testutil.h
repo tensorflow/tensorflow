@@ -78,7 +78,7 @@ class OpsTestBase : public ::testing::Test {
     CHECK(device) << "Could not create CPU device";
 
     device_ = device.get();
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(device));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
 
     allocator_ = device_->GetAllocator(AllocatorAttributes());
 

@@ -415,7 +415,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
-  device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;

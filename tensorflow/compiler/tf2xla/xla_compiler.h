@@ -474,7 +474,7 @@ class XlaCompiler {
   int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
-  DeviceMgr device_mgr_;
+  StaticDeviceMgr device_mgr_;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize
