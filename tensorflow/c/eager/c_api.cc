@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -893,10 +894,9 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
   VLOG(1) << "Calling TFE_Execute() on op " << op;
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
-      *num_retvals);
-  status->status =
-      tensorflow::EagerExecute(&op->operation, &handle_retvals, num_retvals);
+  absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
+  status->status = tensorflow::EagerExecute(&op->operation,
+                                            handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }

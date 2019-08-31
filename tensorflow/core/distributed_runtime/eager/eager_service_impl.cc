@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -253,16 +254,16 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   TF_RETURN_IF_ERROR(GetNumRetvals(eager_context, operation.name(),
                                    operation.attrs(), &num_retvals));
 
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
-      num_retvals);
+  absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
-  TF_RETURN_IF_ERROR(EagerExecute(op.get(), &retvals, &num_retvals));
-  retvals.resize(num_retvals);
+  TF_RETURN_IF_ERROR(EagerExecute(op.get(), retvals.data(), &num_retvals));
 
-  eager_context->RemoteMgr()->AddOperationOutputs(retvals, operation.id());
+  eager_context->RemoteMgr()->AddOperationOutputs(
+      absl::MakeSpan(retvals.data(), num_retvals), operation.id());
 
-  for (auto* handle : retvals) {
-    TF_RETURN_IF_ERROR(TensorHandleShape(handle, queue_response->add_shape()));
+  for (int i = 0; i < num_retvals; i++) {
+    TF_RETURN_IF_ERROR(
+        TensorHandleShape(retvals[i], queue_response->add_shape()));
   }
 
   return Status::OK();

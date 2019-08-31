@@ -884,8 +884,7 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
 }
 }  // namespace
 
-Status EagerExecute(EagerOperation* op,
-                    gtl::InlinedVector<TensorHandle*, 2>* retvals,
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
@@ -902,7 +901,7 @@ Status EagerExecute(EagerOperation* op,
     if (out_op) {
       op = out_op.get();
     }
-    return EagerLocalExecute(op, retvals->data(), num_retvals);
+    return EagerLocalExecute(op, retvals, num_retvals);
   }
 
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
@@ -921,7 +920,7 @@ Status EagerExecute(EagerOperation* op,
   if (out_op) {
     op = out_op.get();
   }
-  return EagerRemoteExecute(op, retvals->data(), num_retvals);
+  return EagerRemoteExecute(op, retvals, num_retvals);
 #endif  // !IS_MOBILE_PLATFORM
 }
 
