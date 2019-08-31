@@ -98,8 +98,32 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
-linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
+
+# behaves like np.repeat(a, repeat, axis)
+def repeat_along_axis(tensor, repeats, axis):
+  tensor = array_ops.expand_dims(tensor, axis=axis)
+  shape = tensor.get_shape()
+  repetitions_shape = []
+  for i in range(shape.shape[0].value):
+    if axis == i:
+      repetitions_shape.append(repeats)
+    else:
+      repetitions_shape.append(1)
+  return array_ops.tile(tensor, repetitions_shape)
+
+def linspace(start, stop, num):
+  shape = start.get_shape()
+  delta = (stop - start) / (num - 1.)
+  reshape_target = [ num ]
+  repeats = [ 1 ]
+  for i in range(shape.shape[0].value):
+    reshape_target.append(1)
+    repeats.append(shape[i])
+  range_indices = array_ops.reshape(range(0, num, dtype=start.dtype), reshape_target)
+  tiled_range_indices = array_ops.tile(range_indices, repeats)
+  res = start + repeat_along_axis(delta, num, 0) * tiled_range_indices
+  return res
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
