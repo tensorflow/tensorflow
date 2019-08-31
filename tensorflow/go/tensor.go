@@ -102,9 +102,14 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	} else {
 		e := stringEncoder{offsets: buf, data: raw[nflattened*8:], status: newStatus()}
-		if err := e.encode(reflect.ValueOf(value), shape); err != nil {
+		if offsetList, err := e.encode(reflect.ValueOf(value), shape, nflattened); err != nil {
 			return nil, err
+		} else {
+			if err := binary.Write(e.offsets, nativeEndian, offsetList); err != nil {
+				return nil, err
+			}
 		}
+
 		if int64(buf.Len()) != nflattened*8 {
 			return nil, bug("invalid offset encoding for TF_STRING tensor with shape %v (got %v, want %v)", shape, buf.Len(), nflattened*8)
 		}
@@ -392,37 +397,52 @@ type stringEncoder struct {
 	status  *status
 }
 
-func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
+func (e *stringEncoder) encode(v reflect.Value, shape []int64, nflattened int64) ([]uint64, error) {
+	offsetList := make([]uint64, nflattened)
+	nIdx, err := e.encodeSup(v, shape, offsetList, 0)
+	if int64(nIdx) != nflattened {
+		return nil, fmt.Errorf("mismatched offsetList lengths: %d and %d", int64(nIdx), nflattened)
+	}
+
+	return offsetList, err
+}
+
+
+func (e *stringEncoder) encodeSup(v reflect.Value, shape []int64, offsetList []uint64, idx int) (int, error) {
 	if v.Kind() == reflect.String {
-		if err := binary.Write(e.offsets, nativeEndian, e.offset); err != nil {
-			return err
-		}
-		var (
-			s      = v.Interface().(string)
-			src    = C.CString(s)
-			srcLen = C.size_t(len(s))
-			dst    = (*C.char)(unsafe.Pointer(&e.data[e.offset]))
-			dstLen = C.size_t(uint64(len(e.data)) - e.offset)
-		)
-		e.offset += uint64(C.TF_StringEncode(src, srcLen, dst, dstLen, e.status.c))
-		C.free(unsafe.Pointer(src))
-		return e.status.Err()
+		offsetList[idx] = e.offset
+		idx++
+
+		s := v.Interface().(string)
+		sz := binary.PutUvarint(e.data[e.offset:], uint64(len(s)))
+		copy(e.data[e.offset + uint64(sz):], str2bytes(s))
+		e.offset +=  uint64(sz +len(s))
+		return idx, e.status.Err()
 	}
 
 	if v.Kind() == reflect.Slice {
 		expected := int(shape[0])
 		if v.Len() != expected {
-			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
+			return idx, fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 		}
 	}
 
 	subShape := shape[1:]
 	for i := 0; i < v.Len(); i++ {
-		if err := e.encode(v.Index(i), subShape); err != nil {
-			return err
+		if newIdx, err := e.encodeSup(v.Index(i), subShape, offsetList, idx); err != nil {
+			return idx, err
+		} else {
+			idx = newIdx
 		}
 	}
-	return nil
+
+	return idx, nil
+}
+
+func str2bytes(s string) []byte {
+	x := (*[2]uintptr)(unsafe.Pointer(&s))
+	h := [3]uintptr{x[0], x[1], x[1]}
+	return *(*[]byte)(unsafe.Pointer(&h))
 }
 
 type stringDecoder struct {
