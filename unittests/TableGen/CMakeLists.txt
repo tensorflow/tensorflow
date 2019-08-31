@@ -18,4 +18,4 @@ add_dependencies(MLIRTableGenTests MLIRTableGenEnumsIncGen)
 add_dependencies(MLIRTableGenTests MLIRTableGenStructAttrIncGen)
 
 target_link_libraries(MLIRTableGenTests
-  PRIVATE LLVMMLIRTableGen)
+  PRIVATE LLVMMLIRTableGen MLIRIR)
