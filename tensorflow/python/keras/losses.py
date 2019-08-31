@@ -1056,9 +1056,6 @@ def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-# Retaining the legacy namespaces: 'cosine_proximity' and 'cosine'.
-# TODO(psv): Change name of this function to `cosine_similarity` after fixing
-# estimator test.
 @keras_export(
     'keras.losses.cosine_similarity',
     v1=[
@@ -1069,10 +1066,26 @@ def poisson(y_true, y_pred):
         'keras.losses.cosine_similarity',
     ])
 def cosine_proximity(y_true, y_pred, axis=-1):
-  """Computes the cosine similarity between labels and predictions."""
+  """Computes the cosine similarity between labels and predictions.
+
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets.
+
+  `loss = -sum(y_true * y_pred)`
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+    axis: Axis along which to determine similarity.
+
+  Returns:
+    Cosine similarity tensor.
+  """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineSimilarity')
