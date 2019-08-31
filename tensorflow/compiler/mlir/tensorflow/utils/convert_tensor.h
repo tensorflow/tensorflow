@@ -42,7 +42,7 @@ StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
                                            mlir::Builder* builder);
 
 // Converts a shape from MLIR to an TensorFlow tensor shape proto.
-Status ConvertToTensorShapeProto(llvm::ArrayRef<int> shape,
+Status ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
                                  TensorShapeProto* output_shape);
 
 // Converts an MLIR elements attribute to an TensorFlow tensor proto.
