@@ -13,6 +13,7 @@ LLVM style guide:
 *   Adopts [camelBack](https://llvm.org/docs/Proposals/VariableNames.html);
 *   Except for IR units (Region, Block, and Operation), non-nullable output
     argument are passed by non-const reference in general.
+*   IR constructs are not designed for [const correctness](UsageOfConst.md).
 
 ## Pass name and other command line options
 
