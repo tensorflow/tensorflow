@@ -100,29 +100,22 @@ from tensorflow.python.util.tf_export import tf_export
 # Aliases for some automatically-generated names.
 nextafter = gen_math_ops.next_after
 
-# behaves like np.repeat(a, repeat, axis)
-def repeat_along_axis(tensor, repeats, axis):
-  tensor = array_ops.expand_dims(tensor, axis=axis)
-  shape = tensor.get_shape()
-  repetitions_shape = []
-  for i in range(shape.shape[0].value):
-    if axis == i:
-      repetitions_shape.append(repeats)
-    else:
-      repetitions_shape.append(1)
-  return array_ops.tile(tensor, repetitions_shape)
-
-def linspace(start, stop, num):
-  shape = start.get_shape()
-  delta = (stop - start) / (num - 1.)
-  reshape_target = [ num ]
-  repeats = [ 1 ]
-  for i in range(shape.shape[0].value):
-    reshape_target.append(1)
-    repeats.append(shape[i])
-  range_indices = array_ops.reshape(range(0, num, dtype=start.dtype), reshape_target)
+def tf_linspace(start, stop, num, axis=0):
+  expanded_start = array_ops.expand_dims(start, axis=axis)
+  expanded_stop = array_ops.expand_dims(stop, axis=axis)
+  delta = (expanded_stop - expanded_start) / (num - 1.)
+  shape = (array_ops.expand_dims(start, axis=axis)).get_shape()
+  shape_range = range(shape.shape[0].value)
+  axis_tiled = array_ops.fill(shape_range.get_shape(), axis)
+  num_tiled = array_ops.fill(shape_range.get_shape(), num)
+  ones = array_ops.ones_like(num_tiled)
+  reshape_target = array_ops.where(gen_math_ops.equal(axis_tiled, shape_range), num_tiled, ones)
+  repeats = array_ops.where(gen_math_ops.equal(axis_tiled, shape_range), ones, shape)
+  range_indices = array_ops.reshape(gen_math_ops.range(0, num, dtype=tf.float32), reshape_target)
   tiled_range_indices = array_ops.tile(range_indices, repeats)
-  res = start + repeat_along_axis(delta, num, 0) * tiled_range_indices
+  start_repeated = array_ops.repeat_with_axis(expanded_start, num, axis)
+  delta_repeated = array_ops.repeat_with_axis(delta, num, axis)
+  res = start_repeated + delta_repeated * tiled_range_indices
   return res
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
