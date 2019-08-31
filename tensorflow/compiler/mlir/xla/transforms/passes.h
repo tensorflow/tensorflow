@@ -20,14 +20,18 @@ limitations under the License.
 
 namespace mlir {
 class FuncOp;
+class Operation;
 template <typename T>
 class OpPassBase;
 using FunctionPassBase = OpPassBase<FuncOp>;
 
 namespace xla_hlo {
-
 /// Lowers from TF dialect to XLA dialect.
 std::unique_ptr<FunctionPassBase> createLegalizeTFPass();
+
+/// Converts the provided Operation as well as all nested operations into XLA
+/// dialect using the conversion patterns registered by the XLA dialect.
+void legalizeTF(Operation *op);
 
 /// Lowers XLA control flow ops to the Standard dialect.
 std::unique_ptr<FunctionPassBase> createLegalizeControlFlowPass();
