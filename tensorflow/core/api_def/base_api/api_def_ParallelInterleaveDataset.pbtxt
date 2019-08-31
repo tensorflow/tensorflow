@@ -33,10 +33,10 @@ END
     name: "sloppy"
     description: <<END
 If `True`, return elements as they become available, even if that means returning
-these elements in a different order. Sloppy operation may result in better
+these elements in a non-deterministic order. Sloppy operation may result in better
 performance in the presence of stragglers, but the dataset will still block if
 all of its open streams are blocked.
-If `False`, always return elements in the same order.
+If `False`, always return elements in a deterministic order.
 END
   }
   in_arg {
