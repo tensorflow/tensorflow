@@ -42,6 +42,402 @@ class SPV_LogicalOp<string mnemonic, Type operandsType,
 
 // -----
 
+def SPV_FOrdEqualOp : SPV_LogicalOp<"FOrdEqual", SPV_Float, [Commutative]> {
+  let summary = "Floating-point comparison for being ordered and equal.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordequal-op ::= ssa-id `=` `spv.FOrdEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdEqual %0, %1 : f32
+    %5 = spv.FOrdEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FOrdGreaterThanOp : SPV_LogicalOp<"FOrdGreaterThan", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are ordered and Operand 1 is
+    greater than  Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordgt-op ::= ssa-id `=` `spv.FOrdGreaterThan` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdGreaterThan %0, %1 : f32
+    %5 = spv.FOrdGreaterThan %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FOrdGreaterThanEqualOp : SPV_LogicalOp<"FOrdGreaterThanEqual", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are ordered and Operand 1 is
+    greater than or equal to Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordgte-op ::= ssa-id `=` `spv.FOrdGreaterThanEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdGreaterThanEqual %0, %1 : f32
+    %5 = spv.FOrdGreaterThanEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FOrdLessThanOp : SPV_LogicalOp<"FOrdLessThan", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are ordered and Operand 1 is less
+    than Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordlt-op ::= ssa-id `=` `spv.FOrdLessThan` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdLessThan %0, %1 : f32
+    %5 = spv.FOrdLessThan %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FOrdLessThanEqualOp : SPV_LogicalOp<"FOrdLessThanEqual", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are ordered and Operand 1 is less
+    than or equal to Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordlte-op ::= ssa-id `=` `spv.FOrdLessThanEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdLessThanEqual %0, %1 : f32
+    %5 = spv.FOrdLessThanEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FOrdNotEqualOp : SPV_LogicalOp<"FOrdNotEqual", SPV_Float, [Commutative]> {
+  let summary = "Floating-point comparison for being ordered and not equal.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fordneq-op ::= ssa-id `=` `spv.FOrdNotEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FOrdNotEqual %0, %1 : f32
+    %5 = spv.FOrdNotEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordEqualOp : SPV_LogicalOp<"FUnordEqual", SPV_Float, [Commutative]> {
+  let summary = "Floating-point comparison for being unordered or equal.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordequal-op ::= ssa-id `=` `spv.FUnordEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordEqual %0, %1 : f32
+    %5 = spv.FUnordEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordGreaterThanOp : SPV_LogicalOp<"FUnordGreaterThan", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are unordered or Operand 1 is
+    greater than  Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordgt-op ::= ssa-id `=` `spv.FUnordGreaterThan` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordGreaterThan %0, %1 : f32
+    %5 = spv.FUnordGreaterThan %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordGreaterThanEqualOp : SPV_LogicalOp<"FUnordGreaterThanEqual", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are unordered or Operand 1 is
+    greater than or equal to Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordgte-op ::= ssa-id `=` `spv.FUnordGreaterThanEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordGreaterThanEqual %0, %1 : f32
+    %5 = spv.FUnordGreaterThanEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordLessThanOp : SPV_LogicalOp<"FUnordLessThan", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are unordered or Operand 1 is less
+    than Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordlt-op ::= ssa-id `=` `spv.FUnordLessThan` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordLessThan %0, %1 : f32
+    %5 = spv.FUnordLessThan %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordLessThanEqualOp : SPV_LogicalOp<"FUnordLessThanEqual", SPV_Float, []> {
+  let summary = [{
+    Floating-point comparison if operands are unordered or Operand 1 is less
+    than or equal to Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordlte-op ::= ssa-id `=` `spv.FUnordLessThanEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordLessThanEqual %0, %1 : f32
+    %5 = spv.FUnordLessThanEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FUnordNotEqualOp : SPV_LogicalOp<"FUnordNotEqual", SPV_Float, [Commutative]> {
+  let summary = "Floating-point comparison for being unordered or not equal.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    floating-point type.  They must have the same type, and they must have
+    the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    funordneq-op ::= ssa-id `=` `spv.FUnordNotEqual` ssa-use, ssa-use
+    ```
+
+    For example:
+
+    ```
+    %4 = spv.FUnordNotEqual %0, %1 : f32
+    %5 = spv.FUnordNotEqual %2, %3 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
   let summary = "Integer comparison for equality.";
 
@@ -271,8 +667,7 @@ def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
 
 // -----
 
-def SPV_UGreaterThanEqualOp
-    : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []> {
+def SPV_UGreaterThanEqualOp : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is greater than or equal to
     Operand 2.
