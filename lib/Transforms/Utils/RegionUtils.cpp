@@ -53,3 +53,9 @@ void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
         values.insert(operand);
   });
 }
+
+void mlir::getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+                                     llvm::SetVector<Value *> &values) {
+  for (Region &region : regions)
+    getUsedValuesDefinedAbove(region, region, values);
+}
