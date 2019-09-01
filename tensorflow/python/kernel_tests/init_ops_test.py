@@ -551,7 +551,6 @@ class LinSpaceTest(test.TestCase):
     with ops.Graph().as_default() as graph:
       with self.session(graph=graph, force_gpu=self.force_gpu):
         tf_ans = math_ops.linspace(start, stop, num, name="linspace")
-        self.assertEqual([num], tf_ans.get_shape())
         return self.evaluate(tf_ans)
 
   def testPositive(self):
@@ -613,6 +612,15 @@ class LinSpaceTest(test.TestCase):
       actual = self._LinSpace(0., 1., 32)
       expected = np.linspace(0., 1., 32)
       self.assertArrayNear(expected, actual, 1e-5)
+
+  def testNDArrayCompareToNumpy(self):
+    for self.force_gpu in self._gpu_modes():
+      a = np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4))
+      b = a * 5
+      num = 10
+      actual = self._LinSpace(a, b, num)
+      expected = np.linspace(a, b, num)
+      self.assertTrue(np.allclose(actual, expected), 'Wrong float answer. Wrong indices: {}'.format(np.where(~np.allclose(actual, expected))))
 
 class DeviceTest(test.TestCase):
 
