@@ -906,6 +906,16 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
+  /// Create a deep copy of this operation.
+  ConcreteType clone() { return cast<ConcreteType>(getOperation()->clone()); }
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
+  ConcreteType cloneWithoutRegions() {
+    return cast<ConcreteType>(getOperation()->cloneWithoutRegions());
+  }
+
   /// Return the dialect that this refers to.
   Dialect *getDialect() { return getOperation()->getDialect(); }
 
