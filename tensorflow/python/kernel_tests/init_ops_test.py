@@ -547,10 +547,10 @@ class LinSpaceTest(test.TestCase):
     else:
       return [False]
 
-  def _LinSpace(self, start, stop, num):
+  def _LinSpace(self, start, stop, num, axis=0):
     with ops.Graph().as_default() as graph:
       with self.session(graph=graph, force_gpu=self.force_gpu):
-        tf_ans = math_ops.linspace(start, stop, num, name="linspace")
+        tf_ans = math_ops.linspace(start, stop, num, axis=axis, name="linspace")
         return self.evaluate(tf_ans)
 
   def testPositive(self):
@@ -624,6 +624,17 @@ class LinSpaceTest(test.TestCase):
       mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
       self.assertTrue(np.allclose(actual, expected), mess)
 
+  def testNDArrayAxisNotZero(self):
+    for self.force_gpu in self._gpu_modes():
+      a = np.arange(2 * 3, dtype=np.float32).reshape((2, 3))
+      b = a * 10
+      num = 5
+      axis = 1
+      actual = self._LinSpace(a, b, num, axis=axis)
+      expected = np.linspace(a, b, num, axis=axis)
+      wrong_indices = np.where(~np.allclose(actual, expected))
+      mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
+      self.assertTrue(np.allclose(actual, expected), mess)
 
 class DeviceTest(test.TestCase):
 
