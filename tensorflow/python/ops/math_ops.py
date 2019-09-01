@@ -111,11 +111,12 @@ def linspace(start_in, stop_in, num, axis=0, name=None):
   if num <= 0:
     raise ValueError('Num has to be >= 1. Received {}'.format(num))
   expanded_start = array_ops.expand_dims(start, axis=axis)
+  shape = expanded_start.get_shape()
+  axis = array_ops.get_positive_axis(axis, shape.ndims)
   if num == 1:
     return expanded_start
   expanded_stop = array_ops.expand_dims(stop, axis=axis)
   delta = (expanded_stop - expanded_start) / (num - 1.)
-  shape = expanded_start.get_shape()
   shape_range = range(shape.ndims)
   axis_tiled = array_ops.fill(shape_range.get_shape(), axis)
   num_tiled = array_ops.fill(shape_range.get_shape(), num - 2)

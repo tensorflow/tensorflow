@@ -613,28 +613,25 @@ class LinSpaceTest(test.TestCase):
       expected = np.linspace(0., 1., 32)
       self.assertArrayNear(expected, actual, 1e-5)
 
-  def testNDArrayCompareToNumpy(self):
+  def _baseNDArrayCompareToNumpy(self, axis):
     for self.force_gpu in self._gpu_modes():
       a = np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4))
       b = a * 5
       num = 10
-      actual = self._LinSpace(a, b, num)
-      expected = np.linspace(a, b, num)
-      wrong_indices = np.where(~np.allclose(actual, expected))
-      mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
-      self.assertTrue(np.allclose(actual, expected), mess)
-
-  def testNDArrayAxisNotZero(self):
-    for self.force_gpu in self._gpu_modes():
-      a = np.arange(2 * 3, dtype=np.float32).reshape((2, 3))
-      b = a * 10
-      num = 5
-      axis = 1
       actual = self._LinSpace(a, b, num, axis=axis)
       expected = np.linspace(a, b, num, axis=axis)
       wrong_indices = np.where(~np.allclose(actual, expected))
       mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
       self.assertTrue(np.allclose(actual, expected), mess)
+
+  def testNDArrayCompareToNumpyDefaultAxis(self):
+    self._baseNDArrayCompareToNumpy(0)
+
+  def testNDArrayAxisStrictlyPositive(self):
+    self._baseNDArrayCompareToNumpy(1)
+
+  def testNDArrayAxisStrictlyNegative(self):
+    self._baseNDArrayCompareToNumpy(-1)
 
 class DeviceTest(test.TestCase):
 
