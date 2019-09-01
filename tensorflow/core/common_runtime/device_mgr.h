@@ -96,6 +96,46 @@ class StaticDeviceMgr : public DeviceMgr {
 
   TF_DISALLOW_COPY_AND_ASSIGN(StaticDeviceMgr);
 };
+
+// Represents a dynamic set of devices
+class DynamicDeviceMgr : public DeviceMgr {
+ public:
+  // Constructs an empty DynamicDeviceMgr.
+  DynamicDeviceMgr() {}
+
+  ~DynamicDeviceMgr() override;
+
+  void ListDeviceAttributes(
+      std::vector<DeviceAttributes>* devices) const override;
+  std::vector<Device*> ListDevices() const override;
+  string DebugString() const override;
+  string DeviceMappingString() const override;
+  Status LookupDevice(StringPiece name, Device** device) const override;
+  void ClearContainers(gtl::ArraySlice<string> containers) const override;
+  int NumDeviceType(const string& type) const override;
+
+  // Add devices to device manager. Returns error for repeated device names.
+  Status AddDevices(std::vector<std::unique_ptr<Device>> devices);
+
+  // Remove devices from device manager. Returns error for non-existing devices.
+  Status RemoveDevices(std::vector<Device*> devices);
+
+  // Remove devices from device manager by their names. Returns error for
+  // non-existing devices.
+  Status RemoveDevicesByName(const std::vector<string>& device_names);
+
+ private:
+  mutable mutex devices_mu_;
+
+  std::unordered_map<Device*, std::unique_ptr<Device>> dynamic_devices_
+      GUARDED_BY(devices_mu_);
+
+  std::unordered_map<string, Device*> device_map_ GUARDED_BY(devices_mu_);
+
+  std::unordered_map<string, int> device_type_counts_ GUARDED_BY(devices_mu_);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DynamicDeviceMgr);
+};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
