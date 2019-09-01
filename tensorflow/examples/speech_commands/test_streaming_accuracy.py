@@ -51,11 +51,11 @@ the start of the file that it occurs.
 
 Here's an example of how to run the tool:
 
-bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
+bazel run tensorflow/examples/speech_commands:test_streaming_accuracy_py -- \
 --wav=/tmp/streaming_test_bg.wav \
---graph=/tmp/conv_frozen.pb \
+--ground-truth=/tmp/streaming_test_labels.txt --verbose \
+--model=/tmp/conv_frozen.pb \
 --labels=/tmp/speech_commands_train/conv_labels.txt \
---ground_truth=/tmp/streaming_test_labels.txt --verbose \
 --clip_duration_ms=1000 --detection_threshold=0.70 --average_window_ms=500 \
 --suppression_ms=500 --time_tolerance_ms=1500
 '''
@@ -79,7 +79,7 @@ FLAGS = None
 
 
 def load_graph(mode_file):
-  ''' Reads a tensorflow model, and creates a default graph object.'''
+  ''' Read a tensorflow model, and creates a default graph object.'''
   graph = tf.Graph()
   with graph.as_default():
     od_graph_def = tf.GraphDef()
@@ -91,7 +91,7 @@ def load_graph(mode_file):
 
 
 def read_label_file(file_name):
-  '''Loads a list of label.'''
+  '''Load a list of label.'''
   label_list = []
   with open(file_name, 'r') as f:
     for line in f:
@@ -100,7 +100,7 @@ def read_label_file(file_name):
 
 
 def read_wav_file(filename):
-  '''Loads a wav file and return sample_rate and numpy data of float64 type'''
+  '''Load a wav file and return sample_rate and numpy data of float64 type'''
   with tf.Session(graph=tf.Graph()) as sess:
     wav_filename_placeholder = tf.placeholder(tf.string, [])
     wav_loader = io_ops.read_file(wav_filename_placeholder)
@@ -110,8 +110,8 @@ def read_wav_file(filename):
 
 
 def main(_):
-  label_list = read_label_file(FLAGS.label_file)
-  sample_rate, data = read_wav_file(FLAGS.wav_file)
+  label_list = read_label_file(FLAGS.labels)
+  sample_rate, data = read_wav_file(FLAGS.wav)
   # Init instance of RecognizeCommands with given parameters.
   recognize_commands = RecognizeCommands(labels=label_list,
                                          average_window_duration_ms=
@@ -123,7 +123,7 @@ def main(_):
 
   # Init instance of StreamingAccuracyStats and load ground truth.
   stats = StreamingAccuracyStats()
-  stats.read_ground_truth_file(FLAGS.ground_truth_file)
+  stats.read_ground_truth_file(FLAGS.ground_truth)
   recognize_element = RecognizeResult()
   all_found_words = []
   data_samples = data.shape[0]
@@ -131,7 +131,7 @@ def main(_):
   clip_stride_samples = int(FLAGS.clip_stride_ms * sample_rate / 1000)
   audio_data_end = data_samples - clip_duration_samples
   # Load model and create a tf session to process audio pieces
-  recognize_graph = load_graph(FLAGS.model_file)
+  recognize_graph = load_graph(FLAGS.model)
   with recognize_graph.as_default():
     with tf.Session() as sess:
       # Get input and output tensor
