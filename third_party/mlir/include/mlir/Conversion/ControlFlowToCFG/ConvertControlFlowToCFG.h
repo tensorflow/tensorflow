@@ -39,7 +39,7 @@ void populateLoopToStdConversionPatterns(OwningRewritePatternList &patterns,
                                          MLIRContext *ctx);
 
 /// Creates a pass to convert loop.for, loop.if and loop.terminator ops to CFG.
-FunctionPassBase *createConvertToCFGPass();
+std::unique_ptr<FunctionPassBase> createLowerToCFGPass();
 
 } // namespace mlir
 

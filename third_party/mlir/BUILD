@@ -1445,6 +1445,8 @@ cc_library(
     copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
+        ":AffineDialectRegistration",
+        ":CFGTransforms",
         ":ExecutionEngine",
         ":ExecutionEngineUtils",
         ":IR",
