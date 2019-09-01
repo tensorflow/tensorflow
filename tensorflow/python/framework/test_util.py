@@ -2307,7 +2307,7 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       ndarray1: a numpy ndarray.
       ndarray2: a numpy ndarray.
-      err: a float. The maximum absolute difference allowed.
+      err: a float. The default norm difference allowed.
       msg: Optional message to report on failure.
     """
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
