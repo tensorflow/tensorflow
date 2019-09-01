@@ -25,6 +25,7 @@
 
 #include "mlir/Support/JitRunner.h"
 
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
@@ -172,7 +173,8 @@ static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
   manager.addPass(mlir::createLowerAffinePass());
-  manager.addPass(mlir::createConvertToLLVMIRPass());
+  manager.addPass(mlir::createLowerToCFGPass());
+  manager.addPass(mlir::createLowerToLLVMPass());
   return manager.run(module);
 }
 

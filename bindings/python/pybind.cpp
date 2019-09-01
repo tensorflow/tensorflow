@@ -197,7 +197,7 @@ struct PythonMLIRModule {
     manager.addPass(mlir::createCanonicalizerPass());
     manager.addPass(mlir::createCSEPass());
     manager.addPass(mlir::createLowerAffinePass());
-    manager.addPass(mlir::createConvertToLLVMIRPass());
+    manager.addPass(mlir::createLowerToLLVMPass());
     if (failed(manager.run(*module))) {
       llvm::errs() << "conversion to the LLVM IR dialect failed\n";
       return;
