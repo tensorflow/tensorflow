@@ -554,8 +554,8 @@ class LinSpaceTest(test.TestCase):
         return self.evaluate(tf_ans)
 
   def _LinSpaceNumConstant(self, start, stop, num, axis=0):
-    num_constant = constant_op.constant(num)
     with ops.Graph().as_default() as graph:
+      num_constant = constant_op.constant(num)
       with self.session(graph=graph, force_gpu=self.force_gpu):
         tf_ans = math_ops.linspace(start, stop, num_constant, axis=axis, name="linspace")
         return self.evaluate(tf_ans)

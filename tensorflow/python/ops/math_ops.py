@@ -117,21 +117,27 @@ def linspace(start_in, stop_in, num, axis=0, name=None):
     shape = expanded_start.get_shape()
     axis = array_ops.get_positive_axis(axis, shape.ndims)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
-    delta = (expanded_stop - expanded_start) / (num - 1.)
+    range_end = gen_math_ops.maximum(num - 1., 1.)
+    delta = (expanded_stop - expanded_start) / range_end
     shape_range = range(shape.ndims)
     axis_tiled = array_ops.fill(shape_range.get_shape(), axis)
-    num_tiled = array_ops.fill(shape_range.get_shape(), num_int - 2)
+    num_fill = gen_math_ops.maximum(num_int - 2, 0)
+    num_tiled = array_ops.fill(shape_range.get_shape(), num_fill)
     ones = array_ops.ones_like(num_tiled)
     mask = gen_math_ops.equal(axis_tiled, shape_range)
     reshape_target = array_ops.where_v2(mask, num_tiled, ones)
     repeats = array_ops.where_v2(mask, ones, shape)
-    num_range = range(1., num - 1, dtype=start.dtype)
+    num_range = range(1., range_end, dtype=start.dtype)
     range_indices = array_ops.reshape(num_range, reshape_target)
     tiled_range_indices = array_ops.tile(range_indices, repeats)
-    start_repeated = array_ops.repeat_with_axis(expanded_start, num_int - 2, axis)
-    delta_repeated = array_ops.repeat_with_axis(delta, num_int - 2, axis)
+    start_repeated = array_ops.repeat_with_axis(expanded_start, num_fill, axis)
+    delta_repeated = array_ops.repeat_with_axis(delta, num_fill, axis)
     res = start_repeated + delta_repeated * tiled_range_indices
-    return array_ops.concat((expanded_start, res, expanded_stop), axis=axis)
+    concatenated = array_ops.concat((expanded_start, res, expanded_stop), axis=axis)
+    begin = array_ops.zeros_like(shape)
+    num_slice = array_ops.fill(shape_range.get_shape(), num_int)
+    size = array_ops.where_v2(mask, num_slice, shape)
+    return array_ops.slice(concatenated, begin, size)
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
