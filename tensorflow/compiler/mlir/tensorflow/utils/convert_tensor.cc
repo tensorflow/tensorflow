@@ -140,12 +140,11 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
   return ConvertTensor(t, builder);
 }
 
-Status ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
-                                 TensorShapeProto* output_shape) {
+void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
+                               TensorShapeProto* output_shape) {
   for (auto d : shape) {
     output_shape->add_dim()->set_size(d);
   }
-  return Status::OK();
 }
 
 // Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
@@ -242,8 +241,7 @@ Status ConvertToTensorProto(const ElementsAttr attr,
   DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
   output_tensor->set_dtype(output_dtype);
-  TF_RETURN_IF_ERROR(
-      ConvertToTensorShapeProto(shape, output_tensor->mutable_tensor_shape()));
+  ConvertToTensorShapeProto(shape, output_tensor->mutable_tensor_shape());
 
   switch (output_dtype) {
     case DT_FLOAT:
