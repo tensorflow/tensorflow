@@ -636,3 +636,28 @@ gentbl(
         "@local_config_mlir//:StdOpsTdFiles",
     ],
 )
+
+cc_library(
+    name = "tensorflow_fold_switch",
+    srcs = [
+        "transforms/fold_switch.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:QuantOps",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
+    alwayslink = 1,
+)
