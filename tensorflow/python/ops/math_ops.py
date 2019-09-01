@@ -101,12 +101,12 @@ from tensorflow.python.util.tf_export import tf_export
 #linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
 
-def linspace(start, stop, num, axis=0, name=None):
+def linspace(start_in, stop_in, num, axis=0, name=None):
   if not isinstance(axis, int):
     raise TypeError('Axis should be an integer. Received an object {0} of type {1}'.format(axis, type(axis)))
-  start = ops.convert_to_tensor(start)
+  start = ops.convert_to_tensor(start_in)
   # stop must be convertible to the same dtype as start
-  stop = ops.convert_to_tensor(stop, dtype=start.dtype)
+  stop = ops.convert_to_tensor(stop_in, dtype=start.dtype)
   if num <= 0:
     raise ValueError('Num has to be >= 1. Received {}'.format(num))
   expanded_start = array_ops.expand_dims(start, axis=axis)
@@ -126,11 +126,9 @@ def linspace(start, stop, num, axis=0, name=None):
   range_indices = array_ops.reshape(num_range, reshape_target)
   tiled_range_indices = array_ops.tile(range_indices, repeats)
   start_repeated = array_ops.repeat_with_axis(expanded_start, num - 2, axis)
-  delta_repeated = array_ops.repeat_with_axis(expanded_stop, num - 2, axis)
+  delta_repeated = array_ops.repeat_with_axis(delta, num - 2, axis)
   res = start_repeated + delta_repeated * tiled_range_indices
-  end_res = array_ops.concat((expanded_start, res, expanded_stop), axis=axis)
-  import pdb; pdb.set_trace()
-  return gen_math_ops.lin_space(start, stop, num, name)
+  return array_ops.concat((expanded_start, res, expanded_stop), axis=axis)
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
