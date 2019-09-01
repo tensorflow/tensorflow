@@ -608,6 +608,11 @@ class LinSpaceTest(test.TestCase):
           self._LinSpace(np.array(0., np.float64), .1, 12)[[0, -1]],
           np.array([0., .1], np.float64))
 
+  def testScalarsCompareToNumpy(self):
+    for self.force_gpu in self._gpu_modes():
+      actual = self._LinSpace(0., 1., 32)
+      expected = np.linspace(0., 1., 32)
+      self.assertArrayNear(expected, actual, 1e-5)
 
 class DeviceTest(test.TestCase):
 
