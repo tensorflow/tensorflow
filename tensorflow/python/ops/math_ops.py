@@ -110,8 +110,6 @@ def linspace(start_in, stop_in, num, axis=0, name=None):
     # stop must be convertible to the same dtype as start
     stop = ops.convert_to_tensor(stop_in, name='stop', dtype=start.dtype)
     expanded_start = array_ops.expand_dims(start, axis=axis)
-    if num == 1:
-      return expanded_start
     num_int = array_ops.convert_to_int_tensor(num, name='num')
     num = cast(num_int, dtype=start.dtype)
     shape = expanded_start.get_shape()
