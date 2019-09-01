@@ -620,7 +620,10 @@ class LinSpaceTest(test.TestCase):
       num = 10
       actual = self._LinSpace(a, b, num)
       expected = np.linspace(a, b, num)
-      self.assertTrue(np.allclose(actual, expected), 'Wrong float answer. Wrong indices: {}'.format(np.where(~np.allclose(actual, expected))))
+      wrong_indices = np.where(~np.allclose(actual, expected))
+      mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
+      self.assertTrue(np.allclose(actual, expected), mess)
+
 
 class DeviceTest(test.TestCase):
 
