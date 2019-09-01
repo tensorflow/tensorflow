@@ -553,6 +553,13 @@ class LinSpaceTest(test.TestCase):
         tf_ans = math_ops.linspace(start, stop, num, axis=axis, name="linspace")
         return self.evaluate(tf_ans)
 
+  def _LinSpaceNumConstant(self, start, stop, num, axis=0):
+    num_constant = constant_op.constant(num)
+    with ops.Graph().as_default() as graph:
+      with self.session(graph=graph, force_gpu=self.force_gpu):
+        tf_ans = math_ops.linspace(start, stop, num_constant, axis=axis, name="linspace")
+        return self.evaluate(tf_ans)
+
   def testPositive(self):
     for self.force_gpu in self._gpu_modes():
       self.assertArrayNear(self._LinSpace(1., 5., 1), np.array([1.]), 1e-5)
@@ -632,6 +639,13 @@ class LinSpaceTest(test.TestCase):
 
   def testNDArrayAxisStrictlyNegative(self):
     self._baseNDArrayCompareToNumpy(-1)
+
+  def testNumConstant(self):
+    for self.force_gpu in self._gpu_modes():
+      actual = self._LinSpaceNumConstant(0., 1., 32)
+      expected = np.linspace(0., 1., 32)
+      self.assertArrayNear(expected, actual, 1e-5)
+
 
 class DeviceTest(test.TestCase):
 
