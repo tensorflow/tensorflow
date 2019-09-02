@@ -202,7 +202,7 @@ class Layer(module.Module):
 
   ```
   layer1 = tf.keras.layers.Dense(4, dtype='float64'),
-  layer2 = tf.keras.layers.Dense(4, dtype='float64),
+  layer2 = tf.keras.layers.Dense(4, dtype='float64'),
 
   x = tf.ones((4, 4))
   y = layer2(layer1(x))  # Both layers run in float64
