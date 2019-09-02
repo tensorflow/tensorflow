@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/deep_conv2d.h"
 
 #include <stdlib.h>
+#include <limits.h>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/winograd_transform.h"
@@ -73,7 +74,40 @@ static int64 GetDeepConvCost(int input_tile_rows, int input_tile_cols,
 
 static int64 GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
                                int out_depth, int out_rows, int out_cols) {
-  return (int64)filter_rows * (int64)filter_cols * (int64)in_depth * (int64)out_depth * (int64)out_rows * (int64)out_cols;
+  int64 res = filter_rows;
+  const int64 max_int64 = std::numeric_limits<int64>::max();
+  // Check for integer overflow
+  if( res < max_int64 / filter_cols)
+  {
+    res *= filter_cols;
+    if( res < max_int64 / in_depth)
+    {
+      res *= in_depth;
+      if( res < max_int64 / out_depth)
+      {
+        res *= out_depth;
+        if( res < max_int64 / out_rows)
+        {
+          res *= out_rows;
+          if( res <= max_int64 / out_cols)
+          {
+            res *= out_cols;
+            return res;
+          }
+        }
+      }
+    }
+  }
+  LOG(WARNING) << "GetDirectConvCost"
+            << " Conv2d parameters: filter_rows = " << filter_rows
+            << ", filter_cols = " << filter_cols
+            << ", in_depth = " << in_depth
+            << ", out_depth = " << out_depth
+            << ", out_rows = " << out_rows
+            << ", out_cols = " << out_cols
+            << " caused integer overflow."
+            << " Return value was clamped to max_int64."
+  return max_int64;
 }
 
 // Reads environment variable 'env_var_name'.
