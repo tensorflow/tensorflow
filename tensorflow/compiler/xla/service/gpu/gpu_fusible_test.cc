@@ -906,5 +906,136 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
   EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
 }
 
+TEST_F(GpuFusibleTest, CreatesNestedLoop_NonfusionInstr) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      p_0 = f32[2,5] parameter(0)
+
+      constant_1 = f32[] constant(1)
+      reduce-window_1 = f32[3,5] reduce-window(p_0, constant_1),
+        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+
+      constant_2 = f32[] constant(2)
+      reduce-window_2 = f32[3,5] reduce-window(p_0, constant_2),
+        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+
+      ROOT root = (f32[32,32], f32[32,32,32]) tuple(reduce-window_1, reduce-window_2)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* consumer = root->operand(1);
+  EXPECT_TRUE(CreatesNestedLoop(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonfusionInstr) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      p_0 = f32[3,5] parameter(0)
+      constant = f32[] constant(1)
+      broadcast = f32[3, 5] broadcast(f32[] constant), dimensions={}
+      scaled_p_0 = f32[3,5] multiply(f32[3, 5] broadcast, f32[3,5]{1, 0} p_0)
+
+      p_1 = f32[2,5] parameter(1)
+      reduce-window = f32[3,5] reduce-window(p_1, constant),
+        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+
+      ROOT root = (f32[32,32], f32[32,32,32]) tuple(reduce-window, scaled_p_0)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* consumer = root->operand(1);
+  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_NonoverlappingReduceWindows) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      p_0 = f32[2,5] parameter(0)
+
+      constant_1 = f32[] constant(1)
+      reduce-window_1 = f32[3,5] reduce-window(p_0, constant_1),
+        window={size=2x1 pad=0_2x0_0}, to_apply=scalar_add
+
+      constant_2 = f32[] constant(2)
+      reduce-window_2 = f32[2,3] reduce-window(p_0, constant_2),
+        window={size=2x1 pad=0_2x0_0 stride=2x2}, to_apply=scalar_add
+
+      ROOT root = (f32[32,32], f32[32,32,32]) tuple(reduce-window_1, reduce-window_2)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* consumer = root->operand(1);
+  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, CreatesNestedLoop_FusionInstr) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_producer {
+      operand = f32[2,2] parameter(0)
+      constant = f32[] constant(1)
+      ROOT reduce-window = f32[2,2] reduce-window(operand, constant),
+        window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
+    }
+
+    fused_consumer {
+      operand_0 = f32[2,2] parameter(0)
+
+      operand_1 = f32[2,2] parameter(1)
+      constant = f32[] constant(1)
+      reduce-window = f32[2,2] reduce-window(operand_1, constant),
+        window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
+
+      ROOT scaled_operand_1 = f32[2,2] multiply(f32[2, 2] operand_0, f32[2,2] reduce-window)
+    }
+
+    ENTRY entry {
+      p0 = f32[2,2] parameter(0)
+      producer = f32[2,2] fusion(p0), kind=kLoop, calls=fused_producer
+      consumer = f32[2,2] fusion(p0, producer), kind=kLoop, calls=fused_consumer
+      ROOT root = (f32[2,2], f32[2,2]) tuple(producer, consumer)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* consumer = root->operand(1);
+  EXPECT_TRUE(CreatesNestedLoop(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, DoesNotCreateNestedLoop_FusionInstr) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_producer {
+      p_0 = f32[2,2] parameter(0)
+      constant = f32[] constant(1)
+      ROOT reduce-window = f32[2,2] reduce-window(p_0, constant),
+        window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
+    }
+
+    fused_consumer {
+      p_0 = f32[2,2] parameter(0)
+
+      p_1 = f32[2,2] parameter(1)
+      constant = f32[] constant(1)
+      reduce-window = f32[2,2] reduce-window(p_1, constant),
+        window={size=2x2 pad=0_1x0_1}, to_apply=scalar_add
+
+      ROOT scaled_p_1 = f32[2,2] multiply(f32[2, 2] p_0, f32[2,2] reduce-window)
+    }
+
+    ENTRY entry {
+      p_0 = f32[2,2] parameter(0)
+      producer = f32[2,2] fusion(p_0), kind=kLoop, calls=fused_producer
+      consumer = f32[2,2] fusion(producer, p_0), kind=kLoop, calls=fused_consumer
+      ROOT root = (f32[2,2], f32[2,2]) tuple(producer, consumer)
+    })"))
+                    .ValueOrDie();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* consumer = root->operand(1);
+  EXPECT_FALSE(CreatesNestedLoop(*producer, *consumer));
+}
+
 }  // namespace gpu
 }  // namespace xla

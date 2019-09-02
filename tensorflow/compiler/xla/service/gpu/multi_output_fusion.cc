@@ -123,9 +123,9 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   for (HloInstruction* consumer : producer->users()) {
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
-    if (!IsInputFusibleReduction(*consumer)) {
+    if (!IsFusibleAsMultiOutputFusionRoot(*consumer)) {
       VLOG(3) << "Consumer " << consumer->name()
-              << " is not an input-fusible reduction..";
+              << " is not eligible as multi-output fusion root.";
       continue;
     }
     if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
@@ -198,6 +198,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         CHECK_EQ(0, producer->user_count());
         TF_CHECK_OK(computation()->RemoveInstruction(producer));
       }
+      RecomputeReachability();
       continue;
     }
     HloInstruction* input_fusion =
