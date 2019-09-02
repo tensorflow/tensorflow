@@ -456,3 +456,18 @@ func @nested_isolated_region() {
   }) : () -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @custom_insertion_position
+func @custom_insertion_position() {
+  // CHECK: test.one_region_op
+  // CHECK-NEXT: constant 2
+  "test.one_region_op"() ({
+
+    %0 = constant 1 : i32
+    %2 = addi %0, %0 : i32
+    "foo.yield"(%2) : (i32) -> ()
+  }) : () -> ()
+  return
+}

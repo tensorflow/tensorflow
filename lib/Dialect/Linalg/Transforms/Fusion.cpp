@@ -232,7 +232,7 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 static void fuseLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
-  OperationFolder state;
+  OperationFolder state(f.getContext());
   DenseSet<Operation *> eraseSet;
 
   LLVM_DEBUG(f.print(dbgs() << "\nBefore linalg-fusion: \n"));

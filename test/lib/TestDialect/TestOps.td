@@ -162,6 +162,10 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
 // Test Regions
 //===----------------------------------------------------------------------===//
 
+def OneRegionOp : TEST_Op<"one_region_op", []> {
+  let regions = (region AnyRegion);
+}
+
 def TwoRegionOp : TEST_Op<"two_region_op", []> {
   let regions = (region AnyRegion, AnyRegion);
 }
