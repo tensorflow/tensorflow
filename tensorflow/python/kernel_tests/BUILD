@@ -2669,7 +2669,6 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
