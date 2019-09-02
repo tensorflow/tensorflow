@@ -129,7 +129,8 @@ Value* GetBinaryOp<lhlo::MaxOp>(::mlir::Type element_type, ::mlir::Location loc,
 
 template <typename LhloOp>
 struct BinaryOpConverter : public ::mlir::RewritePattern {
-  explicit BinaryOpConverter(const string& opname, ::mlir::MLIRContext* context)
+  explicit BinaryOpConverter(const std::string& opname,
+                             ::mlir::MLIRContext* context)
       : RewritePattern(opname, {}, 1, context), opname(opname) {}
 
   ::mlir::PatternMatchResult matchAndRewrite(
