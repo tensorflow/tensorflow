@@ -2146,7 +2146,8 @@ def is_jpeg(contents, name=None):
     return math_ops.equal(substr, b'\xff\xd8\xff', name=name)
 
 
-def _is_png(contents, name=None):
+@tf_export('io.is_png', 'image.is_png', v1=['io.is_png', 'image.is_png'])
+def is_png(contents, name=None):
   r"""Convenience function to check if the 'contents' encodes a PNG image.
 
   Args:
@@ -2158,8 +2159,42 @@ def _is_png(contents, name=None):
      is_png is susceptible to false positives.
   """
   with ops.name_scope(name, 'is_png'):
-    substr = string_ops.substr(contents, 0, 3)
-    return math_ops.equal(substr, b'\211PN', name=name)
+    substr = string_ops.substr(contents, 0, 8)
+    return math_ops.equal(substr, b'\x89PNG\r\n\x1a\n', name=name)
+
+
+@tf_export('io.is_gif', 'image.is_gif', v1=['io.is_gif', 'image.is_gif'])
+def is_gif(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a GIF image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a GIF image.
+     is_gif is susceptible to false positives.
+  """
+  with ops.name_scope(name, 'is_gif'):
+    substr = string_ops.substr(contents, 0, 4)
+    return math_ops.equal(substr, b'\x47\x49\x46\x38', name=name)
+
+
+@tf_export('io.is_bmp', 'image.is_bmp', v1=['io.is_bmp', 'image.is_bmp'])
+def is_bmp(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a BMP image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a BMP image.
+     is_bmp is susceptible to false positives.
+  """
+  with ops.name_scope(name, 'is_bmp'):
+    substr = string_ops.substr(contents, 0, 2)
+    return math_ops.equal(substr, b'\x42\x4D', name=name)
 
 
 tf_export(
@@ -2282,8 +2317,8 @@ def decode_image(contents,
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
-      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
+      return control_flow_ops.cond(is_gif(contents),
+                                   _gif, _bmp, name='cond_gif')
 
     def _png():
       """Decodes a PNG image."""
@@ -2297,7 +2332,7 @@ def decode_image(contents,
     def check_png():
       """Checks if an image is PNG."""
       return control_flow_ops.cond(
-          _is_png(contents), _png, check_gif, name='cond_png')
+          is_png(contents), _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""

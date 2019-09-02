@@ -3782,6 +3782,38 @@ class JpegTest(test_util.TensorFlowTestCase):
     image0 = image0.astype(int)  # Avoid overflow
     return np.abs(image0 - image1).sum() / np.prod(image0.shape)
 
+  def testIsJPEG(self):
+    path = ("tensorflow/core/lib/jpeg/testdata/"
+            "jpeg_merge_test1.jpg")
+    with self.cached_session() as sess:
+      jpeg = io_ops.read_file(path)
+      is_jpeg = image_ops.is_jpeg(jpeg)
+      self.assertTrue(sess.run(is_jpeg))
+
+  def testIsPNG(self):
+    path = ("tensorflow/core/lib/png/testdata/"
+            "lena_gray.png")
+    with self.cached_session() as sess:
+      png = io_ops.read_file(path)
+      is_png = image_ops.is_png(png)
+      self.assertTrue(sess.run(is_png))
+
+  def testIsGIF(self):
+    path = ("tensorflow/core/lib/gif/testdata/"
+            "lena.gif")
+    with self.cached_session() as sess:
+      gif = io_ops.read_file(path)
+      is_gif = image_ops.is_gif(gif)
+      self.assertTrue(sess.run(is_gif))
+
+  def testIsBMP(self):
+    path = ("tensorflow/core/lib/bmp/testdata/"
+            "lena.bmp")
+    with self.cached_session() as sess:
+      bmp = io_ops.read_file(path)
+      is_bmp = image_ops.is_bmp(bmp)
+      self.assertTrue(sess.run(is_bmp))
+
   def testExisting(self):
     # Read a real jpeg and verify shape
     path = ("tensorflow/core/lib/jpeg/testdata/"
