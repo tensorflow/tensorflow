@@ -62,6 +62,7 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,

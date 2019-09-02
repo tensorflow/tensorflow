@@ -489,7 +489,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
                           bool promoteViews) {
-  OperationFolder folder;
+  OperationFolder folder(f.getContext());
   f.walk([promoteViews, tileSizes, &folder](LinalgOp op) {
     // TODO(ntv) some heuristic here to decide what to promote. Atm it is all or
     // nothing.
