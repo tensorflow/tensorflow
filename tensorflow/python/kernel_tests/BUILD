@@ -757,7 +757,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
