@@ -86,7 +86,7 @@ class EmbeddingLookupSparseOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(EmbeddingLookupOpTest, SimpleTest) {
+TEST(EmbeddingLookupSparseOpTest, SimpleTest) {
   EmbeddingLookupSparseOpModel m(CombinerType_SUM, {3}, {3, 2}, {2}, {4, 3, 2});
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
   m.Set3DWeightMatrix(
@@ -101,7 +101,7 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
               })));
 }
 
-TEST(EmbeddingLookupOpTest, SimpleTestMean) {
+TEST(EmbeddingLookupSparseOpTest, SimpleTestMean) {
   EmbeddingLookupSparseOpModel m(CombinerType_MEAN, {3}, {3, 2}, {2},
                                  {4, 3, 2});
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
@@ -117,7 +117,7 @@ TEST(EmbeddingLookupOpTest, SimpleTestMean) {
               })));
 }
 
-TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
+TEST(EmbeddingLookupSparseOpTest, SimpleTestSqrtn) {
   EmbeddingLookupSparseOpModel m(CombinerType_SQRTN, {3}, {3, 2}, {2},
                                  {4, 3, 2});
   m.SetInput({1, 3, 0}, {0, 0, 2, 0, 2, 1}, {3, 2}, {1.0, 2.0, 4.0});
@@ -137,7 +137,7 @@ TEST(EmbeddingLookupOpTest, SimpleTestSqrtn) {
               })));
 }
 
-TEST(EmbeddingLookupOpTest, Indices3DTest) {
+TEST(EmbeddingLookupSparseOpTest, Indices3DTest) {
   EmbeddingLookupSparseOpModel m(CombinerType_SUM, {3}, {3, 3}, {3}, {4, 3, 2});
   m.SetInput({1, 3, 0}, {0, 0, 0, 2, 0, 0, 2, 0, 1}, {3, 2, 2},
              {1.0, 2.0, 4.0});
