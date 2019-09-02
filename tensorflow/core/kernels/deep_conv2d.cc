@@ -106,7 +106,7 @@ static int64 GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
             << ", out_rows = " << out_rows
             << ", out_cols = " << out_cols
             << " caused integer overflow."
-            << " Return value was clamped to max_int64."
+            << " Return value was clamped to max_int64.";
   return max_int64;
 }
 
