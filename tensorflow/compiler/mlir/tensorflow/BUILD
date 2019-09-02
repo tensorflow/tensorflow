@@ -322,6 +322,7 @@ cc_library(
     copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
+        ":error_util",
         ":mlir_roundtrip_flags",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_lib",
