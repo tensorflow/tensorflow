@@ -598,7 +598,7 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& confs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
-  mlir::PassManager pass_manager;
+  mlir::PassManager pass_manager(module.getContext());
   pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
   if (mlir::failed(pass_manager.run(module))) {
     return errors::FailedPrecondition(
