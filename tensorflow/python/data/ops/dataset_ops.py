@@ -20,6 +20,7 @@ from __future__ import print_function
 import abc
 import enum
 import functools
+import sys
 import threading
 import warnings
 import weakref
@@ -599,20 +600,20 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         try:
           flattened_values = nest.flatten_up_to(output_types, values)
         except (TypeError, ValueError):
-          raise TypeError(
+          six.reraise(TypeError, TypeError(
               "`generator` yielded an element that did not match the expected "
               "structure. The expected structure was %s, but the yielded "
-              "element was %s." % (output_types, values))
+              "element was %s." % (output_types, values)), sys.exc_info()[2])
         ret_arrays = []
         for ret, dtype in zip(flattened_values, flattened_types):
           try:
             ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                 ret, dtype=dtype.as_numpy_dtype))
           except (TypeError, ValueError):
-            raise TypeError(
+            six.reraise(TypeError, TypeError(
                 "`generator` yielded an element that could not be converted to "
                 "the expected type. The expected type was %s, but the yielded "
-                "element was %s." % (dtype.name, ret))
+                "element was %s." % (dtype.name, ret)), sys.exc_info()[2])
 
         # Additional type and shape checking to ensure that the components
         # of the generated element match the `output_types` and `output_shapes`
@@ -2682,8 +2683,11 @@ class StructuredFunctionWrapper(object):
       try:
         self._output_structure = structure.type_spec_from_value(ret)
       except (ValueError, TypeError):
-        raise TypeError("Unsupported return value from function passed to "
-                        "%s: %s." % (transformation_name, ret))
+        six.reraise(
+            TypeError,
+            TypeError("Unsupported return value from function passed to "
+                      "%s: %s." % (transformation_name, ret)),
+            sys.exc_info()[2])
       return ret
 
     if use_legacy_function:
@@ -3287,13 +3291,16 @@ def _padded_shape_to_tensor(padded_shape, input_component_shape):
     # machinery.
     ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
     if ret.shape.dims is not None and len(ret.shape.dims) != 1:
-      raise ValueError(
+      six.reraise(ValueError, ValueError(
           "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
-          "shape was %s." % (padded_shape, ret.shape))
+          "shape was %s." % (padded_shape, ret.shape)), sys.exc_info()[2])
     if ret.dtype != dtypes.int64:
-      raise TypeError(
-          "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
-          "element type was %s." % (padded_shape, ret.dtype.name))
+      six.reraise(
+          TypeError,
+          TypeError(
+              "Padded shape %s must be a 1-D tensor of tf.int64 values, but "
+              "its element type was %s." % (padded_shape, ret.dtype.name)),
+          sys.exc_info()[2])
     padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
 
   if not _is_padded_shape_compatible_with(padded_shape_as_shape,
