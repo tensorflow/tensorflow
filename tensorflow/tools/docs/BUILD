@@ -10,6 +10,25 @@ package(
 
 exports_files(["LICENSE"])
 
+py_test(
+    name = "tf_doctest",
+    srcs = ["tf_doctest.py"],
+    python_version = "PY3",
+    tags = [
+        # Disabling it for now. When we are ready to test, we can
+        # remove these tags.
+        "noasan",
+        "nomsan",
+        "notsan",
+        "optonly",
+        "notap",
+        "manual",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "doc_generator_visitor",
     srcs = [
