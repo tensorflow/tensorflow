@@ -68,7 +68,7 @@ func @unaccepted_std_attr() -> () {
 // -----
 
 func @array_constant() -> () {
-  // expected-error @+1 {{has array element that are not of result array element type}}
+  // expected-error @+1 {{has array element whose type ('vector<2xi32>') does not match the result element type ('vector<2xf32>')}}
   %0 = spv.constant [dense<3.0> : vector<2xf32>, dense<4> : vector<2xi32>] : !spv.array<2xvector<2xf32>>
   return
 }
