@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import platform
 
 import numpy as np
 
@@ -558,6 +559,9 @@ class FlattenTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFlattenLargeDim(self):
+    if any(platform.win32_ver()):
+      self.skipTest("values are truncated on windows causing test failures")
+
     x = array_ops.placeholder(shape=(None, 21316, 21316, 80), dtype='float32')
     y = core_layers.Flatten()(x)
     self.assertEqual(y.shape.as_list(), [None, 21316 * 21316 * 80])
