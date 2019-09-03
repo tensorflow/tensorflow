@@ -236,3 +236,58 @@ func @f8(%A: !linalg.view<?x?xf32>, %B: !linalg.view<?x?xf32>, %C: !linalg.view<
 //
 // FUSE-234-LABEL: func @f8
 //   FUSE-234-NOT:   loop.for
+
+#id_2d = (i, j) -> (i, j)
+#pointwise_2d_trait = {
+  indexing_maps = [#id_2d, #id_2d, #id_2d],
+  n_loop_types = [2, 0, 0],
+  n_views = [2, 1]
+}
+
+func @pointwise(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>,
+                %arg2: !linalg.view<?x?xf32>, %arg3: !linalg.view<?x?xf32>) {
+  linalg.generic #pointwise_2d_trait %arg0, %arg0, %arg1 {
+  ^bb0(%arg4: f32, %arg5: f32, %arg6: f32):   // no predecessors
+    %4 = addf %arg4, %arg5 : f32
+    linalg.yield %4 : f32
+  }: !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+  linalg.generic #pointwise_2d_trait %arg1, %arg2, %arg3 {
+  ^bb0(%arg4: f32, %arg5: f32, %arg6: f32):   // no predecessors
+    %4 = mulf %arg4, %arg5 : f32
+    linalg.yield %4 : f32
+  }: !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+  return
+}
+// No tiling => no fusion
+// FUSE-0-LABEL: func @pointwise
+//   FUSE-0-NOT: loop.for
+//       FUSE-0: linalg.generic
+//       FUSE-0:   addf
+//       FUSE-0: linalg.generic
+//       FUSE-0:   mulf
+//
+// FUSE-2-LABEL: func @pointwise
+//       FUSE-2:   loop.for
+//   FUSE-2-NOT:   loop.for
+//       FUSE-2:     linalg.generic
+//       FUSE-2:       addf
+//       FUSE-2:     linalg.generic
+//       FUSE-2:       mulf
+//
+// FUSE-23-LABEL: func @pointwise
+//       FUSE-23:   loop.for
+//       FUSE-23:     loop.for
+//   FUSE-23-NOT:   loop.for
+//       FUSE-23:       linalg.generic
+//       FUSE-23:         addf
+//       FUSE-23:       linalg.generic
+//       FUSE-23:         mulf
+//
+// FUSE-234-LABEL: func @pointwise
+//       FUSE-234:   loop.for
+//       FUSE-234:     loop.for
+//   FUSE-234-NOT:   loop.for
+//       FUSE-234:       linalg.generic
+//       FUSE-234:         addf
+//       FUSE-234:       linalg.generic
+//       FUSE-234:         mulf

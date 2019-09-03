@@ -159,3 +159,39 @@ func @fill(%arg0: !linalg.view<?x?xf32>, %arg1: f32) {
 //       TILE-234:     for
 //   TILE-234-NOT:   for
 //       TILE-234:       fill{{.*}} f32
+
+#id_2d = (i, j) -> (i, j)
+#pointwise_2d_trait = {
+  indexing_maps = [#id_2d, #id_2d, #id_2d],
+  n_loop_types = [2, 0, 0],
+  n_views = [2, 1]
+}
+
+func @pointwise(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?xf32>,
+                %arg2: !linalg.view<?x?xf32>) {
+  linalg.generic #pointwise_2d_trait %arg0, %arg1, %arg2 {
+  ^bb0(%arg4: f32, %arg5: f32, %arg6: f32):   // no predecessors
+    %4 = addf %arg4, %arg5 : f32
+    linalg.yield %4 : f32
+  }: !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+  return
+}
+// TILE-2-LABEL: func @pointwise
+//       TILE-2:   for
+//   TILE-2-NOT:   for
+//       TILE-2:   linalg.generic
+
+// TILE-02-LABEL: func @pointwise
+//       TILE-02:   for
+//   TILE-02-NOT:   for
+//       TILE-02:     linalg.generic
+
+// TILE-002-LABEL: func @pointwise
+//   TILE-002-NOT:   for
+//       TILE-002:     linalg.generic
+
+// TILE-234-LABEL: func @pointwise
+//       TILE-234:   for
+//       TILE-234:     for
+//   TILE-234-NOT:   for
+//       TILE-234:       linalg.generic
