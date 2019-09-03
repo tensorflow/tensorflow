@@ -18,7 +18,10 @@
 #ifndef MLIR_DIALECT_LINALG_LINALGOPS_H_
 #define MLIR_DIALECT_LINALG_LINALGOPS_H_
 
+#include "mlir/Dialect/Linalg/IR/LinalgTraits.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -26,8 +29,6 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTraits.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
