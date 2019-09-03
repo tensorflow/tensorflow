@@ -691,6 +691,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -830,6 +831,7 @@ cc_library(
     deps = [
         ":flt_type",
         ":gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_absl//absl/strings",
     ],
@@ -1146,9 +1148,9 @@ cc_library(
     srcs = ["cl_test.cc"],
     hdrs = ["cl_test.h"],
     deps = [
+        ":gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
