@@ -26,6 +26,7 @@ import six
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import imperative_grad
@@ -853,7 +854,7 @@ class GradientTape(object):
       if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
         raise ValueError("Passed in object of type {}, not tf.Tensor".format(
             type(t)))
-      if not t.dtype.is_floating:
+      if not backprop_util.IsTrainable(t):
         logging.log_first_n(
             logging.WARN, "The dtype of the watched tensor must be "
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
@@ -987,7 +988,7 @@ class GradientTape(object):
 
     flat_targets = []
     for t in nest.flatten(target):
-      if not t.dtype.is_floating:
+      if not backprop_util.IsTrainable(t):
         logging.vlog(
             logging.WARN, "The dtype of the target tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
@@ -1001,7 +1002,7 @@ class GradientTape(object):
     flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
     for t in flat_sources_raw:
-      if not t.dtype.is_floating:
+      if not backprop_util.IsTrainable(t):
         logging.vlog(
             logging.WARN, "The dtype of the source tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "

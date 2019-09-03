@@ -2901,6 +2901,8 @@ py_library(
         ":unconnected_gradients",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:backprop_util",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",

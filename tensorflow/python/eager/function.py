@@ -35,6 +35,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
@@ -586,7 +587,7 @@ class _DelayedRewriteGradientFunctions(object):
     """
     trainable_outputs = [
         output for output in self._func_graph.outputs[:num_doutputs]
-        if gradients_util.IsTrainable(output)]
+        if backprop_util.IsTrainable(output)]
 
     signature = []
     for t in trainable_outputs:
@@ -668,7 +669,7 @@ class _DelayedRewriteGradientFunctions(object):
     # expects numeric inputs.
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
-      if gradients_util.IsTrainable(placeholder):
+      if backprop_util.IsTrainable(placeholder):
         if doutput is not None:
           cleaned_doutputs.append(doutput)
         else:
@@ -749,7 +750,7 @@ class _TapeGradientFunctions(object):
     handles_to_variables = self._func_graph.variable_captures
     trainable_outputs = []
     for output in outputs:
-      if gradients_util.IsTrainable(output):
+      if backprop_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
         output = handles_to_variables.get(ops.tensor_id(output), output)
@@ -858,7 +859,7 @@ class _TapeGradientFunctions(object):
     for output_index, output in enumerate(outputs):
       if trainable_recorded_outputs < backward_function_inputs:
         recorded_outputs.append(output)
-      if gradients_util.IsTrainable(output):
+      if backprop_util.IsTrainable(output):
         trainable_recorded_outputs += 1
       else:
         skip_positions.append(output_index)
