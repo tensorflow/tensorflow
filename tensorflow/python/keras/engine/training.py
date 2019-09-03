@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -53,7 +52,7 @@ from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -64,7 +63,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
@@ -2864,17 +2862,6 @@ class Model(network.Network):
       metrics.extend(self.metrics)
     return metrics
 
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_model'
-
-  @property
-  def _tracking_metadata(self):
-    metadata = json.loads(super(Model, self)._tracking_metadata)
-    metadata.update(saving_utils.model_metadata(
-        self, include_optimizer=True, require_config=False))
-    return json.dumps(metadata, default=serialization.get_json_type)
-
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,
     # then the optimizer is set. This is different from whether the
@@ -2902,6 +2889,10 @@ class Model(network.Network):
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
     return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return model_serialization.ModelSavedModelSaver(self)
 
 
 class DistributedCallbackModel(Model):
