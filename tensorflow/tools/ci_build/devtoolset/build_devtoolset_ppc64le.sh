@@ -64,7 +64,7 @@ sed -i '54i#define TCP_USER_TIMEOUT 18' "${TARGET}/usr/include/netinet/tcp.h"
 wget "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gcc-4.8/libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el.deb" && \
     unar "libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el.deb" && \
     tar -C "${TARGET}" -xvf "libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el/data.tar.xz" "./usr/lib/powerpc64le-linux-gnu/libstdc++.so.6.0.19" && \
-    rm -rf "libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el.deb" "llibstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el"
+    rm -rf "libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el.deb" "libstdc++6_4.8.4-2ubuntu1~14.04.4_ppc64el"
 
 mkdir -p "${TARGET}-src"
 cd "${TARGET}-src"
@@ -136,3 +136,7 @@ cp "./powerpc64le-unknown-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44
 # directories.
 mkdir -p "${TARGET}/usr/include/powerpc64le-linux-gnu"
 ln -s "/usr/include/powerpc64le-linux-gnu/python3.5m" "${TARGET}/usr/include/powerpc64le-linux-gnu/python3.5m"
+
+# Clean up
+rm -rf "${TARGET}-build"
+rm -rf "${TARGET}-src"

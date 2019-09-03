@@ -5,9 +5,9 @@
 # glibc (2.17) and system libstdc++ (4.8).
 #
 # To push a new version, run:
-# $ docker build -f Dockerfile.rbe.cuda10.0-cudnn7-ubuntu16.04-manylinux2014.ppc64le
-#  --tag "ibmcom/tensorflow-ppc64le/devel-cuda10.0-cudnn7-ubuntu16.04-manylinux2014" .
-# $ docker push ibmcom/tensorflow-ppc64le/devel-cuda10.0-cudnn7-ubuntu16.04-manylinux2014
+# $ docker build -f Dockerfile.rbe.cuda10.0-cudnn7-ubuntu18.04-manylinux2014.ppc64le
+#  --tag "ibmcom/tensorflow-ppc64le/devel-cuda10.0-cudnn7-ubuntu18.04-manylinux2014" .
+# $ docker push ibmcom/tensorflow-ppc64le/devel-cuda10.0-cudnn7-ubuntu18.04-manylinux2014
 
 FROM nvidia/cuda-ppc64le:10.0-cudnn7-devel-ubuntu18.04
 
