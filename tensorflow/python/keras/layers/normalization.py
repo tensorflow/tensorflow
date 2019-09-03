@@ -950,19 +950,23 @@ class LayerNormalization(Layer):
     self.gamma_constraint = constraints.get(gamma_constraint)
 
     self.supports_masking = True
+
+    if fused is None: raise ValueError("Passing fused=None is not supported")
     self.fused = fused
 
   def _raise_if_fused_cannot_be_used(self, ndims):
     """Raises a ValueError if fused implementation cannot be used.
 
     Check if the axis is contiguous and can be collapsed into the last axis.
+    The self.axis is assumed to have no duplicates.
     """
     axis = sorted(self.axis)
     err = False
-    if axis[-1] - axis[0] != len(axis) - 1:
-      err = True
 
     if axis[-1] != ndims-1:
+      err = True
+
+    if axis[-1] - axis[0] != len(axis) - 1:
       err = True
 
     if err:
@@ -1051,15 +1055,16 @@ class LayerNormalization(Layer):
           variance_epsilon=self.epsilon)
     else:
       # Collapse dims before self.axis, and dims in self.axis
-      pre_dim, in_dim = (None, None)
+      pre_dim, in_dim = (1, 1)
       axis = sorted(self.axis)
       tensor_shape = array_ops.shape(inputs)
       for dim in range(0, ndims):
         dim_tensor = tensor_shape[dim]
         if dim < axis[0]:
-          pre_dim = dim_tensor if pre_dim is None else (pre_dim * dim_tensor)
-        elif dim in axis:
-          in_dim = dim_tensor if in_dim is None else (in_dim * dim_tensor)
+          pre_dim = pre_dim * dim_tensor
+        else:
+          assert dim in axis
+          in_dim = in_dim * dim_tensor
       
       squeezed_shape = [1, pre_dim, in_dim, 1]
       data_format = 'NCHW'

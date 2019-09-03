@@ -517,6 +517,10 @@ def _run_layernorm_correctness_test(layer, dtype='float32', fused=False):
   np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 def _run_fused_layernorm_correctness_test(layer, axis, dtype='float32'):
+  """Test that a fused layernorm can produce the same results with the non-
+  fused one. This is different from _run_layernorm_correctness_test(), which
+  tests the functionality of either fused or non-fused layer norm.
+  """
   model_ref = keras.models.Sequential()
   norm = layer(axis=axis, input_shape=(2, 2, 2), fused=False)
   model_ref.add(norm)
