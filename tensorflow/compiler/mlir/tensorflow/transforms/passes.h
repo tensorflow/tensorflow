@@ -69,6 +69,11 @@ std::unique_ptr<FunctionPassBase> CreateTPUClusterFormationPass();
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops
 std::unique_ptr<ModulePassBase> CreateTPURewritePass();
+
+// Populates the supplied passmanager with the passes required to run the
+// bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void createTPUBridge(PassManager& bridge);
+
 }  // namespace TFTPU
 
 }  // namespace mlir
