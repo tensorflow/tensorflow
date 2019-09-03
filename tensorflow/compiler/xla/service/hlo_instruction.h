@@ -921,7 +921,7 @@ class HloInstruction {
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
-    return ContainsKey(instruction->user_set_, this);
+    return ContainsKey(instruction->user_map_, this);
   }
 
   // Adds a control dependency from this instruction to the given
@@ -1853,11 +1853,12 @@ class HloInstruction {
   std::vector<HloInstruction*> control_predecessors_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
-  // operand. The vector users_ and the set user_set_ contain identical
-  // members. The set enables fast membership testing and the vector enables
-  // fast, stable iteration.
+  // operand. The vector users_ and the map user_map_ contain identical members.
+  // The map enables fast membership testing and the vector enables fast, stable
+  // iteration. The value in the map contains the index of the instruction in
+  // the vector what enables fast removal.
   std::vector<HloInstruction*> users_;
-  absl::flat_hash_set<const HloInstruction*> user_set_;
+  absl::flat_hash_map<const HloInstruction*, int64> user_map_;
 
   // The set of control successors of this instruction.
   std::vector<HloInstruction*> control_successors_;
