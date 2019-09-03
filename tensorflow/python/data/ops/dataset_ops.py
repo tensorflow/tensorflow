@@ -915,6 +915,39 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     its space in the buffer is replaced by the next (i.e. 1,001-st) element,
     maintaining the 1,000 element buffer.
 
+    `reshuffle_each_iteration` controls whether the shuffle order should be
+    different for each epoch. In TF 1.X, the idiomatic way to create epochs
+    was through the `repeat` transformation:
+
+    ```python
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=True)
+    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 2, 0 ]
+
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=False)
+    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 0, 2 ]
+    ```
+
+    In TF 2.0, tf.data.Dataset objects are Python iterables which makes it
+    possible to also create epochs through Python iteration:
+
+    ```python
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=True)
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    for elem in d:
+      # ==> [ 1, 2, 0 ]
+
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=False)
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    ```
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         elements from this dataset from which the new dataset will sample.
