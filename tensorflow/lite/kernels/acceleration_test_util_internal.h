@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+#include <atomic>
 
 #include "absl/types/optional.h"
 #include "re2/re2.h"
