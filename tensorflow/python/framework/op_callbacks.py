@@ -68,6 +68,16 @@ def op_callback(callback_fn):
     - The creation of an op during graph construction (e.g., in
       @tf.function-decorated Python functions).
 
+  Known limitations:
+    1. Under graph mode, overriding the output tensors of control-flow ops,
+       including "If", "StatelessIf" and "While", may cause errors
+       (b/139668453). Overriding other tensors in a graph consisting of such
+       control-flow ops is okay.
+    2. Under eager mode, calling eager ops from the callback function itself
+       may lead to recursion stack overflow. This can be prevented by
+       returning from the callback function immediately on encountering the
+       op type involved (b/140334369).
+
   Args:
     callback_fn: A callback_fn that has the following signature:
       def callback_fn(op_type,
