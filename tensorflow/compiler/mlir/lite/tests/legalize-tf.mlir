@@ -660,6 +660,15 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK:  return %0 : tensor<?xf32>
 }
 
+func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf32> {
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+
+  // CHECK-LABEL: pow
+  // CHECK:  %[[pow:.*]] = "tfl.pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  // CHECK:  return %[[pow]] : tensor<2x1x3xf32>
+}
+
 func @tile(tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32> {
 ^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>):
   %cst = constant dense<[1, 2]> : tensor<2xi32>

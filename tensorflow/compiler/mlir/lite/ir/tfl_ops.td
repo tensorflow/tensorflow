@@ -1589,6 +1589,8 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect]> {
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
 
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
