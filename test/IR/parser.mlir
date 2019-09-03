@@ -1079,3 +1079,6 @@ func @op_with_passthrough_region_args() {
 
 // CHECK-LABEL: func @ptr_to_function() -> !unreg.ptr<() -> ()>
 func @ptr_to_function() -> !unreg.ptr<() -> ()>
+
+// CHECK-LABEL: func @escaped_string_char(i1 {foo.value = "\0A"})
+func @escaped_string_char(i1 {foo.value = "\n"})
