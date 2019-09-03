@@ -501,12 +501,11 @@ class Optimizer(
     # pylint: disable=protected-access
     var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
     # pylint: enable=protected-access
-    processors = [_get_processor(v) for v in var_list]
     if not var_list:
       raise ValueError("No variables to optimize.")
-    var_refs = [p.target() for p in processors]
+   
     grads = gradients.gradients(
-        loss, var_refs, grad_ys=grad_loss,
+        loss, var_list, grad_ys=grad_loss,
         gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
