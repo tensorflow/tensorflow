@@ -5724,7 +5724,6 @@ cuda_py_tests(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
