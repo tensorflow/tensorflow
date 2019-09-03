@@ -2029,7 +2029,6 @@ cuda_py_test(
     grpc_enabled = True,
     shard_count = 2,
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
