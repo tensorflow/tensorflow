@@ -17,7 +17,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
-        "//tensorflow/lite/experimental/c:c_api",
+        "//tensorflow/lite/experimental/ios:TensorFlowLiteC",
     ],
 )
 
@@ -28,6 +28,7 @@ ios_unit_test(
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
         "nozapfhahn",  # Fails during coverage build, see b/139134323.
     ],
+    test_host = ":TestApp",
     deps = [
         ":TestsLibrary",
     ],
