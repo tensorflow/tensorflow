@@ -3681,31 +3681,6 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", [NoSideEffect]> {
-  let summary = [{
-Metadata indicating how the TPU computation should be replicated.
-  }];
-
-  let description = [{
-This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
-  }];
-
-  let arguments = (ins
-    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
-    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
-    StrAttr:$topology,
-    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
-    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
-    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
-  );
-
-  let results = (outs);
-}
-
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 
