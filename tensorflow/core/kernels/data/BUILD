@@ -23,17 +23,8 @@ cc_library(
 cc_library(
     name = "dataset_test_base",
     testonly = 1,
-    srcs = [
-        "dataset_test_base.cc",
-        "dataset_test_params.cc",
-    ],
-    hdrs = [
-        "batch_dataset_op_test.h",
-        "dataset_test_base.h",
-        "dataset_test_params.h",
-        "map_dataset_op_test.h",
-        "range_dataset_op_test.h",
-    ],
+    srcs = ["dataset_test_base.cc"],
+    hdrs = ["dataset_test_base.h"],
     deps = [
         ":batch_dataset_op",
         ":dataset_utils",

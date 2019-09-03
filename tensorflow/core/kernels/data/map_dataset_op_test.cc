@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/batch_dataset_op_test.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/map_dataset_op_test.h"
-#include "tensorflow/core/kernels/data/range_dataset_op_test.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,9 +25,8 @@ constexpr char kNodeName[] = "map_dataset";
 class MapDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 MapDatasetParams MapDatasetParams1() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 3);
   auto map_dataset_params_0 = MapDatasetParams(
-      std::move(range_dataset_params),
+      RangeDatasetParams(0, 10, 3),
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XTimesTwo", {{"T", DT_INT64}}),
@@ -41,7 +37,7 @@ MapDatasetParams MapDatasetParams1() {
       /*use_inter_op_parallelism=*/true,
       /*preserve_cardinality=*/true,
       /*node_name=*/"map_dataset_0");
-  auto map_dataset_params_1 = MapDatasetParams(
+  return MapDatasetParams(
       std::move(map_dataset_params_0),
       /*other_arguments=*/{},
       /*func=*/
@@ -53,20 +49,18 @@ MapDatasetParams MapDatasetParams1() {
       /*use_inter_op_parallelism=*/true,
       /*preserve_cardinality=*/true,
       /*node_name=*/"map_dataset_1");
-  return map_dataset_params_1;
 }
 
 MapDatasetParams MapDatasetParams2() {
-  auto range_dataset_params = RangeDatasetParams(10, 0, -3);
   auto batch_dataset_params =
-      BatchDatasetParams(std::move(range_dataset_params),
+      BatchDatasetParams(RangeDatasetParams(10, 0, -3),
                          /*batch_size=*/2,
                          /*drop_remainder=*/false,
                          /*parallel_copy=*/true,
                          /*output_dtypes=*/{DT_INT64},
                          /*output_shapes=*/{PartialTensorShape({2})},
                          /*node_name=*/"batch_dataset");
-  auto map_dataset_params = MapDatasetParams(
+  return MapDatasetParams(
       std::move(batch_dataset_params),
       /*other_arguments=*/{},
       /*func=*/
@@ -77,16 +71,14 @@ MapDatasetParams MapDatasetParams2() {
       /*output_shapes=*/{PartialTensorShape({1})},
       /*use_inter_op_parallelism=*/true,
       /*preserve_cardinality=*/false,
-      /*node_name=*/kNodeName);
-  return map_dataset_params;
+      /*node_name=*/"map_dataset");
 }
 
 // In this test case, the function `XTimesFour()` will call `XTimesTwo()`, so
 // both of them are added to the function library.
 MapDatasetParams MapDatasetParams3() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 3);
-  auto map_dataset_params = MapDatasetParams(
-      std::move(range_dataset_params),
+  return MapDatasetParams(
+      RangeDatasetParams(0, 10, 3),
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XTimesFour", {{"T", DT_INT64}}),
@@ -96,8 +88,7 @@ MapDatasetParams MapDatasetParams3() {
       /*output_shapes=*/{PartialTensorShape({})},
       /*use_inter_op_parallelism=*/false,
       /*preserve_cardinality=*/true,
-      /*node_name=*/kNodeName);
-  return map_dataset_params;
+      /*node_name=*/"map_dataset");
 }
 
 std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {

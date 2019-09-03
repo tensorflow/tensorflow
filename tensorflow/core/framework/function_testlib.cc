@@ -569,66 +569,62 @@ FunctionDef RandomUniformLess() {
 
 FunctionDef MakeRangeDataset() {
   return FDH::Define(
-      // Name
-      "MakeRangeDataset",
-      // Args
-      {"start: int64", "stop: int64", "step: int64"},
-      // Return values
-      {"y:variant"},
-      // Attr def
+      /*name=*/"MakeRangeDataset",
+      /*arg_def=*/{"start: int64", "stop: int64", "step: int64"},
+      /*ret_def=*/{"y:variant"},
+      /*attr_def=*/
       {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
-      // Nodes
-      {{{"y"},
-        "RangeDataset",
-        {"start", "stop", "step"},
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"RangeDataset",
+        /*arg=*/{"start", "stop", "step"},
+        /*attr=*/
         {{"output_types", "$output_types"},
          {"output_shapes", "$output_shapes"}}}});
 }
 
 FunctionDef MakeBatchDataset() {
   return FDH::Define(
-      // Name
-      "MakeBatchDataset",
-      // Args
+      /*name=*/"MakeBatchDataset",
+      /*arg_def=*/
       {"input_dataset: variant", "batch_size: int64", "drop_remainder: bool"},
-      // Return values
-      {"y:variant"},
-      // Attr def
+      /*ret_def=*/{"y: variant"},
+      /*attr_def=*/
       {"parallel_copy: bool = false", "output_types: list(type) >= 1",
        "output_shapes: list(shape) >= 1"},
-      // Nodes
-      {{{"y"},
-        "BatchDatasetV2",
-        {"input_dataset", "batch_size", "drop_remainder"},
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"BatchDatasetV2",
+        /*arg=*/{"input_dataset", "batch_size", "drop_remainder"},
+        /*attr=*/
         {{"parallel_copy", "$parallel_copy"},
          {"output_types", "$output_types"},
          {"output_shapes", "$output_shapes"}}}});
 }
 
 FunctionDef MakeMapDataset(bool has_other_args) {
-  auto args = has_other_args
-                  ? std::vector<string>{"input_dataset: variant",
-                                        "other_arguments: Targuments"}
-                  : std::vector<string>{"input_dataset: variant"};
-  auto input_placeholders =
-      has_other_args ? std::vector<string>{"input_dataset", "other_arguments"}
-                     : std::vector<string>{"input_dataset"};
+  std::vector<string> args = {"input_dataset: variant"};
+  std::vector<string> inputs = {"input_dataset"};
+  if (has_other_args) {
+    args.emplace_back("other_arguments: Targuments");
+    inputs.emplace_back("other_arguments");
+  }
+
   return FDH::Define(
-      // Name
-      "MakeMapDataset",
-      // Args
-      args,
-      // Return values
-      {"y:variant"},
-      // Attr def
+      /*name=*/"MakeMapDataset",
+      /*arg_def=*/args,
+      /*ret_def=*/
+      {"y: variant"},
+      /*attr_def=*/
       {"f: func", "Targuments: list(type) >= 0",
        "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
        "use_inter_op_parallelism: bool = true",
        "preserve_cardinality: bool = false"},
-      // Nodes
-      {{{"y"},
-        "MapDataset",
-        input_placeholders,
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"MapDataset",
+        /*arg=*/inputs,
+        /*attr=*/
         {{"f", "$f"},
          {"Targuments", "$Targuments"},
          {"output_types", "$output_types"},

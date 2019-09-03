@@ -11,9 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/batch_dataset_op_test.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/range_dataset_op_test.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,34 +24,31 @@ class BatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams1() {
-  auto range_dataset_params = RangeDatasetParams(0, 12, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 12, 1),
                             /*batch_size=*/4,
                             /*drop_remainder=*/false,
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams2() {
-  auto range_dataset_params = RangeDatasetParams(0, 12, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 12, 1),
                             /*batch_size=*/4,
                             /*drop_remainder=*/true,
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can not evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams3() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 10, 1),
                             /*batch_size=*/3,
                             /*drop_remainder=*/false,
                             /*parallel_copy=*/false,
@@ -65,21 +60,19 @@ BatchDatasetParams BatchDatasetParams3() {
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can not evenly split the input dataset.
 BatchDatasetParams BatchDatasetParams4() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 10, 1),
                             /*batch_size=*/3,
                             /*drop_remainder=*/true,
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({3})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
 // `batch_size` > the cardinality of the input dataset.
 BatchDatasetParams BatchDatasetParams5() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 10, 1),
                             /*batch_size=*/12,
                             /*drop_remainder=*/true,
                             /*parallel_copy=*/true,
@@ -91,39 +84,36 @@ BatchDatasetParams BatchDatasetParams5() {
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
 // `batch_size` > the cardinality of the input dataset.
 BatchDatasetParams BatchDatasetParams6() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 10, 1),
                             /*batch_size=*/12,
                             /*drop_remainder=*/false,
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({-1})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
 // the output of the input dataset is empty.
 BatchDatasetParams BatchDatasetParams7() {
-  auto range_dataset_params = RangeDatasetParams(0, 0, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 0, 1),
                             /*batch_size=*/4,
                             /*drop_remainder=*/false,
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 // Test Case 8: test BatchDatasetV2 with an invalid batch size
 BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
-  auto range_dataset_params = RangeDatasetParams(0, 10, 1);
-  return BatchDatasetParams(std::move(range_dataset_params),
+  return BatchDatasetParams(RangeDatasetParams(0, 10, 1),
                             /*batch_size=*/-1,
                             /*drop_remainder=*/false,
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({3})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset_v2");
 }
 
 std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {
