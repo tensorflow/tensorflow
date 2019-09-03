@@ -34,7 +34,7 @@ func @body(i32)
 
 // CHECK-LABEL: func @indirect_const_call(%arg0: !llvm.i32) {
 func @indirect_const_call(%arg0: i32) {
-// CHECK-NEXT: %0 = llvm.constant(@body) : !llvm<"void (i32)*">
+// CHECK-NEXT: %0 = llvm.mlir.constant(@body) : !llvm<"void (i32)*">
   %0 = constant @body : (i32) -> ()
 // CHECK-NEXT:  llvm.call %0(%arg0) : (!llvm.i32) -> ()
   call_indirect %0(%arg0) : (i32) -> ()

@@ -210,7 +210,7 @@ func @bar() {
 
 func @foo(%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}"> {
   // insert the vales into a structure
-  %0 = llvm.undef :  !llvm.type<"{i32, i64}">
+  %0 = llvm.mlir.undef :  !llvm.type<"{i32, i64}">
   %1 = llvm.insertvalue %arg0, %0[0] : !llvm.type<"{i32, i64}">
   %2 = llvm.insertvalue %arg1, %1[1] : !llvm.type<"{i32, i64}">
 
@@ -218,8 +218,8 @@ func @foo(%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i3
   llvm.return %2 : !llvm.type<"{i32, i64}">
 }
 func @bar() {
-  %0 = llvm.constant(42 : i32) : !llvm.type<"i32">
-  %1 = llvm.constant(17) : !llvm.type<"i64">
+  %0 = llvm.mlir.constant(42 : i32) : !llvm.type<"i32">
+  %1 = llvm.mlir.constant(17) : !llvm.type<"i64">
 
   // call and extract the values from the structure
   %2 = llvm.call @bar(%0, %1) : (%arg0: !llvm.type<"i32">, %arg1: !llvm.type<"i64">) -> !llvm.type<"{i32, i64}">
@@ -327,15 +327,15 @@ is transformed into the equivalent of the following code:
 %b = llvm.extractvalue %m[0] : !llvm.type<"{float*, i64, i64}">
 
 // obtain the components for the index
-%sub1 = llvm.constant(1) : !llvm.type<"i64">  // first subscript
+%sub1 = llvm.mlir.constant(1) : !llvm.type<"i64">  // first subscript
 %sz2 = llvm.extractvalue %m[1]
     : !llvm.type<"{float*, i64, i64}"> // second size (dynamic, second descriptor element)
-%sub2 = llvm.constant(2) : !llvm.type<"i64">  // second subscript
-%sz3 = llvm.constant(13) : !llvm.type<"i64">  // third size (static)
-%sub3 = llvm.constant(3) : !llvm.type<"i64">  // third subscript
+%sub2 = llvm.mlir.constant(2) : !llvm.type<"i64">  // second subscript
+%sz3 = llvm.mlir.constant(13) : !llvm.type<"i64">  // third size (static)
+%sub3 = llvm.mlir.constant(3) : !llvm.type<"i64">  // third subscript
 %sz4 = llvm.extractvalue %m[1]
     : !llvm.type<"{float*, i64, i64}"> // fourth size (dynamic, third descriptor element)
-%sub4 = llvm.constant(4) : !llvm.type<"i64">  // fourth subscript
+%sub4 = llvm.mlir.constant(4) : !llvm.type<"i64">  // fourth subscript
 
 // compute the linearized index
 // %sub4 + %sub3 * %sz4 + %sub2 * (%sz3 * %sz4) + %sub1 * (%sz2 * %sz3 * %sz4) =

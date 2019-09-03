@@ -119,16 +119,16 @@ Examples:
 
 ```mlir {.mlir}
 // Allocate an array of 4 floats on stack
-%c4 = llvm.constant(4) : !llvm.i64
+%c4 = llvm.mlir.constant(4) : !llvm.i64
 %0 = llvm.alloca %c4 x !llvm.float : (!llvm.i64) -> !llvm<"float*">
 
 // Get the second element of the array (note 0-based indexing).
-%c1 = llvm.constant(1) : !llvm.i64
+%c1 = llvm.mlir.constant(1) : !llvm.i64
 %1 = llvm.getelementptr %0[%c1] : (!llvm<"float*">, !llvm.i64)
                                    -> !llvm<"float*">
 
 // Store a constant into this element.
-%cf = llvm.constant(42.0 : f32) : !llvm.float
+%cf = llvm.mlir.constant(42.0 : f32) : !llvm.float
 llvm.store %cf, %1 : !llvm<"float*">
 
 // Load the value from this element.
@@ -250,39 +250,39 @@ Bitwise reinterpretation: `bitcast <value>`.
 
 Selection: `select <condition>, <lhs>, <rhs>`.
 
-### Pseudo-operations
+### Auxiliary MLIR operations
 
 These operations do not have LLVM IR counterparts but are necessary to map LLVM
-IR into MLIR.
+IR into MLIR. They should be prefixed with `llvm.mlir`.
 
-#### `llvm.addressof`
+#### `llvm.mlir.addressof`
 
 Creates an SSA value containing a pointer to a global variable or constant
-defined by `llvm.global`.  The global value can be defined after its first
-referenced.  If the global value is a constant, storing into it is not allowed.
+defined by `llvm.mlir.global`. The global value can be defined after its first
+referenced. If the global value is a constant, storing into it is not allowed.
 
 Examples:
 
 ```mlir {.mlir}
 func @foo() {
   // Get the address of a global.
-  %0 = llvm.addressof @const : !llvm<"i32*">
+  %0 = llvm.mlir.addressof @const : !llvm<"i32*">
 
   // Use it as a regular pointer.
   %1 = llvm.load %0 : !llvm<"i32*">
 }
 
 // Define the global.
-llvm.global @const(42 : i32) : !llvm.i32
+llvm.mlir.global @const(42 : i32) : !llvm.i32
 ```
 
-#### `llvm.constant`
+#### `llvm.mlir.constant`
 
 Unlike LLVM IR, MLIR does not have first-class constant values. Therefore, all
 constants must be created as SSA values before being used in other operations.
-`llvm.constant` creates such values for scalars and vectors. It has a mandatory
-`value` attribute, which may be an integer, floating point attribute; splat,
-dense or sparse attribute containing integers or floats. The type of the
+`llvm.mlir.constant` creates such values for scalars and vectors. It has a
+mandatory `value` attribute, which may be an integer, floating point attribute;
+splat, dense or sparse attribute containing integers or floats. The type of the
 attribute is one the corresponding MLIR standard types. It may be omitted for
 `i64` and `f64` types that are implied. The operation produces a new SSA value
 of the specified LLVM IR dialect type. The type of that value _must_ correspond
@@ -292,56 +292,57 @@ Examples:
 
 ```mlir {.mlir}
 // Integer constant, internal i32 is mandatory
-%0 = llvm.constant(42 : i32) : !llvm.i32
+%0 = llvm.mlir.constant(42 : i32) : !llvm.i32
 
 // It's okay to omit i64.
-%1 = llvm.constant(42) : !llvm.i64
+%1 = llvm.mlir.constant(42) : !llvm.i64
 
 // Floating point constant.
-%2 = llvm.constant(42.0 : f32) : !llvm.float
+%2 = llvm.mlir.constant(42.0 : f32) : !llvm.float
 
 // Splat vector constant,.
-%3 = llvm.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
+%3 = llvm.mlir.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
 ```
 
-#### `llvm.global`
+#### `llvm.mlir.global`
 
 Since MLIR allows for arbitrary operations to be present at the top level,
-global variables are defined using the `llvm.global` operation. Both global
+global variables are defined using the `llvm.mlir.global` operation. Both global
 constants and variables can be defined, and the value must be initialized in
-both cases. The initialization and type syntax is similar to `llvm.constant` and
-may use two types: one for MLIR attribute and another for the LLVM value. These
-types must be compatible. `llvm.global` must appear at top-level of the
-enclosing module. It uses an @-identifier for its value, which will be uniqued
-by the module with respect to other @-identifiers in it.
+both cases. The initialization and type syntax is similar to
+`llvm.mlir.constant` and may use two types: one for MLIR attribute and another
+for the LLVM value. These types must be compatible. `llvm.mlir.global` must
+appear at top-level of the enclosing module. It uses an @-identifier for its
+value, which will be uniqued by the module with respect to other @-identifiers
+in it.
 
 Examples:
 
 ```mlir {.mlir}
 // Global values use @-identifiers.
-llvm.global constant @cst(42 : i32) : !llvm.i32
+llvm.mlir.global constant @cst(42 : i32) : !llvm.i32
 
 // Non-constant values must also be initialized.
-llvm.global @variable(32.0 : f32) : !llvm.float
+llvm.mlir.global @variable(32.0 : f32) : !llvm.float
 
 // Strings are expected to be of wrapped LLVM i8 array type and do not
 // automatically include the trailing zero.
-llvm.global @string("abc") : !llvm<"[3 x i8]">
+llvm.mlir.global @string("abc") : !llvm<"[3 x i8]">
 
 // For strings globals, the trailing type may be omitted.
-llvm.global constant @no_trailing_type("foo bar")
+llvm.mlir.global constant @no_trailing_type("foo bar")
 ```
 
-#### `llvm.undef`
+#### `llvm.mlir.undef`
 
 Unlike LLVM IR, MLIR does not have first-class undefined values. Such values
-must be created as SSA values using `llvm.undef`. This operation has no operands
-or attributes. It creates an undefined value of the specified LLVM IR dialect
-type wrapping an LLVM IR structure type.
+must be created as SSA values using `llvm.mlir.undef`. This operation has no
+operands or attributes. It creates an undefined value of the specified LLVM IR
+dialect type wrapping an LLVM IR structure type.
 
 Example:
 
 ```mlir {.mlir}
 // Create a structure with a 32-bit integer followed by a float.
-%0 = llvm.undef : !llvm<"{i32, float}">
+%0 = llvm.mlir.undef : !llvm<"{i32, float}">
 ```

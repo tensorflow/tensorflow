@@ -52,12 +52,12 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 // CHECK-NEXT:  %17 = llvm.call @foo(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %18 = llvm.extractvalue %17[0] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %19 = llvm.insertvalue %18, %17[2] : !llvm<"{ i32, double, i32 }">
-// CHECK-NEXT:  %20 = llvm.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
+// CHECK-NEXT:  %20 = llvm.mlir.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
 // CHECK-NEXT:  %21 = llvm.call %20(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
   %17 = llvm.call @foo(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
   %18 = llvm.extractvalue %17[0] : !llvm<"{ i32, double, i32 }">
   %19 = llvm.insertvalue %18, %17[2] : !llvm<"{ i32, double, i32 }">
-  %20 = llvm.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
+  %20 = llvm.mlir.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
   %21 = llvm.call %20(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
 
 
@@ -71,10 +71,10 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
   llvm.cond_br %7, ^bb2, ^bb1
 
 ^bb2:
-// CHECK:       %22 = llvm.undef : !llvm<"{ i32, double, i32 }">
-// CHECK-NEXT:  %23 = llvm.constant(42 : i64) : !llvm.i47
-  %22 = llvm.undef : !llvm<"{ i32, double, i32 }">
-  %23 = llvm.constant(42) : !llvm.i47
+// CHECK:       %22 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
+// CHECK-NEXT:  %23 = llvm.mlir.constant(42 : i64) : !llvm.i47
+  %22 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
+  %23 = llvm.mlir.constant(42) : !llvm.i47
 
 // Misc operations.
 // CHECK:       %24 = llvm.select %7, %0, %1 : !llvm.i1, !llvm.i32
@@ -94,25 +94,25 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 // An larger self-contained function.
 // CHECK-LABEL:func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
 func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
-// CHECK-NEXT:  %0 = llvm.constant(3 : i64) : !llvm.i32
-// CHECK-NEXT:  %1 = llvm.constant(3 : i64) : !llvm.i32
-// CHECK-NEXT:  %2 = llvm.constant(4.200000e+01 : f64) : !llvm.double
-// CHECK-NEXT:  %3 = llvm.constant(4.200000e+01 : f64) : !llvm.double
+// CHECK-NEXT:  %0 = llvm.mlir.constant(3 : i64) : !llvm.i32
+// CHECK-NEXT:  %1 = llvm.mlir.constant(3 : i64) : !llvm.i32
+// CHECK-NEXT:  %2 = llvm.mlir.constant(4.200000e+01 : f64) : !llvm.double
+// CHECK-NEXT:  %3 = llvm.mlir.constant(4.200000e+01 : f64) : !llvm.double
 // CHECK-NEXT:  %4 = llvm.add %0, %1 : !llvm.i32
 // CHECK-NEXT:  %5 = llvm.mul %4, %1 : !llvm.i32
 // CHECK-NEXT:  %6 = llvm.fadd %2, %3 : !llvm.double
 // CHECK-NEXT:  %7 = llvm.fsub %3, %6 : !llvm.double
-// CHECK-NEXT:  %8 = llvm.constant(1 : i64) : !llvm.i1
+// CHECK-NEXT:  %8 = llvm.mlir.constant(1 : i64) : !llvm.i1
 // CHECK-NEXT:  llvm.cond_br %8, ^bb1(%4 : !llvm.i32), ^bb2(%4 : !llvm.i32)
-  %0 = llvm.constant(3) : !llvm.i32
-  %1 = llvm.constant(3) : !llvm.i32
-  %2 = llvm.constant(4.200000e+01) : !llvm.double
-  %3 = llvm.constant(4.200000e+01) : !llvm.double
+  %0 = llvm.mlir.constant(3) : !llvm.i32
+  %1 = llvm.mlir.constant(3) : !llvm.i32
+  %2 = llvm.mlir.constant(4.200000e+01) : !llvm.double
+  %3 = llvm.mlir.constant(4.200000e+01) : !llvm.double
   %4 = llvm.add %0, %1 : !llvm.i32
   %5 = llvm.mul %4, %1 : !llvm.i32
   %6 = llvm.fadd %2, %3 : !llvm.double
   %7 = llvm.fsub %3, %6 : !llvm.double
-  %8 = llvm.constant(1) : !llvm.i1
+  %8 = llvm.mlir.constant(1) : !llvm.i1
   llvm.cond_br %8, ^bb1(%4 : !llvm.i32), ^bb2(%4 : !llvm.i32)
 
 // CHECK-NEXT:^bb1(%9: !llvm.i32):
@@ -120,7 +120,7 @@ func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
 // CHECK-NEXT:  %11 = llvm.extractvalue %10[0] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %12 = llvm.extractvalue %10[1] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %13 = llvm.extractvalue %10[2] : !llvm<"{ i32, double, i32 }">
-// CHECK-NEXT:  %14 = llvm.undef : !llvm<"{ i32, double, i32 }">
+// CHECK-NEXT:  %14 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %15 = llvm.insertvalue %5, %14[0] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %16 = llvm.insertvalue %7, %15[1] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %17 = llvm.insertvalue %11, %16[2] : !llvm<"{ i32, double, i32 }">
@@ -130,20 +130,20 @@ func @foo(%arg0: !llvm.i32) -> !llvm<"{ i32, double, i32 }"> {
   %11 = llvm.extractvalue %10[0] : !llvm<"{ i32, double, i32 }">
   %12 = llvm.extractvalue %10[1] : !llvm<"{ i32, double, i32 }">
   %13 = llvm.extractvalue %10[2] : !llvm<"{ i32, double, i32 }">
-  %14 = llvm.undef : !llvm<"{ i32, double, i32 }">
+  %14 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
   %15 = llvm.insertvalue %5, %14[0] : !llvm<"{ i32, double, i32 }">
   %16 = llvm.insertvalue %7, %15[1] : !llvm<"{ i32, double, i32 }">
   %17 = llvm.insertvalue %11, %16[2] : !llvm<"{ i32, double, i32 }">
   llvm.return %17 : !llvm<"{ i32, double, i32 }">
 
 // CHECK-NEXT:^bb2(%18: !llvm.i32):	// pred: ^bb0
-// CHECK-NEXT:  %19 = llvm.undef : !llvm<"{ i32, double, i32 }">
+// CHECK-NEXT:  %19 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %20 = llvm.insertvalue %18, %19[0] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %21 = llvm.insertvalue %7, %20[1] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %22 = llvm.insertvalue %5, %21[2] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  llvm.return %22 : !llvm<"{ i32, double, i32 }">
 ^bb2(%18: !llvm.i32):	// pred: ^bb0
-  %19 = llvm.undef : !llvm<"{ i32, double, i32 }">
+  %19 = llvm.mlir.undef : !llvm<"{ i32, double, i32 }">
   %20 = llvm.insertvalue %18, %19[0] : !llvm<"{ i32, double, i32 }">
   %21 = llvm.insertvalue %7, %20[1] : !llvm<"{ i32, double, i32 }">
   %22 = llvm.insertvalue %5, %21[2] : !llvm<"{ i32, double, i32 }">

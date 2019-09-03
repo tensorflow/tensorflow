@@ -297,7 +297,8 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
-// Create named global variables that correspond to llvm.global definitions.
+// Create named global variables that correspond to llvm.mlir.global
+// definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
     llvm::Constant *cst;

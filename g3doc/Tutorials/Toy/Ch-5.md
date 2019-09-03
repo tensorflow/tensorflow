@@ -201,26 +201,26 @@ Note the mix of a loop nest in the `Affine` dialect, with an operation
   %90 = llvm.icmp "slt" %89, %88 : !llvm.i64
   llvm.cond_br %90, ^bb2, ^bb6
 ^bb2:   // pred: ^bb1
-  %91 = llvm.constant(0 : index) : !llvm.i64
-  %92 = llvm.constant(2 : index) : !llvm.i64
+  %91 = llvm.mlir.constant(0 : index) : !llvm.i64
+  %92 = llvm.mlir.constant(2 : index) : !llvm.i64
   llvm.br ^bb3(%91 : !llvm.i64)
 ^bb3(%93: !llvm.i64):   // 2 preds: ^bb2, ^bb4
   %94 = llvm.icmp "slt" %93, %92 : !llvm.i64
   llvm.cond_br %94, ^bb4, ^bb5
 ^bb4:   // pred: ^bb3
-  %95 = llvm.constant(2 : index) : !llvm.i64
-  %96 = llvm.constant(2 : index) : !llvm.i64
+  %95 = llvm.mlir.constant(2 : index) : !llvm.i64
+  %96 = llvm.mlir.constant(2 : index) : !llvm.i64
   %97 = llvm.mul %89, %96 : !llvm.i64
   %98 = llvm.add %97, %93 : !llvm.i64
   %99 = llvm.getelementptr %6[%98] : (!llvm<"double*">, !llvm.i64) -> !llvm<"double*">
   %100 = llvm.load %99 : !llvm<"double*">
   %101 = llvm.call @printf(%48, %100) : (!llvm<"i8*">, !llvm.double) -> !llvm.i32
-  %102 = llvm.constant(1 : index) : !llvm.i64
+  %102 = llvm.mlir.constant(1 : index) : !llvm.i64
   %103 = llvm.add %93, %102 : !llvm.i64
   llvm.br ^bb3(%103 : !llvm.i64)
 ^bb5:   // pred: ^bb3
   %104 = llvm.call @printf(%76, %71) : (!llvm<"i8*">, !llvm.double) -> !llvm.i32
-  %105 = llvm.constant(1 : index) : !llvm.i64
+  %105 = llvm.mlir.constant(1 : index) : !llvm.i64
   %106 = llvm.add %89, %105 : !llvm.i64
   llvm.br ^bb1(%106 : !llvm.i64)
 ```

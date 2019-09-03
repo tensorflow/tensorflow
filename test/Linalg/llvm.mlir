@@ -15,10 +15,10 @@ func @buffer_alloc_aligned(%arg0: index) {
   return
 }
 // CHECK-LABEL: func @buffer_alloc_aligned
-//       CHECK:    %[[c4:.*]] = llvm.constant(4 : index) : !llvm.i64
+//       CHECK:    %[[c4:.*]] = llvm.mlir.constant(4 : index) : !llvm.i64
 //       CHECK:    %[[m:.*]] = llvm.mul %arg0, %[[c4]] : !llvm.i64
-//       CHECK:    %[[c1:.*]] = llvm.constant(1 : index) : !llvm.i64
-//       CHECK:    %[[c16:.*]] = llvm.constant(16 : index) : !llvm.i64
+//       CHECK:    %[[c1:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+//       CHECK:    %[[c16:.*]] = llvm.mlir.constant(16 : index) : !llvm.i64
 //       CHECK:    %[[a:.*]] = llvm.add %[[m]], %[[c16]] : !llvm.i64
 //       CHECK:    %[[s:.*]] = llvm.sub %[[a]], %[[c1]] : !llvm.i64
 //       CHECK:    %[[alloc:.*]] = llvm.call @malloc(%[[s]]) : (!llvm.i64) -> !llvm<"i8*">
@@ -36,9 +36,9 @@ func @range(%arg0: index) {
   return
 }
 // CHECK-LABEL: func @range(%{{.*}}: !llvm.i64) {
-//       CHECK:   llvm.constant(0 : index) : !llvm.i64
-//  CHECK-NEXT:   llvm.constant(1 : index) : !llvm.i64
-//  CHECK-NEXT:   llvm.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   llvm.mlir.constant(0 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.undef : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
@@ -48,15 +48,15 @@ func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
   return
 }
 // CHECK-LABEL: func @view
-//  CHECK-NEXT:   llvm.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.constant(1 : index) : !llvm.i64
 //  CHECK-NEXT:   llvm.alloca {{.*}} x !llvm<"{ float*, i64, [1 x i64], [1 x i64] }"> {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
 //       CHECK:   llvm.load %{{.*}} : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ i8*, float*, i64 }">
 //  CHECK-NEXT:   llvm.bitcast {{.*}} : !llvm<"float*"> to !llvm<"float*">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
-//  CHECK-NEXT:   llvm.constant(0 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.constant(0 : index) : !llvm.i64
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
-//  CHECK-NEXT:   llvm.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.constant(1 : index) : !llvm.i64
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
@@ -72,7 +72,7 @@ func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.
   return
 }
 // CHECK-LABEL: func @view3d
-//  CHECK-NEXT:   llvm.constant(1 : index) : !llvm.i64
+//  CHECK-NEXT:   llvm.mlir.constant(1 : index) : !llvm.i64
 //  CHECK-NEXT:   llvm.alloca {{.*}} x !llvm<"{ float*, i64, [3 x i64], [3 x i64] }"> {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">
 //  CHECK-NEXT:   llvm.load {{.*}} : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">
 //       CHECK:   llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
@@ -146,8 +146,8 @@ func @subview(%arg0: !linalg.view<?x?xf32>) {
 //
 // Subview lowers to range + slice op
 //       CHECK:   llvm.alloca %{{.*}} x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }"> {alignment = 8 : i64} : (!llvm.i64) -> !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-//       CHECK:   llvm.undef : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   llvm.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   llvm.mlir.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   llvm.mlir.undef : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.load %{{.*}} : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 //
 // Select occurs in slice op lowering

@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s --launch-func-to-cuda | FileCheck %s
 
-// CHECK: llvm.global constant @[[kernel_name:.*]]("kernel\00")
+// CHECK: llvm.mlir.global constant @[[kernel_name:.*]]("kernel\00")
 
 func @cubin_getter() -> !llvm<"i8*">
 
