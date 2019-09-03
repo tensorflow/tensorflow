@@ -427,6 +427,29 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensor_slices(tensors):
     """Creates a `Dataset` whose elements are slices of the given tensors.
 
+    The given tensors are sliced along their first dimension. This operation
+    preserves the structure of the input tensors, removing the first dimension
+    of each tensor and using it as the dataset dimension. All input tensors
+    must have the same size in their first dimensions.
+
+    ```python
+    # Slicing a 1D tensor produces scalar tensor elements.
+    Dataset.from_tensor_slices([1, 2, 3])  # ==> [ 1, 2, 3 ]
+
+    # Slicing a 2D tensor produces 1D tensor elements.
+    Dataset.from_tensor_slices([[1, 2], [3, 4], [5, 6]])
+    # ==> [ [1, 2], [3, 4], [5, 6] ]
+
+    # Slicing a tuple of 1D tensors produces tuple elements containing scalar
+    tensors.
+    Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
+    # ==> [ (1, 3, 5), (2, 4, 6) ]
+
+    # Dictionary structure is also preserved.
+    Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+    # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
+    ```
+
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
@@ -437,7 +460,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Args:
       tensors: A dataset element, with each component having the same size in
-        the 0th dimension.
+        the first dimension.
 
     Returns:
       Dataset: A `Dataset`.
