@@ -112,7 +112,7 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   for name in tensor_names:
     tensor = tensor_name_to_tensor.get(name)
     if tensor is None:
-      invalid_tensors.append(name)
+      invalid_tensors.append(str(name))
     else:
       tensors.append(tensor)
 
