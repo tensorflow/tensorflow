@@ -1260,6 +1260,64 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.Select
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *state) {
+  OpAsmParser::OperandType condition;
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  SmallVector<Type, 2> types;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseOperand(condition) || parser->parseComma() ||
+      parser->parseOperandList(operands, 2) ||
+      parser->parseColonTypeList(types)) {
+    return failure();
+  }
+  if (types.size() != 2) {
+    return parser->emitError(
+        loc, "need exactly two trailing types for select condition and object");
+  }
+  if (parser->resolveOperand(condition, types[0], state->operands) ||
+      parser->resolveOperands(operands, types[1], state->operands)) {
+    return failure();
+  }
+  return parser->addTypesToList(types[1], state->types);
+}
+
+static void print(spirv::SelectOp op, OpAsmPrinter *printer) {
+  *printer << spirv::SelectOp::getOperationName() << " ";
+
+  // Print the operands.
+  printer->printOperands(op.getOperands());
+
+  // Print colon and types.
+  *printer << " : " << op.condition()->getType() << ", "
+           << op.result()->getType();
+}
+
+static LogicalResult verify(spirv::SelectOp op) {
+  auto resultTy = op.result()->getType();
+  if (op.true_value()->getType() != resultTy) {
+    return op.emitOpError("result type and true value type must be the same");
+  }
+  if (op.false_value()->getType() != resultTy) {
+    return op.emitOpError("result type and false value type must be the same");
+  }
+  if (auto conditionTy = op.condition()->getType().dyn_cast<VectorType>()) {
+    auto resultVectorTy = resultTy.dyn_cast<VectorType>();
+    if (!resultVectorTy) {
+      return op.emitOpError("result expected to be of vector type when "
+                            "condition is of vector type");
+    }
+    if (resultVectorTy.getNumElements() != conditionTy.getNumElements()) {
+      return op.emitOpError("result should have the same number of elements as "
+                            "the condition when condition is of vector type");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.specConstant
 //===----------------------------------------------------------------------===//
 

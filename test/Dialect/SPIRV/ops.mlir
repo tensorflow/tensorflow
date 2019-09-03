@@ -431,6 +431,110 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.SelectOp
+//===----------------------------------------------------------------------===//
+
+func @select_op_bool(%arg0: i1) -> () {
+  %0 = spv.constant true
+  %1 = spv.constant false
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : i1, i1
+  %2 = spv.Select %arg0, %0, %1 : i1, i1
+  return
+}
+
+func @select_op_int(%arg0: i1) -> () {
+  %0 = spv.constant 2 : i32
+  %1 = spv.constant 3 : i32
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : i1, i32
+  %2 = spv.Select %arg0, %0, %1 : i1, i32
+  return
+}
+
+func @select_op_float(%arg0: i1) -> () {
+  %0 = spv.constant 2.0 : f32
+  %1 = spv.constant 3.0 : f32
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : i1, f32
+  %2 = spv.Select %arg0, %0, %1 : i1, f32
+  return
+}
+
+func @select_op_ptr(%arg0: i1) -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  %1 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : i1, !spv.ptr<f32, Function>
+  %2 = spv.Select %arg0, %0, %1 : i1, !spv.ptr<f32, Function>
+  return
+}
+
+func @select_op_vec(%arg0: i1) -> () {
+  %0 = spv.constant dense<[2.0, 3.0, 4.0]> : vector<3xf32>
+  %1 = spv.constant dense<[5.0, 6.0, 7.0]> : vector<3xf32>
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : i1, vector<3xf32>
+  %2 = spv.Select %arg0, %0, %1 : i1, vector<3xf32>
+  return
+}
+
+func @select_op_vec_condn_vec(%arg0: vector<3xi1>) -> () {
+  %0 = spv.constant dense<[2.0, 3.0, 4.0]> : vector<3xf32>
+  %1 = spv.constant dense<[5.0, 6.0, 7.0]> : vector<3xf32>
+  // CHECK : spv.Select {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi1>, vector<3xf32>
+  %2 = spv.Select %arg0, %0, %1 : vector<3xi1>, vector<3xf32>
+  return
+}
+
+// -----
+
+func @select_op(%arg0: i1) -> () {
+  %0 = spv.constant 2 : i32
+  %1 = spv.constant 3 : i32
+  // expected-error @+1 {{need exactly two trailing types for select condition and object}}
+  %2 = spv.Select %arg0, %0, %1 : i1
+  return
+}
+
+// -----
+
+func @select_op(%arg1: vector<3xi1>) -> () {
+  %0 = spv.constant 2 : i32
+  %1 = spv.constant 3 : i32
+  // expected-error @+1 {{result expected to be of vector type when condition is of vector type}}
+  %2 = spv.Select %arg1, %0, %1 : vector<3xi1>, i32
+  return
+}
+
+// -----
+
+func @select_op(%arg1: vector<4xi1>) -> () {
+  %0 = spv.constant dense<[2, 3, 4]> : vector<3xi32>
+  %1 = spv.constant dense<[5, 6, 7]> : vector<3xi32>
+  // expected-error @+1 {{result should have the same number of elements as the condition when condition is of vector type}}
+  %2 = spv.Select %arg1, %0, %1 : vector<4xi1>, vector<3xi32>
+  return
+}
+
+// -----
+
+func @select_op(%arg1: vector<4xi1>) -> () {
+  %0 = spv.constant dense<[2.0, 3.0, 4.0]> : vector<3xf32>
+  %1 = spv.constant dense<[5, 6, 7]> : vector<3xi32>
+  // expected-error @+1 {{op result type and true value type must be the same}}
+  %2 = "spv.Select"(%arg1, %0, %1) : (vector<4xi1>, vector<3xf32>, vector<3xi32>) -> vector<3xi32>
+  return
+}
+
+// -----
+
+func @select_op(%arg1: vector<4xi1>) -> () {
+  %0 = spv.constant dense<[2.0, 3.0, 4.0]> : vector<3xf32>
+  %1 = spv.constant dense<[5, 6, 7]> : vector<3xi32>
+  // expected-error @+1 {{op result type and false value type must be the same}}
+  %2 = "spv.Select"(%arg1, %1, %0) : (vector<4xi1>, vector<3xi32>, vector<3xf32>) -> vector<3xi32>
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.StoreOp
 //===----------------------------------------------------------------------===//
 
