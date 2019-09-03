@@ -121,6 +121,7 @@ def SPV_OC_OpSRem                   : I32EnumAttrCase<"OpSRem", 138>;
 def SPV_OC_OpSMod                   : I32EnumAttrCase<"OpSMod", 139>;
 def SPV_OC_OpFRem                   : I32EnumAttrCase<"OpFRem", 140>;
 def SPV_OC_OpFMod                   : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpSelect                 : I32EnumAttrCase<"OpSelect", 169>;
 def SPV_OC_OpIEqual                 : I32EnumAttrCase<"OpIEqual", 170>;
 def SPV_OC_OpINotEqual              : I32EnumAttrCase<"OpINotEqual", 171>;
 def SPV_OC_OpUGreaterThan           : I32EnumAttrCase<"OpUGreaterThan", 172>;
@@ -164,7 +165,7 @@ def SPV_OpcodeAttr :
       SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
       SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
       SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
-      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpIEqual,
+      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect, SPV_OC_OpIEqual,
       SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
       SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
       SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
@@ -217,16 +218,13 @@ def SPV_Type : AnyTypeOf<[
     SPV_AnyPtr, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct
   ]>;
 
-class SPV_ScalarOrVectorOf<Type type> :
-    Type<Or<[type.predicate, VectorOf<[type]>.predicate]>,
-         "scalar/vector of " # type.description>;
+class SPV_ScalarOrVectorOf<Type type> : AnyTypeOf<[type, VectorOf<[type]>]>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
 
-def SPV_IsEntryPointType :
-    CPred<"$_self.isa<::mlir::spirv::EntryPointType>()">;
-def SPV_EntryPoint : Type<SPV_IsEntryPointType, "SPIR-V entry point type">;
+// TODO(ravishankarm): From 1.4, this should also include Composite type.
+def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions

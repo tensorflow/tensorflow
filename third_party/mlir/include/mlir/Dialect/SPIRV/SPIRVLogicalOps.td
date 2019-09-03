@@ -634,6 +634,63 @@ def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
 
 // -----
 
+def SPV_SelectOp : SPV_Op<"Select", []> {
+  let summary = [{
+    Select between two objects. Before version 1.4, results are only
+    computed per component.
+  }];
+
+  let description = [{
+    Before version 1.4, Result Type must be a pointer, scalar, or vector.
+
+     The types of Object 1 and Object 2 must be the same as Result Type.
+
+    Condition must be a scalar or vector of Boolean type.
+
+    If Condition is a scalar and true, the result is Object 1. If Condition
+    is a scalar and false, the result is Object 2.
+
+    If Condition is a vector, Result Type must be a vector with the same
+    number of components as Condition and the result is a mix of Object 1
+    and Object 2: When a component of Condition is true, the corresponding
+    component in the result is taken from Object 1, otherwise it is taken
+    from Object 2.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    scalar-type ::= integer-type | float-type | boolean-type
+    select-object-type ::= scalar-type
+                           | `vector<` integer-literal `x` scalar-type `>`
+                           | pointer-type
+    select-condition-type ::= boolean-type
+                              | `vector<` integer-literal `x` boolean-type `>`
+    select-op ::= ssa-id `=` `spv.Select` ssa-use, ssa-use, ssa-use
+                  `:` select-condition-type `,` select-object-type
+    ```
+
+    For example:
+
+    ```
+    %3 = spv.Select %0, %1, %2 : i1, f32
+    %3 = spv.Select %0, %1, %2 : i1, vector<3xi32>
+    %3 = spv.Select %0, %1, %2 : vector<3xi1>, vector<3xf32>
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<SPV_Bool>:$condition,
+    SPV_SelectType:$true_value,
+    SPV_SelectType:$false_value
+  );
+
+  let results = (outs
+    SPV_SelectType:$result
+  );
+}
+
+// -----
+
 def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
   let summary = [{
     Unsigned-integer comparison if Operand 1 is greater than  Operand 2.
