@@ -1072,7 +1072,7 @@ def cosine_proximity(y_true, y_pred, axis=-1):
   """Computes the cosine similarity between labels and predictions."""
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineSimilarity')
