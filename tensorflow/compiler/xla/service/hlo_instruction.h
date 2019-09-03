@@ -801,7 +801,7 @@ class HloInstruction {
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
       const ScatterDimensionNumbers& scatter_dim_numbers,
-      bool indices_are_sorted);
+      bool indices_are_sorted, bool unique_indices);
 
   // Creates a kDomain instruction which delimits an HLO domain which have
   // the provided user and operand side metadata.
@@ -1628,6 +1628,9 @@ class HloInstruction {
   virtual void set_window(const Window& window) {
     LOG(FATAL) << "Unimplemented method.";
   }
+
+  // Returns the unique_indices field.
+  virtual bool unique_indices() const { LOG(FATAL) << "Unimplemented method."; }
 
   // Returns data on the dimension numbers used for a convolution operation,
   // which may be a kConvolution instruction or a kCustomCall that implements a

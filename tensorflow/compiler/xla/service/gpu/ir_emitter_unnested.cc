@@ -965,8 +965,15 @@ Status IrEmitterUnnested::EmitScatter(
         updates->shape().element_type(), module_));
     TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value, updates_gen(index));
     Store(input_ir_value, input_address);
-    return EmitAtomicOperationForNestedComputation(
-        *scatter->to_apply(), output_address, input_address);
+
+    if (!scatter->unique_indices()) {
+      return EmitAtomicOperationForNestedComputation(
+          *scatter->to_apply(), output_address, input_address);
+    } else {
+      return EmitCallToNestedComputation(*scatter->to_apply(),
+                                         {output_address, input_address},
+                                         output_address);
+    }
   };
 
   // Launch a kernel that reads every element in the updates tensor. We could
