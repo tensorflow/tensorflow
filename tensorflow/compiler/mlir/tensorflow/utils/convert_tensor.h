@@ -45,6 +45,9 @@ StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
 void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
                                TensorShapeProto* output_shape);
 
+// Converts an MLIR type with static tensor shape to an TensorFlow tensor shape.
+PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
+
 // Converts an MLIR elements attribute to an TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,
                             TensorProto* output_tensor);

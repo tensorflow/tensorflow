@@ -386,6 +386,21 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "convert_tensor_test",
+    size = "small",
+    srcs = ["utils/convert_tensor_test.cc"],
+    deps = [
+        ":convert_tensor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@local_config_mlir//:IR",
+    ],
+)
+
 cc_library(
     name = "mangling_util",
     srcs = ["utils/mangling_util.cc"],
