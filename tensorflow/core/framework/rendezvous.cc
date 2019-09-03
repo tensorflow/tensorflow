@@ -266,6 +266,9 @@ class LocalRendezvousImpl : public Rendezvous {
       Item* item = new Item;
 
       if (cm != nullptr) {
+        // NOTE(mrry): We must wrap `done` with code that deregisters the
+        // cancellation callback before calling the `done` callback, because the
+        // cancellation manager may no longer be live after `done` is called.
         auto wrapped_done = std::bind(
             [cm, token](const DoneCallback& done,
                         // Begin unbound arguments.
