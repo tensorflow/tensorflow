@@ -1813,21 +1813,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
   return result;
 }
 
-void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
-                                          const float* vector2, int v_size,
-                                          int n_batch, float* result,
-                                          int result_stride) {
-  float* result_ptr = result;
-  const float* vector1_ptr = vector1;
-  const float* vector2_ptr = vector2;
-  for (int b = 0; b < n_batch; b++) {
-    *result_ptr = NeonVectorVectorDotProduct(vector1_ptr, vector2_ptr, v_size);
-    vector1_ptr += v_size;
-    vector2_ptr += v_size;
-    result_ptr += result_stride;
-  }
-}
-
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size) {
   const float* input_vector_ptr = input_vector;

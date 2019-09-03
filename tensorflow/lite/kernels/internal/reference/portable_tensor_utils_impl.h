@@ -76,12 +76,6 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);
 
-// Dot product of two batch vectors.
-void PortableBatchVectorBatchVectorDotProduct(const float* vector1,
-                                              const float* vector2, int v_size,
-                                              int n_batch, float* result,
-                                              int result_stride);
-
 // Cwise product of a vector and a batch-vector.
 void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                            const float* batch_vector,

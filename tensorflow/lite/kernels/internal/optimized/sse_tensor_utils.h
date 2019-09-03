@@ -182,14 +182,6 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return NEON_OR_PORTABLE(VectorVectorDotProduct, vector1, vector2, v_size);
 }
 
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride) {
-  NEON_OR_PORTABLE(BatchVectorBatchVectorDotProduct, vector1, vector2, v_size,
-                   n_batch, result, result_stride);
-}
-
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);

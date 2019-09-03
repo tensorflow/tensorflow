@@ -115,12 +115,6 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
                                  int v_size);
 
-// Dot product of two batch vectors.
-void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
-                                          const float* vector2, int v_size,
-                                          int n_batch, float* result,
-                                          int result_stride);
-
 // Cwise product of a vector and a batch-vector.
 void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                        const float* batch_vector, int n_batch,
