@@ -150,40 +150,31 @@ class Constant(Initializer):
     below the `value` list initialization.
 
   ```python
-    >>> import numpy as np
-    >>> import tensorflow as tf
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> # value = np.array(value)
+  >>> # value = value.reshape([2, 4])
+  >>> init = tf.compat.v1.constant_initializer(value)
+  >>>
+  >>> # Fitting shape
+  >>> with tf.compat.v1.Session():
+  ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
+  ...   x.initializer.run()
+  ...   print(x.eval())
+  [[0. 1. 2. 3.]
+   [4. 5. 6. 7.]]
+  >>> # Larger shape
+  >>> with tf.compat.v1.Session():
+  ...   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
+  ...   x.initializer.run()
+  ...   print(x.eval())
+  [[ 0.  1.  2.  3.]
+   [ 4.  5.  6.  7.]
+   [ 7.  7.  7.  7.]]
+  >>> # Smaller shape
+  >>> with tf.compat.v1.Session():
+  ...   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
+  ValueError: Too many elements provided. Needed at most 6, but received 8
 
-    >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-    >>> # value = np.array(value)
-    >>> # value = value.reshape([2, 4])
-    >>> init = tf.compat.v1.constant_initializer(value)
-
-    >>> print('fitting shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    fitting shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]]
-
-    >>> print('larger shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    larger shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]
-     [ 7.  7.  7.  7.]]
-
-    >>> print('smaller shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
-
-    ValueError: Too many elements provided. Needed at most 6, but received 8
   ```
   """
 
