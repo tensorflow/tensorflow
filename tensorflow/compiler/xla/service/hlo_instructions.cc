@@ -1706,7 +1706,7 @@ bool HloRngInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return false;
+  return true;
 }
 
 std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(

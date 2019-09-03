@@ -131,7 +131,7 @@ public:
     initializeCachedTypes();
 
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk<mlir::gpu::LaunchFuncOp>(
+      func.walk(
           [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
     }
   }

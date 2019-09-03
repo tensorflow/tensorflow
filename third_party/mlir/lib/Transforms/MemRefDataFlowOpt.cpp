@@ -226,8 +226,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  f.walk<AffineLoadOp>(
-      [&](AffineLoadOp loadOp) { forwardStoreToLoad(loadOp); });
+  f.walk([&](AffineLoadOp loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

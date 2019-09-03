@@ -41,6 +41,7 @@ namespace tensorflow {
 
 namespace {
 
+<<<<<<< HEAD
 __global__ void SetOutbufZero(GpuLaunchConfig config, int* outbuf) {
   GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count) { outbuf[x] = 0; }
 }
@@ -48,14 +49,31 @@ __global__ void SetOutbufZero(GpuLaunchConfig config, int* outbuf) {
 // counting number of jobs by using atomic +1
 __global__ void Count1D(GpuLaunchConfig config, int bufsize, int* outbuf) {
   GPU_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
+=======
+__global__ void SetOutbufZero(GpuLaunchConfig config,
+                              int* __restrict__ outbuf) {
+  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) { outbuf[x] = 0; }
+}
+
+// counting number of jobs by using atomic +1
+__global__ void Count1D(GpuLaunchConfig config, int bufsize,
+                        int* __restrict__ outbuf) {
+  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
+>>>>>>> google_upstream/master
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
     atomicAdd(&outbuf[x % bufsize], 1);
   }
 }
+<<<<<<< HEAD
 __global__ void Count2D(Gpu2DLaunchConfig config, int bufsize, int* outbuf) {
   GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
+=======
+__global__ void Count2D(Gpu2DLaunchConfig config, int bufsize,
+                        int* __restrict__ outbuf) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
+>>>>>>> google_upstream/master
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
@@ -68,8 +86,14 @@ __global__ void Count2D(Gpu2DLaunchConfig config, int bufsize, int* outbuf) {
     }
   }
 }
+<<<<<<< HEAD
 __global__ void Count3D(Gpu3DLaunchConfig config, int bufsize, int* outbuf) {
   GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
+=======
+__global__ void Count3D(Gpu3DLaunchConfig config, int bufsize,
+                        int* __restrict__ outbuf) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
+>>>>>>> google_upstream/master
     if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
@@ -90,8 +114,14 @@ __global__ void Count3D(Gpu3DLaunchConfig config, int bufsize, int* outbuf) {
   }
 }
 
+<<<<<<< HEAD
 __global__ void CudaShuffleGetSrcLaneTest(unsigned* failure_count) {
   unsigned lane_id = GpuLaneId();
+=======
+__global__ void CudaShuffleGetSrcLaneTest(
+    unsigned* __restrict__ failure_count) {
+  unsigned lane_id = CudaLaneId();
+>>>>>>> google_upstream/master
   for (int width = warpSize; width > 1; width /= 2) {
     auto check_result = [&](const char* op_name, int param, unsigned actual,
                             unsigned expected) {

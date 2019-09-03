@@ -273,8 +273,8 @@ class _StateManagerImpl(StateManager):
     """
     self._trainable = trainable
     self._layer = layer
-    if self._layer is not None:
-      self._layer._maybe_create_attribute('_resources', [])  # pylint: disable=protected-access
+    if self._layer is not None and not hasattr(self._layer, '_resources'):
+      self._layer._resources = []  # pylint: disable=protected-access
     self._cols_to_vars_map = collections.defaultdict(lambda: {})
     # TODO(vbardiovsky): Make sure the resources are tracked by moving them to
     # the layer (inheriting from AutoTrackable), e.g.:

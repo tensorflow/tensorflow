@@ -102,17 +102,21 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output);
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int16_t* output);
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output);
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int8_t* output);
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
@@ -121,6 +125,9 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
+
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output);
 
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
@@ -133,6 +140,10 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output);
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+              int32_t multiplier, int32_t shift, int32_t n_batch,
+              int32_t n_input, int32_t output_zp, int8_t* output);
 
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
@@ -211,6 +222,10 @@ void ApplyActivationToVector(const float* vector, int v_size,
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
+
+// Compute "1.0f - elements of vector" (used in CIFG) for int16 input.
+// "vector" has range [0, 32767] because it is the output of sigmoid function.
+void Sub1Vector(const int16_t* vector, int v_size, int16_t* result);
 
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,

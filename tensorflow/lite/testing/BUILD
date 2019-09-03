@@ -2,6 +2,7 @@ load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
     "generated_test_models_all",
+    "merged_test_models",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -64,7 +65,7 @@ package(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -344,7 +345,6 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
-        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",

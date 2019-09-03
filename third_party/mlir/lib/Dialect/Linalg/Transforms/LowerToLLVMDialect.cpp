@@ -877,7 +877,7 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 // affine will look different than lowering to LLVM and it is still unclear how
 // everything will be eventually structured.
 static void lowerLinalgSubViewOps(FuncOp &f) {
-  f.walk<SubViewOp>([&](SubViewOp op) {
+  f.walk([&](SubViewOp op) {
     OpBuilder b(op);
     ScopedContext scope(b, op.getLoc());
     auto *view = op.getView();

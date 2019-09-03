@@ -49,7 +49,7 @@ TEST_F(OpenCLOperationTest, ReLUNoClipNoAlpha) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      ReLU operation = CreateReLU(op_def, attr);
+      ReLU operation = CreateReLU(creation_context_, op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -76,7 +76,7 @@ TEST_F(OpenCLOperationTest, ReLUClip) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      ReLU operation = CreateReLU(op_def, attr);
+      ReLU operation = CreateReLU(creation_context_, op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -103,7 +103,7 @@ TEST_F(OpenCLOperationTest, ReLUAlpha) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      ReLU operation = CreateReLU(op_def, attr);
+      ReLU operation = CreateReLU(creation_context_, op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -130,7 +130,7 @@ TEST_F(OpenCLOperationTest, ReLUAlphaClip) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      ReLU operation = CreateReLU(op_def, attr);
+      ReLU operation = CreateReLU(creation_context_, op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

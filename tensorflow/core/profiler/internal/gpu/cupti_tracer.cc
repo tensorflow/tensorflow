@@ -713,10 +713,10 @@ Status CuptiTracer::Finalize() {
   return Status::OK();
 }
 
-uint64 CuptiTracer::GetTimestamp() {
+/*static*/ uint64 CuptiTracer::GetTimestamp() {
   uint64_t tsc;
-  if (cupti_interface_ &&
-      cupti_interface_->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
+  CuptiInterface *cupti_interface = GetCuptiInterface();
+  if (cupti_interface && cupti_interface->GetTimestamp(&tsc) == CUPTI_SUCCESS) {
     return tsc;
   }
   // Return 0 on error. If an activity timestamp is 0, the activity will be

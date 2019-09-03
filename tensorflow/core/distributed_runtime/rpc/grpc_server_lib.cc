@@ -163,7 +163,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(
       DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
-  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
+  worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr

@@ -1048,14 +1048,14 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
 
     // Use the front FileLineColLoc to generate a NameLoc.
     mlir::Location node_name_loc =
-        mlir::NameLoc::get(name_id, locations.front(), context_);
+        mlir::NameLoc::get(name_id, locations.front());
 
     // If there are more locations then generate a stack trace, otherwise just
     // return the name loc.
     auto callsite_locs = llvm::makeArrayRef(locations).drop_front();
     return callsite_locs.empty()
                ? node_name_loc
-               : mlir::CallSiteLoc::get(node_name_loc, callsite_locs, context_);
+               : mlir::CallSiteLoc::get(node_name_loc, callsite_locs);
   };
 
   // For NextIteration nodes, location is used to pair source and sink nodes.

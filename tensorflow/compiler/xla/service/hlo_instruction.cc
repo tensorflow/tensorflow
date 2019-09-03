@@ -674,6 +674,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->set_sharding(sharding);
   }
 
+  if (proto.has_frontend_attributes()) {
+    instruction->set_frontend_attributes(proto.frontend_attributes());
+  }
+
   return std::move(instruction);
 }
 
@@ -1194,6 +1198,7 @@ HloInstruction::CreateBroadcastSequence(
     if (operand->has_sharding()) {
       broadcast->set_sharding(operand->sharding());
     }
+    broadcast->set_frontend_attributes(operand->frontend_attributes());
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -1219,6 +1224,7 @@ HloInstruction::CreateBroadcastSequence(
   if (operand->has_sharding()) {
     reshaped_operand->set_sharding(operand->sharding());
   }
+  reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
   // Broadcast 'reshape' up to the larger size.
   auto broadcast = HloInstruction::CreateBroadcast(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
@@ -1226,6 +1232,7 @@ HloInstruction::CreateBroadcastSequence(
   if (operand->has_sharding()) {
     broadcast->set_sharding(operand->sharding());
   }
+  broadcast->set_frontend_attributes(operand->frontend_attributes());
   return broadcast;
 }
 
@@ -1296,6 +1303,7 @@ void HloInstruction::SetupDerivedInstruction(
     derived_instruction->clear_sharding();
   }
   derived_instruction->set_metadata(metadata_);
+  derived_instruction->set_frontend_attributes(frontend_attributes_);
 }
 
 bool HloInstruction::HasSideEffectNoRecurse() const {
@@ -1595,7 +1603,7 @@ HloInstruction::~HloInstruction() {
     if (operand == nullptr) {
       continue;
     }
-    if (operand->user_set_.find(this) != operand->user_set_.end()) {
+    if (operand->user_map_.find(this) != operand->user_map_.end()) {
       operand->RemoveUser(this);
     }
     operands_[operand_num] = nullptr;
@@ -1778,8 +1786,8 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
 }
 
 void HloInstruction::AddUser(HloInstruction* user) {
-  if (!ContainsKey(user_set_, user)) {
-    user_set_.insert(user);
+  if (!ContainsKey(user_map_, user)) {
+    user_map_.emplace(user, users_.size());
     users_.push_back(user);
   }
 }
@@ -1957,14 +1965,20 @@ uint64 HloInstruction::Hash() const {
 uint64 HloInstruction::InnerHash() const { return 13; }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
-  auto set_it = user_set_.find(user);
-  CHECK(set_it != user_set_.end());
-  user_set_.erase(set_it);
-  // This is linear in the number of the users, but a vector provides a stable
-  // iteration order and much faster traversal.
-  auto vec_it = absl::c_find(users_, user);
-  CHECK(vec_it != users_.end());
-  users_.erase(vec_it);
+  auto map_it = user_map_.find(user);
+  CHECK(map_it != user_map_.end());
+
+  const int64 index = map_it->second;
+  CHECK_EQ(users_[index], user);
+
+  // Move the last user into the position of the removed user.
+  users_[index] = users_.back();
+  user_map_[users_.back()] = index;
+
+  // Remove the user from the map and drop the last slot from the vector what
+  // have been moved to the position of the original user.
+  user_map_.erase(map_it);
+  users_.pop_back();
 }
 
 Status HloInstruction::ReplaceUseWith(HloInstruction* user,
@@ -2055,7 +2069,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     }
   }
   users_.clear();
-  user_set_.clear();
+  user_map_.clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
@@ -2483,6 +2497,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
+  if (!frontend_attributes_.map().empty()) {
+    extra.push_back(StrCat("frontend_attributes=",
+                           FrontendAttributesToString(frontend_attributes_)));
+  }
   if (!outer_dimension_partitions_.empty()) {
     extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
                                     StrJoin(outer_dimension_partitions_, ",")));
@@ -2542,6 +2560,8 @@ HloInstructionProto HloInstruction::ToProto() const {
       proto.mutable_outer_dimension_partitions()->Add(idx);
     }
   }
+
+  *proto.mutable_frontend_attributes() = frontend_attributes_;
 
   return proto;
 }
@@ -3195,6 +3215,15 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     return HloInstruction::FusionKind::kCustom;
   }
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
+}
+
+string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes) {
+  std::vector<std::pair<string, string>> sorted_attributes(
+      frontend_attributes.map().begin(), frontend_attributes.map().end());
+  absl::c_sort(sorted_attributes);
+  return absl::StrFormat(
+      "{%s}", absl::StrJoin(sorted_attributes, ",", absl::PairFormatter("=")));
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {

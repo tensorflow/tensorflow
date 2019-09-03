@@ -35,6 +35,8 @@ namespace NVVM {
 class NVVMDialect : public Dialect {
 public:
   explicit NVVMDialect(MLIRContext *context);
+
+  static StringRef getDialectNamespace() { return "nvvm"; }
 };
 
 } // namespace NVVM

@@ -1240,7 +1240,7 @@ void Vectorize::runOnFunction() {
   NestedPatternContext mlContext;
 
   llvm::DenseSet<Operation *> parallelLoops;
-  f.walk<AffineForOp>([&parallelLoops](AffineForOp loop) {
+  f.walk([&parallelLoops](AffineForOp loop) {
     if (isLoopParallel(loop))
       parallelLoops.insert(loop);
   });

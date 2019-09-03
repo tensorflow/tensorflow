@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 # Intended only for use within this directory.

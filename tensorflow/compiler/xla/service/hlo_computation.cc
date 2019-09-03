@@ -837,6 +837,10 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
+  if (new_instruction->frontend_attributes().map().empty()) {
+    new_instruction->set_frontend_attributes(
+        old_instruction->frontend_attributes());
+  }
 
   // Like the metadata above, if the user didn't specify any sharding
   // information on the new instruction we should copy the old sharding

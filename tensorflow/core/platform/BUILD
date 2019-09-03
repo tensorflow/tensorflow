@@ -259,6 +259,20 @@ cc_library(
 )
 
 cc_library(
+    name = "strcat",
+    srcs = ["strcat.cc"],
+    hdrs = ["strcat.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":numbers",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/meta:type_traits",
+    ],
+)
+
+cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     deps = [
@@ -336,6 +350,7 @@ filegroup(
             "platform_strings.cc",
             "protobuf.cc",
             "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
         ],
     ),
@@ -434,6 +449,7 @@ filegroup(
             "platform_strings.cc",
             "protobuf.cc",
             "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
         ],

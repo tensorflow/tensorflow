@@ -578,11 +578,9 @@ We strongly recommend trying this approach first.
 
 ### Use your local machine
 
-You can use the following commands to train the model on your own machine.
-
-It may be easiest to run these commands in a
-[TensorFlow Docker container](https://www.tensorflow.org/install/docker). A full
-build may take a couple of hours.
+You can use the following commands to train the model on your own machine. It
+may be easiest to run these commands in a
+[TensorFlow Docker container](https://www.tensorflow.org/install/docker).
 
 You must currently use the TensorFlow Nightly `pip` package. This version is
 confirmed to work:
@@ -596,15 +594,13 @@ To begin training, run the following:
 ```
 python tensorflow/tensorflow/examples/speech_commands/train.py \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=micro \
---wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 \
---quantize=1 --verbosity=WARN --how_many_training_steps="15000,3000" \
+--wanted_words="on,off" --silence_percentage=25 --unknown_percentage=25 \
+--quantize=1 --verbosity=INFO --how_many_training_steps="15000,3000" \
 --learning_rate="0.001,0.0001" --summaries_dir=/tmp/retrain_logs \
 --data_dir=/tmp/speech_dataset --train_dir=/tmp/speech_commands_train
 ```
 
-If you see a compiling error on older machines, try leaving out the `--copt`
-arguments, they are just there to accelerate training on chips that support the
-extensions. The training process is likely to take a couple of hours. Once it
+The training process is likely to take a couple of hours. Once it
 has completed, the next step is to freeze the variables:
 
 ```
@@ -619,7 +615,7 @@ The next step is to create a TensorFlow Lite file from the frozen graph:
 ```
 toco \
 --graph_def_file=/tmp/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
---input_shapes=1,1960 --input_arrays=Reshape_1 --output_arrays='labels_softmax' \
+--input_shapes=1,49,40,1 --input_arrays=Reshape_2 --output_arrays='labels_softmax' \
 --inference_type=QUANTIZED_UINT8 --mean_values=0 --std_dev_values=9.8077
 ```
 

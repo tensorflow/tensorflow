@@ -84,6 +84,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_X86_H_
 
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include "profiling/instrumentation.h"
@@ -99,7 +100,7 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(X86)
 // Note that source and zero buffers can be uint8 type, but in the packing
 // function are reinterpreted as int8, and are XOR-ed with input_xor.
 void Pack8bitAvx2(const std::int8_t* src_ptr, std::int8_t input_xor,
@@ -180,9 +181,7 @@ struct PackImpl<Path::kAvx2, FixedKernelLayout<Order::kRowMajor, 1, 8>, float,
     }
   }
 };
-#endif  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 // Note that source and zero buffers can be uint8 type, but in the packing
 // function are reinterpreted as int8, and are XOR-ed with input_xor.
 void Pack8bitAvx512(const std::int8_t* src_ptr, std::int8_t input_xor,
@@ -266,7 +265,7 @@ struct PackImpl<Path::kAvx512, FixedKernelLayout<Order::kRowMajor, 1, 16>,
     }
   }
 };
-#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(X86)
 
 }  // namespace ruy
 

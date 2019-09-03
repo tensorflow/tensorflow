@@ -489,8 +489,8 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
                           bool promoteViews) {
-  OperationFolder folder;
-  f.walk<LinalgOp>([promoteViews, tileSizes, &folder](LinalgOp op) {
+  OperationFolder folder(f.getContext());
+  f.walk([promoteViews, tileSizes, &folder](LinalgOp op) {
     // TODO(ntv) some heuristic here to decide what to promote. Atm it is all or
     // nothing.
     SmallVector<bool, 8> viewsToPromote(op.getNumInputsAndOutputs(),
@@ -500,7 +500,7 @@ static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
     if (opLoopsPair)
       op.erase();
   });
-  f.walk<LinalgOp>([](LinalgOp op) {
+  f.walk([](LinalgOp op) {
     if (!op.getOperation()->hasNoSideEffect())
       return;
     if (op.getOperation()->use_empty())

@@ -132,7 +132,7 @@ Status ZlibInputStream::ReadFromStream() {
     bytes_to_read -= z_stream_def_->stream->avail_in;
     read_location += z_stream_def_->stream->avail_in;
   }
-  string data;
+  tstring data;
   // Try to read enough data to fill up z_stream_def_->input.
   // TODO(rohanj): Add a char* version of ReadNBytes to InputStreamInterface
   // and use that instead to make this more efficient.
@@ -166,7 +166,7 @@ Status ZlibInputStream::ReadFromStream() {
 }
 
 size_t ZlibInputStream::ReadBytesFromCache(size_t bytes_to_read,
-                                           string* result) {
+                                           tstring* result) {
   size_t unread_bytes =
       reinterpret_cast<char*>(z_stream_def_->stream->next_out) -
       next_unread_byte_;
@@ -186,7 +186,7 @@ size_t ZlibInputStream::NumUnreadBytes() const {
          read_bytes;
 }
 
-Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
+Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   result->clear();
   // Read as many bytes as possible from cache.
   bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);

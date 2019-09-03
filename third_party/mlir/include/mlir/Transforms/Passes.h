@@ -30,8 +30,11 @@
 namespace mlir {
 
 class AffineForOp;
-class FunctionPassBase;
-class ModulePassBase;
+class FuncOp;
+class ModuleOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 /// Creates a constant folding pass. Note that this pass solely provides simple
 /// top-down constant folding functionality; it is intended to be used for

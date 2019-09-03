@@ -191,6 +191,12 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
@@ -209,12 +215,6 @@ Status MetaOptimizer::InitializeOptimizers(
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
-  }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {

@@ -1060,7 +1060,7 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
   VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
             PARAM(convolution_descriptor), PARAM(input_descriptor),
-            PARAM(backward_input_data));
+            PARAM(backward_input_data), PARAM(algorithm_config));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {

@@ -50,8 +50,19 @@ def _ArgMinGrad(op, grad):
   return [None, None]
 
 
-# TODO(rmlarsen): Implement gradient.
-ops.NotDifferentiable("EuclideanNorm")
+@ops.RegisterGradient("EuclideanNorm")
+def _EuclideanNormGrad(op, grad):
+  """Gradient for EuclideanNorm."""
+
+  output = op.outputs[0]
+
+  if not op.get_attr("keep_dims"):
+    output_shape_kept_dims = math_ops.reduced_shape(
+        array_ops.shape(op.inputs[0]), op.inputs[1])
+    output = array_ops.reshape(output, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+
+  return math_ops.truediv(op.inputs[0], output / grad), None
 
 
 def SmartBroadcastGradientArgs(x, y, grad):

@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -28,7 +29,7 @@ using namespace mlir;
 
 namespace {
 struct LegalizeTF : public FunctionPass<LegalizeTF> {
-  /// Perform the lowering to XLA dialect.
+  /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
@@ -137,14 +138,19 @@ namespace {
 }  // end namespace xla
 }  // end namespace mlir
 
-/// Perform the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
-
+void mlir::xla_hlo::legalizeTF(Operation *op) {
   // Add the generated patterns to the list.
-  xla::populateWithGenerated(func.getContext(), &patterns);
-  applyPatternsGreedily(func, patterns);
+  OwningRewritePatternList patterns;
+  xla::populateWithGenerated(op->getContext(), &patterns);
+
+  // Recursively applies rewrite patterns to nested operations.
+  applyPatternsGreedily(op, patterns);
+}
+
+/// Performs the lowering to XLA dialect.
+void LegalizeTF::runOnFunction() {
+  auto func = getFunction();
+  mlir::xla_hlo::legalizeTF(func);
 }
 
 static PassRegistration<LegalizeTF> pass(

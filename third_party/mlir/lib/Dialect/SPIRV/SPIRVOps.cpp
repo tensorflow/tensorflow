@@ -33,6 +33,7 @@ using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
+static constexpr const char kBranchWeightAttrName[] = "branch_weights";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
@@ -316,7 +317,7 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
 
 static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
                               Location baseLoc) {
-  if (!indices.size()) {
+  if (indices.empty()) {
     emitError(baseLoc, "'spv.AccessChain' op expected at least "
                        "one index ");
     return nullptr;
@@ -370,6 +371,13 @@ static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
     resultType = cType.getElementType(index);
   }
   return spirv::PointerType::get(resultType, resultStorageClass);
+}
+
+void spirv::AccessChainOp::build(Builder *builder, OperationState *state,
+                                 Value *basePtr, ArrayRef<Value *> indices) {
+  auto type = getElementPtrType(basePtr->getType(), indices, state->location);
+  assert(type && "Unable to deduce return type based on basePtr and indices");
+  build(builder, state, type, basePtr, indices);
 }
 
 static ParseResult parseAccessChainOp(OpAsmParser *parser,
@@ -476,6 +484,119 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
     return addressOfOp.emitOpError(
         "result type mismatch with the referenced global variable's type");
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BranchOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *state) {
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+  if (parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+  return success();
+}
+
+static void print(spirv::BranchOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchOp::getOperationName() << ' ';
+  printer->printSuccessorAndUseList(branchOp.getOperation(), /*index=*/0);
+}
+
+static LogicalResult verify(spirv::BranchOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 1)
+    branchOp.emitOpError("must have exactly one successor");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BranchConditionalOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchConditionalOp(OpAsmParser *parser,
+                                            OperationState *state) {
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType condInfo;
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+
+  // Parse the condition.
+  Type boolTy = builder.getI1Type();
+  if (parser->parseOperand(condInfo) ||
+      parser->resolveOperand(condInfo, boolTy, state->operands))
+    return failure();
+
+  // Parse the optional branch weights.
+  if (succeeded(parser->parseOptionalLSquare())) {
+    IntegerAttr trueWeight, falseWeight;
+    SmallVector<NamedAttribute, 2> weights;
+
+    auto i32Type = builder.getIntegerType(32);
+    if (parser->parseAttribute(trueWeight, i32Type, "weight", weights) ||
+        parser->parseComma() ||
+        parser->parseAttribute(falseWeight, i32Type, "weight", weights) ||
+        parser->parseRSquare())
+      return failure();
+
+    state->addAttribute(kBranchWeightAttrName,
+                        builder.getArrayAttr({trueWeight, falseWeight}));
+  }
+
+  // Parse the true branch.
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  // Parse the false branch.
+  destOperands.clear();
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  return success();
+}
+
+static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchConditionalOp::getOperationName() << ' ';
+  printer->printOperand(branchOp.condition());
+
+  if (auto weights = branchOp.branch_weights()) {
+    *printer << " [";
+    mlir::interleaveComma(
+        weights->getValue(), printer->getStream(),
+        [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+    *printer << "]";
+  }
+
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kTrueIndex);
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kFalseIndex);
+}
+
+static LogicalResult verify(spirv::BranchConditionalOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 2)
+    return branchOp.emitOpError("must have exactly two successors");
+
+  if (auto weights = branchOp.branch_weights()) {
+    if (weights->getValue().size() != 2) {
+      return branchOp.emitOpError("must have exactly two branch weights");
+    }
+    if (llvm::all_of(*weights, [](Attribute attr) {
+          return attr.cast<IntegerAttr>().getValue().isNullValue();
+        }))
+      return branchOp.emitOpError("branch weights cannot both be zero");
+  }
+
   return success();
 }
 
@@ -1086,6 +1207,7 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
   }
   return success();
 }
+
 //===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
@@ -1134,6 +1256,64 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
            << operandType << ") mismatch with function's result type ("
            << fnResultType << ")";
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.Select
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *state) {
+  OpAsmParser::OperandType condition;
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  SmallVector<Type, 2> types;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseOperand(condition) || parser->parseComma() ||
+      parser->parseOperandList(operands, 2) ||
+      parser->parseColonTypeList(types)) {
+    return failure();
+  }
+  if (types.size() != 2) {
+    return parser->emitError(
+        loc, "need exactly two trailing types for select condition and object");
+  }
+  if (parser->resolveOperand(condition, types[0], state->operands) ||
+      parser->resolveOperands(operands, types[1], state->operands)) {
+    return failure();
+  }
+  return parser->addTypesToList(types[1], state->types);
+}
+
+static void print(spirv::SelectOp op, OpAsmPrinter *printer) {
+  *printer << spirv::SelectOp::getOperationName() << " ";
+
+  // Print the operands.
+  printer->printOperands(op.getOperands());
+
+  // Print colon and types.
+  *printer << " : " << op.condition()->getType() << ", "
+           << op.result()->getType();
+}
+
+static LogicalResult verify(spirv::SelectOp op) {
+  auto resultTy = op.result()->getType();
+  if (op.true_value()->getType() != resultTy) {
+    return op.emitOpError("result type and true value type must be the same");
+  }
+  if (op.false_value()->getType() != resultTy) {
+    return op.emitOpError("result type and false value type must be the same");
+  }
+  if (auto conditionTy = op.condition()->getType().dyn_cast<VectorType>()) {
+    auto resultVectorTy = resultTy.dyn_cast<VectorType>();
+    if (!resultVectorTy) {
+      return op.emitOpError("result expected to be of vector type when "
+                            "condition is of vector type");
+    }
+    if (resultVectorTy.getNumElements() != conditionTy.getNumElements()) {
+      return op.emitOpError("result should have the same number of elements as "
+                            "the condition when condition is of vector type");
+    }
+  }
   return success();
 }
 

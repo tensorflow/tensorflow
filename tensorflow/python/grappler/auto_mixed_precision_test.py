@@ -613,6 +613,7 @@ class AutoMixedPrecisionTest(test.TestCase):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_noninlined_funcdef(self):
     """Test graph with non-inlined function subgraph.
 
@@ -635,6 +636,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_ingraph_train_loop(self):
     """Tests a graph containing a while loop around a training update.
 

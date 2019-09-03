@@ -188,8 +188,8 @@ class DirectSessionFactory : public SessionFactory {
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
-    DirectSession* session =
-        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
+    DirectSession* session = new DirectSession(
+        options, new StaticDeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);

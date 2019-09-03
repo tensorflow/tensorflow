@@ -68,14 +68,6 @@ Status SetAttribute(absl::string_view name, ContainerT types,
 // definitions and isn't a header file.
 #include "tensorflow/compiler/mlir/tensorflow/translate/derived_attr_populator.inc"
 
-StatusOr<string> getTensorFlowOpName(llvm::StringRef op_name) {
-  if (!op_name.consume_front("tf.")) {
-    return errors::FailedPrecondition("op name not prefixed with 'tf.': " +
-                                      op_name.str());
-  }
-  return op_name.str();
-}
-
 // Collect all the unregistered attributes for an TF dialect operation.
 // Attributes "name" and "device" are not included because they are not part
 // of an TF op attributes.
@@ -83,7 +75,7 @@ Status GetUnregisteredAttrs(
     mlir::Operation* inst,
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   TF_ASSIGN_OR_RETURN(auto op_name,
-                      getTensorFlowOpName(inst->getName().getStringRef()));
+                      GetTensorFlowOpName(inst->getName().getStringRef()));
 
   const tensorflow::OpRegistrationData* op_reg_data;
   auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
@@ -121,9 +113,8 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     TF_RETURN_IF_ERROR(GetUnregisteredAttrs(inst, &attrs_to_ignore));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto node_def,
-      GetOperationNodeDef(attrs_to_ignore, inst, name, getTensorFlowOpName));
+  TF_ASSIGN_OR_RETURN(auto node_def,
+                      GetOperationNodeDef(attrs_to_ignore, inst, name));
 
   // Use auto generated function to populate derived attribute.
   //

@@ -248,7 +248,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
       const Tensor* gradients_t, const Tensor* hessians_t,
       tensorflow::TTypes<int32>::Vec* output_partition_ids,
       tensorflow::TTypes<float>::Vec* gains,
-      tensorflow::TTypes<string>::Vec* output_splits) {
+      tensorflow::TTypes<tstring>::Vec* output_splits) {
     for (int root_idx = 0; root_idx < num_elements; ++root_idx) {
       float best_gain = std::numeric_limits<float>::lowest();
       int start_index = partition_boundaries[root_idx];
@@ -293,7 +293,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
 
       state->FillLeaf(best_left_node_stats, left_child);
       state->FillLeaf(best_right_node_stats, right_child);
-      split_info.SerializeToString(&(*output_splits)(root_idx));
+      SerializeToTString(split_info, &(*output_splits)(root_idx));
       (*gains)(root_idx) =
           best_gain - root_stats.gain - state->tree_complexity_regularization();
       (*output_partition_ids)(root_idx) = partition_ids(start_index);
@@ -308,7 +308,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
       const Tensor* gradients_t, const Tensor* hessians_t,
       tensorflow::TTypes<int32>::Vec* output_partition_ids,
       tensorflow::TTypes<float>::Vec* gains,
-      tensorflow::TTypes<string>::Vec* output_splits) {
+      tensorflow::TTypes<tstring>::Vec* output_splits) {
     // Holds the root stats per each node to be split.
     std::vector<GradientStats> current_layer_stats;
     current_layer_stats.reserve(num_elements);
@@ -411,7 +411,7 @@ class BuildDenseInequalitySplitsOp : public OpKernel {
       (*output_partition_ids)(root_idx) = partition_ids(start_index);
       oblivious_split_info.add_children_parent_id(partition_ids(start_index));
     }
-    oblivious_split_info.SerializeToString(&(*output_splits)(0));
+    SerializeToTString(oblivious_split_info, &(*output_splits)(0));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("BuildDenseInequalitySplits").Device(DEVICE_CPU),
@@ -674,7 +674,7 @@ class BuildSparseInequalitySplitsOp : public OpKernel {
       auto* right_child = split_info.mutable_right_child();
       state.FillLeaf(best_left_node_stats, left_child);
       state.FillLeaf(best_right_node_stats, right_child);
-      split_info.SerializeToString(&output_splits(root_idx));
+      SerializeToTString(split_info, &output_splits(root_idx));
       gains(root_idx) =
           best_gain - root_stats.gain - state.tree_complexity_regularization();
       output_partition_ids(root_idx) = partition_ids(bias_start_index);
@@ -818,7 +818,7 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       const Tensor* gradients_t, const Tensor* hessians_t,
       tensorflow::TTypes<int32>::Vec* output_partition_ids,
       tensorflow::TTypes<float>::Vec* gains,
-      tensorflow::TTypes<string>::Vec* output_splits) {
+      tensorflow::TTypes<tstring>::Vec* output_splits) {
     for (int root_idx = 0; root_idx < num_elements; ++root_idx) {
       float best_gain = std::numeric_limits<float>::lowest();
       int start_index = partition_boundaries[non_empty_partitions[root_idx]];
@@ -873,7 +873,7 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       auto* right_child = split_info.mutable_right_child();
       state->FillLeaf(best_left_node_stats, left_child);
       state->FillLeaf(best_right_node_stats, right_child);
-      split_info.SerializeToString(&(*output_splits)(root_idx));
+      SerializeToTString(split_info, &(*output_splits)(root_idx));
       (*gains)(root_idx) =
           best_gain - root_stats.gain - state->tree_complexity_regularization();
       (*output_partition_ids)(root_idx) = partition_ids(start_index);
@@ -891,7 +891,7 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       const Tensor* gradients_t, const Tensor* hessians_t,
       tensorflow::TTypes<int32>::Vec* output_partition_ids,
       tensorflow::TTypes<float>::Vec* gains,
-      tensorflow::TTypes<string>::Vec* output_splits) {
+      tensorflow::TTypes<tstring>::Vec* output_splits) {
     // Holds the root stats per each node to be split.
     std::vector<GradientStats> current_layer_stats;
     current_layer_stats.reserve(num_elements);
@@ -992,7 +992,7 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       (*output_partition_ids)(root_idx) = partition_ids(start_index);
       oblivious_split_info.add_children_parent_id(partition_ids(start_index));
     }
-    oblivious_split_info.SerializeToString(&(*output_splits)(0));
+    SerializeToTString(oblivious_split_info, &(*output_splits)(0));
   }
 };
 

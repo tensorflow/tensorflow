@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+>>>>>>> google_upstream/master
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -40,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
+<<<<<<< HEAD
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #endif
 
@@ -52,6 +56,9 @@ limitations under the License.
 #define cudaSetDevice hipSetDevice
 #define cudaSuccess hipSuccess
 #endif
+=======
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+>>>>>>> google_upstream/master
 
 namespace xla {
 namespace gpu {
@@ -76,6 +83,7 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return true;
 #else
@@ -84,6 +92,11 @@ namespace gpu {
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+  return true;  // Skylark selects this source file if NCCL is enabled.
+}
+
+>>>>>>> google_upstream/master
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -741,6 +754,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 NcclAllReduceThunk::~NcclAllReduceThunk() {}
 
+<<<<<<< HEAD
 #else
 
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -771,5 +785,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+=======
+>>>>>>> google_upstream/master
 }  // namespace gpu
 }  // namespace xla

@@ -18,22 +18,40 @@
 #ifndef MLIR_PASS_PASS_H
 #define MLIR_PASS_PASS_H
 
+#include "mlir/IR/Function.h"
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
+namespace detail {
+/// The state for a single execution of a pass. This provides a unified
+/// interface for accessing and initializing necessary state for pass execution.
+struct PassExecutionState {
+  PassExecutionState(Operation *ir, AnalysisManager analysisManager)
+      : irAndPassFailed(ir, false), analysisManager(analysisManager) {}
+
+  /// The current operation being transformed and a bool for if the pass
+  /// signaled a failure.
+  llvm::PointerIntPair<Operation *, 1, bool> irAndPassFailed;
+
+  /// The analysis manager for the operation.
+  AnalysisManager analysisManager;
+
+  /// The set of preserved analyses for the current execution.
+  detail::PreservedAnalyses preservedAnalyses;
+};
+} // namespace detail
+
 /// The abstract base pass class. This class contains information describing the
 /// derived pass object, e.g its kind and abstract PassInfo.
 class Pass {
 public:
-  enum class Kind { FunctionPass, ModulePass };
-
   virtual ~Pass() = default;
 
   /// Returns the unique identifier that corresponds to this pass.
-  const PassID *getPassID() const { return passIDAndKind.getPointer(); }
+  const PassID *getPassID() const { return passID; }
 
   /// Returns the pass info for the specified pass class or null if unknown.
   static const PassInfo *lookupPassInfo(const PassID *passID);
@@ -44,141 +62,64 @@ public:
   /// Returns the pass info for this pass.
   const PassInfo *lookupPassInfo() const { return lookupPassInfo(getPassID()); }
 
-  /// Return the kind of this pass.
-  Kind getKind() const { return passIDAndKind.getInt(); }
-
   /// Returns the derived pass name.
   virtual StringRef getName() = 0;
 
+  /// Returns the name of the operation that this pass operates on, or None if
+  /// this is a generic OperationPass.
+  llvm::Optional<StringRef> getOpName() const { return opName; }
+
 protected:
-  Pass(const PassID *passID, Kind kind) : passIDAndKind(passID, kind) {}
+  explicit Pass(const PassID *passID,
+                llvm::Optional<StringRef> opName = llvm::None)
+      : passID(passID), opName(opName) {}
+
+  /// Returns the current pass state.
+  detail::PassExecutionState &getPassState() {
+    assert(passState && "pass state was never initialized");
+    return *passState;
+  }
+
+  /// Return the MLIR context for the current function being transformed.
+  MLIRContext &getContext() { return *getOperation()->getContext(); }
+
+  /// The polymorphic API that runs the pass over the currently held operation.
+  virtual void runOnOperation() = 0;
+
+  /// A clone method to create a copy of this pass.
+  virtual std::unique_ptr<Pass> clone() const = 0;
+
+  /// Return the current operation being transformed.
+  Operation *getOperation() {
+    return getPassState().irAndPassFailed.getPointer();
+  }
+
+  /// Returns the current analysis manager.
+  AnalysisManager getAnalysisManager() {
+    return getPassState().analysisManager;
+  }
 
 private:
+  /// Forwarding function to execute this pass on the given operation.
+  LLVM_NODISCARD
+  LogicalResult run(Operation *op, AnalysisManager am);
+
   /// Out of line virtual method to ensure vtables and metadata are emitted to a
   /// single .o file.
   virtual void anchor();
 
-  /// Represents a unique identifier for the pass and its kind.
-  llvm::PointerIntPair<const PassID *, 1, Kind> passIDAndKind;
-};
+  /// Represents a unique identifier for the pass.
+  const PassID *passID;
 
-namespace detail {
-class FunctionPassExecutor;
-class ModulePassExecutor;
-
-/// The state for a single execution of a pass. This provides a unified
-/// interface for accessing and initializing necessary state for pass execution.
-template <typename IRUnitT, typename AnalysisManagerT>
-struct PassExecutionState {
-  PassExecutionState(IRUnitT ir, AnalysisManagerT &analysisManager)
-      : irAndPassFailed(ir, false), analysisManager(analysisManager) {}
-
-  /// The current IR unit being transformed and a bool for if the pass signaled
-  /// a failure.
-  llvm::PointerIntPair<IRUnitT, 1, bool> irAndPassFailed;
-
-  /// The analysis manager for the IR unit.
-  AnalysisManagerT &analysisManager;
-
-  /// The set of preserved analyses for the current execution.
-  detail::PreservedAnalyses preservedAnalyses;
-};
-} // namespace detail
-
-/// Pass to transform a specific function within a module. Derived passes should
-/// not inherit from this class directly, and instead should use the CRTP
-/// FunctionPass class.
-class FunctionPassBase : public Pass {
-  using PassStateT =
-      detail::PassExecutionState<FuncOp, FunctionAnalysisManager>;
-
-public:
-  static bool classof(const Pass *pass) {
-    return pass->getKind() == Kind::FunctionPass;
-  }
-
-protected:
-  explicit FunctionPassBase(const PassID *id) : Pass(id, Kind::FunctionPass) {}
-
-  /// The polymorphic API that runs the pass over the currently held function.
-  virtual void runOnFunction() = 0;
-
-  /// A clone method to create a copy of this pass.
-  virtual std::unique_ptr<FunctionPassBase> clone() const = 0;
-
-  /// Return the current function being transformed.
-  FuncOp getFunction() { return getPassState().irAndPassFailed.getPointer(); }
-
-  /// Return the MLIR context for the current function being transformed.
-  MLIRContext &getContext() { return *getFunction().getContext(); }
-
-  /// Returns the current pass state.
-  PassStateT &getPassState() {
-    assert(passState && "pass state was never initialized");
-    return *passState;
-  }
-
-  /// Returns the current analysis manager.
-  FunctionAnalysisManager &getAnalysisManager() {
-    return getPassState().analysisManager;
-  }
-
-private:
-  /// Forwarding function to execute this pass.
-  LLVM_NODISCARD
-  LogicalResult run(FuncOp fn, FunctionAnalysisManager &fam);
+  /// The name of the operation that this pass operates on, or None if this is a
+  /// generic OperationPass.
+  llvm::Optional<StringRef> opName;
 
   /// The current execution state for the pass.
-  llvm::Optional<PassStateT> passState;
+  llvm::Optional<detail::PassExecutionState> passState;
 
-  /// Allow access to 'run'.
-  friend detail::FunctionPassExecutor;
-};
-
-/// Pass to transform a module. Derived passes should not inherit from this
-/// class directly, and instead should use the CRTP ModulePass class.
-class ModulePassBase : public Pass {
-  using PassStateT =
-      detail::PassExecutionState<ModuleOp, ModuleAnalysisManager>;
-
-public:
-  static bool classof(const Pass *pass) {
-    return pass->getKind() == Kind::ModulePass;
-  }
-
-protected:
-  explicit ModulePassBase(const PassID *id) : Pass(id, Kind::ModulePass) {}
-
-  /// The polymorphic API that runs the pass over the currently held module.
-  virtual void runOnModule() = 0;
-
-  /// Return the current module being transformed.
-  ModuleOp getModule() { return getPassState().irAndPassFailed.getPointer(); }
-
-  /// Return the MLIR context for the current module being transformed.
-  MLIRContext &getContext() { return *getModule().getContext(); }
-
-  /// Returns the current pass state.
-  PassStateT &getPassState() {
-    assert(passState && "pass state was never initialized");
-    return *passState;
-  }
-
-  /// Returns the current analysis manager.
-  ModuleAnalysisManager &getAnalysisManager() {
-    return getPassState().analysisManager;
-  }
-
-private:
-  /// Forwarding function to execute this pass.
-  LLVM_NODISCARD
-  LogicalResult run(ModuleOp module, ModuleAnalysisManager &mam);
-
-  /// The current execution state for the pass.
-  llvm::Optional<PassStateT> passState;
-
-  /// Allow access to 'run'.
-  friend detail::ModulePassExecutor;
+  /// Allow access to 'clone' and 'run'.
+  friend class OpPassManager;
 };
 
 //===----------------------------------------------------------------------===//
@@ -187,7 +128,7 @@ private:
 namespace detail {
 /// The opaque CRTP model of a pass. This class provides utilities for derived
 /// pass execution and handles all of the necessary polymorphic API.
-template <typename IRUnitT, typename PassT, typename BasePassT>
+template <typename PassT, typename BasePassT>
 class PassModel : public BasePassT {
 public:
   /// Support isa/dyn_cast functionality for the derived pass class.
@@ -196,7 +137,8 @@ public:
   }
 
 protected:
-  PassModel() : BasePassT(PassID::getID<PassT>()) {}
+  explicit PassModel(llvm::Optional<StringRef> opName = llvm::None)
+      : BasePassT(PassID::getID<PassT>(), opName) {}
 
   /// Signal that some invariant was broken when running. The IR is allowed to
   /// be in an invalid state.
@@ -236,8 +178,87 @@ protected:
       name.consume_front("(anonymous namespace)::");
     return name;
   }
+
+  /// A clone method to create a copy of this pass.
+  std::unique_ptr<Pass> clone() const override {
+    return std::make_unique<PassT>(*static_cast<const PassT *>(this));
+  }
+
+  /// Returns the analysis for the parent operation if it exists.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  getCachedParentAnalysis(Operation *parent) {
+    return this->getAnalysisManager()
+        .template getCachedParentAnalysis<AnalysisT>(parent);
+  }
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedParentAnalysis() {
+    return this->getAnalysisManager()
+        .template getCachedParentAnalysis<AnalysisT>(
+            this->getOperation()->getParentOp());
+  }
+
+  /// Returns the analysis for the given child operation if it exists.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  getCachedChildAnalysis(Operation *child) {
+    return this->getAnalysisManager()
+        .template getCachedChildAnalysis<AnalysisT>(child);
+  }
+
+  /// Returns the analysis for the given child operation, or creates it if it
+  /// doesn't exist.
+  template <typename AnalysisT> AnalysisT &getChildAnalysis(Operation *child) {
+    return this->getAnalysisManager().template getChildAnalysis<AnalysisT>(
+        child);
+  }
 };
 } // end namespace detail
+
+/// Utility base class for OpPass below to denote an opaque pass operating on a
+/// specific operation type.
+template <typename OpT> class OpPassBase : public Pass {
+public:
+  using Pass::Pass;
+
+  /// Support isa/dyn_cast functionality.
+  static bool classof(const Pass *pass) {
+    return pass->getOpName() == OpT::getOperationName();
+  }
+};
+
+/// Pass to transform an operation.
+///
+/// Operation passes must not:
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
+///   - modify any state within the parent operation, this includes adding
+///     additional operations.
+///
+/// Derived function passes are expected to provide the following:
+///   - A 'void runOnOperation()' method.
+template <typename T>
+struct OperationPass : public detail::PassModel<T, Pass> {};
+
+/// Pass to transform an operation of a specific type.
+///
+/// Operation passes must not:
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
+///   - modify any state within the parent operation, this includes adding
+///     additional operations.
+///
+/// Derived function passes are expected to provide the following:
+///   - A 'void runOnOperation()' method.
+template <typename OpT, typename PassT>
+class OpPass : public detail::PassModel<PassT, OpPassBase<OpT>> {
+protected:
+  OpPass()
+      : detail::PassModel<PassT, OpPassBase<OpT>>(OpT::getOperationName()) {}
+
+  /// Return the current operation being transformed.
+  OpT getOperation() { return cast<OpT>(Pass::getOperation()); }
+};
 
 /// A model for providing function pass specific utilities.
 ///
@@ -249,41 +270,39 @@ protected:
 ///
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnFunction()' method.
-template <typename T>
-struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
-  /// Returns the analysis for the parent module if it exists.
-  template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedModuleAnalysis() {
-    return this->getAnalysisManager()
-        .template getCachedModuleAnalysis<AnalysisT>();
+template <typename T> struct FunctionPass : public OpPass<FuncOp, T> {
+  /// The polymorphic API that runs the pass over the currently held function.
+  virtual void runOnFunction() = 0;
+
+  /// The polymorphic API that runs the pass over the currently held operation.
+  void runOnOperation() final {
+    if (!getFunction().isExternal())
+      runOnFunction();
   }
 
-  /// A clone method to create a copy of this pass.
-  std::unique_ptr<FunctionPassBase> clone() const override {
-    return std::make_unique<T>(*static_cast<const T *>(this));
-  }
+  /// Return the current module being transformed.
+  FuncOp getFunction() { return this->getOperation(); }
 };
 
 /// A model for providing module pass specific utilities.
 ///
 /// Derived module passes are expected to provide the following:
 ///   - A 'void runOnModule()' method.
-template <typename T>
-struct ModulePass : public detail::PassModel<ModuleOp, T, ModulePassBase> {
-  /// Returns the analysis for a child function.
-  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(FuncOp f) {
-    return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(
-        f);
-  }
+template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
+  /// The polymorphic API that runs the pass over the currently held module.
+  virtual void runOnModule() = 0;
 
-  /// Returns an existing analysis for a child function if it exists.
-  template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysis(FuncOp f) {
-    return this->getAnalysisManager()
-        .template getCachedFunctionAnalysis<AnalysisT>(f);
-  }
+  /// The polymorphic API that runs the pass over the currently held operation.
+  void runOnOperation() final { runOnModule(); }
+
+  /// Return the current module being transformed.
+  ModuleOp getModule() { return this->getOperation(); }
 };
+
+/// Using directives defining legacy base classes.
+// TODO(riverriddle) These should be removed in favor of OpPassBase<T>.
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

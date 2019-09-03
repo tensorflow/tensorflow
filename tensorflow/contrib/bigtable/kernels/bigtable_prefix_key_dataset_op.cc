@@ -26,8 +26,8 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string prefix;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "prefix", &prefix));
+    tstring prefix;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "prefix", &prefix));
 
     core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,

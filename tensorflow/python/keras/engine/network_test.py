@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking.util import Checkpoint
 
 try:
   import yaml  # pylint:disable=g-import-not-at-top
@@ -1162,6 +1163,13 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertLen(net2.inputs, 2)
     self.assertEqual('a', net2.layers[0].name)
     self.assertEqual('b', net2.layers[1].name)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_dependency_tracking(self):
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.trackable = Checkpoint()
+    self.assertIn('trackable', model._unconditional_dependency_names)
+    self.assertEqual(model.trackable, model._lookup_dependency('trackable'))
 
 
 class DeferredModeTest(test.TestCase):

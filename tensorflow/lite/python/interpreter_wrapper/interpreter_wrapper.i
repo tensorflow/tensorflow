@@ -45,8 +45,19 @@ static bool PyListToStdVectorString(PyObject *list, std::vector<std::string> *st
   strings->resize(list_size);
   for (int k = 0; k < list_size; k++) {
     PyObject *string_py = PyList_GetItem(list, k);
-    if (!PyString_Check(string_py)) return false;
-    (*strings)[k] = std::string(PyString_AsString(string_py));
+    if (PyString_Check(string_py)) {
+      (*strings)[k] = PyString_AsString(string_py);
+    } else if (PyUnicode_Check(string_py)) {
+      // First convert the PyUnicode to a PyString.
+      PyObject *utf8_string_py = PyUnicode_AsUTF8String(string_py);
+      if (!utf8_string_py) return false;
+
+      // Then convert it to a regular std::string.
+      (*strings)[k] = PyString_AsString(utf8_string_py);
+      Py_DECREF(utf8_string_py);
+    } else {
+      return false;
+    }
   }
   return true;
 }

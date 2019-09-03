@@ -329,6 +329,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         DeviceAssignment::Deserialize(execution_options->device_assignment()));
     config->set_static_device_assignment(*device_assignment);
   }
+  config->set_alias_passthrough_params(
+      execution_options->alias_passthrough_params());
 
   return std::move(config);
 }

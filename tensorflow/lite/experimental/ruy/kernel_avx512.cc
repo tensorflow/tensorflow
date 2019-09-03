@@ -28,7 +28,19 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if !(RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
   __m256i a =

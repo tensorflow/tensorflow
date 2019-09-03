@@ -328,7 +328,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
   # From here onwards are v2-only tests.
   def testSquare(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for _, tests in [square_cases()]:
         for diag_index, (vecs, solution) in tests.items():
@@ -340,7 +340,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   def testSquareBatch(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for _, tests in [square_cases()]:
         for diag_index, (vecs, solution) in tests.items():
@@ -352,7 +352,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   def testRectangularBatch(self):
     # LINT.IfChange
-    if not compat.forward_compatible(2019, 8, 31):
+    if not compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       return
 
@@ -422,7 +422,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   def testPadding(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for padding_value in [555, -11]:
         for _, tests in [square_cases(), tall_cases(), fat_cases()]:
@@ -543,7 +543,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for _, tests in [square_cases(), tall_cases(), fat_cases()]:
         for diag_index, (vecs, banded_mat) in tests.items():
@@ -559,7 +559,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
 
   def testBatch(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for _, tests in [square_cases(), tall_cases(), fat_cases()]:
         for diag_index, (vecs, banded_mat) in tests.items():
@@ -614,7 +614,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for mat, tests in [square_cases(), tall_cases(), fat_cases()]:
         for diag_index, (solution, _) in tests.items():
@@ -625,7 +625,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
   def testBatch(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for mat, tests in [square_cases(), tall_cases(), fat_cases()]:
         for diag_index, (solution, _) in tests.items():
@@ -636,7 +636,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
   def testPadding(self):
     # LINT.IfChange
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
       for padding_value in [555, -11]:
         for mat, tests in [square_cases(), tall_cases(), fat_cases()]:

@@ -30,7 +30,23 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
+#if !(RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Pack8bitAvx512(const std::int8_t* src_ptr, std::int8_t input_xor,
+                    const std::int8_t* zerobuf, int src_stride,
+                    int remaining_src_cols, int src_rows,
+                    std::int8_t* packed_ptr, std::int32_t* sums_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void PackFloatAvx512(const float* src_ptr, const float* zerobuf, int src_stride,
+                     int remaining_src_cols, int src_rows, float* packed_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 // The first int8_t template parameter is arbitrary: this routine is common to
 // all 8-bit source matrix types.

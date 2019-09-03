@@ -8,6 +8,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_nccl",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -236,6 +237,7 @@ cc_library(
         "ir_emitter_context.h",
         "ir_emitter_nested.h",
         "ir_emitter_unnested.h",
+        "kernel_mapping_scheme.h",
     ],
     deps = [
         ":backend_configs",
@@ -273,7 +275,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
-        "//tensorflow/compiler/xla/service/llvm_ir:kernel_tiling",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
@@ -390,9 +391,21 @@ cc_library(
     ],
 )
 
+# First level of nested select. NCCL requires both if_cuda and if_nccl.
+filegroup(
+    name = "nccl_all_reduce_thunk_src",
+    srcs = if_nccl(
+        ["nccl_all_reduce_thunk.cc"],
+        ["dummy_all_reduce_thunk.cc"],
+    ),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = ["nccl_all_reduce_thunk.cc"],
+    srcs = if_cuda(
+        [":nccl_all_reduce_thunk_src"],
+        ["dummy_all_reduce_thunk.cc"],
+    ),
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
         ":buffer_allocations",
@@ -984,6 +997,38 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "cublas_gemm_pad_for_tensor_cores",
+    srcs = ["cublas_gemm_pad_for_tensor_cores.cc"],
+    hdrs = ["cublas_gemm_pad_for_tensor_cores.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+tf_cc_test(
+    name = "cublas_gemm_pad_for_tensor_cores_test",
+    srcs = ["cublas_gemm_pad_for_tensor_cores_test.cc"],
+    deps = [
+        ":cublas_gemm_pad_for_tensor_cores",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
+cc_library(
     name = "target_constants",
     hdrs = ["target_constants.h"],
 )
@@ -1025,6 +1070,7 @@ cc_library(
         "gpu_compiler.h",
     ],
     deps = [
+        ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
@@ -1077,7 +1123,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:mem_wasted_on_passthrough_params",
         "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_expander",
@@ -1140,6 +1185,11 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
+<<<<<<< HEAD
+=======
+        ":cublas_gemm_pad_for_tensor_cores",
+        ":cudnn_conv_algorithm_picker",
+>>>>>>> google_upstream/master
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
@@ -1579,5 +1629,29 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor:dnn",
+    ],
+)
+
+cc_library(
+    name = "alias_passthrough_params",
+    srcs = ["alias_passthrough_params.cc"],
+    hdrs = ["alias_passthrough_params.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "alias_passthrough_params_test",
+    srcs = ["alias_passthrough_params_test.cc"],
+    deps = [
+        ":alias_passthrough_params",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )

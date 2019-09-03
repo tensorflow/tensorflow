@@ -408,13 +408,12 @@ public:
   // Pattern Insertion
   //===--------------------------------------------------------------------===//
 
-  void insert(RewritePattern *pattern) { patterns.emplace_back(pattern); }
-
   /// Add an instance of each of the pattern types 'Ts' to the pattern list with
   /// the given arguments.
-  // Note: ConstructorArg is necessary here to separate the two variadic lists.
+  /// Note: ConstructorArg is necessary here to separate the two variadic lists.
   template <typename... Ts, typename ConstructorArg,
-            typename... ConstructorArgs>
+            typename... ConstructorArgs,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
   void insert(ConstructorArg &&arg, ConstructorArgs &&... args) {
     // The following expands a call to emplace_back for each of the pattern
     // types 'Ts'. This magic is necessary due to a limitation in the places

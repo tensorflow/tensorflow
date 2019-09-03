@@ -30,8 +30,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
@@ -65,7 +65,7 @@ from tensorflow.tools.docs import doc_controls
 
 @keras_export('keras.metrics.Metric')
 @six.add_metaclass(abc.ABCMeta)
-class Metric(Layer):
+class Metric(base_layer.Layer):
   """Encapsulates metric logic and state.
 
   Usage:

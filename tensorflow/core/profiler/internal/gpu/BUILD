@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_additional_cupti_utils_cuda_deps",
+)
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -54,4 +59,15 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+tf_cuda_library(
+    name = "cupti_utils",
+    srcs = if_cuda_is_configured_compat(["cupti_utils.cc"]),
+    copts = tf_copts(),
+    cuda_deps = [
+        ":cupti_interface",
+        ":cupti_wrapper",
+    ] + tf_additional_cupti_utils_cuda_deps(),
+    visibility = ["//visibility:public"],
 )

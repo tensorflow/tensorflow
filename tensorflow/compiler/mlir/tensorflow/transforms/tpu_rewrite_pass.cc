@@ -252,7 +252,7 @@ void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
 
 void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
-  getModule().walk<tf_device::LaunchFuncOp>([&](tf_device::LaunchFuncOp op) {
+  getModule().walk([&](tf_device::LaunchFuncOp op) {
     // Skip non-tpu device launch_func.
     if (!op.getAttrOfType<StringAttr>("_tpu_replicate")) return;
     Rewrite(op, &builder);

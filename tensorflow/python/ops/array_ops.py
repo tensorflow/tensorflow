@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 import numpy as np
 import six
 
@@ -655,6 +653,10 @@ def _check_index(idx):
     raise TypeError(_SLICE_TYPE_ERROR + ", got {!r}".format(idx))
 
 
+def _is_undefined_dimension(d):
+  return isinstance(d, tensor_shape.Dimension) and d.value is None
+
+
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -730,24 +732,19 @@ def _slice_helper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _BaseSlice):
-      # python doesn't always use None when constructing ranges
-      # for example a[:] gives slice(None,sys.maxsize,None)
-      # whereas a[::1] gives slice(None,None,None)
-      if s.start is not None and (isinstance(s.start, ops.Tensor) or
-                                  s.start != sys.maxsize):
+      if s.start is not None and not _is_undefined_dimension(s.start):
         _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
-      if s.stop is not None and (isinstance(s.stop, ops.Tensor) or
-                                 s.stop != sys.maxsize):
+      if s.stop is not None and not _is_undefined_dimension(s.stop):
         _check_index(s.stop)
         end.append(s.stop)
       else:
         end.append(0)
         end_mask |= (1 << index)
-      if s.step is not None:
+      if s.step is not None and not _is_undefined_dimension(s.step):
         _check_index(s.step)
         strides.append(s.step)
       else:
@@ -2059,7 +2056,7 @@ def matrix_diag(diagonal,
     A Tensor. Has the same type as `diagonal`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2171,7 +2168,7 @@ def matrix_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2278,7 +2275,7 @@ def matrix_set_diag(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
@@ -3791,7 +3788,7 @@ def where_v2(condition, x=None, y=None, name=None):
   Returns:
     A `Tensor` with the same type as `x` and `y`, and shape that
       is broadcast from `condition`, `x`, and `y`, if `x`, `y` are non-None.
-    A `Tensor` with shape `(num_true, dim_size(condition))`.
+    Otherwise, a `Tensor` with shape `(num_true, dim_size(condition))`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
@@ -4428,39 +4425,66 @@ def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
                             range_given=False,
                             round_mode="HALF_TO_EVEN",
                             name=None,
-                            narrow_range=False):
+                            narrow_range=False,
+                            axis=None):
   """Quantizes then dequantizes a tensor.
 
   Args:
     input: A `Tensor` to quantize and dequantize.
-    input_min: If range_given=True, the minimum input value that needs to be
-      represented in the quantized representation.
+    input_min: If range_given=True, the minimum input value, that needs to be
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of minimum values for each slice along axis.
     input_max: If range_given=True, the maximum input value that needs to be
-      represented in the quantized representation.
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of maximum values for each slice along axis.
     signed_input: True if the quantization is signed or unsigned.
     num_bits: The bitwidth of the quantization.
     range_given: If true use `input_min` and `input_max` for the range of the
       input, otherwise determine min and max from the input `Tensor`.
     round_mode: Rounding mode when rounding from float values to quantized ones.
+      one of ['HALF_TO_EVEN', 'HALF_UP']
     name: Optional name for the operation.
     narrow_range: If true, then the absolute value of the quantized minimum
       value is the same as the quantized maximum value, instead of 1 greater.
       i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
+    axis: Integer. If specified, refers to a dimension of the input tensor,
+      such that quantization will be per slice along that dimension.
 
   Returns:
     A `Tensor`. Each element is the result of quantizing and dequantizing the
     corresponding element of `input`.
   """
-  return gen_array_ops.quantize_and_dequantize_v2(
-      input,
-      input_min=input_min,
-      input_max=input_max,
-      signed_input=signed_input,
-      num_bits=num_bits,
-      range_given=range_given,
-      round_mode=round_mode,
-      narrow_range=narrow_range,
-      name=name)
+  if axis is not None:
+    if axis < 0:
+      if input.shape.ndims is None:
+        raise ValueError("input should have known rank to use negative axis.")
+      axis %= input.shape.ndims
+  else:
+    axis = -1
+
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+    return gen_array_ops.quantize_and_dequantize_v2(
+        input,
+        input_min=input_min,
+        input_max=input_max,
+        signed_input=signed_input,
+        num_bits=num_bits,
+        range_given=range_given,
+        round_mode=round_mode,
+        narrow_range=narrow_range,
+        axis=axis,
+        name=name)
+  else:
+    return gen_array_ops.quantize_and_dequantize_v2(
+        input,
+        input_min=input_min,
+        input_max=input_max,
+        signed_input=signed_input,
+        num_bits=num_bits,
+        range_given=range_given,
+        round_mode=round_mode,
+        narrow_range=narrow_range,
+        name=name)
 
 
 @tf_export("searchsorted")

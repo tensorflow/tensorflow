@@ -1226,13 +1226,13 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
+std::unique_ptr<ModulePassBase> mlir::createLowerToLLVMPass() {
   return std::make_unique<LLVMLoweringPass>();
 }
 
 std::unique_ptr<ModulePassBase>
-mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
-                                LLVMTypeConverterMaker typeConverterMaker) {
+mlir::createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
+                            LLVMTypeConverterMaker typeConverterMaker) {
   return std::make_unique<LLVMLoweringPass>(patternListFiller,
                                             typeConverterMaker);
 }

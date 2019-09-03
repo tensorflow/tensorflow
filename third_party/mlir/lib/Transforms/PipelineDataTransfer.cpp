@@ -115,13 +115,14 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto ivModTwoOp = bInner.create<AffineApplyOp>(forOp.getLoc(), modTwoMap,
                                                  forOp.getInductionVar());
 
-  // replaceAllMemRefUsesWith will always succeed unless the forOp body has
-  // non-deferencing uses of the memref (dealloc's are fine though).
-  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef,
-                                /*extraIndices=*/{ivModTwoOp},
-                                /*indexRemap=*/AffineMap(),
-                                /*extraOperands=*/{},
-                                /*domInstFilter=*/&*forOp.getBody()->begin())) {
+  // replaceAllMemRefUsesWith will succeed unless the forOp body has
+  // non-dereferencing uses of the memref (dealloc's are fine though).
+  if (failed(replaceAllMemRefUsesWith(
+          oldMemRef, newMemRef,
+          /*extraIndices=*/{ivModTwoOp},
+          /*indexRemap=*/AffineMap(),
+          /*extraOperands=*/{},
+          /*domInstFilter=*/&*forOp.getBody()->begin()))) {
     LLVM_DEBUG(
         forOp.emitError("memref replacement for double buffering failed"));
     ivModTwoOp.erase();
@@ -143,8 +144,7 @@ void PipelineDataTransfer::runOnFunction() {
   // gets deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  getFunction().walk<AffineForOp>(
-      [&](AffineForOp forOp) { forOps.push_back(forOp); });
+  getFunction().walk([&](AffineForOp forOp) { forOps.push_back(forOp); });
   for (auto forOp : forOps)
     runOnAffineForOp(forOp);
 }
@@ -276,9 +276,9 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.
-      LLVM_DEBUG(llvm::dbgs() << "double buffering failed for: \n";);
-      LLVM_DEBUG(dmaStartInst->dump());
-      // IR still in a valid state.
+      LLVM_DEBUG(llvm::dbgs()
+                     << "double buffering failed for" << dmaStartInst << "\n";);
+      // IR still valid and semantically correct.
       return;
     }
     // If the old memref has no more uses, remove its 'dead' alloc if it was

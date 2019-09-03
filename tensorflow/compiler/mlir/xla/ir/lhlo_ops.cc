@@ -60,5 +60,12 @@ XlaLhloDialect::XlaLhloDialect(MLIRContext* context)
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 
+void FusionOp::build(Builder *builder, OperationState *result,
+                     ArrayRef<NamedAttribute> attributes) {
+  result->addAttributes(attributes);
+  Region *bodyRegion = result->addRegion();
+  FusionOp::ensureTerminator(*bodyRegion, *builder, result->location);
+}
+
 }  // namespace xla_lhlo
 }  // namespace mlir

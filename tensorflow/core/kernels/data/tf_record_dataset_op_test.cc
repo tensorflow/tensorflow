@@ -46,7 +46,7 @@ class TFRecordDatasetOpTest : public DatasetOpsTestBase {
 };
 
 struct TestCase {
-  std::vector<string> filenames;
+  std::vector<tstring> filenames;
   std::vector<std::vector<string>> contents;
   CompressionType compression_type;
   int64 buffer_size;
@@ -84,12 +84,12 @@ TestCase TestCase1() {
           /*compression_type*/ CompressionType::ZLIB,
           /*buffer_size*/ 10,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"1"}),
-           CreateTensor<string>(TensorShape({}), {"22"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"a"}),
-           CreateTensor<string>(TensorShape({}), {"bb"}),
-           CreateTensor<string>(TensorShape({}), {"ccc"})},
+          {CreateTensor<tstring>(TensorShape({}), {"1"}),
+           CreateTensor<tstring>(TensorShape({}), {"22"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"a"}),
+           CreateTensor<tstring>(TensorShape({}), {"bb"}),
+           CreateTensor<tstring>(TensorShape({}), {"ccc"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -105,12 +105,12 @@ TestCase TestCase2() {
           /*compression_type*/ CompressionType::GZIP,
           /*buffer_size*/ 10,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"1"}),
-           CreateTensor<string>(TensorShape({}), {"22"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"a"}),
-           CreateTensor<string>(TensorShape({}), {"bb"}),
-           CreateTensor<string>(TensorShape({}), {"ccc"})},
+          {CreateTensor<tstring>(TensorShape({}), {"1"}),
+           CreateTensor<tstring>(TensorShape({}), {"22"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"a"}),
+           CreateTensor<tstring>(TensorShape({}), {"bb"}),
+           CreateTensor<tstring>(TensorShape({}), {"ccc"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -127,12 +127,12 @@ TestCase TestCase3() {
           /*compression_type*/ CompressionType::UNCOMPRESSED,
           /*buffer_size*/ 10,
           /*expected_outputs*/
-          {CreateTensor<string>(TensorShape({}), {"1"}),
-           CreateTensor<string>(TensorShape({}), {"22"}),
-           CreateTensor<string>(TensorShape({}), {"333"}),
-           CreateTensor<string>(TensorShape({}), {"a"}),
-           CreateTensor<string>(TensorShape({}), {"bb"}),
-           CreateTensor<string>(TensorShape({}), {"ccc"})},
+          {CreateTensor<tstring>(TensorShape({}), {"1"}),
+           CreateTensor<tstring>(TensorShape({}), {"22"}),
+           CreateTensor<tstring>(TensorShape({}), {"333"}),
+           CreateTensor<tstring>(TensorShape({}), {"a"}),
+           CreateTensor<tstring>(TensorShape({}), {"bb"}),
+           CreateTensor<tstring>(TensorShape({}), {"ccc"})},
           /*expected_output_dtypes*/ {DT_STRING},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ kUnknownCardinality,
@@ -156,8 +156,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, GetNext) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -206,8 +206,8 @@ TEST_F(TFRecordDatasetOpTest, DatasetNodeName) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -239,8 +239,8 @@ TEST_F(TFRecordDatasetOpTest, DatasetTypeString) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -273,8 +273,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, DatasetOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -307,8 +307,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, DatasetOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -341,8 +341,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, Cardinality) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -374,8 +374,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, IteratorOutputDtypes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -416,8 +416,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, IteratorOutputShapes) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -458,8 +458,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, IteratorOutputPrefix) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
@@ -501,8 +501,8 @@ TEST_P(ParameterizedTFRecordDatasetOpTest, Roundtrip) {
 
   int64 num_files = test_case.filenames.size();
   Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
+      CreateTensor<tstring>(TensorShape({num_files}), test_case.filenames);
+  Tensor compression_type = CreateTensor<tstring>(
       TensorShape({}), {ToString(test_case.compression_type)});
   Tensor buffer_size =
       CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});

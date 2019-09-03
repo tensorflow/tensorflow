@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
@@ -43,13 +44,15 @@ class DepthWiseConv3x3Texture : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  DepthWiseConv3x3Texture(DepthWiseConv3x3Texture&& kernel);
-  DepthWiseConv3x3Texture& operator=(DepthWiseConv3x3Texture&& kernel);
+  DepthWiseConv3x3Texture(DepthWiseConv3x3Texture&& operation);
+  DepthWiseConv3x3Texture& operator=(DepthWiseConv3x3Texture&& operation);
   DepthWiseConv3x3Texture(const DepthWiseConv3x3Texture&) = delete;
   DepthWiseConv3x3Texture& operator=(const DepthWiseConv3x3Texture&) = delete;
 
  private:
-  explicit DepthWiseConv3x3Texture(const OperationDef& definition);
+  explicit DepthWiseConv3x3Texture(const OperationDef& definition,
+                                   bool weights_are_buffer,
+                                   bool local_mem_uploads);
   template <DataType T>
   Status UploadWeightsAndBiases(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                                 const ::tflite::gpu::Tensor<Linear, T>& biases,
@@ -68,7 +71,12 @@ class DepthWiseConv3x3Texture : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
-  Texture2D weights_;
+  bool weights_are_buffer_;
+  bool local_mem_uploads_;
+  Texture2D weights_tex2d_;
+  Buffer weights_buf_;
+  cl_mem weights_;
+
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };
@@ -81,20 +89,42 @@ Status DepthWiseConv3x3Texture::UploadWeightsAndBiases(
   int texture_width = 10;  // 3x3 kernel + 1 bias
   int texture_height = src_depth;
   const int elements_count = texture_width * texture_height;
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float4_size = fp32_weights ? 16 : 8;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (fp32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsAndBiasesData(weights, biases, absl::MakeSpan(gpu_data));
-    return CreateTexture2DRGBA(definition_.GetDataType(), texture_width,
-                               texture_height, gpu_data.data(), context,
-                               &weights_);
+    if (weights_are_buffer_) {
+      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                           gpu_data.data(), context,
+                                           &weights_buf_));
+    } else {
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), texture_width, texture_height,
+          gpu_data.data(), context, &weights_tex2d_));
+    }
   } else {
     std::vector<half4> gpu_data(elements_count);
     RearrangeWeightsAndBiasesData(weights, biases, absl::MakeSpan(gpu_data));
-    return CreateTexture2DRGBA(definition_.GetDataType(), texture_width,
-                               texture_height, gpu_data.data(), context,
-                               &weights_);
+    if (weights_are_buffer_) {
+      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                           gpu_data.data(), context,
+                                           &weights_buf_));
+    } else {
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), texture_width, texture_height,
+          gpu_data.data(), context, &weights_tex2d_));
+    }
   }
+
+  if (weights_are_buffer_) {
+    weights_ = weights_buf_.GetMemoryPtr();
+  } else {
+    weights_ = weights_tex2d_.GetMemoryPtr();
+  }
+
+  return OkStatus();
 }
 
 template <DataType S, typename T>

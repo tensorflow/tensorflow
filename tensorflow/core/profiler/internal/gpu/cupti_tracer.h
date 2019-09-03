@@ -206,7 +206,7 @@ class CuptiTracer {
   Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                uint8_t* buffer, size_t size);
 
-  uint64 GetTimestamp();
+  static uint64 GetTimestamp();
   static int NumGpus();
 
  private:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -255,7 +256,7 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
 }
 
 // Replaces the roots of all branches with an empty tuple if the conditional op
-// has no users. Returns if anything is changed.
+// has no users. Returns true if anything is changed.
 bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
   const Shape empty_tuple = ShapeUtil::MakeTupleShape({});
   if (conditional_op->user_count() == 0 &&
@@ -278,6 +279,137 @@ bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
   return false;
 }
 
+// Removes all unused elements from result tuple. Returns true if anything is
+// changed.
+//
+// Computes and only keeps a subset of result tuple indices which are actually
+// being used. This simplification frees up some data-dependencies in branches'
+// sub-computations and enables further optimizations.
+//
+// *) It is considered the whole tuple is used, and there will be no removal for
+//    this case:
+//
+//        kTuple-result
+//              |
+//              |
+//           kWhile
+//
+// *) Only index=0 is used, so change (f32[10,10], f32[20,20]) to (f32[10,10])
+//    and drop f32[20,20].
+//
+//        kTuple-result (f32[10,10], f32[20,20])
+//              |
+//              |
+//        get-tuple-element, index=0
+//
+bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
+  if (conditional_op->user_count() == 0 ||
+      conditional_op == conditional_op->parent()->root_instruction() ||
+      !conditional_op->shape().IsTuple()) {
+    VLOG(3) << "Skip RemoveUnusedTupleElements due to non-tuple result:\n"
+            << conditional_op->ToShortString();
+    return false;
+  }
+
+  const int old_tuple_shapes_size = conditional_op->shape().tuple_shapes_size();
+
+  // Select indices that are actually used by some GTE instructions.
+  std::vector<bool> used_indices(old_tuple_shapes_size, false);
+  for (const HloInstruction* user : conditional_op->users()) {
+    // We only deal with the case where all users are GTE instructions.
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      VLOG(3) << "Skip RemoveUnusedTupleElements due to non-GTE user:\n"
+              << user->ToShortString();
+      return false;
+    }
+    used_indices[user->tuple_index()] = true;
+  }
+
+  const int new_tuple_shapes_size =
+      std::count(used_indices.begin(), used_indices.end(), true);
+  if (new_tuple_shapes_size == old_tuple_shapes_size) {
+    VLOG(3) << "Skip RemoveUnusedTupleElements due to every index is in use.";
+    return false;
+  }
+
+  // Compute old-to-new (old-to-new) indices mapping.
+  std::map<int, int> new_to_old_mapping, old_to_new_mapping;
+  auto old_iter = used_indices.begin();
+  for (int new_index = 0; new_index < new_tuple_shapes_size; ++new_index) {
+    old_iter = std::find(old_iter, used_indices.end(), true);
+    const int old_index = std::distance(used_indices.begin(), old_iter);
+    new_to_old_mapping[new_index] = old_index;
+    old_to_new_mapping[old_index] = new_index;
+    ++old_iter;
+  }
+
+  // Create new tuple shape, only keep active indices.
+  const Shape old_shape = conditional_op->shape();
+  std::vector<Shape> new_tuple_shapes;
+  new_tuple_shapes.reserve(new_tuple_shapes_size);
+  for (int new_index = 0; new_index < new_tuple_shapes_size; ++new_index) {
+    new_tuple_shapes.push_back(
+        old_shape.tuple_shapes(new_to_old_mapping[new_index]));
+  }
+  const Shape new_shape = ShapeUtil::MakeTupleShape(new_tuple_shapes);
+
+  // Double-check the old branch root shape is compatible (tuple-like).
+  for (HloComputation* branch : conditional_op->branch_computations()) {
+    const HloInstruction* root = branch->root_instruction();
+    if (!root->shape().IsTuple() ||
+        !ShapeUtil::Compatible(branch->root_instruction()->shape(),
+                               old_shape)) {
+      VLOG(3) << "Skip RemoveUnusedTupleElements due to some branch "
+              << branch->name() << " has in-compatible root shape, expect "
+              << old_shape.ToString() << ", but got "
+              << root->shape().ToString() << "\n"
+              << conditional_op->ToString();
+      return false;
+    }
+  }
+
+  // Replace all branches with new tuple shape. Add 'gtes' for active indices
+  // and create a new root gathering them.
+  //
+  //  non-kTuple-root
+  //    |      |
+  //   gte   gte
+  //     \    /
+  //    new_root
+  for (int branch_id = 0; branch_id < conditional_op->branch_count();
+       ++branch_id) {
+    HloComputation* old_branch = conditional_op->branch_computation(branch_id);
+    HloComputation* cloned_branch =
+        conditional_op->GetModule()->AddEmbeddedComputation(
+            old_branch->Clone());
+    conditional_op->set_branch_computation(branch_id, cloned_branch);
+
+    HloInstruction* old_root = cloned_branch->root_instruction();
+    std::vector<HloInstruction*> new_tuple_root_operands;
+    for (int old_index = 0; old_index < old_tuple_shapes_size; ++old_index) {
+      if (used_indices[old_index]) {
+        new_tuple_root_operands.push_back(
+            cloned_branch->AddInstruction(HloInstruction::CreateGetTupleElement(
+                old_shape.tuple_shapes(old_index), old_root, old_index)));
+      }
+    }
+    HloInstruction* new_tuple_root = cloned_branch->AddInstruction(
+        HloInstruction::CreateTuple(new_tuple_root_operands));
+    cloned_branch->set_root_instruction(new_tuple_root,
+                                        /*accept_different_shape=*/true);
+  }
+
+  // Replace the conditional instruction itself.
+  *conditional_op->mutable_shape() = new_shape;
+
+  // Reroute all user GTE instructions to new tuple indices.
+  for (HloInstruction* user : conditional_op->users()) {
+    const int old_index = user->tuple_index();
+    const int new_index = old_to_new_mapping[old_index];
+    user->set_tuple_index(new_index);
+  }
+  return true;
+}
 }  // namespace
 
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
@@ -299,6 +431,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
 
   std::map<HloComputation*, std::set<int64>> changed_computations;
   for (HloInstruction* conditional_op : conditional_ops) {
+    changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
     TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
     if (!result) {
