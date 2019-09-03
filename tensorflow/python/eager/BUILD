@@ -481,6 +481,7 @@ py_library(
         ":context",
         ":core",
         ":execute",
+        ":forwardprop_util",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",

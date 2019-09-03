@@ -440,7 +440,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         inner_acc.watch(primal_in, inner_jvp)
         outer_acc.watch(inner_jvp, constant_op.constant(4.))
         packed_input_indices, packed_input_tangents = (
-            pywrap_tensorflow.TFE_Py_PackForwardGradients([primal_in]))
+            forwardprop_util.pack_tangents([primal_in]))
         self.assertAllClose([3., 2., 4.], packed_input_tangents)
         expected_indices = (
             # inner_acc watches primal_in
@@ -454,7 +454,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(4., outer_acc.jvp(primal_out))
         self.assertAllClose(8., outer_acc.jvp(inner_acc.jvp(primal_out)))
         packed_output_indices, packed_output_tangents = (
-            pywrap_tensorflow.TFE_Py_PackForwardGradients([primal_out]))
+            forwardprop_util.pack_tangents([primal_out]))
         self.assertAllClose([6., 4., 8.], packed_output_tangents)
         self.assertAllEqual(expected_indices, packed_output_indices)
 
@@ -618,8 +618,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     with forwardprop.ForwardGradientAccumulator() as acc:
       c = constant_op.constant(1.)
       acc.watch(c, 10.)
-      _, packed_input_tangents = (
-          pywrap_tensorflow.TFE_Py_PackForwardGradients([c]))
+      packed_input_tangents = forwardprop_util.pack_tangents([c]).tangents
       self.assertAllClose([10.], packed_input_tangents)
       d = constant_op.constant(2.)
       d_tangent = constant_op.constant(3.)
