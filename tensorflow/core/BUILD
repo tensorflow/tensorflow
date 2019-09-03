@@ -3735,6 +3735,7 @@ tf_cc_tests(
         "//tensorflow/core/platform:profile_utils/cpu_utils_test.cc",
         "//tensorflow/core/platform:scanner_test.cc",
         "//tensorflow/core/platform:stacktrace_handler_test.cc",
+        "//tensorflow/core/platform:stacktrace_test.cc",
         "//tensorflow/core/platform:str_util_test.cc",
         "//tensorflow/core/platform:strcat_test.cc",
         "//tensorflow/core/platform:stringpiece_test.cc",
