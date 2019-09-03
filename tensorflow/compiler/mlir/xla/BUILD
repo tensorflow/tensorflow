@@ -81,7 +81,6 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -113,7 +112,6 @@ cc_library(
     srcs = [
         "transforms/legalize_control_flow.cc",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -129,7 +127,6 @@ cc_library(
 cc_library(
     name = "xla_legalize_to_standard",
     srcs = ["transforms/legalize_to_standard.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         ":xla_legalize_to_standard_inc_gen",
@@ -154,7 +151,6 @@ cc_library(
         "ir/hlo_ops.h",
         "transforms/passes.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":hlo_ops_base_inc_gen",
@@ -200,7 +196,6 @@ cc_library(
 cc_library(
     name = "xla_dialect_registration",
     srcs = ["ir/dialect_registration.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         ":lhlo",
@@ -213,7 +208,6 @@ cc_library(
     name = "type_to_shape",
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -244,7 +238,6 @@ cc_library(
         "operator_writers.inc",
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         ":type_to_shape",
@@ -268,7 +261,6 @@ cc_library(
     name = "hlo_to_mlir_hlo",
     srcs = ["hlo_to_mlir_hlo.cc"],
     hdrs = ["hlo_to_mlir_hlo.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo_module_importer",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -288,7 +280,6 @@ cc_library(
         "hlo_function_importer.h",
         "hlo_module_importer.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -310,7 +301,6 @@ cc_library(
     name = "xla_mlir_translate",
     srcs = ["xla_mlir_translate.cc"],
     hdrs = ["xla_mlir_translate.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":hlo_to_mlir_hlo",
         ":mlir_hlo_to_hlo",

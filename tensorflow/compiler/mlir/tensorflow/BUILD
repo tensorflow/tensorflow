@@ -150,7 +150,6 @@ cc_library(
         "transforms/bridge.h",
         "transforms/passes.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":error_util",
@@ -180,7 +179,6 @@ cc_library(
 cc_library(
     name = "tensorflow_dialect_registration",
     srcs = ["ir/dialect_registration.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow",
         "@local_config_mlir//:IR",
@@ -198,7 +196,6 @@ cc_library(
         "translate/export_graphdef.h",
         "translate/import_model.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -240,7 +237,6 @@ cc_library(
     hdrs = [
         "utils/import_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":error_util",
         "//tensorflow/core:lib",
@@ -258,7 +254,6 @@ cc_library(
     hdrs = [
         "utils/export_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -290,7 +285,6 @@ cc_library(
     hdrs = [
         "translate/export_tf_dialect_op.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_type",
         ":export_utils",
@@ -309,7 +303,6 @@ cc_library(
 cc_library(
     name = "translate_tf_dialect_op",
     srcs = ["translate/translate_tf_dialect_op.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":export_tf_dialect_op",
         "@llvm//:support",
@@ -324,7 +317,6 @@ cc_library(
     name = "mlir_roundtrip_pass",
     srcs = ["translate/mlir_roundtrip_pass.cc"],
     hdrs = ["translate/mlir_roundtrip_pass.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":error_util",
@@ -344,7 +336,6 @@ cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["translate/mlir_roundtrip_flags.cc"],
     hdrs = ["translate/mlir_roundtrip_flags.h"],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
@@ -362,7 +353,6 @@ cc_library(
     name = "convert_type",
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow",
         ":tensorflow_dialect_registration",
@@ -381,7 +371,6 @@ cc_library(
     name = "convert_tensor",
     srcs = ["utils/convert_tensor.cc"],
     hdrs = ["utils/convert_tensor.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_type",
         ":mangling_util",
@@ -401,7 +390,6 @@ cc_library(
     name = "mangling_util",
     srcs = ["utils/mangling_util.cc"],
     hdrs = ["utils/mangling_util.h"],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -414,7 +402,6 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
@@ -434,7 +421,6 @@ cc_library(
         "transforms/constant_fold.h",
         "transforms/decode_constant.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":eval_util",
@@ -455,7 +441,6 @@ cc_library(
 
 cc_library(
     name = "tf_dialect_lib",
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
@@ -466,7 +451,6 @@ cc_library(
 cc_library(
     name = "tf_graph_optimization_pass",
     srcs = ["transforms/tf_graph_optimization_pass.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
@@ -490,7 +474,6 @@ cc_library(
     name = "eval_util",
     srcs = ["utils/eval_util.cc"],
     hdrs = ["utils/eval_util.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_tensor",
         ":convert_type",
@@ -523,7 +506,6 @@ cc_library(
     hdrs = [
         "translate/tf_mlir_translate.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":error_util",
@@ -550,7 +532,6 @@ cc_library(
     hdrs = [
         "translate/tf_mlir_translate_cl.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         "@llvm//:support",
     ],
@@ -562,7 +543,6 @@ cc_library(
     srcs = [
         "translate/tf_mlir_translate_registration.cc",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",

@@ -36,7 +36,6 @@ cc_library(
 cc_library(
     name = "tf_mlir_opt_main",
     srcs = ["tf_mlir_opt_main.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
