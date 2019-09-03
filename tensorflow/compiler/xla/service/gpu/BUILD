@@ -8,6 +8,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "if_nccl",
     "tf_cc_test",
     "tf_copts",
@@ -402,7 +403,7 @@ filegroup(
 
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = if_cuda(
+    srcs = if_cuda_or_rocm(
         [":nccl_all_reduce_thunk_src"],
         ["dummy_all_reduce_thunk.cc"],
     ),
@@ -1185,11 +1186,7 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
-<<<<<<< HEAD
-=======
         ":cublas_gemm_pad_for_tensor_cores",
-        ":cudnn_conv_algorithm_picker",
->>>>>>> google_upstream/master
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",

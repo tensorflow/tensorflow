@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
->>>>>>> google_upstream/master
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -43,9 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
-<<<<<<< HEAD
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#endif
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -56,9 +50,6 @@ limitations under the License.
 #define cudaSetDevice hipSetDevice
 #define cudaSuccess hipSuccess
 #endif
-=======
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
->>>>>>> google_upstream/master
 
 namespace xla {
 namespace gpu {
@@ -83,20 +74,9 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return true;
-#else
-  return false;
-#endif
-}
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
   return true;  // Skylark selects this source file if NCCL is enabled.
 }
 
->>>>>>> google_upstream/master
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -754,38 +734,5 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 NcclAllReduceThunk::~NcclAllReduceThunk() {}
 
-<<<<<<< HEAD
-#else
-
-Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-}
-
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
-/*static*/ absl::flat_hash_set<int>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
-}
-
-struct NcclAllReduceThunk::AuxData {};
-
-NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
-      replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-=======
->>>>>>> google_upstream/master
 }  // namespace gpu
 }  // namespace xla

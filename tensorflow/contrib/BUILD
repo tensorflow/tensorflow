@@ -147,31 +147,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-<<<<<<< HEAD
-    ] + if_mpi([
-        "//tensorflow/contrib/mpi_collectives:mpi_collectives_py"
-    ]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka:dataset_kernels",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis:dataset_kernels",
-        ],
-    }) + if_not_windows([
-=======
     ] + if_not_windows([
->>>>>>> google_upstream/master
         "//tensorflow/contrib/tensorrt:trt_op_kernels",
     ]),
 )

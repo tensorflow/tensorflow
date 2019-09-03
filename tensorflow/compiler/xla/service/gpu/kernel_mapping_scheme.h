@@ -162,36 +162,6 @@ class KernelMappingScheme {
   }
 
   bool DilatedX() const { return dilated_x_; }
-<<<<<<< HEAD:tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h
-  void SetDilatedX(bool v) {
-    dilated_x_ = v;
-    if (!dilated_x_) {
-      // dilated_x_=false is for the purpose of vectorization, which requires
-      // GetTileSizeForDimension(DimX) to be a multiplier of num_threads_x_.
-      CHECK_EQ(GetTileSizeForDimension(DimX) % num_threads_x_, 0);
-    }
-  }
-
-  IrArray::Index EmitBlockIndex(llvm::Type* index_ty);
-
-  // Returns the index for the first tile in the block with the given block
-  // index.
-  IrArray::Index GetTileIndexForBlockOrigin(const IrArray::Index& block_index);
-  // Returns the index for the first element in the tile with the given tile
-  // index.
-  IrArray::Index GetElementIndexForTileOrigin(const IrArray::Index& tile_index);
-
-  std::tuple<llvm::Value*, llvm::Value*> EmitThreadYXCoordinate(
-      llvm::Type* index_ty);
-
-  IrArray::Index GetUnnormalizedIndex(
-      const IrArray::Index& normalized_shape_index,
-      const Shape& unnormalized_shape);
-
-  llvm::GlobalVariable* GetSharedMemoryBufferForElementType(
-      llvm::Type* elem_ty, absl::string_view buffer_name);
-=======
->>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h
 
  private:
   // The number of elements in each dimension.
