@@ -754,8 +754,10 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
     auto elemType = arrayType.getElementType();
     for (auto element : value.cast<ArrayAttr>().getValue()) {
       if (element.getType() != elemType)
-        return constOp.emitOpError(
-            "has array element that are not of result array element type");
+        return constOp.emitOpError("has array element whose type (")
+               << element.getType()
+               << ") does not match the result element type (" << elemType
+               << ')';
     }
   } break;
   default:
@@ -763,6 +765,25 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   }
 
   return success();
+}
+
+OpFoldResult spirv::ConstantOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "constant has no operands");
+  return value();
+}
+
+bool spirv::ConstantOp::isBuildableWith(Type type) {
+  // Must be valid SPIR-V type first.
+  if (!SPIRVDialect::isValidType(type))
+    return false;
+
+  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
+      type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
+    // TODO(antiagainst): support contant struct
+    return type.isa<spirv::ArrayType>();
+  }
+
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1350,8 +1371,7 @@ static LogicalResult verify(spirv::SpecConstantOp constOp) {
   case StandardAttributes::Integer:
   case StandardAttributes::Float: {
     // Make sure bitwidth is allowed.
-    auto *dialect = static_cast<spirv::SPIRVDialect *>(constOp.getDialect());
-    if (!dialect->isValidSPIRVType(value.getType()))
+    if (!spirv::SPIRVDialect::isValidType(value.getType()))
       return constOp.emitOpError("default value bitwidth disallowed");
     return success();
   }
