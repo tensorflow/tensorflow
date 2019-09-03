@@ -104,7 +104,7 @@ std::unique_ptr<toy::ModuleAST> parseInputFile(llvm::StringRef filename) {
 }
 
 mlir::LogicalResult optimize(mlir::ModuleOp module) {
-  mlir::PassManager pm;
+  mlir::PassManager pm(module.getContext());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -117,7 +117,7 @@ mlir::LogicalResult optimize(mlir::ModuleOp module) {
 }
 
 mlir::LogicalResult lowerDialect(mlir::ModuleOp module, bool OnlyLinalg) {
-  mlir::PassManager pm;
+  mlir::PassManager pm(module.getContext());
   pm.addPass(createEarlyLoweringPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());

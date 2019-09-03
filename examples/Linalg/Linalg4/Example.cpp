@@ -67,7 +67,7 @@ TEST_FUNC(matmul_tiled_loops) {
   OwningModuleRef module = ModuleOp::create(UnknownLoc::get(&context));
   mlir::FuncOp f = makeFunctionWithAMatmulOp(*module, "matmul_tiled_loops");
   lowerToTiledLoops(f, {8, 9});
-  PassManager pm;
+  PassManager pm(&context);
   pm.addPass(createLowerLinalgLoadStorePass());
   if (succeeded(pm.run(f.getParentOfType<mlir::ModuleOp>())))
     cleanupAndPrintFunction(f);

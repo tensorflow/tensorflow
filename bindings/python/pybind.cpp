@@ -193,7 +193,7 @@ struct PythonMLIRModule {
   PythonAttribute boolAttr(bool value);
 
   void compile() {
-    PassManager manager;
+    PassManager manager(module->getContext());
     manager.addPass(mlir::createCanonicalizerPass());
     manager.addPass(mlir::createCSEPass());
     manager.addPass(mlir::createLowerAffinePass());

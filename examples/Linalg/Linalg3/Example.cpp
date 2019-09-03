@@ -171,7 +171,7 @@ TEST_FUNC(matmul_as_matvec_as_affine) {
   lowerToFinerGrainedTensorContraction(f);
   composeSliceOps(f);
   lowerToLoops(f);
-  PassManager pm;
+  PassManager pm(&context);
   pm.addPass(createLowerLinalgLoadStorePass());
   if (succeeded(pm.run(f.getParentOfType<mlir::ModuleOp>())))
     cleanupAndPrintFunction(f);

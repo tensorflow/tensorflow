@@ -169,7 +169,7 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
 // - affine to standard lowering
 // - standard to llvm lowering
 static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
-  PassManager manager;
+  PassManager manager(module.getContext());
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
   manager.addPass(mlir::createLowerAffinePass());

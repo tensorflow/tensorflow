@@ -121,7 +121,7 @@ update our main file, `toyc.cpp`, to add an optimization pipeline. In MLIR, the
 optimizations are ran through a `PassManager` in a similar way to LLVM:
 
 ```c++
-mlir::PassManager pm;
+mlir::PassManager pm(ctx);
 pm.addPass(mlir::createCanonicalizerPass());
 pm.run(&module);
 ```

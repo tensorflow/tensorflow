@@ -20,154 +20,77 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+class OpPassManager;
+
 namespace detail {
 
 //===----------------------------------------------------------------------===//
-// Verifier Passes
+// Verifier Pass
 //===----------------------------------------------------------------------===//
 
-/// Pass to verify a function and signal failure if necessary.
-class FunctionVerifierPass : public FunctionPass<FunctionVerifierPass> {
-  void runOnFunction() override;
-};
-
-/// Pass to verify a module and signal failure if necessary.
-class ModuleVerifierPass : public ModulePass<ModuleVerifierPass> {
-  void runOnModule() override;
+/// Pass to verify an operation and signal failure if necessary.
+class VerifierPass : public OperationPass<VerifierPass> {
+  void runOnOperation() override;
 };
 
 //===----------------------------------------------------------------------===//
-// PassExecutor
+// OpToOpPassAdaptor
 //===----------------------------------------------------------------------===//
 
-/// The abstract base pass executor class.
-class PassExecutor {
+/// An adaptor pass used to run operation passes over nested operations
+/// synchronously on a single thread.
+class OpToOpPassAdaptor : public OperationPass<OpToOpPassAdaptor> {
 public:
-  enum Kind { FunctionExecutor, ModuleExecutor };
-  explicit PassExecutor(Kind kind) : kind(kind) {}
+  OpToOpPassAdaptor(std::unique_ptr<OpPassManager> mgr);
+  OpToOpPassAdaptor(const OpToOpPassAdaptor &rhs);
 
-  /// Get the kind of this executor.
-  Kind getKind() const { return kind; }
+  /// Run the held pipeline over all operations.
+  void runOnOperation() override;
+
+  /// Returns the nested pass manager for this adaptor.
+  OpPassManager &getPassManager() { return *mgr; }
 
 private:
-  /// The kind of executor this object is.
-  Kind kind;
+  std::unique_ptr<OpPassManager> mgr;
 };
 
-/// A pass executor that contains a list of passes over a function.
-class FunctionPassExecutor : public PassExecutor {
+/// An adaptor pass used to run operation passes over nested operations
+/// asynchronously across multiple threads.
+class OpToOpPassAdaptorParallel
+    : public OperationPass<OpToOpPassAdaptorParallel> {
 public:
-  FunctionPassExecutor() : PassExecutor(Kind::FunctionExecutor) {}
-  FunctionPassExecutor(FunctionPassExecutor &&) = default;
-  FunctionPassExecutor(const FunctionPassExecutor &rhs);
+  OpToOpPassAdaptorParallel(std::unique_ptr<OpPassManager> mgr);
+  OpToOpPassAdaptorParallel(const OpToOpPassAdaptorParallel &rhs);
 
-  /// Run the executor on the given function.
-  LogicalResult run(FuncOp function, AnalysisManager am);
+  /// Run the held pipeline over all operations.
+  void runOnOperation() override;
 
-  /// Add a pass to the current executor. This takes ownership over the provided
-  /// pass pointer.
-  void addPass(std::unique_ptr<Pass> pass) {
-    passes.push_back(std::move(pass));
-  }
-
-  /// Returns the number of passes held by this executor.
-  size_t size() const { return passes.size(); }
-
-  static bool classof(const PassExecutor *pe) {
-    return pe->getKind() == Kind::FunctionExecutor;
-  }
+  /// Returns the nested pass manager for this adaptor.
+  OpPassManager &getPassManager() { return *mgr; }
 
 private:
-  std::vector<std::unique_ptr<Pass>> passes;
-};
-
-/// A pass executor that contains a list of passes over a module unit.
-class ModulePassExecutor : public PassExecutor {
-public:
-  ModulePassExecutor() : PassExecutor(Kind::ModuleExecutor) {}
-  ModulePassExecutor(ModulePassExecutor &&) = default;
-
-  // Don't allow copying.
-  ModulePassExecutor(const ModulePassExecutor &) = delete;
-  ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
-
-  /// Run the executor on the given module.
-  LogicalResult run(ModuleOp module, AnalysisManager am);
-
-  /// Add a pass to the current executor. This takes ownership over the provided
-  /// pass pointer.
-  void addPass(std::unique_ptr<ModulePassBase> pass) {
-    passes.push_back(std::move(pass));
-  }
-
-  static bool classof(const PassExecutor *pe) {
-    return pe->getKind() == Kind::ModuleExecutor;
-  }
-
-private:
-  /// Set of passes to run on the given module.
-  std::vector<std::unique_ptr<ModulePassBase>> passes;
-};
-
-//===----------------------------------------------------------------------===//
-// ModuleToFunctionPassAdaptor
-//===----------------------------------------------------------------------===//
-
-/// An adaptor module pass used to run function passes over all of the
-/// non-external functions of a module synchronously on a single thread.
-class ModuleToFunctionPassAdaptor
-    : public ModulePass<ModuleToFunctionPassAdaptor> {
-public:
-  /// Run the held function pipeline over all non-external functions within the
-  /// module.
-  void runOnModule() override;
-
-  /// Returns the function pass executor for this adaptor.
-  FunctionPassExecutor &getFunctionExecutor() { return fpe; }
-
-private:
-  FunctionPassExecutor fpe;
-};
-
-/// An adaptor module pass used to run function passes over all of the
-/// non-external functions of a module asynchronously across multiple threads.
-class ModuleToFunctionPassAdaptorParallel
-    : public ModulePass<ModuleToFunctionPassAdaptorParallel> {
-public:
-  /// Run the held function pipeline over all non-external functions within the
-  /// module.
-  void runOnModule() override;
-
-  /// Returns the function pass executor for this adaptor.
-  FunctionPassExecutor &getFunctionExecutor() { return fpe; }
-
-private:
-  // The main function pass executor for this adaptor.
-  FunctionPassExecutor fpe;
+  // The main pass executor for this adaptor.
+  std::unique_ptr<OpPassManager> mgr;
 
   // A set of executors, cloned from the main executor, that run asynchronously
   // on different threads.
-  std::vector<FunctionPassExecutor> asyncExecutors;
+  std::vector<OpPassManager> asyncExecutors;
 };
 
-/// Utility function to return if a pass refers to an
-/// ModuleToFunctionPassAdaptor instance.
-inline bool isModuleToFunctionAdaptorPass(Pass *pass) {
-  return isa<ModuleToFunctionPassAdaptorParallel>(pass) ||
-         isa<ModuleToFunctionPassAdaptor>(pass);
+/// Utility function to return if a pass refers to an OpToOpAdaptorPass
+/// instance.
+inline bool isOpToOpAdaptorPass(Pass *pass) {
+  return isa<OpToOpPassAdaptorParallel>(pass) || isa<OpToOpPassAdaptor>(pass);
 }
 
 /// Utility function to return if a pass refers to an adaptor pass. Adaptor
 /// passes are those that internally execute a pipeline, such as the
-/// ModuleToFunctionPassAdaptor.
-inline bool isAdaptorPass(Pass *pass) {
-  return isModuleToFunctionAdaptorPass(pass);
-}
+/// OpToOpPassAdaptor.
+inline bool isAdaptorPass(Pass *pass) { return isOpToOpAdaptorPass(pass); }
 
-/// Utility function to return if a pass refers to a verifier pass.
-inline bool isVerifierPass(Pass *pass) {
-  return isa<FunctionVerifierPass>(pass) || isa<ModuleVerifierPass>(pass);
-}
+/// Utility function to return the operation name that the given adaptor pass
+/// operates on. Return None if the given pass is not an adaptor pass.
+Optional<StringRef> getAdaptorPassOpName(Pass *pass);
 
 } // end namespace detail
 } // end namespace mlir

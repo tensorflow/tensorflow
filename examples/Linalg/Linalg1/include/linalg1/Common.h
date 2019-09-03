@@ -71,8 +71,9 @@ inline mlir::FuncOp makeFunction(mlir::ModuleOp module, llvm::StringRef name,
 }
 
 /// A basic pass manager pre-populated with cleanup passes.
-inline std::unique_ptr<mlir::PassManager> cleanupPassManager() {
-  std::unique_ptr<mlir::PassManager> pm(new mlir::PassManager());
+inline std::unique_ptr<mlir::PassManager>
+cleanupPassManager(mlir::MLIRContext *ctx) {
+  std::unique_ptr<mlir::PassManager> pm(new mlir::PassManager(ctx));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createSimplifyAffineStructuresPass());
   pm->addPass(mlir::createCSEPass());
@@ -92,7 +93,7 @@ inline void cleanupAndPrintFunction(mlir::FuncOp f) {
       printToOuts = false;
     }
   };
-  auto pm = cleanupPassManager();
+  auto pm = cleanupPassManager(f.getContext());
   check(mlir::verify(f.getParentOfType<mlir::ModuleOp>()));
   check(pm->run(f.getParentOfType<mlir::ModuleOp>()));
   if (printToOuts)
