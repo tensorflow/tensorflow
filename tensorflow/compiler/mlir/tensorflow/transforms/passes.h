@@ -41,6 +41,9 @@ std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
 namespace tf_executor {
 class GraphOp;
 
+// Returns a pass that folds switch nodes with constant predicates.
+std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass();
+
 // Create a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
 
