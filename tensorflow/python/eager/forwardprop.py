@@ -187,7 +187,9 @@ class ForwardGradientAccumulator(object):
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
       g = ops.convert_to_tensor(g, dtype=t.dtype)
       if hasattr(t, "handle"):
-        t = t.handle
+        # Run convert_to_tensor to get the captured handle from whichever
+        # function we're running if necessary.
+        t = ops.convert_to_tensor(t.handle)
       pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
   def jvp(self, target):
@@ -209,7 +211,7 @@ class ForwardGradientAccumulator(object):
       raise ValueError("Called jvp() without first tracing anything.")
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
-        tensor = tensor.handle
+        tensor = ops.convert_to_tensor(tensor.handle)
       return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
           self._accumulator, tensor)
     return nest.map_structure(_fetch_jvp, target)

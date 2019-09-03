@@ -922,6 +922,11 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   for (const TapeTensor& output_tensor : output_tensors) {
     // Ownership of `aid` transferred to CallBackwardFunction below.
     Gradient* aid = vspace_.Ones(output_tensor);
+    if (TF_PREDICT_FALSE(aid == nullptr)) {
+      return tensorflow::errors::Internal(
+          "Failed to create ones tensor for tensor ", output_tensor.GetID(),
+          " with dtype ", output_tensor.GetDType());
+    }
     forwardprop_aids.push_back(aid);
     int64 aid_id = vspace_.TensorId(aid);
     sources.push_back(aid_id);
