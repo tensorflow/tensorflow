@@ -36,7 +36,10 @@ cc_library(
     hdrs = ["mlir_compiler.h"],
     deps = [
         ":failover_compiler",
+        ":kernel_lowering",
         ":lhlo_dialect_emitter",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
@@ -49,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "@local_config_mlir//:GPUDialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
     ],
@@ -89,6 +93,29 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
         "@local_config_mlir//:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "kernel_lowering",
+    srcs = ["kernel_lowering.cc"],
+    hdrs = ["kernel_lowering.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/mlir_gpu/transforms:legalize_to_affine",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:GPUDialect",
+        "@local_config_mlir//:GPUToNVVMTransforms",
+        "@local_config_mlir//:GPUTransforms",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:LLVMDialect",
+        "@local_config_mlir//:LLVMTransforms",
+        "@local_config_mlir//:LoopsToGPUPass",
+        "@local_config_mlir//:NVVMDialect",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Transforms",
     ],
 )
 

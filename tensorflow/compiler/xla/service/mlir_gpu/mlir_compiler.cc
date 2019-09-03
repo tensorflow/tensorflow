@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -30,9 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -152,7 +158,22 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   TF_RETURN_IF_ERROR(
       lhlo_emitter.EmitComputation(*module->entry_computation()));
 
-  if (module_hook_.callback && !module_hook_.apply_on_lowered) {
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::LHLO) {
+    module_hook_.callback(*mlir_module);
+  }
+
+  TF_RETURN_IF_ERROR(LowerLHLOToGPU(*mlir_module));
+
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::GPU) {
+    module_hook_.callback(*mlir_module);
+  }
+
+  TF_RETURN_IF_ERROR(LowerKernelBodiesToNVVM(*mlir_module));
+
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::LLVM) {
     module_hook_.callback(*mlir_module);
   }
 
@@ -194,7 +215,9 @@ void MlirCompiler::SetModuleHook(IRHook module_hook) {
   module_hook_ = module_hook;
 }
 
-void MlirCompiler::RemoveModuleHook() { module_hook_ = {nullptr, false}; }
+void MlirCompiler::RemoveModuleHook() {
+  module_hook_ = {nullptr, IRHook::LoweringStage::LHLO};
+}
 
 }  // namespace mlir_gpu
 }  // namespace xla

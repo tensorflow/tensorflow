@@ -47,6 +47,49 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
       )");
 }
 
+TEST_F(LhloGenTest, AddInGPUDialect) {
+  CompileAndVerifyIr(R"(
+HloModule Add
+
+ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+;CHECK: "gpu.launch_func"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[ARG0]], %[[ARG1]], %[[ARG2]]
+;CHECK: }
+;CHECK: func @add_kernel(%[[ARG0]]: [[TYPE]], %[[ARG1]]: [[TYPE]], %[[ARG2]]: [[TYPE]]
+;CHECK: load %[[ARG0]][[INDEX:.*]]
+;CHECK: load %[[ARG1]][[INDEX]]
+;CHECK: store %{{.*}}, %[[ARG2]][[INDEX]]
+      )",
+                     LoweringStage::GPU);
+}
+
+TEST_F(LhloGenTest, AddInLVVMDialect) {
+  CompileAndVerifyIr(R"(
+HloModule Add
+
+ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
+;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[ARG0]][[INDEX:.*]]
+;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
+;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[ARG1]][[INDEX]]
+;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
+;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
+;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[ARG2]][[INDEX]]
+;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
+      )",
+                     LoweringStage::LLVM);
+}
+
 TEST_F(LhloGenTest, AddMultiply) {
   CompileAndVerifyIr(R"(
 HloModule AddMultiply

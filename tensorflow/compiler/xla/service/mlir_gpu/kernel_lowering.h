@@ -13,24 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_TRANSFORMS_LEGALIZE_TO_AFFINE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_TRANSFORMS_LEGALIZE_TO_AFFINE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_KERNEL_LOWERING_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_KERNEL_LOWERING_H_
 
-#include <memory>
-
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/status.h"
 
 namespace xla {
 namespace mlir_gpu {
 
-// Lowers from LHLO dialect to affine dialect.
-std::unique_ptr<::mlir::FunctionPassBase> createLegalizeAffinePass();
+Status LowerLHLOToGPU(mlir::ModuleOp module);
 
-// Adds patterns to convert LHLO binary ops to affine loops.
-void AppendBinaryOpsPatterns(::mlir::MLIRContext* context,
-                             ::mlir::OwningRewritePatternList* patterns);
+Status LowerKernelBodiesToNVVM(mlir::ModuleOp module);
 
 }  // namespace mlir_gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_TRANSFORMS_LEGALIZE_TO_AFFINE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_KERNEL_LOWERING_H_
