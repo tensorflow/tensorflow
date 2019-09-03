@@ -48,7 +48,7 @@ std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass();
 std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
 
 // Create a pass to prune tf_executor.graph from dead nodes.
-FunctionPassBase* CreateTFExecutorGraphPruningPass();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass();
 
 // Prune a tf_executor.graph operation from dead nodes.
 void prune_graph(GraphOp graph);
