@@ -42,6 +42,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -1625,10 +1626,6 @@ class Network(base_layer.Layer):
                        'inputs or `build()` is called with an `input_shape`.' %
                        self.name)
 
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_network'
-
   def _graph_network_add_loss(self, symbolic_loss):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
@@ -1646,6 +1643,10 @@ class Network(base_layer.Layer):
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
     self._insert_layers(new_layers, new_nodes)
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return network_serialization.NetworkSavedModelSaver(self)
 
 
 def _is_hdf5_filepath(filepath):

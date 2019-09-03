@@ -39,7 +39,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
-from tensorflow.python.keras.saving.saved_model import save as keras_save
+from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -473,7 +473,6 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       loaded = keras_load.load(saved_model_dir)
       loaded_predictions = loaded.predict(features)
       self.assertAllClose(predictions, loaded_predictions)
-
 
 
 class TestLayerCallTracing(test.TestCase):

@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
@@ -378,5 +379,5 @@ class Sequential(training.Model):
     return None
 
   @property
-  def _object_identifier(self):
-    return '_tf_keras_sequential'
+  def _trackable_saved_model_saver(self):
+    return model_serialization.SequentialSavedModelSaver(self)
