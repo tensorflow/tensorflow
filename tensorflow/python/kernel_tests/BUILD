@@ -2045,7 +2045,6 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
