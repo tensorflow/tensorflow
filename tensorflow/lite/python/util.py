@@ -110,6 +110,12 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
+    if not isinstance(name, str):
+      raise ValueError("Invalid type for a tensor name in the provided graph. "
+                       "Expected type for a tensor name is 'str', instead got "
+                       "type '{}' for tensor name '{}'".format(
+                           type(name), name))
+
     tensor = tensor_name_to_tensor.get(name)
     if tensor is None:
       invalid_tensors.append(name)
