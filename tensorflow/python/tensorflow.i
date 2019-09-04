@@ -19,8 +19,9 @@ limitations under the License.
 
 %include "tensorflow/python/pywrap_tfe.i"
 
-%include "tensorflow/python/util/tfprof.i"
+%include "tensorflow/python/util/port.i"
 %include "tensorflow/python/util/py_checkpoint_reader.i"
+%include "tensorflow/python/util/tfprof.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
 %include "tensorflow/python/lib/core/py_exception_registry.i"

@@ -49,7 +49,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
@@ -277,19 +276,19 @@ def _strip_hash_table_shared_name(graph_def):
 
 
 def IsGoogleCudaEnabled():
-  return _pywrap_util_port.IsGoogleCudaEnabled()
+  return pywrap_tensorflow.IsGoogleCudaEnabled()
 
 
 def IsBuiltWithROCm():
-  return _pywrap_util_port.IsBuiltWithROCm()
+  return pywrap_tensorflow.IsBuiltWithROCm()
 
 
 def GpuSupportsHalfMatMulAndConv():
-  return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
+  return pywrap_tensorflow.GpuSupportsHalfMatMulAndConv()
 
 
 def IsMklEnabled():
-  return _pywrap_util_port.IsMklEnabled()
+  return pywrap_tensorflow.IsMklEnabled()
 
 
 def InstallStackTraceHandler():

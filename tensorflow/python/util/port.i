@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
-#include "tensorflow/core/util/port.h"
+%include "tensorflow/python/platform/base.i"
 
-PYBIND11_MODULE(_pywrap_util_port, m) {
-  m.def("IsGoogleCudaEnabled", tensorflow::IsGoogleCudaEnabled);
-  m.def("IsBuiltWithROCm", tensorflow::IsBuiltWithROCm);
-  m.def("GpuSupportsHalfMatMulAndConv",
-        tensorflow::GpuSupportsHalfMatMulAndConv);
-  m.def("IsMklEnabled", tensorflow::IsMklEnabled);
-}
+%{
+#include "tensorflow/core/util/port.h"
+%}
+
+%ignoreall
+%unignore tensorflow;
+%unignore tensorflow::IsGoogleCudaEnabled;
+%unignore tensorflow::IsBuiltWithROCm;
+%unignore tensorflow::GpuSupportsHalfMatMulAndConv;
+%unignore tensorflow::IsMklEnabled;
+%include "tensorflow/core/util/port.h"
+%unignoreall
