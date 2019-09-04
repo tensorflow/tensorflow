@@ -246,18 +246,12 @@ struct COOSparseMatrixToSparseTensor<GPUDevice> {
 };
 extern template struct COOSparseMatrixToSparseTensor<GPUDevice>;
 
-// TODO(ebrevdo): Write a custom batch-friendly impl of this to update
-// the SparseTensor indices directly.
 template <>
-Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<const int>::UnalignedVec csr_row_ptr,
-    TTypes<int>::UnalignedVec coo_row_ind) {
-  CudaSparse cuda_sparse(c);
-  const int nnz = coo_row_ind.size();
-  TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
-  const int m = csr_row_ptr.size() - 1;  // rows
-  return cuda_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
-}
+struct CSRSparseMatrixToCOOSparseMatrix<GPUDevice> {
+  Status operator()(OpKernelContext* c,
+                    TTypes<const int>::UnalignedVec csr_row_ptr,
+                    TTypes<int>::UnalignedVec coo_row_ind);
+};
 extern template struct CSRSparseMatrixToCOOSparseMatrix<GPUDevice>;
 
 }  // namespace functor
