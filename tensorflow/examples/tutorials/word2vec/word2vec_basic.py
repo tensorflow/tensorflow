@@ -293,7 +293,8 @@ def word2vec_basic(log_dir):
           nearest = (-sim[i, :]).argsort()[1:top_k + 1]
           log_str = 'Nearest to %s:' % valid_word
           
-          print(log_str, ', '.join(reverse_dictionary[nearest[k]] for k in range(top_k)))
+          print(log_str, ', '.join([reverse_dictionary[nearest[k]]
+                                    for k in range(top_k)]))
     final_embeddings = normalized_embeddings.eval()
 
     # Write corresponding labels for the embeddings.
