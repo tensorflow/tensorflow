@@ -465,7 +465,8 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   const HloInstruction* fusion_2 =
-      module->entry_computation()->root_instruction()->operand(1)->operand(0);
+      module->entry_computation()->root_instruction()->operand(2);
+  EXPECT_NE(fusion_1, fusion_2);
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
 }
 
