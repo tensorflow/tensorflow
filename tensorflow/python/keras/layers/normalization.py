@@ -926,8 +926,8 @@ class LayerNormalization(Layer):
                beta_constraint=None,
                gamma_constraint=None,
                trainable=True,
-               fused=False,
                name=None,
+               fused=False,
                **kwargs):
     super(LayerNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
