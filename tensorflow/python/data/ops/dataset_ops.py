@@ -846,9 +846,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
         `tf.compat.v1.set_random_seed` for behavior.
-      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
-        that the dataset should be pseudorandomly reshuffled each time it is
-        iterated over. (Defaults to `True`.)
+      reshuffle_each_iteration: (Optional.) A boolean, which if true or null
+        indicates that the dataset should be pseudorandomly reshuffled each time
+        it is iterated over. (Defaults to `None`.)
 
     Returns:
       Dataset: A `Dataset`.
@@ -2922,9 +2922,9 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
         seed that will be used to create the distribution. See
         `tf.compat.v1.set_random_seed` for behavior.
-      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
-        that the dataset should be pseudorandomly reshuffled each time it is
-        iterated over. (Defaults to `True`.)
+      reshuffle_each_iteration: (Optional.) A boolean, which if true or null
+        indicates that the dataset should be pseudorandomly reshuffled each time
+        it is iterated over. (Defaults to `None`.)
 
     Returns:
       A `Dataset`.
