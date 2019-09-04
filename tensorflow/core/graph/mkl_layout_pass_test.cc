@@ -3776,7 +3776,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
             "B->D:1;C->D:2;D->E:1");
 }
 
-// The following positive and negative tests test the rewrite of Add and Addv2
+// The following positive and negative tests test the rewrite of Add and AddV2
 // to MKL versions. The operators will be rewritten only if one of the inputs
 // comes from another MKL operator.
 TEST_F(MklLayoutPassTest, PositiveRewriteAdd) {
