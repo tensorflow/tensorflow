@@ -130,7 +130,7 @@ struct BinaryOpConverter : public RewritePattern {
     }
     const auto& shape = lhs_type.getShape();
     SmallVector<Value*, 4> induction_vars;
-    const auto loc = rewriter.getUnknownLoc();
+    const auto loc = op->getLoc();
     for (int i = 0; i < shape.size(); ++i) {
       auto forOp = rewriter.create<AffineForOp>(loc, 0, shape[i]);
       induction_vars.push_back(forOp.getInductionVar());
