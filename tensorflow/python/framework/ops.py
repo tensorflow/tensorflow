@@ -6627,8 +6627,7 @@ def _op_to_colocate_with(v, graph):
   # colocation constraints altogether. Assuming that will
   # happen soon, perhaps this hack to work around the circular
   # import dependency is acceptable.
-  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
-      v.handle.op, Operation):
+  if hasattr(v, "handle") and isinstance(v.handle, Tensor):
     if graph.building_function:
       return graph.capture(v.handle).op
     else:
