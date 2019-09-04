@@ -513,9 +513,9 @@ cc_test(
 )
 
 cc_library(
-    name = "depth_wise_conv_3x3_texture",
-    srcs = ["depth_wise_conv_3x3_texture.cc"],
-    hdrs = ["depth_wise_conv_3x3_texture.h"],
+    name = "depth_wise_conv_3x3",
+    srcs = ["depth_wise_conv_3x3.cc"],
+    hdrs = ["depth_wise_conv_3x3.h"],
     deps = [
         ":gpu_operation",
         ":util",
@@ -535,8 +535,8 @@ cc_library(
 )
 
 cc_test(
-    name = "depth_wise_conv_3x3_texture_test",
-    srcs = ["depth_wise_conv_3x3_texture_test.cc"],
+    name = "depth_wise_conv_3x3_test",
+    srcs = ["depth_wise_conv_3x3_test.cc"],
     linkstatic = True,
     tags = [
         "linux",
@@ -544,7 +544,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":depth_wise_conv_3x3_texture",
+        ":depth_wise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -1174,7 +1174,7 @@ test_suite(
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_test",
         "convolution_transposed_thin_test",
-        "depth_wise_conv_3x3_texture_test",
+        "depth_wise_conv_3x3_test",
         "depth_wise_conv_test",
         "fully_connected_texture_test",
         "hard_swish_test",

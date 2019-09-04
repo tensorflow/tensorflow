@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
 
 #include <vector>
 
@@ -31,7 +31,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-TEST_F(OpenCLOperationTest, DepthWiseConv3x3TextureSimpleWeights) {
+TEST_F(OpenCLOperationTest, DepthWiseConv3x3SimpleWeights) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
@@ -56,9 +56,9 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3TextureSimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      DepthWiseConv3x3Texture operation;
-      ASSERT_OK(CreateDepthWiseConv3x3Texture(creation_context_, op_def, attr,
-                                              &operation));
+      DepthWiseConv3x3 operation;
+      ASSERT_OK(
+          CreateDepthWiseConv3x3(creation_context_, op_def, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -68,7 +68,7 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3TextureSimpleWeights) {
   }
 }
 
-TEST_F(OpenCLOperationTest, DepthWiseConv3x3Texture) {
+TEST_F(OpenCLOperationTest, DepthWiseConv3x3) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
@@ -93,9 +93,9 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3Texture) {
       op_def.src_tensors.push_back({data_type, storage});
       op_def.dst_tensors.push_back({data_type, storage});
       TensorFloat32 dst_tensor;
-      DepthWiseConv3x3Texture operation;
-      ASSERT_OK(CreateDepthWiseConv3x3Texture(creation_context_, op_def, attr,
-                                              &operation));
+      DepthWiseConv3x3 operation;
+      ASSERT_OK(
+          CreateDepthWiseConv3x3(creation_context_, op_def, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

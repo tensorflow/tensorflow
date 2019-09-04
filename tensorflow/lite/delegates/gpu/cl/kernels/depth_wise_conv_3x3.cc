@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
 
 #include <string>
 #include <utility>
@@ -69,7 +69,7 @@ std::string GenerateDepthWiseConvCode(
     c += "  event_t e = async_work_group_copy(f, filters + Z * 10, 10, 0);\n";
     c += "  wait_group_events(1, &e);\n";
   } else if (weights_are_buffer) {
-    c += "  __global FLT4* f = filters + Z * 10s;\n";
+    c += "  __global FLT4* f = filters + Z * 10;\n";
   }
   c += "  FLT4 s0;\n";
   c += "  FLT4 s1;\n";
@@ -245,15 +245,14 @@ std::string GenerateDepthWiseConvCode(
 
 }  // namespace
 
-DepthWiseConv3x3Texture::DepthWiseConv3x3Texture(const OperationDef& definition,
-                                                 bool weights_are_buffer,
-                                                 bool local_mem_uploads)
+DepthWiseConv3x3::DepthWiseConv3x3(const OperationDef& definition,
+                                   bool weights_are_buffer,
+                                   bool local_mem_uploads)
     : GPUOperation(definition),
       weights_are_buffer_(weights_are_buffer),
       local_mem_uploads_(local_mem_uploads) {}
 
-DepthWiseConv3x3Texture::DepthWiseConv3x3Texture(
-    DepthWiseConv3x3Texture&& operation)
+DepthWiseConv3x3::DepthWiseConv3x3(DepthWiseConv3x3&& operation)
     : GPUOperation(std::move(operation)),
       weights_are_buffer_(operation.weights_are_buffer_),
       local_mem_uploads_(operation.local_mem_uploads_),
@@ -263,8 +262,7 @@ DepthWiseConv3x3Texture::DepthWiseConv3x3Texture(
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
-DepthWiseConv3x3Texture& DepthWiseConv3x3Texture::operator=(
-    DepthWiseConv3x3Texture&& operation) {
+DepthWiseConv3x3& DepthWiseConv3x3::operator=(DepthWiseConv3x3&& operation) {
   if (this != &operation) {
     std::swap(weights_are_buffer_, operation.weights_are_buffer_);
     std::swap(local_mem_uploads_, operation.local_mem_uploads_);
@@ -278,8 +276,7 @@ DepthWiseConv3x3Texture& DepthWiseConv3x3Texture::operator=(
   return *this;
 }
 
-Status DepthWiseConv3x3Texture::Compile(
-    const CreationContext& creation_context) {
+Status DepthWiseConv3x3::Compile(const CreationContext& creation_context) {
   std::string code = GenerateDepthWiseConvCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, linked_operations_, *creation_context.device,
@@ -294,7 +291,7 @@ Status DepthWiseConv3x3Texture::Compile(
       *creation_context.device, &kernel_);
 }
 
-Status DepthWiseConv3x3Texture::BindArguments() {
+Status DepthWiseConv3x3::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
@@ -305,14 +302,14 @@ Status DepthWiseConv3x3Texture::BindArguments() {
   return OkStatus();
 }
 
-int3 DepthWiseConv3x3Texture::GetGridSize() const {
+int3 DepthWiseConv3x3::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(dst_[0]->Width(), 2);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), 2);
   const int grid_z = dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status DepthWiseConv3x3Texture::Tune(const TuningParameters& params) {
+Status DepthWiseConv3x3::Tune(const TuningParameters& params) {
   if (local_mem_uploads_) {
     return OkStatus();
   }
@@ -320,13 +317,12 @@ Status DepthWiseConv3x3Texture::Tune(const TuningParameters& params) {
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status DepthWiseConv3x3Texture::AddToQueue(CLCommandQueue* queue) {
+Status DepthWiseConv3x3::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-bool IsDepthWiseConv3x3TextureSupported(
-    const DepthwiseConvolution2DAttributes& attr) {
+bool IsDepthWiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
   return attr.weights.shape.o == 1 && attr.dilations.w == 1 &&
          attr.dilations.h == 1 && attr.weights.shape.w == 3 &&
          attr.weights.shape.h == 3 && attr.strides.w == 1 &&
@@ -335,20 +331,19 @@ bool IsDepthWiseConv3x3TextureSupported(
          attr.padding.appended.h == 1;
 }
 
-Status CreateDepthWiseConv3x3Texture(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr,
-    DepthWiseConv3x3Texture* result) {
-  if (!IsDepthWiseConv3x3TextureSupported(attr)) {
+Status CreateDepthWiseConv3x3(const CreationContext& creation_context,
+                              const OperationDef& definition,
+                              const DepthwiseConvolution2DAttributes& attr,
+                              DepthWiseConv3x3* result) {
+  if (!IsDepthWiseConv3x3Supported(attr)) {
     return InvalidArgumentError(
-        "DepthWiseConv3x3Texture doesn't support this attributes");
+        "DepthWiseConv3x3 doesn't support this attributes");
   }
   bool weights_are_buffer =
       creation_context.device->IsPowerVR() || creation_context.device->IsMali();
   bool local_mem_uploads =
       weights_are_buffer && creation_context.device->IsPowerVR();
-  *result = DepthWiseConv3x3Texture(definition, weights_are_buffer,
-                                    local_mem_uploads);
+  *result = DepthWiseConv3x3(definition, weights_are_buffer, local_mem_uploads);
   RETURN_IF_ERROR(result->UploadWeightsAndBiases(attr.weights, attr.bias,
                                                  creation_context.context));
   return OkStatus();
