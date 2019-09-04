@@ -81,6 +81,11 @@ LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                        AffineMap indexRemap = AffineMap(),
                                        ArrayRef<Value *> extraOperands = {});
 
+/// Rewrites the memref defined by this alloc op to have an identity layout map
+/// and updates all its indexing uses. Returns failure if any of its uses
+/// escape (while leaving the IR in a valid state).
+LogicalResult normalizeMemRef(AllocOp op);
+
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition
 /// of all other AffineApplyOps reachable from input parameter 'operands'. If

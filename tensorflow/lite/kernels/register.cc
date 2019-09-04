@@ -144,6 +144,8 @@ TfLiteRegistration* Register_MATRIX_DIAG();
 TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_MATRIX_SET_DIAG();
 TfLiteRegistration* Register_HARD_SWISH();
+TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V4();
+TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V5();
 
 const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
                                                     int version) const {
@@ -382,6 +384,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
+  AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V4,
+             Register_NON_MAX_SUPPRESSION_V4());
+  AddBuiltin(BuiltinOperator_NON_MAX_SUPPRESSION_V5,
+             Register_NON_MAX_SUPPRESSION_V5());
 
   // WARNING: Control flow ops are experimental and subject to change.
   AddBuiltin(BuiltinOperator_IF, tflite::ops::custom::Register_IF());

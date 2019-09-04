@@ -1544,11 +1544,12 @@ class ComputationBuilder(object):
               updates,
               update_computation,
               dimension_numbers,
-              indices_are_sorted=False):
+              indices_are_sorted=False,
+              unique_indices=False):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers,
-                       indices_are_sorted)
+                       indices_are_sorted, unique_indices)
 
   def Fft(self, operand, fft_type, fft_lengths):
     """Enqueues a FFT operation onto the computation."""

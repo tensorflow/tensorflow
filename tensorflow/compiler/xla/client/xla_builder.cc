@@ -615,10 +615,22 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
 
 XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = literal.shape().ToProto();
-    *instr.mutable_literal() = literal.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kConstant);
+    if (literal.shape().IsArray() && literal.element_count() > 1 &&
+        literal.IsAllFirst()) {
+      Literal scalar = LiteralUtil::GetFirstScalarLiteral(literal);
+      HloInstructionProto instr;
+      *instr.mutable_shape() = scalar.shape().ToProto();
+      *instr.mutable_literal() = scalar.ToProto();
+      TF_ASSIGN_OR_RETURN(
+          XlaOp scalar_op,
+          AddInstruction(std::move(instr), HloOpcode::kConstant));
+      return Broadcast(scalar_op, literal.shape().dimensions());
+    } else {
+      HloInstructionProto instr;
+      *instr.mutable_shape() = literal.shape().ToProto();
+      *instr.mutable_literal() = literal.ToProto();
+      return AddInstruction(std::move(instr), HloOpcode::kConstant);
+    }
   });
 }
 
@@ -1734,10 +1746,12 @@ XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                           const XlaOp& updates,
                           const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
-                          bool indices_are_sorted) {
+                          bool indices_are_sorted, bool unique_indices) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_indices_are_sorted(indices_are_sorted);
+
+    instr.set_unique_indices(unique_indices);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
@@ -3378,10 +3392,10 @@ XlaOp Gather(const XlaOp input, const XlaOp start_indices,
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
               const XlaOp updates, const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
-              bool indices_are_sorted) {
+              bool indices_are_sorted, bool unique_indices) {
   return input.builder()->Scatter(input, scatter_indices, updates,
                                   update_computation, dimension_numbers,
-                                  indices_are_sorted);
+                                  indices_are_sorted, unique_indices);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {

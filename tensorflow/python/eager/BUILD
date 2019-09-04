@@ -273,6 +273,7 @@ cuda_py_test(
         ":forwardprop",
         ":forwardprop_util",
         ":test",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     shard_count = 5,
     xla_enable_strict_auto_jit = True,
@@ -480,6 +481,7 @@ py_library(
         ":context",
         ":core",
         ":execute",
+        ":forwardprop_util",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -500,6 +502,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":backprop_util",
         ":context",
         ":execute",
         ":imperative_grad",
@@ -516,6 +519,17 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "backprop_util",
+    srcs = ["backprop_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_util",
     ],
 )
 

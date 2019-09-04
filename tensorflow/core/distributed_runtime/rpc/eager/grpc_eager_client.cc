@@ -28,6 +28,32 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 namespace {
+
+/*
+ * Setting environment variable "TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE" to
+ * true will turn on asynchronous execution of remote op. It means that when
+ * executing an op on a remote worker, client will not block on waiting
+ * for the response anymore. Using follow code as example:
+ *
+ * with tf.device('worker:0'):
+ *   a = tf.matmul(...)
+ *   b = tf.matmul(...)
+ * logging.into('Requests sent')    # Probably not executed yet
+ * logging.info('b: %s', b.numpy()) # Block until 'b' finished.
+ *
+ * Streaming RPC will preserve order as well. So 'a' must be executed before
+ * 'b' on 'worker:0'.
+ *
+ * When turning on this feature, you should explicitly wait for some result
+ * from remote workers at the end of you python program. Otherwise, client may
+ * shutdown remote workers without waiting all pending ops.
+ *
+ * TODO(fishx): When exiting client, make sure all pending ops on remote workers
+ * are finished.
+ *
+ * TODO(b/139210648): Move this comment to eager/execute.py when this feature is
+ * on by default.
+ */
 bool EnableStreaming() {
   bool result;
   // TODO(b/139210648): Turn on this flag by default.
@@ -75,15 +101,15 @@ class GrpcEagerClient : public EagerClient {
     if (it != enqueue_dispatchers_.end()) {
       it->second.CancelCall();
       enqueue_dispatchers_.erase(request->context_id());
-    } else {
+    } else if (EnableStreaming()) {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
                  << " does not seem to exist.";
     }
   }
 
-  Status StreamingEnqueueAsync(const EnqueueRequest* request,
-                               EnqueueResponse* response,
-                               StatusCallback done) override {
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
     if (EnableStreaming()) {
       tf_shared_lock l(mu_);
       auto it = enqueue_dispatchers_.find(request->context_id());
@@ -98,7 +124,6 @@ class GrpcEagerClient : public EagerClient {
         it = it_and_bool.first;
       }
       it->second.SendNextRequest(*request, response, std::move(done));
-      return Status::OK();
     } else {
       Notification n;
       Status status;
@@ -108,7 +133,6 @@ class GrpcEagerClient : public EagerClient {
       });
       n.WaitForNotification();
       done(status);
-      return status;
     }
   }
 

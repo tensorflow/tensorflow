@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import copy
 import random
 import threading
@@ -1636,19 +1635,6 @@ def graph_mode():
 def eager_mode():
   """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
-
-
-# TODO(agarwal): get rid of this and use ops.name_scope instead.
-@contextlib.contextmanager
-def namescope(name):
-  """ContextManager for creating hierarchical name scopes."""
-  ctx = context()
-  old_name = ctx.scope_name
-  ctx.scope_name = "%s/%s" % (old_name, name) if old_name else name
-  try:
-    yield
-  finally:
-    ctx.scope_name = old_name
 
 
 def scope_name():

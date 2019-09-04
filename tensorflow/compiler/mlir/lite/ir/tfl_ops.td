@@ -1589,6 +1589,8 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect]> {
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
 
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
@@ -2178,9 +2180,6 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
   let hasOptions = 1;
 }
 
-def Rank0I32Tensor : Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0]>]>,
-                          "tensor<i32>">;
-
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
@@ -2191,7 +2190,7 @@ def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    Rank0I32Tensor:$split_dim,
+    0DTensorOf<[I32]>:$split_dim,
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
     PositiveI32Attr:$num_splits
   );
@@ -2216,14 +2215,16 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
 
   let arguments = (ins
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
-    I32Tensor:$size_splits,
-    I32Tensor:$split_dim,
-    I32Attr:$num_splits
+    1DTensorOf<[I32]>:$size_splits,
+    0DTensorOf<[I32]>:$split_dim,
+    PositiveI32Attr:$num_splits
   );
 
   let results = (outs
     Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }

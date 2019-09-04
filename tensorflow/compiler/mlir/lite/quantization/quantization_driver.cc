@@ -548,7 +548,7 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 }
 
 void QuantizationDriver::PreprocessConstantOps() {
-  fn_.walk<ConstantOp>([&](ConstantOp cst) {
+  fn_.walk([&](ConstantOp cst) {
     // Non-float tensors are neither weights or require quantization.
     if (!cst.getType().cast<ShapedType>().getElementType().isa<FloatType>()) {
       return;

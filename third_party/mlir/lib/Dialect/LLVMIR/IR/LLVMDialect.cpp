@@ -779,7 +779,7 @@ static void printUndefOp(OpAsmPrinter *p, UndefOp &op) {
   *p << " : " << op.res()->getType();
 }
 
-// <operation> ::= `llvm.undef` attribute-dict? : type
+// <operation> ::= `llvm.mlir.undef` attribute-dict? : type
 static ParseResult parseUndefOp(OpAsmParser *parser, OperationState *result) {
   Type type;
 
@@ -825,7 +825,8 @@ static ParseResult parseAddressOfOp(OpAsmParser *parser,
 static LogicalResult verify(AddressOfOp op) {
   auto global = op.getGlobal();
   if (!global)
-    return op.emitOpError("must reference a global defined by 'llvm.global'");
+    return op.emitOpError(
+        "must reference a global defined by 'llvm.mlir.global'");
 
   if (global.getType().getPointerTo() != op.getResult()->getType())
     return op.emitOpError(
@@ -844,7 +845,7 @@ static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
   *p << " : " << op.res()->getType();
 }
 
-// <operation> ::= `llvm.constant` `(` attribute `)` attribute-list? : type
+// <operation> ::= `llvm.mlir.constant` `(` attribute `)` attribute-list? : type
 static ParseResult parseConstantOp(OpAsmParser *parser,
                                    OperationState *result) {
   Attribute valueAttr;
@@ -894,8 +895,8 @@ static void printGlobalOp(OpAsmPrinter *p, GlobalOp op) {
   p->printType(op.type());
 }
 
-// <operation> ::= `llvm.global` `constant`? `@` identifier `(` attribute `)`
-//                  attribute-list? (`:` type)?
+// <operation> ::= `llvm.mlir.global` `constant`? `@` identifier
+//                 `(` attribute `)` attribute-list? (`:` type)?
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].

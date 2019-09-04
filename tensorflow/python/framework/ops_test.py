@@ -3350,28 +3350,6 @@ class NameScopeTest(test_util.TensorFlowTestCase):
     self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
 
 
-class TracebackTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testTracebackWithStartLines(self):
-    with self.cached_session() as sess:
-      a = constant_op.constant(2.0)
-      sess.run(
-          a,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assertTrue(sess.graph.get_operations())
-
-      # Tests that traceback_with_start_lines is the same as traceback
-      # but includes one more element at the end.
-      for op in sess.graph.get_operations():
-        self.assertEquals(len(op.traceback), len(op.traceback_with_start_lines))
-        for frame, frame_with_start_line in zip(
-            op.traceback, op.traceback_with_start_lines):
-          self.assertEquals(5, len(frame_with_start_line))
-          self.assertEquals(frame, frame_with_start_line[:-1])
-
-
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v1_only("b/120545219")

@@ -124,6 +124,7 @@ def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;
+def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;

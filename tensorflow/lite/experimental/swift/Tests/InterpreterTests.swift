@@ -32,21 +32,42 @@ class InterpreterTests: XCTestCase {
     super.tearDown()
   }
 
-  func testInitWithModelPath() {
+  func testInit_ValidModelPath() {
     XCTAssertNoThrow(try Interpreter(modelPath: AddModel.path))
   }
 
-  func testInit_ThrowsFailedToLoadModel() {
+  func testInit_InvalidModelPath_ThrowsFailedToLoadModel() {
     XCTAssertThrowsError(try Interpreter(modelPath: "/invalid/path")) { error in
       self.assertEqualErrors(actual: error, expected: .failedToLoadModel)
     }
   }
 
-  func testInitWithModelPathAndOptions() throws {
+  func testInitWithOptions() throws {
     var options = Interpreter.Options()
     options.threadCount = 2
-    let interpreter = try Interpreter(modelPath: AddModel.path, options: options)
+    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, options: options)
     XCTAssertNotNil(interpreter.options)
+    XCTAssertNil(interpreter.delegates)
+  }
+
+  func testInitWithDelegate() throws {
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, delegates: [metalDelegate])
+    XCTAssertEqual(interpreter.delegates?.count, 1)
+    XCTAssertNil(interpreter.options)
+  }
+
+  func testInitWithOptionsAndDelegate() throws {
+    var options = Interpreter.Options()
+    options.threadCount = 1
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(
+      modelPath: AddQuantizedModel.path,
+      options: options,
+      delegates: [metalDelegate]
+    )
+    XCTAssertNotNil(interpreter.options)
+    XCTAssertEqual(interpreter.delegates?.count, 1)
   }
 
   func testInputTensorCount() {

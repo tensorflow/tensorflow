@@ -272,8 +272,8 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
   );
 
   let results = (outs
-    AnyType: $trueOutput,
     AnyType: $falseOutput,
+    AnyType: $trueOutput,
     TfeControlType: $control
   );
 
@@ -351,7 +351,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 
   let results = (outs
     AnyTensor:$output,
-    TensorOf<[I32]>:$valueIndex,
+    TensorOf<[I32]>:$value_index,
     TfeControlType:$control
   );
 }

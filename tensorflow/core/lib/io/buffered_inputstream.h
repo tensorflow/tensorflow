@@ -41,7 +41,7 @@ class BufferedInputStream : public InputStreamInterface {
 
   ~BufferedInputStream() override;
 
-  Status ReadNBytes(int64 bytes_to_read, string* result) override;
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
 
   Status SkipNBytes(int64 bytes_to_skip) override;
 
@@ -90,7 +90,7 @@ class BufferedInputStream : public InputStreamInterface {
 
   InputStreamInterface* input_stream_;  // not owned.
   size_t size_;                         // buffer size.
-  string buf_;                          // the buffer itself.
+  tstring buf_;                         // the buffer itself.
   // buf_[pos_, limit_) holds the valid "read ahead" data in the file.
   size_t pos_ = 0;    // current position in buf_.
   size_t limit_ = 0;  // just past the end of valid data in buf_.

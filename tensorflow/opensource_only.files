@@ -4,7 +4,6 @@ tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
-tensorflow/contrib/mpi/BUILD
 tensorflow/python/autograph/core/config.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
 tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
@@ -39,8 +38,11 @@ tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
 tensorflow/third_party/eigen3/Eigen/Eigenvalues
 tensorflow/third_party/eigen3/Eigen/LU
+tensorflow/third_party/eigen3/Eigen/OrderingMethods
 tensorflow/third_party/eigen3/Eigen/QR
 tensorflow/third_party/eigen3/Eigen/SVD
+tensorflow/third_party/eigen3/Eigen/SparseCholesky
+tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
 tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
@@ -94,8 +96,6 @@ tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/icu/udata.patch
 tensorflow/third_party/jsoncpp.BUILD
-tensorflow/third_party/kafka/BUILD
-tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/llvm/BUILD
@@ -111,8 +111,6 @@ tensorflow/third_party/mkl/mkl.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/mpi/.gitignore
-tensorflow/third_party/mpi/BUILD
-tensorflow/third_party/mpi_collectives/BUILD
 tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/nccl/LICENSE

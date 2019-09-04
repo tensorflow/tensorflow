@@ -4,7 +4,10 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = ["@local_config_mlir//:friends"],
+    default_visibility = [
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "@local_config_mlir//:friends",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -33,7 +36,6 @@ cc_library(
 cc_library(
     name = "tf_mlir_opt_main",
     srcs = ["tf_mlir_opt_main.cc"],
-    copts = ["-std=c++14"],
     deps = [
         ":init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
@@ -43,6 +45,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_fold_switch",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
@@ -50,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
+        "//tensorflow/compiler/xla/service/mlir_gpu/transforms:legalize_to_affine",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm//:support",

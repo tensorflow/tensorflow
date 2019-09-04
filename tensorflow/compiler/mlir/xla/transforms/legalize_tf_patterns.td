@@ -20,6 +20,7 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
+def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def NullElementsAttr : NativeCodeCall<"ElementsAttr()">;
 
 //===----------------------------------------------------------------------===//
@@ -91,6 +92,14 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
+
+//===----------------------------------------------------------------------===//
+// Matmul op patterns.
+//===----------------------------------------------------------------------===//
+
+// TODO(hinsu): Lower matmul ops with transpose attributes.
+def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse, ConstBoolAttrFalse),
+          (HLO_DotOp $a, $b, (NullArrayAttr))>;
 
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.

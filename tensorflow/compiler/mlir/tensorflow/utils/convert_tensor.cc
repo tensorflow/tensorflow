@@ -140,12 +140,28 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
   return ConvertTensor(t, builder);
 }
 
-Status ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
-                                 TensorShapeProto* output_shape) {
+void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
+                               TensorShapeProto* output_shape) {
   for (auto d : shape) {
     output_shape->add_dim()->set_size(d);
   }
-  return Status::OK();
+}
+
+PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type) {
+  if (type.isa<mlir::UnrankedTensorType>()) {
+    // An empty PartialTensorShape indicates an unranked tensor.
+    return PartialTensorShape();
+  }
+
+  if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
+    TensorShapeProto tensor_shape_proto;
+    ConvertToTensorShapeProto(tensor_type.getShape(), &tensor_shape_proto);
+    return PartialTensorShape(tensor_shape_proto);
+  }
+
+  // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
+  // Empty TensorShape indicates a scalar.
+  return TensorShape();
 }
 
 // Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
@@ -242,8 +258,7 @@ Status ConvertToTensorProto(const ElementsAttr attr,
   DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
   output_tensor->set_dtype(output_dtype);
-  TF_RETURN_IF_ERROR(
-      ConvertToTensorShapeProto(shape, output_tensor->mutable_tensor_shape()));
+  ConvertToTensorShapeProto(shape, output_tensor->mutable_tensor_shape());
 
   switch (output_dtype) {
     case DT_FLOAT:

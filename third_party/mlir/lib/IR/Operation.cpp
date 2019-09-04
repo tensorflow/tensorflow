@@ -290,19 +290,6 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 }
 
 //===----------------------------------------------------------------------===//
-// Operation Walkers
-//===----------------------------------------------------------------------===//
-
-void Operation::walk(llvm::function_ref<void(Operation *)> callback) {
-  // Visit any internal operations.
-  for (auto &region : getRegions())
-    region.walk(callback);
-
-  // Visit the current operation.
-  callback(this);
-}
-
-//===----------------------------------------------------------------------===//
 // Other
 //===----------------------------------------------------------------------===//
 
@@ -770,6 +757,18 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   return success(sType1.getShape() == sType2.getShape());
 }
 
+LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
+  if (op->getNumOperands() == 0)
+    return failure();
+
+  auto type = op->getOperand(0)->getType();
+  for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
+    if (failed(verifyShapeMatch(opType, type)))
+      return op->emitOpError() << "requires the same shape for all operands";
+  }
+  return success();
+}
+
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return failure();
@@ -785,6 +784,26 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
+  if (op->getNumOperands() == 0)
+    return failure();
+
+  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
+  if (!type)
+    return op->emitOpError("requires shaped type results");
+  auto elementType = type.getElementType();
+
+  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
+    auto shapedType = operandType.dyn_cast<ShapedType>();
+    if (!shapedType)
+      return op->emitOpError("requires shaped type operands");
+    if (shapedType.getElementType() != elementType)
+      return op->emitOpError("requires the same element type for all operands");
+  }
+
   return success();
 }
 

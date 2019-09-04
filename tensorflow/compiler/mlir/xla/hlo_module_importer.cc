@@ -31,6 +31,9 @@ limitations under the License.
 namespace xla {
 
 Status HloModuleImporter::Import(const xla::HloModule& module) {
+  // TODO(hinsu): Only import the entry computation here once all HLO ops with
+  // reference to other computation are updated to have a region instead of a
+  // function attribute.
   for (const auto& computation : module.computations()) {
     auto result = HloFunctionImporter::ImportFunction(
         module_, &builder_, &function_map_, computation);

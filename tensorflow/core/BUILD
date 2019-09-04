@@ -109,11 +109,8 @@ load(
     "tf_additional_cloud_kernel_deps",
     "tf_additional_cloud_op_deps",
     "tf_additional_core_deps",
-    "tf_additional_cupti_wrapper_deps",
     "tf_additional_device_tracer_cuda_deps",
-    "tf_additional_device_tracer_deps",
     "tf_additional_device_tracer_test_flags",
-    "tf_additional_gdr_lib_defines",
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
@@ -121,12 +118,10 @@ load(
     "tf_additional_libdevice_deps",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_monitoring_hdrs",
-    "tf_additional_mpi_lib_defines",
     "tf_additional_numa_copts",
     "tf_additional_numa_deps",
     "tf_additional_numa_lib_defines",
     "tf_additional_test_deps",
-    "tf_additional_verbs_lib_defines",
     "tf_grpc_service_all",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
@@ -254,6 +249,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
+    "protobuf/remote_tensor_handle.proto",
     "protobuf/saved_model.proto",
     "protobuf/saved_object_graph.proto",
     "protobuf/struct.proto",
@@ -370,6 +366,27 @@ cc_library(
     deps = [
         ":platform_base",
         "//third_party/eigen3",
+    ],
+)
+
+filegroup(
+    name = "util_port_hdrs",
+    srcs = [
+        "util/port.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "util_port",
+    srcs = ["util/port.cc"],
+    hdrs = ["util/port.h"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 
@@ -1174,6 +1191,7 @@ tf_gen_op_libs(
         "set_ops",
         "script_ops",
         "sendrecv_ops",
+        "sparse_csr_matrix_ops",
         "sparse_ops",
         "spectral_ops",
         "state_ops",
@@ -1399,6 +1417,7 @@ cc_library(
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
         ":set_ops_op_lib",
+        ":sparse_csr_matrix_ops_op_lib",
         ":sparse_ops_op_lib",
         ":summary_ops_op_lib",
         ":spectral_ops_op_lib",
@@ -1588,6 +1607,7 @@ cc_library(
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
+        "//tensorflow/core/kernels/sparse:kernels",
     ] + tf_additional_cloud_kernel_deps() + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
@@ -2424,10 +2444,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
 LIB_INTERNAL_DEFINES = (
     tf_additional_lib_defines() + [
         "TF_USE_SNAPPY",
-    ] + tf_additional_verbs_lib_defines() +
-    tf_additional_mpi_lib_defines() +
-    tf_additional_gdr_lib_defines() +
-    tf_additional_numa_lib_defines()
+    ] + tf_additional_numa_lib_defines()
 )
 
 cc_library(
@@ -2495,6 +2512,7 @@ cc_library(
                "//tensorflow/core/platform:numbers",
                "//tensorflow/core/platform:platform_strings",
                "//tensorflow/core/platform:scanner",
+               "//tensorflow/core/platform:strcat",
                "//tensorflow/core/platform:stringprintf",
                "//tensorflow/core/platform:str_util",
                "//tensorflow/core/platform/default/build_config:platformlib",
@@ -2752,6 +2770,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
         "example/example_parser_configuration.*",
         "util/reporter.h",
         "util/reporter.cc",
+        "util/port.h",
         "framework/fake_input.*",
         "framework/op_gen_lib.*",
         "framework/reader_base.*",
@@ -2864,6 +2883,7 @@ tf_cuda_library(
             "util/stats_calculator.*",
             "util/version_info.cc",
             "util/env_var.cc",
+            "util/port.cc",
         ],
     ) + select({
         "//tensorflow:windows": [],
@@ -2892,6 +2912,7 @@ tf_cuda_library(
         ":protos_all_cc",
         ":stats_calculator_portable",
         ":version_lib",
+        ":util_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3175,6 +3196,7 @@ tf_cuda_library(
         "common_runtime/device_mgr.cc",
         "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
+        "common_runtime/dynamic_device_mgr.cc",
         "common_runtime/executor.cc",
         "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
@@ -3393,7 +3415,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:legacy_device_tracer_srcs",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    cuda_deps = tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],
@@ -3401,9 +3423,11 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-        "@com_google_absl//absl/flags:flag",
+        "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:profiler_interface",
-    ] + tf_additional_device_tracer_deps(),
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/flags:flag",
+    ],
     alwayslink = True,
 )
 
@@ -3738,7 +3762,9 @@ tf_cc_tests(
         "//tensorflow/core/platform:profile_utils/cpu_utils_test.cc",
         "//tensorflow/core/platform:scanner_test.cc",
         "//tensorflow/core/platform:stacktrace_handler_test.cc",
+        "//tensorflow/core/platform:stacktrace_test.cc",
         "//tensorflow/core/platform:str_util_test.cc",
+        "//tensorflow/core/platform:strcat_test.cc",
         "//tensorflow/core/platform:stringpiece_test.cc",
         "//tensorflow/core/platform:stringprintf_test.cc",
         "//tensorflow/core/platform:subprocess_test.cc",
@@ -3754,6 +3780,7 @@ tf_cc_tests(
         ":test_main",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
         "//third_party/eigen3",
@@ -4032,6 +4059,7 @@ tf_cc_tests(
         "common_runtime/collective_rma_local_test.cc",
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
+        "common_runtime/dynamic_device_mgr_test.cc",
         "common_runtime/isolate_placer_inspection_required_ops_pass_test.cc",
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
@@ -5178,6 +5206,7 @@ tf_cc_tests(
         "ops/rnn_ops_test.cc",
         "ops/set_ops_test.cc",
         "ops/shape_function_test.cc",
+        "ops/sparse_csr_matrix_ops_test.cc",
         "ops/sparse_ops_test.cc",
         "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",

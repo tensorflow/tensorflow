@@ -171,11 +171,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "7e7a57e33c59280a17a66e521396cd8b1a55d0676c9f807078522fda52114b5c",
-        strip_prefix = "eigen-eigen-8071cda5714d",
+        sha256 = "1387ecbf59312e149fd83c4af4e8f478710a63cf2e972b2db7821127bf35d658",
+        strip_prefix = "eigen-eigen-07eb497b497e",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/8071cda5714d.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/8071cda5714d.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/bitbucket.org/eigen/eigen/get/07eb497b497e.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/07eb497b497e.tar.gz",
         ],
     )
 
@@ -637,18 +637,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    tf_http_archive(
-        name = "kafka",
-        build_file = clean_dep("//third_party:kafka/BUILD"),
-        patch_file = clean_dep("//third_party/kafka:config.patch"),
-        sha256 = "cc6ebbcd0a826eec1b8ce1f625ffe71b53ef3290f8192b6cae38412a958f4fd3",
-        strip_prefix = "librdkafka-0.11.5",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
-            "https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
-        ],
-    )
-
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
@@ -700,10 +688,10 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     java_import_external(
         name = "org_checkerframework_qual",
-        jar_sha256 = "a17501717ef7c8dda4dba73ded50c0d7cde440fd721acfeacbf19786ceac1ed6",
+        jar_sha256 = "d261fde25d590f6b69db7721d469ac1b0a19a17ccaaaa751c31f0d8b8260b894",
         jar_urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
-            "http://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.4.0/checker-qual-2.4.0.jar",
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
+            "http://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
         ],
         licenses = ["notice"],  # Apache 2.0
     )

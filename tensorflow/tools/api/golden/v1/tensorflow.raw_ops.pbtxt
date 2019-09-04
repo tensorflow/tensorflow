@@ -2541,6 +2541,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ParseExampleV2"
+    argspec: "args=[\'serialized\', \'names\', \'sparse_keys\', \'dense_keys\', \'ragged_keys\', \'dense_defaults\', \'num_sparse\', \'sparse_types\', \'ragged_value_types\', \'ragged_split_types\', \'dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ParseSequenceExample"
     argspec: "args=[\'serialized\', \'debug_name\', \'context_dense_defaults\', \'feature_list_dense_missing_assumed_empty\', \'context_sparse_keys\', \'context_dense_keys\', \'feature_list_sparse_keys\', \'feature_list_dense_keys\', \'Ncontext_sparse\', \'Ncontext_dense\', \'Nfeature_list_sparse\', \'Nfeature_list_dense\', \'context_sparse_types\', \'feature_list_dense_types\', \'context_dense_shapes\', \'feature_list_sparse_types\', \'feature_list_dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'[]\', \'[]\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
@@ -2642,11 +2646,11 @@ tf_module {
   }
   member_method {
     name: "QuantizeAndDequantizeV2"
-    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'None\'], "
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeAndDequantizeV3"
-    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'num_bits\', \'signed_input\', \'range_given\', \'narrow_range\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\', \'None\'], "
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'num_bits\', \'signed_input\', \'range_given\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeDownAndShrinkRange"
@@ -3734,7 +3738,7 @@ tf_module {
   }
   member_method {
     name: "SnapshotDataset"
-    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'shuffle_on_read\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'False\', \'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "Softmax"
@@ -4266,7 +4270,7 @@ tf_module {
   }
   member_method {
     name: "TPUReplicatedInput"
-    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'inputs\', \'is_mirrored_variable\', \'index\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedOutput"

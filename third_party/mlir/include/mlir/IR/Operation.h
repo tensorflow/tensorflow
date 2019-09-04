@@ -94,10 +94,16 @@ public:
   Operation *clone(BlockAndValueMapping &mapper);
   Operation *clone();
 
-  /// Create a deep copy of this operation but keep the operation regions empty.
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   /// Operands are remapped using `mapper` (if present), and `mapper` is updated
   /// to contain the results.
   Operation *cloneWithoutRegions(BlockAndValueMapping &mapper);
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   Operation *cloneWithoutRegions();
 
   /// Returns the operation block that contains this operation.
@@ -491,16 +497,24 @@ public:
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk this operation in postorder, calling the callback for each operation
-  /// including this one.
-  void walk(llvm::function_ref<void(Operation *)> callback);
-
-  /// Specialization of walk to only visit operations of 'T'.
-  template <typename T> void walk(llvm::function_ref<void(T)> callback) {
-    walk([&](Operation *op) {
-      if (auto derivedOp = dyn_cast<T>(op))
-        callback(derivedOp);
-    });
+  /// Walk the operation in postorder, calling the callback for each nested
+  /// operation(including this one). The callback method can take any of the
+  /// following forms:
+  ///   void(Operation*) : Walk all operations opaquely.
+  ///     * op->walk([](Operation *nestedOp) { ...});
+  ///   void(OpT) : Walk all operations of the given derived type.
+  ///     * op->walk([](ReturnOp returnOp) { ...});
+  ///   WalkResult(Operation*|OpT) : Walk operations, but allow for
+  ///                                interruption/cancellation.
+  ///     * op->walk([](... op) {
+  ///         // Interrupt, i.e cancel, the walk based on some invariant.
+  ///         if (some_invariant)
+  ///           return WalkResult::interrupt();
+  ///         return WalkResult::advance();
+  ///       });
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return detail::walkOperations(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//

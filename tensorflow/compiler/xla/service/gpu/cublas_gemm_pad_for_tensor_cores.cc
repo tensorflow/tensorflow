@@ -44,8 +44,11 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   };
 
   auto pad_matrix_dims = [&pad_dim](Shape s) {
-    pad_dim(s, 0);
-    pad_dim(s, 1);
+    // Since the dot instruction is canonicalized, the last two dimensions for
+    // each operand represent non-batch dimensions, and the others are the same
+    // for both operands and correspond to batch dimensions.
+    pad_dim(s, s.rank() - 2);
+    pad_dim(s, s.rank() - 1);
     return s;
   };
 
@@ -93,8 +96,11 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   HloInstruction* new_dot = parent->AddInstruction(
       dot->CloneWithNewOperands(new_result_shape, {lpad, rpad}));
 
-  HloInstruction* slice = parent->AddInstruction(HloInstruction::CreateSlice(
-      result_shape, new_dot, {0, 0}, result_shape.dimensions(), {1, 1}));
+  std::vector<int64> start_indices(result_shape.rank(), 0);
+  std::vector<int64> strides(result_shape.rank(), 1);
+  HloInstruction* slice = parent->AddInstruction(
+      HloInstruction::CreateSlice(result_shape, new_dot, start_indices,
+                                  result_shape.dimensions(), strides));
   slice->set_metadata(dot->metadata());
 
   bool is_root = dot->user_count() == 0;
@@ -108,11 +114,48 @@ static StatusOr<bool> PadForTensorCores(HloDotInstruction* dot) {
   return true;
 }
 
+namespace {
+
+// We need this check because PadForTensorCores works in the assumption that
+// the dot instruction is canonicalized.
+bool CheckCanonical(HloDotInstruction* dot) {
+  auto dimension_numbers = dot->dot_dimension_numbers();
+
+  if (dimension_numbers.lhs_batch_dimensions_size() + 2 !=
+          dot->operand(0)->shape().rank() ||
+      dimension_numbers.rhs_batch_dimensions_size() + 2 !=
+          dot->operand(1)->shape().rank()) {
+    LOG(ERROR) << "Dot is not canonical: Expected all dimensions but 2 to be "
+                  "batch_dimensions.";
+    return false;
+  }
+
+  std::vector<int64> canonical_batch_dims(
+      dimension_numbers.lhs_batch_dimensions_size());
+  absl::c_iota(canonical_batch_dims, 0);
+  if (!absl::c_equal(dimension_numbers.lhs_batch_dimensions(),
+                     canonical_batch_dims) ||
+      !absl::c_equal(dimension_numbers.rhs_batch_dimensions(),
+                     canonical_batch_dims)) {
+    LOG(ERROR) << "Dot is not canonical: Expected batch dimensions to be all "
+                  "dimensions except for the last 2 ones.";
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
 static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp) {
   std::vector<HloDotInstruction*> convs;
+
   for (HloInstruction* instr : comp->instructions()) {
     if (IsMatrixMultiplication(*instr)) {
-      convs.push_back(Cast<HloDotInstruction>(instr));
+      HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+      if (CheckCanonical(dot)) {
+        convs.push_back(dot);
+      }
     }
   }
   return convs;

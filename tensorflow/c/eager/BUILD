@@ -37,6 +37,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",

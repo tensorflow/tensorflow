@@ -1198,27 +1198,4 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   return true;
 }
-
-namespace {
-
-bool IsWhileBody(const HloComputation* computation,
-                 const CallGraph& call_graph) {
-  const CallGraphNode& node = call_graph.GetNode(computation);
-
-  if (node.context() == CallContext::kSequential &&
-      !node.caller_callsites().empty()) {
-    // Callgraph should be flattened so sequential context computations can
-    // have at most one caller.
-    CHECK_EQ(node.caller_callsites().size(), 1);
-    const HloInstruction* calling_instruction =
-        node.caller_callsites()[0].instruction();
-    if (calling_instruction->opcode() == HloOpcode::kWhile &&
-        calling_instruction->while_body() == node.computation()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
 }  // namespace xla

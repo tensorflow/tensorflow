@@ -64,6 +64,7 @@ cc_library(
         "lib/IR/TypeUtilities.cpp",
         "lib/IR/Types.cpp",
         "lib/IR/Value.cpp",
+        "lib/IR/Visitors.cpp",
     ],
     hdrs = [
         "include/mlir/IR/AffineExpr.h",
@@ -102,8 +103,8 @@ cc_library(
         "include/mlir/IR/Types.h",
         "include/mlir/IR/UseDefLists.h",
         "include/mlir/IR/Value.h",
+        "include/mlir/IR/Visitors.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Support",
@@ -129,7 +130,6 @@ cc_library(
         "include/mlir/Pass/PassManager.h",
         "include/mlir/Pass/PassRegistry.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     linkopts = [
         "-lm",
@@ -156,7 +156,6 @@ cc_library(
         "include/mlir/EDSC/Helpers.h",
         "include/mlir/EDSC/Intrinsics.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -267,7 +266,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Traits.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         "@llvm//:support",
@@ -282,7 +280,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/AffineOps/AffineOps.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":AffineOpsIncGen",
         ":IR",
@@ -296,7 +293,6 @@ cc_library(
 cc_library(
     name = "AffineDialectRegistration",
     srcs = ["lib/Dialect/AffineOps/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":AffineOps",
         ":IR",
@@ -320,7 +316,6 @@ cc_library(
         "include/mlir/Dialect/SDBM/SDBMDialect.h",
         "include/mlir/Dialect/SDBM/SDBMExpr.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":Support",
@@ -337,7 +332,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/LoopOps/LoopOps.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":LoopOpsIncGen",
@@ -350,7 +344,6 @@ cc_library(
 cc_library(
     name = "LoopDialectRegistration",
     srcs = ["lib/Dialect/LoopOps/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":LoopOps",
@@ -366,7 +359,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/StandardOps/Ops.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":StandardOpsIncGen",
@@ -379,7 +371,6 @@ cc_library(
 cc_library(
     name = "StandardDialectRegistration",
     srcs = ["lib/Dialect/StandardOps/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":StandardOps",
@@ -395,7 +386,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/VectorOps/VectorOps.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":Support",
@@ -407,7 +397,6 @@ cc_library(
 cc_library(
     name = "VectorDialectRegistration",
     srcs = ["lib/Dialect/VectorOps/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":VectorOps",
@@ -432,7 +421,6 @@ cc_library(
         "include/mlir/Support/StorageUniquer.h",
         "include/mlir/Support/StringExtras.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         "@llvm//:support",
@@ -452,7 +440,6 @@ cc_library(
         "include/mlir/Parser.h",
         "lib/Parser/TokenKinds.def",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -472,7 +459,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/LLVMIR/LLVMDialect.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -516,7 +502,6 @@ cc_library(
     name = "GPUDialect",
     srcs = ["lib/Dialect/GPU/IR/GPUDialect.cpp"],
     hdrs = ["include/mlir/Dialect/GPU/GPUDialect.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUOpsIncGen",
@@ -529,7 +514,6 @@ cc_library(
 cc_library(
     name = "GPUDialectRegistration",
     srcs = ["lib/Dialect/GPU/IR/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
@@ -541,7 +525,6 @@ cc_library(
     name = "GPUTransforms",
     srcs = ["lib/Dialect/GPU/Transforms/KernelOutlining.cpp"],
     hdrs = ["include/mlir/Dialect/GPU/Passes.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
@@ -569,14 +552,15 @@ cc_library(
     hdrs = [
         "include/mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
         ":IR",
         ":LLVMDialect",
+        ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
+        ":Transforms",
         "@llvm//:support",
     ],
     alwayslink = 1,
@@ -590,7 +574,6 @@ cc_library(
         "lib/Conversion/GPUToCUDA/GenerateCubinAccessors.cpp",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
@@ -612,7 +595,6 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToSPIRV/GPUToSPIRV.cpp",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
@@ -677,7 +659,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/LLVMIR/NVVMDialect.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -842,7 +823,6 @@ cc_library(
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -866,7 +846,6 @@ cc_library(
         "include/mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h",
         "include/mlir/Dialect/SPIRV/Passes.h",
     ],
-    copts = ["-std=c++14"],
     includes = [
         "include",
         "lib/Conversion/StandardToSPIRV",
@@ -896,7 +875,6 @@ cc_library(
         "include/mlir/Dialect/SPIRV/SPIRVBinaryUtils.h",
         "include/mlir/Dialect/SPIRV/Serialization.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -912,7 +890,6 @@ cc_library(
     srcs = [
         "lib/Dialect/SPIRV/Serialization/ConvertToBinary.cpp",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -930,7 +907,6 @@ cc_library(
     srcs = [
         "lib/Dialect/SPIRV/Serialization/ConvertFromBinary.cpp",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -947,7 +923,6 @@ cc_library(
 cc_library(
     name = "SPIRVDialectRegistration",
     srcs = ["lib/Dialect/SPIRV/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":SPIRVDialect",
     ],
@@ -971,7 +946,6 @@ cc_library(
         "include/mlir/Transforms/RegionUtils.h",
         "include/mlir/Transforms/Utils.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1013,7 +987,6 @@ cc_library(
         "include/mlir/Transforms/LowerAffine.h",
         "include/mlir/Transforms/Passes.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1039,7 +1012,6 @@ cc_library(
     hdrs = [
         "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1063,7 +1035,6 @@ cc_library(
     hdrs = [
         "include/mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1083,7 +1054,6 @@ cc_library(
     hdrs = [
         "include/mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -1109,7 +1079,6 @@ cc_library(
         "include/mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h",
         "include/mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":CFGTransforms",
@@ -1155,7 +1124,6 @@ cc_library(
         "include/mlir/Analysis/VectorAnalysis.h",
         "include/mlir/Analysis/Verifier.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":AffineOps",
@@ -1174,7 +1142,6 @@ cc_library(
     name = "Translation",
     srcs = ["lib/Translation/Translation.cpp"],
     hdrs = ["include/mlir/Translation.h"],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":Parser",
@@ -1192,7 +1159,6 @@ cc_library(
     hdrs = [
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":LLVMConversionIncGen",
@@ -1212,7 +1178,6 @@ cc_library(
     hdrs = [
         "include/mlir/Target/LLVMIR.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":LLVMIRModuleTranslation",
@@ -1232,7 +1197,6 @@ cc_library(
     hdrs = [
         "include/mlir/Target/NVVMIR.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":GPUDialect",
@@ -1258,7 +1222,6 @@ cc_library(
         "include/mlir/ExecutionEngine/ExecutionEngine.h",
         "include/mlir/ExecutionEngine/MemRefUtils.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -1288,7 +1251,6 @@ cc_library(
     hdrs = [
         "include/mlir/ExecutionEngine/OptUtils.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         "@llvm//:analysis",
@@ -1307,7 +1269,6 @@ cc_library(
     hdrs = [
         "include/mlir/Support/MlirOptMain.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1335,7 +1296,6 @@ cc_library(
     name = "ViewRegionGraph",
     srcs = ["lib/Transforms/ViewRegionGraph.cpp"],
     hdrs = ["include/mlir/Transforms/ViewRegionGraph.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1350,7 +1310,6 @@ cc_library(
     name = "TranslateClParser",
     srcs = ["lib/Support/TranslateClParser.cpp"],
     hdrs = ["include/mlir/Support/TranslateClParser.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1364,7 +1323,6 @@ cc_library(
 
 cc_binary(
     name = "mlir-translate",
-    copts = ["-std=c++14"],
     deps = [
         ":tools/mlir-translate/mlir-translate",
     ],
@@ -1373,7 +1331,6 @@ cc_binary(
 cc_library(
     name = "tools/mlir-translate/mlir-translate",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
-    copts = ["-std=c++14"],
     deps = [
         ":DeserializeSPIRV",
         ":IR",
@@ -1398,7 +1355,6 @@ cc_library(
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":Analysis",
         ":MlirOptLib",
@@ -1410,7 +1366,6 @@ cc_library(
 
 cc_binary(
     name = "mlir-opt",
-    copts = ["-std=c++14"],
     deps = [
         ":AffineDialectRegistration",
         ":Analysis",
@@ -1438,9 +1393,10 @@ cc_library(
     name = "MlirJitRunner",
     srcs = ["lib/Support/JitRunner.cpp"],
     hdrs = ["include/mlir/Support/JitRunner.h"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
+        ":AffineDialectRegistration",
+        ":CFGTransforms",
         ":ExecutionEngine",
         ":ExecutionEngineUtils",
         ":IR",
@@ -1462,7 +1418,6 @@ cc_library(
 cc_binary(
     name = "mlir-cpu-runner",
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
-    copts = ["-std=c++14"],
     linkopts = ["-ldl"],
     deps = [
         ":MlirJitRunner",
@@ -1473,7 +1428,6 @@ cc_binary(
 cc_binary(
     name = "tools/libcuda-runtime-wrappers.so",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     linkshared = True,
     deps = [
@@ -1487,7 +1441,6 @@ cc_binary(
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
-    copts = ["-std=c++14"],
     data = [
         ":tools/libcuda-runtime-wrappers.so",
     ],
@@ -1501,6 +1454,7 @@ cc_binary(
         ":LLVMDialect",
         ":LLVMTransforms",
         ":MlirJitRunner",
+        ":NVVMDialect",
         ":Pass",
         ":Transforms",
         "//devtools/build/runtime:get_runfiles_dir",
@@ -1540,7 +1494,6 @@ cc_library(
         "include/mlir/TableGen/Region.h",
         "include/mlir/TableGen/Type.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":Support",
@@ -1560,9 +1513,9 @@ cc_binary(
         "tools/mlir-tblgen/ReferenceImplGen.cpp",
         "tools/mlir-tblgen/RewriterGen.cpp",
         "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
+        "tools/mlir-tblgen/StructsGen.cpp",
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     linkopts = [
         "-lm",
@@ -1633,7 +1586,6 @@ cc_library(
         "include/mlir/Dialect/QuantOps/QuantizeUtils.h",
         "include/mlir/Dialect/QuantOps/UniformSupport.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":Analysis",
         ":IR",
@@ -1650,7 +1602,6 @@ cc_library(
 cc_library(
     name = "QuantOpsDialectRegistration",
     srcs = ["lib/Dialect/QuantOps/IR/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -1706,7 +1657,6 @@ cc_library(
         "include/mlir/Dialect/FxpMathOps/FxpMathOps.h",
         "include/mlir/Dialect/FxpMathOps/Passes.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":Analysis",
         ":FxpMathOpsIncGen",
@@ -1724,7 +1674,6 @@ cc_library(
 cc_library(
     name = "FxpMathOpsDialectRegistration",
     srcs = ["lib/Dialect/FxpMathOps/IR/DialectRegistration.cpp"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":FxpMathOps",
@@ -1821,7 +1770,6 @@ cc_library(
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":AffineOps",
         ":CFGTransforms",
@@ -1848,7 +1796,6 @@ cc_library(
 cc_library(
     name = "LinalgDialectRegistration",
     srcs = ["lib/Dialect/Linalg/LinalgRegistration.cpp"],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -1882,7 +1829,6 @@ cc_library(
         "include/mlir/Quantizer/Support/UniformConstraints.h",
         "include/mlir/Quantizer/Support/UniformSolvers.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":FxpMathOps",
@@ -1903,7 +1849,6 @@ cc_library(
     hdrs = [
         "include/mlir/Quantizer/Transforms/Passes.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":IR",
         ":Pass",
@@ -1948,7 +1893,6 @@ cc_library(
     hdrs = [
         "include/mlir/Conversion/VectorToLLVM/VectorToLLVM.h",
     ],
-    copts = ["-std=c++14"],
     includes = ["include"],
     deps = [
         ":IR",

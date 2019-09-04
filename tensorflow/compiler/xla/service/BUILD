@@ -941,6 +941,16 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_gpu_plugin",
+    deps = [
+        ":service",
+        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "interpreter_plugin",
     deps = [
         ":service",
@@ -1771,6 +1781,9 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core/lib/core:bits",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -4179,17 +4192,6 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-cc_library(
-    name = "mem_wasted_on_passthrough_params",
-    srcs = ["mem_wasted_on_passthrough_params.cc"],
-    hdrs = ["mem_wasted_on_passthrough_params.h"],
-    deps = [
-        ":hlo",
-        ":hlo_pass",
-        "//tensorflow/compiler/xla:shape_util",
     ],
 )
 

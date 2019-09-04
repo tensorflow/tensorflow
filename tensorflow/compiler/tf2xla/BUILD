@@ -97,13 +97,39 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "graph_compiler_util",
+    srcs = ["graph_compiler_util.cc"],
+    hdrs = ["graph_compiler_util.h"],
+    visibility = [":friends"],
+    deps = [
+        ":functionalize_control_flow",
+        ":sharding_util",
+        ":tf2xla_proto",
+        ":tf2xla_util",
+        ":xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
     hdrs = ["tf2xla.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":common",
-        ":functionalize_control_flow",
+        ":graph_compiler_util",
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
@@ -553,6 +579,30 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_bridge_pass",
+    srcs = ["mlir_bridge_pass.cc"],
+    hdrs = ["mlir_bridge_pass.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/core:core_cpu_lib",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_bridge_pass_registration",
+    srcs = [
+        "mlir_bridge_pass_registration.cc",
+    ],
+    deps = [
+        ":mlir_bridge_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "rearrange_function_argument",
     srcs = [
         "rearrange_function_argument.cc",
@@ -561,7 +611,7 @@ cc_library(
         "rearrange_function_argument.h",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        ":tf2xla_util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",

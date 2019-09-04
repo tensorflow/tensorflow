@@ -30,32 +30,34 @@ class StringRef;
 
 namespace mlir {
 class Location;
-class ModuleOp;
 class MLIRContext;
+class OwningModuleRef;
 class Type;
 
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-ModuleOp parseSourceFile(const llvm::SourceMgr &sourceMgr,
-                         MLIRContext *context);
+OwningModuleRef parseSourceFile(const llvm::SourceMgr &sourceMgr,
+                                MLIRContext *context);
 
 /// This parses the file specified by the indicated filename and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-ModuleOp parseSourceFile(llvm::StringRef filename, MLIRContext *context);
+OwningModuleRef parseSourceFile(llvm::StringRef filename, MLIRContext *context);
 
 /// This parses the file specified by the indicated filename using the provided
 /// SourceMgr and returns an MLIR module if it was valid.  If not, the error
 /// message is emitted through the error handler registered in the context, and
 /// a null pointer is returned.
-ModuleOp parseSourceFile(llvm::StringRef filename, llvm::SourceMgr &sourceMgr,
-                         MLIRContext *context);
+OwningModuleRef parseSourceFile(llvm::StringRef filename,
+                                llvm::SourceMgr &sourceMgr,
+                                MLIRContext *context);
 
 /// This parses the module string to a MLIR module if it was valid.  If not, the
 /// error message is emitted through the error handler registered in the
 /// context, and a null pointer is returned.
-ModuleOp parseSourceString(llvm::StringRef moduleStr, MLIRContext *context);
+OwningModuleRef parseSourceString(llvm::StringRef moduleStr,
+                                  MLIRContext *context);
 
 /// This parses a single MLIR type to an MLIR context if it was valid.  If not,
 /// an error message is emitted through a new SourceMgrDiagnosticHandler

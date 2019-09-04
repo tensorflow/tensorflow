@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -53,12 +55,18 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
 
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleParameter(HloInstruction* parameter) override;
 
   Status FinishVisit(HloInstruction* root) override;
 
   // Transfers the ownship of thunk_sequence_ out.
   std::unique_ptr<gpu::ThunkSequence> ConsumeThunkSequence() {
     return std::move(thunk_sequence_);
+  }
+
+  const absl::flat_hash_map<const xla::HloInstruction*, ::mlir::FuncOp>&
+  InstructionToFunctionMap() const {
+    return instruction_to_mlir_func_;
   }
 
  private:

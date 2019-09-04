@@ -3230,7 +3230,7 @@ Status ValidateScatterDimensionNumbers(
                                         /*inputs=*/1));
 
   std::vector<int64> expanded_scatter_indices_shape =
-      ArraySliceToVector(AsInt64Slice(scatter_indices_shape.dimensions()));
+      SpanToVector(scatter_indices_shape.dimensions());
   if (expanded_scatter_indices_shape.size() ==
       scatter_dim_numbers.index_vector_dim()) {
     expanded_scatter_indices_shape.push_back(1);

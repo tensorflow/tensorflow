@@ -50,6 +50,9 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                       int16_t* output);
 
+void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output);
+
 void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output);
 
@@ -72,13 +75,13 @@ void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
                        int32_t n_batch, int32_t n_input);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int16_t* output);
@@ -111,12 +114,6 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
 // Dot product of two vectors.
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
                                  int v_size);
-
-// Dot product of two batch vectors.
-void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
-                                          const float* vector2, int v_size,
-                                          int n_batch, float* result,
-                                          int result_stride);
 
 // Cwise product of a vector and a batch-vector.
 void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,

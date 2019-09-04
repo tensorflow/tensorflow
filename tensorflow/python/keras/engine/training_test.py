@@ -1610,6 +1610,18 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         ValueError, 'The `batch_size` argument must not be specified'):
       model.predict(DummySequence(), batch_size=2)
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_sparse_op_with_op_layer(self):
+    inputs = keras.layers.Input(shape=(2,), sparse=True, name='sparse_tensor')
+    output = sparse_ops.sparse_minimum(inputs, inputs)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Sparse ops are not supported with functional models with built-in '
+        'layer wrapping'
+    ):
+      keras.Model([inputs], output)
+
 
 class LossWeightingTest(keras_parameterized.TestCase):
 

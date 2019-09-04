@@ -25,6 +25,7 @@
 
 #include "mlir/Support/JitRunner.h"
 
+#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
@@ -95,6 +96,16 @@ static llvm::cl::list<std::string>
                  llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
                  llvm::cl::cat(clOptionsCategory));
 
+// CLI variables for debugging.
+static llvm::cl::opt<bool> dumpObjectFile(
+    "dump-object-file",
+    llvm::cl::desc("Dump JITted-compiled object to file specified with "
+                   "-object-filename (<input file>.o by default)."));
+
+static llvm::cl::opt<std::string> objectFilename(
+    "object-filename",
+    llvm::cl::desc("Dump JITted-compiled object to file <input file>.o"));
+
 static OwningModuleRef parseMLIRInput(StringRef inputFilename,
                                       MLIRContext *context) {
   // Set up the input file.
@@ -158,11 +169,12 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
 // - affine to standard lowering
 // - standard to llvm lowering
 static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
-  PassManager manager;
+  PassManager manager(module.getContext());
   manager.addPass(mlir::createCanonicalizerPass());
   manager.addPass(mlir::createCSEPass());
   manager.addPass(mlir::createLowerAffinePass());
-  manager.addPass(mlir::createConvertToLLVMIRPass());
+  manager.addPass(mlir::createLowerToCFGPass());
+  manager.addPass(mlir::createLowerToLLVMPass());
   return manager.run(module);
 }
 
@@ -181,6 +193,11 @@ compileAndExecute(ModuleOp module, StringRef entryPoint,
   auto expectedFPtr = engine->lookup(entryPoint);
   if (!expectedFPtr)
     return expectedFPtr.takeError();
+
+  if (dumpObjectFile)
+    engine->dumpToObjectFile(objectFilename.empty() ? inputFilename + ".o"
+                                                    : objectFilename);
+
   void (*fptr)(void **) = *expectedFPtr;
   (*fptr)(args);
 

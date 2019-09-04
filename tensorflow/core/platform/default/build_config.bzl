@@ -580,7 +580,13 @@ def tf_protos_grappler():
         otherwise = ["//tensorflow/core/grappler/costs:op_performance_data_cc"],
     )
 
-def tf_additional_cupti_wrapper_deps():
+def tf_additional_device_tracer_srcs():
+    return ["default/device_tracer.cc"]
+
+def tf_additional_cupti_utils_cuda_deps():
+    return []
+
+def tf_additional_device_tracer_cuda_deps():
     return [
         "//tensorflow/stream_executor/cuda:cupti_stub",
         "@com_google_absl//absl/base",
@@ -588,18 +594,6 @@ def tf_additional_cupti_wrapper_deps():
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:flat_hash_map",
-    ]
-
-def tf_additional_device_tracer_srcs():
-    return ["default/device_tracer.cc"]
-
-def tf_additional_device_tracer_cuda_deps():
-    return []
-
-def tf_additional_device_tracer_deps():
-    return [
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ]
 
 def tf_additional_device_tracer_test_flags():
@@ -730,24 +724,6 @@ def tf_lib_proto_compiler_deps():
     return [
         "@com_google_protobuf//:protoc_lib",
     ]
-
-def tf_additional_verbs_lib_defines():
-    return select({
-        "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_mpi_lib_defines():
-    return select({
-        "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_gdr_lib_defines():
-    return select({
-        "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
-        "//conditions:default": [],
-    })
 
 def tf_additional_numa_lib_defines():
     return select({

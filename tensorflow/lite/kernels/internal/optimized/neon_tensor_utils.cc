@@ -439,10 +439,11 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
 
 #endif  // __aarch64__
 
-void NeonMatrixBatchVectorMultiplyImpl(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int32_t* scratch) {
+void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
+                                       const int8_t* input_to_gate_weights,
+                                       int32_t n_batch, int32_t n_input,
+                                       int32_t n_output, int32_t output_zp,
+                                       int32_t* scratch) {
   static const int kWeightsPerUint32 = 4;
   static const int kWeightsPerNeonLane = 16;
   // Assuming *matrix is kWeightsPerUint32-byte aligned,
@@ -541,7 +542,7 @@ void NeonMatrixBatchVectorMultiplyImpl(
         dotprod += row_ptr[col] * aligned_vec[col];
       }  // for col
 
-      dotprod += input_zeropoint_times_weights[row];
+      dotprod += bias[row];
       scratch[batch * n_output + row] = dotprod;
     }  // for row
   }    // for batch
@@ -553,13 +554,12 @@ void NeonMatrixBatchVectorMultiplyImpl(
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int16_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, input_zeropoint_times_weights,
-                                    input_to_gate_weights, n_batch, n_input,
-                                    n_output, output_zp, scratch);
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -611,13 +611,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, input_zeropoint_times_weights,
-                                    input_to_gate_weights, n_batch, n_input,
-                                    n_output, output_zp, scratch);
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -1001,6 +1000,36 @@ void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
       const int index = batch * n_input + i;
       F3_Scalar input_f3 = F3_Scalar::FromRaw(input[index]);
       F0_Scalar output_f0 = gemmlowp::logistic(input_f3);
+      output[index] = output_f0.raw();
+    }
+  }
+}
+
+void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    int i = 0;
+#ifdef GEMMLOWP_NEON
+    // F0 uses 0 integer bits, range [-1, 1].
+    // This is the return type of math functions such as tanh, logistic,
+    // whose range is in [-1, 1].
+    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+
+    for (; i <= n_input - 16; i += 16) {
+      const int index = batch * n_input + i;
+      F0 input0 = F0::FromRaw(vld1q_s16(input + index));
+      F0 input1 = F0::FromRaw(vld1q_s16(input + index + 8));
+      F0 output0 = gemmlowp::tanh(input0);
+      F0 output1 = gemmlowp::tanh(input1);
+      vst1q_s16(output + index, output0.raw());
+      vst1q_s16(output + index + 8, output1.raw());
+    }
+#endif  // GEMMLOWP_NEON
+    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    for (; i < n_input; ++i) {
+      const int index = batch * n_input + i;
+      F0_Scalar input_f0 = F0_Scalar::FromRaw(input[index]);
+      F0_Scalar output_f0 = gemmlowp::tanh(input_f0);
       output[index] = output_f0.raw();
     }
   }
@@ -1696,21 +1725,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
     result += vector1[v] * vector2[v];
   }
   return result;
-}
-
-void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
-                                          const float* vector2, int v_size,
-                                          int n_batch, float* result,
-                                          int result_stride) {
-  float* result_ptr = result;
-  const float* vector1_ptr = vector1;
-  const float* vector2_ptr = vector2;
-  for (int b = 0; b < n_batch; b++) {
-    *result_ptr = NeonVectorVectorDotProduct(vector1_ptr, vector2_ptr, v_size);
-    vector1_ptr += v_size;
-    vector2_ptr += v_size;
-    result_ptr += result_stride;
-  }
 }
 
 void NeonReductionSumVector(const float* input_vector, float* output_vector,

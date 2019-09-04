@@ -50,7 +50,7 @@ class WholeFileReader : public ReaderBase {
       : ReaderBase(strings::StrCat("WholeFileReader '", node_name, "'")),
         env_(env) {}
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     *key = current_work();
     TF_RETURN_IF_ERROR(ReadEntireFile(env_, *key, value));
@@ -61,14 +61,14 @@ class WholeFileReader : public ReaderBase {
 
   // Stores state in a ReaderBaseState proto, since WholeFileReader has
   // no additional state beyond ReaderBase.
-  Status SerializeStateLocked(string* state) override {
+  Status SerializeStateLocked(tstring* state) override {
     ReaderBaseState base_state;
     SaveBaseState(&base_state);
-    base_state.SerializeToString(state);
+    SerializeToTString(base_state, state);
     return Status::OK();
   }
 
-  Status RestoreStateLocked(const string& state) override {
+  Status RestoreStateLocked(const tstring& state) override {
     ReaderBaseState base_state;
     if (!ParseProtoUnlimited(&base_state, state)) {
       return errors::InvalidArgument("Could not parse state for ", name(), ": ",

@@ -1075,11 +1075,7 @@ void TensorFlowDialect::PrintVariantType(VariantType ty,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
-    return builder.create<ConstOp>(loc, type, value);
-  return nullptr;
+  return builder.create<ConstOp>(loc, type, value);
 }
 
 }  // namespace TF

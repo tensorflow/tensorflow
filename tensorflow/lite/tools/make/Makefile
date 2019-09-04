@@ -129,6 +129,9 @@ $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
+CORE_CC_ALL_SRCS += \
+	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -138,7 +141,7 @@ $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true

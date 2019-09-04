@@ -33,7 +33,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'values\', \'row_splits\', \'cached_row_lengths\', \'cached_value_rowids\', \'cached_nrows\', \'internal\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'self\', \'values\', \'row_splits\', \'cached_row_lengths\', \'cached_value_rowids\', \'cached_nrows\', \'internal\', \'uniform_row_length\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "bounding_shape"
@@ -78,6 +78,10 @@ tf_class {
   member_method {
     name: "from_tensor"
     argspec: "args=[\'cls\', \'tensor\', \'lengths\', \'padding\', \'ragged_rank\', \'name\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'None\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "from_uniform_row_length"
+    argspec: "args=[\'cls\', \'values\', \'uniform_row_length\', \'nrows\', \'validate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "from_value_rowids"

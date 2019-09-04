@@ -94,7 +94,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0",
                                           &devices));
-    device_mgr_.reset(new DeviceMgr(std::move(devices)));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     TF_CHECK_OK(device_mgr_->LookupDevice(
         "/job:a/replica:0/task:0/device:CPU:0", &device0_));
     TF_CHECK_OK(device_mgr_->LookupDevice(
