@@ -33,7 +33,7 @@ void NcclGatherer::Run(StatusCallback done) {
       NcclCollectiveKey(col_ctx_->exec_key, col_ctx_->step_id);
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream,
-      gpu_info->event_mgr, gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
+      gpu_info, col_ctx_->input, col_ctx_->output,
       col_params_->default_rank, std::move(done));
   VLOG(1) << "NcclGatherer calling NcclManager::AddToAllGather num_tasks "
           << col_params_->group.num_tasks << " current task "

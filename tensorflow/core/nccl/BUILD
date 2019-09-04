@@ -30,9 +30,10 @@ cc_library(
     ]),
     copts = tf_copts(),
     deps = if_cuda([
-        "@local_config_nccl//:nccl"
+        "@local_config_nccl//:nccl",
     ]) + if_rocm([
-        "@local_config_rocm//rocm:rccl"
+        "@local_config_rocm//rocm:rccl",
+        "//tensorflow/core:gpu_runtime",
     ]) + if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
