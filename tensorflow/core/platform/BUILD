@@ -27,6 +27,10 @@ load(
     "tf_protobuf_deps",
 )
 load(
+    "//tensorflow/core/platform:default/build_refactor.bzl",
+    "tf_instantiate_platform_libraries",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
 )
@@ -37,6 +41,13 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+# Note(bmzhao): These are temporary BUILD rule helpers for
+# platform-specific library dependencies. These temporarily
+# exist to allow us incrementally add granular targets
+# to tf/core/platform/BUILD. We will remove these helpers,
+# after we finish refactoring tf/core/platform/BUILD.
+tf_instantiate_platform_libraries(names = ["context"])
 
 cc_library(
     name = "abi",
@@ -62,6 +73,15 @@ cc_library(
 cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+)
+
+cc_library(
+    name = "context",
+    textual_hdrs = ["context.h"],
+    deps = [
+        # See call to tf_instantiate_platform_libraries() above.
+        ":context_impl",
+    ],
 )
 
 cc_library(
