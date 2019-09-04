@@ -15,8 +15,6 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/transforms/legalize_to_affine.h"
-
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
@@ -28,49 +26,34 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
-namespace xla {
-namespace mlir_gpu {
+namespace mlir {
+namespace xla_lhlo {
 namespace {
-
-using ::mlir::AffineForOp;
-using ::mlir::CmpFOp;
-using ::mlir::CmpFPredicate;
-using ::mlir::CmpIOp;
-using ::mlir::CmpIPredicate;
-using ::mlir::FloatType;
-using ::mlir::IntegerType;
-using ::mlir::MLIRContext;
-using ::mlir::Operation;
-using ::mlir::OwningRewritePatternList;
-using ::mlir::PatternRewriter;
-using ::mlir::Value;
-
-namespace lhlo = ::mlir::xla_lhlo;
 
 template <typename LHLO_BinaryOp>
 struct ScalarOp;
 
 template <>
-struct ScalarOp<lhlo::AddOp> {
+struct ScalarOp<xla_lhlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
 };
 template <>
-struct ScalarOp<lhlo::AndOp> {
+struct ScalarOp<xla_lhlo::AndOp> {
   using IOp = ::mlir::AndOp;
 };
 template <>
-struct ScalarOp<lhlo::DivOp> {
+struct ScalarOp<xla_lhlo::DivOp> {
   using FOp = ::mlir::DivFOp;
   using IOp = ::mlir::DivISOp;
 };
 template <>
-struct ScalarOp<lhlo::MulOp> {
+struct ScalarOp<xla_lhlo::MulOp> {
   using FOp = ::mlir::MulFOp;
   using IOp = ::mlir::MulIOp;
 };
 template <>
-struct ScalarOp<lhlo::SubOp> {
+struct ScalarOp<xla_lhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
 };
@@ -80,9 +63,9 @@ template <typename LHLO_BinaryOp>
 using ScalarIOp = typename ScalarOp<LHLO_BinaryOp>::IOp;
 
 template <typename LHLO_BinaryOp>
-Value* GetBinaryOp(::mlir::Type element_type, ::mlir::Location loc, Value* lhs,
-                   Value* rhs, ::mlir::OpBuilder b) {
-  if (element_type.isa<::mlir::IntegerType>()) {
+Value* GetBinaryOp(Type element_type, Location loc, Value* lhs, Value* rhs,
+                   OpBuilder b) {
+  if (element_type.isa<IntegerType>()) {
     return b.create<ScalarIOp<LHLO_BinaryOp>>(loc, lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
@@ -92,16 +75,16 @@ Value* GetBinaryOp(::mlir::Type element_type, ::mlir::Location loc, Value* lhs,
 }
 
 template <>
-Value* GetBinaryOp<lhlo::AndOp>(::mlir::Type element_type, ::mlir::Location loc,
-                                Value* lhs, Value* rhs, ::mlir::OpBuilder b) {
-  return element_type.isa<::mlir::IntegerType>()
-             ? b.create<ScalarIOp<lhlo::AndOp>>(loc, lhs, rhs)
+Value* GetBinaryOp<xla_lhlo::AndOp>(Type element_type, Location loc, Value* lhs,
+                                    Value* rhs, OpBuilder b) {
+  return element_type.isa<IntegerType>()
+             ? b.create<ScalarIOp<xla_lhlo::AndOp>>(loc, lhs, rhs)
              : nullptr;
 }
 
 template <>
-Value* GetBinaryOp<lhlo::MinOp>(::mlir::Type element_type, ::mlir::Location loc,
-                                Value* lhs, Value* rhs, ::mlir::OpBuilder b) {
+Value* GetBinaryOp<xla_lhlo::MinOp>(Type element_type, Location loc, Value* lhs,
+                                    Value* rhs, OpBuilder b) {
   if (element_type.isa<IntegerType>()) {
     auto lhs_lt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SLT, lhs, rhs);
     return b.create<::mlir::SelectOp>(loc, lhs_lt_rhs, lhs, rhs);
@@ -114,8 +97,8 @@ Value* GetBinaryOp<lhlo::MinOp>(::mlir::Type element_type, ::mlir::Location loc,
 }
 
 template <>
-Value* GetBinaryOp<lhlo::MaxOp>(::mlir::Type element_type, ::mlir::Location loc,
-                                Value* lhs, Value* rhs, ::mlir::OpBuilder b) {
+Value* GetBinaryOp<xla_lhlo::MaxOp>(Type element_type, Location loc, Value* lhs,
+                                    Value* rhs, OpBuilder b) {
   if (element_type.isa<IntegerType>()) {
     auto lhs_gt_rhs = b.create<CmpIOp>(loc, CmpIPredicate::SGT, lhs, rhs);
     return b.create<::mlir::SelectOp>(loc, lhs_gt_rhs, lhs, rhs);
@@ -128,74 +111,71 @@ Value* GetBinaryOp<lhlo::MaxOp>(::mlir::Type element_type, ::mlir::Location loc,
 }
 
 template <typename LhloOp>
-struct BinaryOpConverter : public ::mlir::RewritePattern {
-  explicit BinaryOpConverter(const std::string& opname,
-                             ::mlir::MLIRContext* context)
-      : RewritePattern(opname, {}, 1, context), opname(opname) {}
+struct BinaryOpConverter : public RewritePattern {
+  explicit BinaryOpConverter(MLIRContext* context)
+      : RewritePattern(LhloOp::getOperationName(), {}, 1, context) {}
 
-  ::mlir::PatternMatchResult matchAndRewrite(
-      Operation* op, PatternRewriter& rewriter) const override {
-    auto binary_op = ::mlir::cast<LhloOp>(op);
+  PatternMatchResult matchAndRewrite(Operation* op,
+                                     PatternRewriter& rewriter) const override {
+    auto binary_op = cast<LhloOp>(op);
 
     const auto& lhs = binary_op.lhs();
     const auto& rhs = binary_op.rhs();
-    const auto& lhs_type = lhs->getType().template cast<::mlir::MemRefType>();
-    const auto& rhs_type = rhs->getType().template cast<::mlir::MemRefType>();
+    const auto& lhs_type = lhs->getType().template cast<MemRefType>();
+    const auto& rhs_type = rhs->getType().template cast<MemRefType>();
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {
       return matchFailure();
     }
     const auto& shape = lhs_type.getShape();
-    ::mlir::SmallVector<::mlir::Value*, 4> induction_vars;
+    SmallVector<Value*, 4> induction_vars;
     const auto loc = rewriter.getUnknownLoc();
     for (int i = 0; i < shape.size(); ++i) {
       auto forOp = rewriter.create<AffineForOp>(loc, 0, shape[i]);
       induction_vars.push_back(forOp.getInductionVar());
       rewriter.setInsertionPointToStart(forOp.getBody());
     }
-    auto l = rewriter.create<::mlir::LoadOp>(loc, lhs, induction_vars);
-    auto r = rewriter.create<::mlir::LoadOp>(loc, rhs, induction_vars);
+    auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
+    auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
     auto result = GetBinaryOp<LhloOp>(element_type, loc, l, r, rewriter);
     if (result == nullptr) {
       return matchFailure();
     }
-    rewriter.create<::mlir::StoreOp>(loc, result, binary_op.out(),
-                                     induction_vars);
+    rewriter.create<StoreOp>(loc, result, binary_op.out(), induction_vars);
     rewriter.replaceOp(op, {});
     return matchSuccess();
   }
-  const std::string opname;
 };
 
-void AppendBinaryOpsPatterns(MLIRContext* context,
-                             OwningRewritePatternList* patterns) {
-  patterns->insert<BinaryOpConverter<lhlo::AddOp>>("xla_lhlo.add", context);
-  patterns->insert<BinaryOpConverter<lhlo::AndOp>>("xla_lhlo.and", context);
-  patterns->insert<BinaryOpConverter<lhlo::DivOp>>("xla_lhlo.div", context);
-  patterns->insert<BinaryOpConverter<lhlo::MaxOp>>("xla_lhlo.max", context);
-  patterns->insert<BinaryOpConverter<lhlo::MinOp>>("xla_lhlo.min", context);
-  patterns->insert<BinaryOpConverter<lhlo::MulOp>>("xla_lhlo.mul", context);
-  patterns->insert<BinaryOpConverter<lhlo::SubOp>>("xla_lhlo.sub", context);
+void populateLHLOToAffineConversionPattern(MLIRContext* context,
+                                           OwningRewritePatternList* patterns) {
+  patterns->insert<BinaryOpConverter<xla_lhlo::AddOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::AndOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::DivOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::MaxOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::MinOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::MulOp>>(context);
+  patterns->insert<BinaryOpConverter<xla_lhlo::SubOp>>(context);
 }
 
-struct LegalizeToAffine : public ::mlir::FunctionPass<LegalizeToAffine> {
+struct LhloLegalizeToAffine : public FunctionPass<LhloLegalizeToAffine> {
   void runOnFunction() override {
-    ::mlir::OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns;
     auto func = getFunction();
-    AppendBinaryOpsPatterns(func.getContext(), &patterns);
+    populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
     applyPatternsGreedily(func, patterns);
   }
 };
 
 }  // namespace
 
-std::unique_ptr<::mlir::FunctionPassBase> createLegalizeAffinePass() {
-  return absl::make_unique<LegalizeToAffine>();
+std::unique_ptr<FunctionPassBase> createLegalizeToAffinePass() {
+  return absl::make_unique<LhloLegalizeToAffine>();
 }
 
-static ::mlir::PassRegistration<LegalizeToAffine> legalize_pass(
+static PassRegistration<LhloLegalizeToAffine> legalize_pass(
     "lhlo-legalize-to-affine", "Legalize from LHLO dialect to affine dialect");
 
-}  // namespace mlir_gpu
-}  // namespace xla
+}  // namespace xla_lhlo
+}  // namespace mlir

@@ -94,6 +94,21 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "lhlo_legalize_to_affine",
+    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:lhlo",
+        "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:AffineOps",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
 gentbl(
     name = "xla_legalize_to_standard_inc_gen",
     tbl_outs = [

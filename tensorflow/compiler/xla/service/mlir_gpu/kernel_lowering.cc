@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/xla/service/mlir_gpu/transforms/legalize_to_affine.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -88,7 +88,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   PassManager pm(module.getContext());
 
   // Transform element-wise operations to Affine.
-  pm.addPass(createLegalizeAffinePass());
+  pm.addPass(::mlir::xla_lhlo::createLegalizeToAffinePass());
   // Transform affine to gpu launches.
   // TODO(b/137624192) This pass requires known dimensions. Generalization it.
   pm.addPass(::mlir::createSimpleLoopsToGPUPass(/*numBlockDims=*/0,
