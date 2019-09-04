@@ -17,6 +17,7 @@
 #ifndef MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_
 #define MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_
 
+#include "mlir/Support/LLVM.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,8 +25,18 @@
 
 namespace mlir {
 
-class ModulePassBase;
 class FuncOp;
+class Location;
+class ModuleOp;
+class OpBuilder;
+class Value;
+
+namespace LLVM {
+class LLVMDialect;
+}
+
+template <typename T> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
@@ -53,6 +64,7 @@ std::unique_ptr<ModulePassBase> createConvertGpuLaunchFuncToCudaCallsPass();
 /// Creates a pass to augment a module with getter functions for all contained
 /// cubins as encoded via the 'nvvm.cubin' attribute.
 std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass();
+
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_

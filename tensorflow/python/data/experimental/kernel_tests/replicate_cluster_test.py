@@ -113,7 +113,7 @@ class ReplicateClusterTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph"]))
-  def testWhitelistStatefulOp(self):
+  def testAllowStatefulOp(self):
     with compat.forward_compatibility_horizon(2019, 9, 12):
       with ops.device(self._device0):
         dataset0 = dataset_ops.Dataset.range(100).map(
@@ -123,7 +123,7 @@ class ReplicateClusterTest(test_base.DatasetTestBase, parameterized.TestCase):
                 maxval=10,
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
-        opt.experimental_stateful_whitelist = ["RandomUniform"]
+        opt.experimental_allow_stateful = True
         dataset0 = dataset0.with_options(opt)
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])

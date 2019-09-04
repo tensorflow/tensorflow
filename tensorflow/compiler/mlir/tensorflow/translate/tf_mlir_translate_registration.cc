@@ -52,6 +52,16 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
+static OwningModuleRef SavedModelToMlirTranslateFunction(
+    llvm::StringRef input_filename, MLIRContext* context) {
+  std::unordered_set<std::string> tags = absl::StrSplit(saved_model_tags, ',');
+  return tensorflow::SavedModelToMlirImport(StringRefToView(input_filename),
+                                            tags, debug_info_file, context);
+}
+
+static TranslateToMLIRRegistration SavedModelToMlirTranslate(
+    "savedmodel-to-mlir", SavedModelToMlirTranslateFunction);
+
 static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
@@ -69,8 +79,8 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   if (!module) return failure();
 
   std::error_code error;
-  auto result = llvm::make_unique<llvm::ToolOutputFile>(output_filename, error,
-                                                        llvm::sys::fs::F_None);
+  auto result = std::make_unique<llvm::ToolOutputFile>(output_filename, error,
+                                                       llvm::sys::fs::F_None);
   if (error) {
     LOG(ERROR) << error.message();
     return failure();

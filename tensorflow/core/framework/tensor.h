@@ -79,6 +79,8 @@ class TensorBuffer : public core::RefCounted {
   virtual void FillAllocationDescription(
       AllocationDescription* proto) const = 0;
 
+  virtual bool GetAllocatedBytes(size_t* out_bytes) const;
+
   /// \brief Helper method to reinterpret the buffer as an array of `T`.
   template <typename T>
   T* base() const {
@@ -869,11 +871,28 @@ typename TTypes<T>::Scalar Tensor::scalar() {
   return typename TTypes<T>::Scalar(base<T>());
 }
 
+#ifdef USE_TSTRING
+template <>
+inline typename TTypes<std::string>::Scalar Tensor::scalar<std::string>() {
+  LOG(FATAL)
+      << "std::string is no longer a scalar type, use tensorflow::tstring";
+}
+#endif  // USE_TSTRING
+
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
+
+#ifdef USE_TSTRING
+template <>
+inline typename TTypes<std::string>::ConstScalar Tensor::scalar<std::string>()
+    const {
+  LOG(FATAL)
+      << "std::string is no longer a scalar type, use tensorflow::tstring";
+}
+#endif  // USE_TSTRING
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_dims() {
@@ -923,6 +942,7 @@ inline Tensor::Tensor(Tensor&& other)
 class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
  public:
   using TensorBuffer::TensorBuffer;
+  bool GetAllocatedBytes(size_t* out_bytes) const final;
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
@@ -933,7 +953,8 @@ template <typename T>
 struct Tensor::ValueAndTensorBuffer {
   class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
    public:
-    HostScalarTensorBuffer(void* data) : HostScalarTensorBufferBase(data) {}
+    explicit HostScalarTensorBuffer(void* data)
+        : HostScalarTensorBufferBase(data) {}
     size_t size() const final { return sizeof(T); }
     TensorBuffer* root_buffer() final { return this; }
 

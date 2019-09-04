@@ -34,8 +34,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, bool useSharedMem>
 __global__ void BucketizeCustomKernel(
-    const int32 size_in, const T* in, const int32 size_boundaries,
-    GpuDeviceArrayStruct<float> boundaries_array, int32* out) {
+    const int32 size_in, const T* __restrict__ in, const int32 size_boundaries,
+    GpuDeviceArrayStruct<float> boundaries_array, int32* __restrict__ out) {
   const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
   GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(float), unsigned char, shared_mem);

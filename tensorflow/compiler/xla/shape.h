@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -72,7 +73,7 @@ class Shape {
     dynamic_dimensions_[dimension] = is_dynamic;
   }
 
-  const std::vector<bool>& dynamic_dimensions() const {
+  absl::Span<const bool> dynamic_dimensions() const {
     return dynamic_dimensions_;
   }
 
@@ -104,7 +105,7 @@ class Shape {
     dimensions_.clear();
     dynamic_dimensions_.clear();
   }
-  const std::vector<int64>& dimensions() const { return dimensions_; }
+  absl::Span<const int64> dimensions() const { return dimensions_; }
   absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
@@ -219,11 +220,11 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  std::vector<int64> dimensions_;
+  absl::InlinedVector<int64, 6> dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.
-  std::vector<bool> dynamic_dimensions_;
+  absl::InlinedVector<bool, 6> dynamic_dimensions_;
 
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;

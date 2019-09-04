@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -109,7 +110,8 @@ class Nadam(optimizer_v2.OptimizerV2):
           shape=[],
           dtype=var_dtype,
           initializer='ones',
-          trainable=False)
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._m_cache)
     # Separate for-loops to respect the ordering of slot variables from v1.
     for var in var_list:

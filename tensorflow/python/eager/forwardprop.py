@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 
@@ -55,35 +54,38 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
-  float_inputs = []
-  float_indices = []
+  if not outputs:
+    # tape.gradients([], inputs) doesn't make much sense
+    return []
+  trainable_inputs = []
+  trainable_indices = []
   nontrivial_tangents = []
   for input_index, tensor in enumerate(inputs):
-    if tensor.dtype.is_floating:
-      float_inputs.append(tensor)
-      float_indices.append(input_index)
+    if backprop_util.IsTrainable(tensor):
+      trainable_inputs.append(tensor)
+      trainable_indices.append(input_index)
       nontrivial_tangents.append(tangents[input_index])
 
   with backprop.GradientTape() as transpose_tape:
     with backprop.GradientTape() as backfunc_tape:
-      backfunc_tape.watch(float_inputs)
+      backfunc_tape.watch(trainable_inputs)
       execute.record_gradient(op_name, inputs, attr_tuple, outputs,
                               "forward_op_replay")
 
     forwardprop_aids = []
-    float_outputs = []
+    trainable_outputs = []
     nontrivial_output_indices = []
     for output_index, output in enumerate(outputs):
-      if output.dtype.is_floating:
+      if backprop_util.IsTrainable(output):
         forwardprop_aids.append(
             array_ops.ones_like(output, name="unused_forwardprop_aid"))
-        float_outputs.append(output)
+        trainable_outputs.append(output)
         nontrivial_output_indices.append(output_index)
 
     transpose_tape.watch(forwardprop_aids)
     grads = backfunc_tape.gradient(
-        float_outputs,
-        float_inputs,
+        trainable_outputs,
+        trainable_inputs,
         forwardprop_aids,
         unconnected_gradients=UnconnectedGradients.ZERO)
   nontrivial_output_tangents = transpose_tape.gradient(
@@ -183,10 +185,11 @@ class ForwardGradientAccumulator(object):
         logging.log_first_n(
             logging.WARN, "The dtype of the watched tensor must be "
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
-      if hasattr(t, "handle"):
-        # TODO(allenl): Handle watching variables.
-        raise NotImplementedError("Currently only Tensors may be watched.")
       g = ops.convert_to_tensor(g, dtype=t.dtype)
+      if hasattr(t, "handle"):
+        # Run convert_to_tensor to get the captured handle from whichever
+        # function we're running if necessary.
+        t = ops.convert_to_tensor(t.handle)
       pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
   def jvp(self, target):
@@ -206,6 +209,9 @@ class ForwardGradientAccumulator(object):
     """
     if self._accumulator is None:
       raise ValueError("Called jvp() without first tracing anything.")
-    return nest.map_structure(
-        functools.partial(pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP,
-                          self._accumulator), target)
+    def _fetch_jvp(tensor):
+      if hasattr(tensor, "handle"):
+        tensor = ops.convert_to_tensor(tensor.handle)
+      return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
+          self._accumulator, tensor)
+    return nest.map_structure(_fetch_jvp, target)

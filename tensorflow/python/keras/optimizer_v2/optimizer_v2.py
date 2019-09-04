@@ -415,8 +415,8 @@ class OptimizerV2(trackable.Trackable):
         passed to the `Optimizer` constructor.
 
     Returns:
-      An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      An `Operation` that applies the specified gradients. The `iterations`
+        will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.

@@ -14,6 +14,12 @@ else
   GCC_EMBEDDED_MD5 := "299ebd3f1c2c90930d28ab82e5d8d6c0"
 endif
 
+LEON_BCC2_URL := "https://www.gaisler.com/anonftp/bcc2/bin/bcc-2.0.7-gcc-linux64.tar.xz"
+LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
+
+TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
+TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
+
 CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 CMSIS_MD5 := "f451f1dccc844e894939055db278a40e"
 

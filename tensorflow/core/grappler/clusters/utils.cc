@@ -27,7 +27,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #endif
 
-#ifdef EIGEN_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM
 #include "include/libxsmm.h"
 #endif
 
@@ -67,7 +67,7 @@ DeviceProperties GetLocalCPUInfo() {
 
   (*device.mutable_environment())["eigen"] = strings::StrCat(
       EIGEN_WORLD_VERSION, ".", EIGEN_MAJOR_VERSION, ".", EIGEN_MINOR_VERSION);
-#ifdef EIGEN_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM
   (*device.mutable_environment())["libxsmm"] = LIBXSMM_VERSION;
 #endif
 

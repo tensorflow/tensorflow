@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
@@ -47,19 +48,6 @@ struct TensorUsageRecord {
     return first_task < other.first_task;
   }
 };
-
-template <typename TensorSizeT>
-struct TensorUsageWithIndex {
-  const TensorUsageRecord<TensorSizeT>* usage_record;
-  size_t idx;
-
-  TensorUsageWithIndex(const TensorUsageRecord<TensorSizeT>* usage_record,
-                       size_t idx)
-      : usage_record(usage_record), idx(idx) {}
-};
-
-bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
-                   const TensorUsageWithIndex<size_t>& second);
 
 // Information about assignment of tensors to shared objects
 template <typename TensorSizeT>
@@ -94,13 +82,22 @@ enum class MemoryStrategy {
   // Greedy strategy uses greedy algorithm, iterating through all the tensors in
   // order of their first_task, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
-  GREEDY,
+  GREEDY_IN_ORDER,
 
   // Greedy by size strategy uses greedy algorithm, iterating through all the
-  // tensors in
-  // non-increasing of their size, to reuse memory from tensors, that
+  // tasks in non-increasing of their breadth, and calculating allocations for
+  // tensors used in these tasks. By breadth of the task we understand sum of
+  // sizes of all tensors in its TaskProfile.
+  GREEDY_BY_BREADTH,
+
+  // Greedy by size strategy uses greedy algorithm, iterating through all the
+  // tensors in non-increasing of their size, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY_BY_SIZE,
+
+  // Choose greedy strategy from several fast algorithms, that provides best
+  // memory allocation for the given usage records.
+  GREEDY_BEST,
 
   // Mincostflow strategy consists of building auxiliary flow graph and solving
   // the minimum-cost flow problem in it. In the end edges with zero residual
@@ -110,17 +107,31 @@ enum class MemoryStrategy {
 
 // Calculates the assignement of shared objects to given tensors, including
 // objects' sizes. Initial tensor sizes are given as size_t. This function is
-// intended to use with GPU buffers.
+// intended to use with GPU buffers and one-dimensional textures.
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment);
 
 // Calculates the assignement of shared objects to given tensors, including
 // objects' sizes. Initial tensor sizes are given as BHWC. This function is
-// intended to use with GPU textures.
+// intended to use with OpenCL textures.
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment<BHWC>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment);
+
+// Calculates the assignement of shared objects to given tensors, including
+// objects' sizes. Initial tensor sizes are given as uint2. This function is
+// intended to use with OpenGL textures.
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint2>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment);
+
+// Calculates the assignement of shared objects to given tensors, including
+// objects' sizes. Initial tensor sizes are given as uint3. This function is
+// intended to use with OpenGL textures.
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint3>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment);
 
 // Calculates the assignement of tensors to offsets, considering those tensors
 // are going to be allocated in one continuous memory block.

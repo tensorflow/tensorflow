@@ -85,7 +85,7 @@ class EagerServiceImplTest : public ::testing::Test {
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
     worker_env_.session_mgr = session_mgr_.get();
 
-    device_mgr_ = absl::make_unique<DeviceMgr>(DeviceFactory::NewDevice(
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
         "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
     worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
@@ -326,19 +326,13 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-
-  SendTensorRequest send_tensor_request;
-  send_tensor_request.set_context_id(context_id);
-  send_tensor_request.set_op_id(1);
-  SetTensorProto(send_tensor_request.add_tensors());
-  SendTensorResponse send_tensor_response;
-
-  TF_ASSERT_OK(eager_service_impl.SendTensor(&send_tensor_request,
-                                             &send_tensor_response));
-
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
   EnqueueResponse remote_enqueue_response;
+
+  auto* send_tensor = remote_enqueue_request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(1);
+  SetTensorProto(send_tensor->add_tensors());
 
   std::unordered_map<string, AttrValue> attrs;
   AttrValue val;
@@ -402,15 +396,17 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
 
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
-  SendTensorRequest send_tensor_request;
-  send_tensor_request.set_context_id(context_id);
-  send_tensor_request.set_op_id(1);
-  SetTensorProto(send_tensor_request.add_tensors());
-  SendTensorResponse send_tensor_response;
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+
+  auto* send_tensor = remote_enqueue_request.add_queue()->mutable_send_tensor();
+  send_tensor->set_op_id(1);
+  SetTensorProto(send_tensor->add_tensors());
 
   // Unable to handle the request since there is no eager context.
-  Status status = eager_service_impl.SendTensor(&send_tensor_request,
-                                                &send_tensor_response);
+  Status status = eager_service_impl.Enqueue(&remote_enqueue_request,
+                                             &remote_enqueue_response);
   EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
@@ -419,8 +415,8 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // The request can be handled after adding the master eager context to
   // service.
   TF_ASSERT_OK(eager_service_impl.CreateMasterContext(context_id, ctx));
-  TF_ASSERT_OK(eager_service_impl.SendTensor(&send_tensor_request,
-                                             &send_tensor_response));
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+                                          &remote_enqueue_response));
   ctx->Unref();
 }
 

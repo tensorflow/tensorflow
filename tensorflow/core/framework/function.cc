@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/function.pb_text.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -920,11 +920,6 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   for (int i = 0; i < options.output_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
         "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
-  }
-  for (const auto& iter : options.input_tensor_shapes) {
-    entries.push_back(
-        strings::StrCat("_input_tensor_shape", iter.first, "=",
-                        absl::CEscape(iter.second.DebugString())));
   }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
     entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",

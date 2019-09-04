@@ -175,8 +175,8 @@ class AnnotationMap {
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
-    absl::flat_hash_map<uint32, absl::string_view> correlation_map;
     absl::node_hash_set<string> annotations;
+    absl::flat_hash_map<uint32, absl::string_view> correlation_map;
   };
   const uint64 max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;
@@ -206,7 +206,7 @@ class CuptiTracer {
   Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                uint8_t* buffer, size_t size);
 
-  uint64 GetTimestamp();
+  static uint64 GetTimestamp();
   static int NumGpus();
 
  private:
@@ -216,11 +216,12 @@ class CuptiTracer {
   Status EnableActivityTracing();
   Status DisableApiTracing();
   Status DisableActivityTracing();
+  Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
 
   absl::optional<CuptiTracerOptions> option_;
-  CuptiInterface* cupti_interface_;
-  CuptiTraceCollector* collector_;
+  CuptiInterface* cupti_interface_ = nullptr;
+  CuptiTraceCollector* collector_ = nullptr;
   absl::optional<AnnotationMap> annotation_map_;
 
   bool api_tracing_enabled_ = false;

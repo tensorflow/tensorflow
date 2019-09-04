@@ -218,6 +218,15 @@ ArrayAttr Builder::getI64ArrayAttr(ArrayRef<int64_t> values) {
   return getArrayAttr(attrs);
 }
 
+ArrayAttr Builder::getIndexArrayAttr(ArrayRef<int64_t> values) {
+  auto attrs = functional::map(
+      [this](int64_t v) -> Attribute {
+        return getIntegerAttr(IndexType::get(getContext()), v);
+      },
+      values);
+  return getArrayAttr(attrs);
+}
+
 ArrayAttr Builder::getF32ArrayAttr(ArrayRef<float> values) {
   auto attrs = functional::map(
       [this](float v) -> Attribute { return getF32FloatAttr(v); }, values);
@@ -244,12 +253,11 @@ ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
 
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
+  case StandardTypes::BF16:
   case StandardTypes::F16:
-    return getF16FloatAttr(0);
   case StandardTypes::F32:
-    return getF32FloatAttr(0);
   case StandardTypes::F64:
-    return getF64FloatAttr(0);
+    return getFloatAttr(type, 0.0);
   case StandardTypes::Integer: {
     auto width = type.cast<IntegerType>().getWidth();
     if (width == 1)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
 namespace tflite {
@@ -32,6 +33,9 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size,
     case kTfLiteInt32:
       *size = sizeof(int32_t);
       break;
+    case kTfLiteInt8:
+      *size = sizeof(int8_t);
+      break;
     case kTfLiteUInt8:
       *size = sizeof(uint8_t);
       break;
@@ -45,9 +49,8 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size,
       *size = sizeof(float) * 2;
       break;
     default:
-      reporter->Report(
-          "Only float32, int16, int32, int64, uint8, bool, complex64 "
-          "supported currently.");
+      reporter->Report("Type %s (%d) not is not supported",
+                       TfLiteTypeGetName(type), type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -140,10 +143,16 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
     result->params.scale = src_quantization->scale()->Get(0);
-    result->params.zero_point = src_quantization->zero_point()->Get(0);
+    for (unsigned int b = 0; b < sizeof(int64_t); ++b)
+      *(reinterpret_cast<char*>(&result->params.zero_point) + b) =
+          *(reinterpret_cast<const char*>(
+                src_quantization->zero_point()->Data()) +
+            b);
+    result->params.zero_point =
+        flatbuffers::EndianScalar(result->params.zero_point);
   }
   result->allocation = nullptr;
-  if (flatbuffer_tensor.name()) {
+  if (flatbuffer_tensor.name()->c_str() != nullptr) {
     result->name = flatbuffer_tensor.name()->c_str();
   } else {
     result->name = "<No name>";

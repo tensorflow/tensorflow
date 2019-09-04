@@ -112,7 +112,7 @@ using ::tflite::gpu::TensorUsageRecord;
   }
 
   tflite::gpu::ObjectsAssignment<size_t> assignment;
-  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY, &assignment));
+  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
   auto objectsCount = assignment.object_sizes.size();
   std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
   size_t dataTypeSize = _options.storage_precision == RuntimeOptions::Precision::FP32

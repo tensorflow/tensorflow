@@ -296,9 +296,14 @@ py_library(
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
+        "saving/saved_model/base_serialization.py",
         "saving/saved_model/constants.py",
+        "saving/saved_model/layer_serialization.py",
         "saving/saved_model/load.py",
+        "saving/saved_model/model_serialization.py",
+        "saving/saved_model/network_serialization.py",
         "saving/saved_model/save.py",
+        "saving/saved_model/save_impl.py",
         "saving/saved_model/serialized_attributes.py",
         "saving/saved_model/utils.py",
         "saving/saved_model_experimental.py",
@@ -1197,8 +1202,6 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
-        "no_windows",
         "noasan",  # times out
         "notsan",
         "optonly",  # times out
@@ -1507,8 +1510,8 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "noasan",  # TODO(b/132183295): Re-enable this.
+        "nomac",  # TODO(b/140193633): Re-enable this.
         "notsan",
     ],
 )
@@ -1576,22 +1579,6 @@ tf_py_test(
     ],
     tags = [
         "no_oss",  # TODO(b/135021748) reenable
-        "notsan",
-    ],
-)
-
-tf_py_test(
-    name = "training_v2_utils_test",
-    size = "medium",
-    srcs = ["engine/training_v2_utils_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-    ],
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )

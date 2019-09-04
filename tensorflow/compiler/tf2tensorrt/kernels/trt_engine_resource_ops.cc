@@ -121,7 +121,7 @@ class InitializeTRTResource : public OpKernel {
     uint64 offset = 0;
     int num_loaded_engine = 0;
     do {
-      string record;
+      tstring record;
       Status status = reader->ReadRecord(&offset, &record);
       if (errors::IsOutOfRange(status)) break;
 
@@ -184,13 +184,7 @@ class SerializeTRTResource : public OpKernel {
     core::ScopedUnref unref_me(resource);
 
     // Terminate the calibration if any.
-    if (resource->calib_ctx_) {
-      // We don't save the calibration_table for TF 2.0 at the moment, it's used
-      // in 1.x environment.
-      string calibration_table;
-      OP_REQUIRES_OK(
-          ctx, resource->calib_ctx_->SerializeToString(&calibration_table));
-    }
+    if (resource->calib_ctx_) resource->calib_ctx_->TerminateCalibration();
 
     // Serialize the engines and write them to file.
     std::unique_ptr<WritableFile> file;

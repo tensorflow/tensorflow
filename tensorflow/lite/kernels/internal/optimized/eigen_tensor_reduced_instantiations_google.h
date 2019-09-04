@@ -70,10 +70,6 @@ typedef unsigned __int64 uint64_t;
 #include <time.h>
 #endif
 
-// #if defined(EIGEN_USE_LIBXSMM)
-// #include "libxsmm.h"
-// #endif
-
 #ifdef EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 #endif

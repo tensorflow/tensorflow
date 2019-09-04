@@ -45,6 +45,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
   explicit QuantizeAndDequantizeV2Op(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
                 errors::InvalidArgument("num_bits is out of range: ", num_bits_,
@@ -70,38 +71,63 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
-
+    const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     Tensor input_min_tensor;
     Tensor input_max_tensor;
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     if (range_given_) {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
-      auto min_val = input_min_tensor.scalar<T>()();
-      auto max_val = input_max_tensor.scalar<T>()();
-      OP_REQUIRES(ctx, min_val <= max_val,
-                  errors::InvalidArgument("Invalid range: input_min ", min_val,
-                                          " > input_max ", max_val));
+      if (axis_ == -1) {
+        auto min_val = input_min_tensor.scalar<T>()();
+        auto max_val = input_max_tensor.scalar<T>()();
+        OP_REQUIRES(ctx, min_val <= max_val,
+                    errors::InvalidArgument("Invalid range: input_min ",
+                                            min_val, " > input_max ", max_val));
+      } else {
+        OP_REQUIRES(ctx, input_min_tensor.dim_size(0) == depth,
+                    errors::InvalidArgument(
+                        "input_min_tensor has incorrect size, was ",
+                        input_min_tensor.dim_size(0), " expected ", depth,
+                        " to match dim ", axis_, " of the input ",
+                        input_min_tensor.shape()));
+        OP_REQUIRES(ctx, input_max_tensor.dim_size(0) == depth,
+                    errors::InvalidArgument(
+                        "input_max_tensor has incorrect size, was ",
+                        input_max_tensor.dim_size(0), " expected ", depth,
+                        " to match dim ", axis_, " of the input ",
+                        input_max_tensor.shape()));
+      }
     } else {
+      auto range_shape = (axis_ == -1) ? TensorShape({}) : TensorShape({depth});
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape(), &input_min_tensor));
+                                             range_shape, &input_min_tensor));
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape(), &input_max_tensor));
+                                             range_shape, &input_max_tensor));
     }
 
-    functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
-    f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_,
-      range_given_, &input_min_tensor, &input_max_tensor, round_mode_,
-      narrow_range_, output->flat<T>());
+    if (axis_ == -1) {
+      functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
+      f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_,
+        range_given_, &input_min_tensor, &input_max_tensor, round_mode_,
+        narrow_range_, output->flat<T>());
+    } else {
+      functor::QuantizeAndDequantizePerChannelFunctor<Device, T> f;
+      f(ctx->eigen_device<Device>(),
+        input.template flat_inner_outer_dims<T, 3>(axis_ - 1), signed_input_,
+        num_bits_, range_given_, &input_min_tensor, &input_max_tensor,
+        round_mode_, narrow_range_,
+        output->template flat_inner_outer_dims<T, 3>(axis_ - 1));
+    }
   }
 
  private:
-  bool signed_input_;
   int num_bits_;
-  bool range_given_;
+  int axis_;
   QuantizerRoundMode round_mode_;
+  bool signed_input_;
+  bool range_given_;
   bool narrow_range_;
 };
 
@@ -120,11 +146,12 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
   }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-
+    const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
 
@@ -142,25 +169,51 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
     if (range_given_) {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
-      auto min_val = input_min_tensor.scalar<T>()();
-      auto max_val = input_max_tensor.scalar<T>()();
-      OP_REQUIRES(ctx, min_val <= max_val,
-                  errors::InvalidArgument("Invalid range: input_min ", min_val,
-                                          " > input_max ", max_val));
+      if (axis_ == -1) {
+        auto min_val = input_min_tensor.scalar<T>()();
+        auto max_val = input_max_tensor.scalar<T>()();
+        OP_REQUIRES(ctx, min_val <= max_val,
+                    errors::InvalidArgument("Invalid range: input_min ",
+                                            min_val, " > input_max ", max_val));
+      } else {
+        OP_REQUIRES(ctx, input_min_tensor.dim_size(0) == depth,
+                    errors::InvalidArgument(
+                        "input_min_tensor has incorrect size, was ",
+                        input_min_tensor.dim_size(0), " expected ", depth,
+                        " to match dim ", axis_, " of the input ",
+                        input_min_tensor.shape()));
+        OP_REQUIRES(ctx, input_max_tensor.dim_size(0) == depth,
+                    errors::InvalidArgument(
+                        "input_max_tensor has incorrect size, was ",
+                        input_max_tensor.dim_size(0), " expected ", depth,
+                        " to match dim ", axis_, " of the input ",
+                        input_max_tensor.shape()));
+      }
     } else {
+      auto range_shape = (axis_ == -1) ? TensorShape({}) : TensorShape({depth});
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape(), &input_min_tensor));
+                                             range_shape, &input_min_tensor));
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape(), &input_max_tensor));
+                                             range_shape, &input_max_tensor));
     }
 
-    functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
-    f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_, num_bits_val,
-      range_given_, &input_min_tensor, &input_max_tensor, ROUND_HALF_TO_EVEN,
-      narrow_range_, output->flat<T>());
+    if (axis_ == -1) {
+      functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> f;
+      f(ctx->eigen_device<Device>(), input.flat<T>(), signed_input_,
+        num_bits_val, range_given_, &input_min_tensor, &input_max_tensor,
+        ROUND_HALF_TO_EVEN, narrow_range_, output->flat<T>());
+    } else {
+      functor::QuantizeAndDequantizePerChannelFunctor<Device, T> f;
+      f(ctx->eigen_device<Device>(),
+        input.template flat_inner_outer_dims<T, 3>(axis_ - 1), signed_input_,
+        num_bits_val, range_given_, &input_min_tensor, &input_max_tensor,
+        ROUND_HALF_TO_EVEN, narrow_range_,
+        output->template flat_inner_outer_dims<T, 3>(axis_ - 1));
+    }
   }
 
  private:
+  int axis_;
   bool signed_input_;
   bool range_given_;
   bool narrow_range_;
@@ -214,7 +267,8 @@ class QuantizeAndDequantizeOp : public OpKernel {
   float input_max_;
 };
 
-// Specialization for CPUDevice.
+// Specializations for CPUDevice.
+
 namespace functor {
 template <typename T>
 struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
@@ -224,6 +278,19 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
                   Tensor* input_max_tensor, QuantizerRoundMode round_mode,
                   bool narrow_range, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
+        d, input, signed_input, num_bits, range_given, input_min_tensor,
+        input_max_tensor, round_mode, narrow_range, out);
+  }
+};
+
+template <typename T>
+struct QuantizeAndDequantizePerChannelFunctor<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T, 3>::ConstTensor input,
+                  bool signed_input, int num_bits, bool range_given,
+                  Tensor* input_min_tensor, Tensor* input_max_tensor,
+                  QuantizerRoundMode round_mode, bool narrow_range,
+                  typename TTypes<T, 3>::Tensor out) {
+    QuantizeAndDequantizePerChannelImpl<CPUDevice, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min_tensor,
         input_max_tensor, round_mode, narrow_range, out);
   }
@@ -251,14 +318,14 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #define REGISTER_GPU_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV2")                      \
                               .Device(DEVICE_GPU)                              \
-                              .HostMemory("input_max")                         \
                               .HostMemory("input_min")                         \
+                              .HostMemory("input_max")                         \
                               .TypeConstraint<T>("T"),                         \
                           QuantizeAndDequantizeV2Op<GPUDevice, T>);            \
   REGISTER_KERNEL_BUILDER(Name("QuantizeAndDequantizeV3")                      \
                               .Device(DEVICE_GPU)                              \
-                              .HostMemory("input_max")                         \
                               .HostMemory("input_min")                         \
+                              .HostMemory("input_max")                         \
                               .HostMemory("num_bits")                          \
                               .TypeConstraint<T>("T"),                         \
                           QuantizeAndDequantizeV3Op<GPUDevice, T>);            \

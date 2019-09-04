@@ -71,13 +71,6 @@ enum Kind {
 
 } // namespace StandardTypes
 
-inline bool Type::isBF16() { return getKind() == StandardTypes::BF16; }
-inline bool Type::isF16() { return getKind() == StandardTypes::F16; }
-inline bool Type::isF32() { return getKind() == StandardTypes::F32; }
-inline bool Type::isF64() { return getKind() == StandardTypes::F64; }
-
-inline bool Type::isIndex() { return getKind() == StandardTypes::Index; }
-
 /// Index is a special integer-like type with unknown platform-dependent bit
 /// width.
 class IndexType : public Type::TypeBase<IndexType, Type> {
@@ -122,25 +115,6 @@ public:
   /// Integer representation maximal bitwidth.
   static constexpr unsigned kMaxWidth = 4096;
 };
-
-/// Return true if this is an integer type with the specified width.
-inline bool Type::isInteger(unsigned width) {
-  if (auto intTy = dyn_cast<IntegerType>())
-    return intTy.getWidth() == width;
-  return false;
-}
-
-inline bool Type::isIntOrIndex() {
-  return isa<IndexType>() || isa<IntegerType>();
-}
-
-inline bool Type::isIntOrIndexOrFloat() {
-  return isa<IndexType>() || isa<IntegerType>() || isa<FloatType>();
-}
-
-inline bool Type::isIntOrFloat() {
-  return isa<IntegerType>() || isa<FloatType>();
-}
 
 class FloatType : public Type::TypeBase<FloatType, Type> {
 public:

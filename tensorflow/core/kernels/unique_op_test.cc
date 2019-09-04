@@ -132,7 +132,7 @@ static void BM_Unique_STRING(int iters, int dim) {
                   .Attr("T", DT_STRING)
                   .Finalize(g, &node));
 
-  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(string));
+  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(tstring));
   testing::UseRealTime();
   testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);

@@ -138,6 +138,7 @@ tf_kernel_library(
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
         "strided_slice_op_inst_7.cc",
+        "strided_slice_op_inst_8.cc",
     ],
     hdrs = [
         "slice_op.h",
@@ -194,6 +195,17 @@ tf_cc_test(
     ],
 )
 
+# virtual targets since nested select statements not possible
+tf_kernel_library(
+    name = "virtual_nccl",
+    deps = if_cuda(["@local_config_nccl//:nccl"]),
+)
+
+tf_kernel_library(
+    name = "virtual_rccl",
+    deps = if_rocm(["@local_config_rocm//rocm:rccl"]),
+)
+
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
@@ -214,7 +226,8 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
-        "@local_config_nccl//:nccl",
+        ":virtual_nccl",
+        ":virtual_rccl",
         "//tensorflow/core/nccl:nccl_lib",
     ]),
 )
@@ -383,11 +396,14 @@ cc_library(
 
 tf_kernel_library(
     name = "nccl_kernels",
-    srcs = if_cuda([
+    srcs = if_cuda_or_rocm([
         "nccl_ops.cc",
     ]),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rccl",
+    ]) + if_cuda_or_rocm([
         "//tensorflow/core/nccl:nccl_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
@@ -921,7 +937,6 @@ ARRAY_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
@@ -2431,7 +2446,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -3347,8 +3361,9 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cuda_solvers",
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 LINALG_DEPS = [
@@ -3785,10 +3800,7 @@ tf_kernel_library(
     ],
     hdrs = ["matmul_op.h"],
     defines = select({
-        ":xsmm": [
-            "TENSORFLOW_USE_LIBXSMM",
-            "EIGEN_USE_LIBXSMM",
-        ],
+        ":xsmm": ["TENSORFLOW_USE_LIBXSMM"],
         "//conditions:default": [],
     }),
     deps = MATH_DEPS + [
@@ -4211,12 +4223,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     defines = select({
-        ":xsmm_convolutions": [
-            "TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":xsmm": ["EIGEN_USE_LIBXSMM"],
+        ":xsmm_convolutions": ["TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS"],
         "//conditions:default": [],
     }) + select({
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
@@ -4736,7 +4743,6 @@ cc_library(
 PARSING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
 ]
 
@@ -6120,6 +6126,7 @@ filegroup(
         "slice_op_cpu_impl_5.cc",
         "slice_op_cpu_impl_6.cc",
         "slice_op_cpu_impl_7.cc",
+        "slice_op_cpu_impl_8.cc",
         "softmax_op.cc",
         "softmax_op_functor.h",
         "split_lib.h",
@@ -6137,6 +6144,7 @@ filegroup(
         "strided_slice_op_inst_5.cc",
         "strided_slice_op_inst_6.cc",
         "strided_slice_op_inst_7.cc",
+        "strided_slice_op_inst_8.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
@@ -6210,6 +6218,7 @@ filegroup(
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
+        "segment_reduction_ops_impl.h",
         "softplus_op.h",
         "softsign_op.h",
         "spacetobatch_functor.h",
@@ -6317,7 +6326,15 @@ filegroup(
         "encode_wav_op.cc",
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
-        "einsum_op.cc",
+        "einsum_op_impl_half.cc",
+        "einsum_op_impl_bfloat16.cc",
+        "einsum_op_impl_int32.cc",
+        "einsum_op_impl_int64.cc",
+        "einsum_op_impl_float.cc",
+        "einsum_op_impl_double.cc",
+        "einsum_op_impl_complex64.cc",
+        "einsum_op_impl_complex128.cc",
+        "einsum_op_impl.h",
         "einsum_op.h",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
@@ -6406,7 +6423,11 @@ filegroup(
         "scatter_nd_op_cpu_impl_5.cc",
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
-        "segment_reduction_ops.cc",
+        "segment_reduction_ops_impl_1.cc",
+        "segment_reduction_ops_impl_2.cc",
+        "segment_reduction_ops_impl_3.cc",
+        "segment_reduction_ops_impl_4.cc",
+        "segment_reduction_ops_impl_5.cc",
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
@@ -6495,7 +6516,10 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = ["//tensorflow/c/kernels:android_all_op_kernels"] + glob(
+    srcs = [
+        "//tensorflow/c/kernels:android_all_op_kernels",
+        "//tensorflow/core/kernels/data:dataset_ops_srcs",
+    ] + glob(
         [
             "*.cc",
             "*.h",
@@ -6547,7 +6571,6 @@ filegroup(
             "debug_ops.*",
             "mutex_ops.*",
             "batch_kernels.*",
-            "regex_full_match_op.cc",
             "regex_replace_op.cc",
             "string_lower_op.cc",  # Requires ICU for unicode.
             "string_upper_op.cc",  # Requires ICU for unicode.
@@ -8014,7 +8037,7 @@ cc_library(
     name = "kernel_platform_strings",
     srcs = ["kernel_platform_strings.h"],
     deps = [
-        "//tensorflow/core:platform_strings",
+        "//tensorflow/core/platform:platform_strings",
     ],
     alwayslink = 1,
 )

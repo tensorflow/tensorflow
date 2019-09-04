@@ -29,6 +29,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import datetime
 import functools
 import itertools
@@ -82,6 +83,33 @@ KNOWN_BUGS = {
 }
 
 
+class MultiGenState(object):
+  """State of multiple set generation process.
+
+  This state class stores the information needed when generating the examples
+  for multiple test set. The stored informations are open archive object to be
+  shared, information on test target for current iteration of generation,
+  accumulated generation results.
+  """
+
+  def __init__(self):
+    # Open archive.
+    self.archive = None
+    # Test name for current generation.
+    self.test_name = None
+    # Label base path containing the test name.
+    # Each of the test data path in the zip archive is derived from this path.
+    # If this path is "a/b/c/d.zip", an example of generated test data path
+    # is "a/b/c/d_input_type=tf.float32,input_shape=[2,2].inputs".
+    # The test runner interpretes the test name of this path as "d".
+    # Label base path also should finish with ".zip".
+    self.label_base_path = None
+    # Zip manifests.
+    self.zip_manifest = []
+    # Number of all parameters accumulated.
+    self.parameter_count = 0
+
+
 class Options(object):
   """All options for example generation."""
 
@@ -111,6 +139,15 @@ class Options(object):
     self.known_bugs = KNOWN_BUGS
     # Make tests by setting TF forward compatibility horizon to the future.
     self.make_forward_compat_test = False
+    # No limitation on the number of tests.
+    self.no_tests_limit = False
+    # Do not create conversion report.
+    self.no_conversion_report = False
+    # State of multiple test set generation. This stores state values those
+    # should be kept and updated while generating examples over multiple
+    # test sets.
+    # TODO(juhoha): Separate the state from the options.
+    self.multi_gen_state = None
 
 
 # A map from names to functions which make test cases.
@@ -393,16 +430,24 @@ def make_zip_of_tests(options,
     parameter_count += functools.reduce(
         operator.mul, [len(values) for values in parameters.values()])
 
-  if parameter_count > _MAX_TESTS_PER_ZIP:
+  all_parameter_count = parameter_count
+  if options.multi_gen_state:
+    all_parameter_count += options.multi_gen_state.parameter_count
+  if not options.no_tests_limit and all_parameter_count > _MAX_TESTS_PER_ZIP:
     raise RuntimeError(
         "Too many parameter combinations for generating '%s'.\n"
-        "There are %d combinations while the upper limit is %d.\n"
+        "There are at least %d combinations while the upper limit is %d.\n"
         "Having too many combinations will slow down the tests.\n"
-        "Please consider splitting the test into multiple functions.\n"
-        % (zip_path, parameter_count, _MAX_TESTS_PER_ZIP))
+        "Please consider splitting the test into multiple functions.\n" %
+        (zip_path, all_parameter_count, _MAX_TESTS_PER_ZIP))
+  if options.multi_gen_state:
+    options.multi_gen_state.parameter_count = all_parameter_count
 
   # TODO(aselle): Make this allow multiple inputs outputs.
-  archive = zipfile.PyZipFile(zip_path, "w")
+  if options.multi_gen_state:
+    archive = options.multi_gen_state.archive
+  else:
+    archive = zipfile.PyZipFile(zip_path, "w")
   zip_manifest = []
   convert_report = []
   toco_errors = 0
@@ -413,10 +458,14 @@ def make_zip_of_tests(options,
     extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
     extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
 
+  label_base_path = zip_path
+  if options.multi_gen_state:
+    label_base_path = options.multi_gen_state.label_base_path
+
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
-      label = zip_path.replace(".zip", "_") + (",".join(
+      label = label_base_path.replace(".zip", "_") + (",".join(
           "%s=%r" % z for z in sorted(zip(keys, curr))).replace(" ", ""))
       if label[0] == "/":
         label = label[1:]
@@ -565,11 +614,20 @@ def make_zip_of_tests(options,
 
       convert_report.append((param_dict, report))
 
-  report_io = StringIO()
-  report_lib.make_report_table(report_io, zip_path, convert_report)
-  archive.writestr("report.html", report_io.getvalue())
+  if not options.no_conversion_report:
+    report_io = StringIO()
+    report_lib.make_report_table(report_io, zip_path, convert_report)
+    if options.multi_gen_state:
+      archive.writestr("report_" + options.multi_gen_state.test_name + ".html",
+                       report_io.getvalue())
+    else:
+      archive.writestr("report.html", report_io.getvalue())
 
-  archive.writestr("manifest.txt", "".join(zip_manifest), zipfile.ZIP_DEFLATED)
+  if options.multi_gen_state:
+    options.multi_gen_state.zip_manifest.extend(zip_manifest)
+  else:
+    archive.writestr("manifest.txt", "".join(zip_manifest),
+                     zipfile.ZIP_DEFLATED)
 
   # Log statistics of what succeeded
   total_conversions = len(convert_report)
@@ -832,12 +890,21 @@ def make_identity_tests(options):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1], [3, 3]],
-      "op_to_use": ["identity", "identity_n", "snapshot"],
+      "op_to_use": [
+          "identity", "identity_n", "snapshot", "identity_n_with_2_inputs"
+      ],
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
-        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    input_tensors = []
+    input_count = (2 if parameters["op_to_use"] == "identity_n_with_2_inputs"
+                   else 1)
+    input_tensors = [
+        tf.placeholder(
+            dtype=tf.float32, name="input", shape=parameters["input_shape"])
+        for _ in range(input_count)
+    ]
+
     # We add the Multiply before Identity just as a walk-around to make the test
     # pass when input_shape is scalar.
     # During graph transformation, TOCO will replace the Identity op with
@@ -845,21 +912,24 @@ def make_identity_tests(options):
     # between missing shape and scalar shape. As a result, when input has scalar
     # shape, this conversion still fails.
     # TODO(b/129197312), remove the walk-around code once the bug is fixed.
-    input_doubled = input_tensor * 2.0
+    inputs_doubled = [input_tensor * 2.0 for input_tensor in input_tensors]
     if parameters["op_to_use"] == "identity":
-      identity_output = tf.identity(input_doubled)
-    elif parameters["op_to_use"] == "identity_n":
-      # Testing `IdentityN` with a single tensor.
-      identity_output = tf.identity_n([input_doubled])[0]
+      identity_outputs = [tf.identity(inputs_doubled[0])]
     elif parameters["op_to_use"] == "snapshot":
-      identity_output = array_ops.snapshot(input_doubled)
-    return [input_tensor], [identity_output]
+      identity_outputs = [array_ops.snapshot(inputs_doubled[0])]
+    elif parameters["op_to_use"] in ("identity_n", "identity_n_with_2_inputs"):
+      identity_outputs = tf.identity_n(inputs_doubled)
+    return input_tensors, identity_outputs
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(
-        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    input_values = [
+        create_tensor_data(
+            np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+        for _ in range(len(inputs))
+    ]
+
+    return input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
@@ -2796,6 +2866,33 @@ def make_space_to_depth_tests(options):
     input_tensor = tf.placeholder(dtype=parameters["dtype"], name="input",
                                   shape=parameters["input_shape"])
     out = tf.space_to_depth(input_tensor, block_size=parameters["block_size"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_depth_to_space_tests(options):
+  """Make a set of tests to do depth_to_space."""
+
+  test_parameters = [{
+      "dtype": [tf.float32, tf.int32, tf.uint8, tf.int64],
+      "input_shape": [[2, 3, 4, 16]],
+      "block_size": [2, 4],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.depth_to_space(input_tensor, block_size=parameters["block_size"])
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -5230,7 +5327,8 @@ def make_rfft2d_tests(options):
                     extra_toco_options)
 
 
-def generate_examples(options):
+def _prepare_dir(options):
+
   def mkdir_if_not_exist(x):
     if not os.path.isdir(x):
       os.mkdir(x)
@@ -5240,13 +5338,26 @@ def generate_examples(options):
   opstest_path = os.path.join(options.output_path)
   mkdir_if_not_exist(opstest_path)
 
+
+def generate_examples(options):
+  """Generate examples for a test set.
+
+  Args:
+    options: Options containing information to generate examples.
+  """
+  _prepare_dir(options)
+
   out = options.zip_to_output
   # Some zip filenames contain a postfix identifying the conversion mode. The
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.
 
-  # Remove suffixes to extract the test name from the output name.
-  test_name = re.sub(r"(_(|toco-flex|forward-compat))?\.zip$", "", out, count=1)
+  if options.multi_gen_state:
+    test_name = options.multi_gen_state.test_name
+  else:
+    # Remove suffixes to extract the test name from the output name.
+    test_name = re.sub(
+        r"(_(|toco-flex|forward-compat))?\.zip$", "", out, count=1)
 
   test_function_name = "make_%s_tests" % test_name
   if test_function_name not in _MAKE_TEST_FUNCTIONS_MAP:
@@ -5262,3 +5373,37 @@ def generate_examples(options):
       test_function(options)
   else:
     test_function(options)
+
+
+def generate_multi_set_examples(options, test_sets):
+  """Generate examples for test sets.
+
+  Args:
+    options: Options containing information to generate examples.
+    test_sets: List of the name of test sets to generate examples.
+  """
+  _prepare_dir(options)
+
+  multi_gen_state = MultiGenState()
+  options.multi_gen_state = multi_gen_state
+
+  zip_path = os.path.join(options.output_path, options.zip_to_output)
+  with zipfile.PyZipFile(zip_path, "w") as archive:
+    multi_gen_state.archive = archive
+
+    for test_name in test_sets:
+      # Some generation function can change the value of the options object.
+      # To keep the original options for each run, we use shallow copy.
+      new_options = copy.copy(options)
+
+      # Remove suffix and set test_name to run proper test generation function.
+      multi_gen_state.test_name = re.sub(
+          r"(_(|toco-flex|forward-compat))?$", "", test_name, count=1)
+      # Set label base path to write test data files with proper path.
+      multi_gen_state.label_base_path = os.path.join(
+          os.path.dirname(zip_path), test_name + ".zip")
+
+      generate_examples(new_options)
+
+    archive.writestr("manifest.txt", "".join(multi_gen_state.zip_manifest),
+                     zipfile.ZIP_DEFLATED)

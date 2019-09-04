@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf %s | FileCheck %s --dump-input-on-failure
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op legalizations.
@@ -60,10 +60,12 @@ func @biasAdd_NCHW_invalid(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>)
 
 // CHECK-LABEL: func @add
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla_hlo.add %arg0, %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  return %0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM0:.*]] = xla_hlo.add %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM1:.*]] = xla_hlo.add %[[SUM0]], %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  return %[[SUM1]] : tensor<2xi32>
   %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0: tensor<2xi32>
+  %1 = "tf.AddV2"(%0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %1: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @broadcast_add
@@ -161,6 +163,18 @@ func @const() -> tensor<2xi32> {
   // CHECK-NEXT: constant dense<0> : tensor<2xi32>
   %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<2xi32>} : () -> (tensor<2xi32>)
   return %0: tensor<2xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// Matmul op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: matmul_notranspose
+func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> tensor<5x11xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
 }
 
 //===----------------------------------------------------------------------===//

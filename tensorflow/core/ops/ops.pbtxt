@@ -4849,6 +4849,218 @@ op {
   }
 }
 op {
+  name: "BlockLSTMGradV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "x_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h_prev_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "w_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wci_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wcf_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "wco_grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "b_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
+  name: "BlockLSTMV2"
+  input_arg {
+    name: "seq_len_max"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "cs_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wci"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wcf"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "wco"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "i"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "cs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "f"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "o"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "ci"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "co"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  attr {
+    name: "cell_clip"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "use_peephole"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "BoostedTreesAggregateStats"
   input_arg {
     name: "node_ids"
@@ -5722,6 +5934,13 @@ op {
     type: "int"
     has_minimum: true
   }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
   is_stateful: true
 }
 op {
@@ -5871,6 +6090,95 @@ op {
   }
 }
 op {
+  name: "CSRSparseMatrixComponents"
+  input_arg {
+    name: "csr_sparse_matrix"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "row_ptrs"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "col_inds"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_attr: "type"
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "CSRSparseMatrixToDense"
+  input_arg {
+    name: "sparse_input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "dense_output"
+    type_attr: "type"
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "CSRSparseMatrixToSparseTensor"
+  input_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_attr: "type"
+  }
+  output_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "CSVDataset"
   input_arg {
     name: "filenames"
@@ -5939,7 +6247,7 @@ op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -5962,7 +6270,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "beam_width"
@@ -5983,12 +6291,25 @@ op {
       b: true
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCGreedyDecoder"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "sequence_length"
@@ -6008,7 +6329,7 @@ op {
   }
   output_arg {
     name: "log_probability"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "merge_repeated"
@@ -6017,12 +6338,25 @@ op {
       b: false
     }
   }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
 }
 op {
   name: "CTCLoss"
   input_arg {
     name: "inputs"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "labels_indices"
@@ -6038,11 +6372,11 @@ op {
   }
   output_arg {
     name: "loss"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "gradient"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "preprocess_collapse_repeated"
@@ -6063,6 +6397,19 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
     }
   }
 }
@@ -9921,6 +10268,13 @@ op {
     }
     has_minimum: true
   }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "DatasetToSingleElement"
@@ -10681,6 +11035,33 @@ op {
     type: DT_STRING
   }
   is_stateful: true
+}
+op {
+  name: "DenseToCSRSparseMatrix"
+  input_arg {
+    name: "dense_input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
 }
 op {
   name: "DenseToDenseSetOperation"
@@ -24986,6 +25367,116 @@ op {
   }
 }
 op {
+  name: "ParseExampleV2"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "sparse_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "ragged_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_defaults"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_types"
+  }
+  output_arg {
+    name: "sparse_shapes"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "dense_values"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "ragged_values"
+    type_list_attr: "ragged_value_types"
+  }
+  output_arg {
+    name: "ragged_row_splits"
+    type_list_attr: "ragged_split_types"
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "num_sparse"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "ragged_value_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "ragged_split_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    has_minimum: true
+  }
+}
+op {
   name: "ParseSequenceExample"
   input_arg {
     name: "serialized"
@@ -26228,6 +26719,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
@@ -26282,6 +26780,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
@@ -39402,6 +39907,27 @@ op {
       i: 1
     }
   }
+  attr {
+    name: "shuffle_on_read"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "Softmax"
@@ -41338,6 +41864,324 @@ op {
   }
 }
 op {
+  name: "SparseMatrixAdd"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "c"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixMatMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "conjugate_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "SparseMatrixMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "SparseMatrixNNZ"
+  input_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "nnz"
+    type: DT_INT32
+  }
+}
+op {
+  name: "SparseMatrixOrderingAMD"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+}
+op {
+  name: "SparseMatrixSoftmax"
+  input_arg {
+    name: "logits"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "softmax"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSoftmaxGrad"
+  input_arg {
+    name: "softmax"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "grad_softmax"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSparseCholesky"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "permutation"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSparseMatMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "c"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "SparseMatrixTranspose"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "conjugate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixZeros"
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "SparseReduceMax"
   input_arg {
     name: "input_indices"
@@ -42482,6 +43326,37 @@ op {
     type: "type"
   }
   is_stateful: true
+}
+op {
+  name: "SparseTensorToCSRSparseMatrix"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
 }
 op {
   name: "SparseToDense"
@@ -45032,6 +45907,20 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "index"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {

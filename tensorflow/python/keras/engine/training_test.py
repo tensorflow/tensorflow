@@ -1131,12 +1131,6 @@ class TrainingTest(keras_parameterized.TestCase):
                                  'incompatible with the specified batch size'):
       model.fit(x, y, batch_size=4)
 
-    data = dataset_ops.DatasetV2.from_tensor_slices((x, y))
-    data = data.batch(4, drop_remainder=True)
-    with self.assertRaisesRegexp(ValueError,
-                                 'incompatible with the specified batch size'):
-      model.fit(data, steps_per_epoch=16)
-
   @tf_test_util.run_in_graph_and_eager_modes
   def test_compatible_batch_size_functional_model(self):
 
@@ -1449,8 +1443,8 @@ class TrainingTest(keras_parameterized.TestCase):
     else:
       expected_training_arg = keras.backend.symbolic_learning_phase()
 
-    self.assertEqual(model.training, expected_training_arg)
-    self.assertEqual(model.l1.training, expected_training_arg)
+    self.assertIs(model.training, expected_training_arg)
+    self.assertIs(model.l1.training, expected_training_arg)
 
   @keras_parameterized.run_all_keras_modes
   def test_error_when_model_is_not_compiled(self):
@@ -1563,11 +1557,10 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         'sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        experimental_run_tf_function=False)
     err_msg = 'When passing input data as arrays, do not specify'
 
-    if testing_utils.should_run_eagerly(
-    ) and not model._experimental_run_tf_function:
+    if testing_utils.should_run_eagerly():
       with self.assertRaisesRegex(ValueError, err_msg):
         model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
 
@@ -1581,10 +1574,53 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         model._standardize_user_data(
             np.zeros((100, 1)),
             np.ones((100, 1)),
-            batch_size=25,
             check_steps=True,
             steps=4)
         self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_batch_size_argument_with_sequence_input(self):
+
+    class DummySequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.zeros([10, 2]), np.ones([10, 4])
+
+      def __len__(self):
+        return 10
+
+    model = testing_utils.get_small_mlp(
+        num_hidden=10, num_classes=1, input_dim=10)
+
+    model.compile(
+        'adam',
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.fit(DummySequence(), batch_size=2, epochs=2)
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.evaluate(DummySequence(), batch_size=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.predict(DummySequence(), batch_size=2)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_sparse_op_with_op_layer(self):
+    inputs = keras.layers.Input(shape=(2,), sparse=True, name='sparse_tensor')
+    output = sparse_ops.sparse_minimum(inputs, inputs)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Sparse ops are not supported with functional models with built-in '
+        'layer wrapping'
+    ):
+      keras.Model([inputs], output)
 
 
 class LossWeightingTest(keras_parameterized.TestCase):

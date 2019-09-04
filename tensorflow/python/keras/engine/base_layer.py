@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
-import json
 import threading
 
 import numpy as np
@@ -36,6 +35,7 @@ from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -54,11 +54,10 @@ from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.saving.saved_model import save as saved_model
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.module import module
@@ -76,13 +75,15 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 # Prefix that is added to the TF op layer names.
 _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
+
+_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
+                                           'keras layers usage', 'method')
 
 
 @keras_export('keras.layers.Layer')
@@ -496,7 +497,8 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
-    if autocast and self._dtype_policy.should_cast_variables:
+    if (autocast and self._dtype_policy.should_cast_variables and
+        dtype.is_floating):
       # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
@@ -1114,7 +1116,7 @@ class Layer(module.Module):
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
-    self._callable_losses += callable_losses
+    self._callable_losses.extend(callable_losses)
 
     in_call_context = base_layer_utils.call_context().in_call
     if eager_losses and not in_call_context:
@@ -1122,7 +1124,7 @@ class Layer(module.Module):
           'Expected a symbolic Tensors or a callable for the loss value. '
           'Please wrap your loss computation in a zero argument `lambda`.')
 
-    self._eager_losses += eager_losses
+    self._eager_losses.extend(eager_losses)
 
     if in_call_context:
       for symbolic_loss in symbolic_losses:
@@ -1303,7 +1305,7 @@ class Layer(module.Module):
     # they do not need to be tracked later.
     if ops.executing_eagerly_outside_functions() and call_context.in_call:
       updates = [u for u in updates if callable(u)]
-    self._updates += updates
+    self._updates.extend(updates)
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2189,6 +2191,7 @@ class Layer(module.Module):
                                  object_identity.ObjectIdentityDictionary())
     return self._obj_reference_counts_dict
 
+  @trackable.no_automatic_dependency_tracking
   def _maybe_create_attribute(self, name, default_value):
     """Create the attribute with the default value if it hasn't been created.
 
@@ -2250,7 +2253,6 @@ class Layer(module.Module):
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
         not getattr(self, '_self_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
@@ -2375,15 +2377,6 @@ class Layer(module.Module):
             getattr(self, 'compute_mask', None) is not None)
 
   @property
-  def _object_identifier(self):
-    """String stored in object identifier field in the SavedModel proto.
-
-    Returns:
-      A string with the object identifier, which is used at load time.
-    """
-    return '_tf_keras_layer'
-
-  @property
   def _eager_losses(self):
     # A list of loss values containing activity regularizers and losses
     # manually added through `add_loss` during eager execution. It is cleared
@@ -2400,102 +2393,6 @@ class Layer(module.Module):
     self._thread_local._eager_losses = losses
 
   @property
-  def _tracking_metadata(self):
-    """String stored in metadata field in the SavedModel proto.
-
-    Returns:
-      A serialized JSON storing information necessary for recreating this layer.
-    """
-    # TODO(kathywu): Add support for metrics serialization.
-    # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
-    # the python config serialization has caught up.
-
-    # Create a dictionary containing python layer state attributes. Any new
-    # attribute that impacts the layer execution in some way should be added to
-    # this dict.
-    # Unlike a model's JSON configuration, which only
-    # contains class_name and each layer's get_config() object, this stores more
-    # information to accurately recreate the layer.
-    # For backwards compatibility, any changes to this list should be additive.
-    # Modifying or removing attributes may only be done with a sufficient
-    # explanation.
-
-    metadata = dict(
-        class_name=type(self).__name__,
-        name=self.name,
-        trainable=self.trainable,
-        expects_training_arg=self._expects_training_arg,
-        dtype=self.dtype,
-        batch_input_shape=getattr(self, '_batch_input_shape', None))
-
-    try:
-      # Store the config dictionary, which is only used by the revived object
-      # to return the original config when revived_obj.get_config() is called.
-      # It is not important for recreating the revived object.
-      metadata['config'] = self.get_config()
-    except NotImplementedError:
-      # in the case of a subclassed model, the get_config() method will throw
-      # a NotImplementedError.
-      pass
-    if self.input_spec is not None:
-      # Layer's input_spec has already been type-checked in the property setter.
-      metadata['input_spec'] = nest.map_structure(
-          lambda x: None if x is None else serialize_keras_object(x),
-          self.input_spec)
-    else:
-      metadata['input_spec'] = None
-    if (self.activity_regularizer is not None and
-        hasattr(self.activity_regularizer, 'get_config')):
-      metadata['activity_regularizer'] = serialize_keras_object(
-          self.activity_regularizer)
-    else:
-      metadata['activity_regularizer'] = None
-    return json.dumps(metadata, default=serialization.get_json_type)
-
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    """Lists extra dependencies to serialize to SavedModel.
-
-    By overriding this method, extra dependencies can be attached to the
-    serialized Layer. For example, this is used to save the list of `variables`
-    and `trainable_variables`, which are python properties in a Layer object,
-    but are represented as a static list in the SavedModel.
-
-    Args:
-      serialization_cache: A dictionary shared between all objects in the same
-        object graph. This object is passed to both
-        `_list_extra_dependencies_for_serialization` and
-        `_list_functions_for_serialization`.
-
-    Returns:
-      A dictionary mapping attribute names to trackable objects. The entire list
-      of attributes are listed in the `saved_model._LayerAttributes` class.
-    """
-    return (saved_model.serialize_all_attributes(self, serialization_cache)
-            .objects_to_serialize)
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    """Lists the functions to include when serializing a Layer.
-
-    Args:
-      serialization_cache: Dictionary passed to all objects in the same object
-        graph during serialization.
-
-    Returns:
-        A dictionary mapping attribute names to `Function` or
-        `ConcreteFunction`. The entire list of attributes are listed in the
-        `saved_model._LayerAttributes` class.
-    """
-    # Create a dictionary containing the layer's call and loss functions.
-    fns = (saved_model.serialize_all_attributes(self, serialization_cache)
-           .functions_to_serialize)
-    # The parent Autotrackable class saves all user-defined tf.functions, and
-    # returns them in _list_functions_for_serialization(). Add these functions
-    # to the dict.
-    fns.update(super(Layer, self)._list_functions_for_serialization(
-        serialization_cache))
-    return fns
-
-  @property
   def _unique_trainable_weights(self):
     """Dedupe trainable weights while maintaining order as much as possible."""
     trainable_weights = self.trainable_weights
@@ -2505,6 +2402,28 @@ class Layer(module.Module):
         output.append(w)
         seen_weights.add(w)
     return output
+
+  # SavedModel properties. Please see keras/saving/saved_model for details.
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.LayerSavedModelSaver(self)
+
+  @property
+  def _object_identifier(self):
+    return self._trackable_saved_model_saver.object_identifier
+
+  @property
+  def _tracking_metadata(self):
+    return self._trackable_saved_model_saver.tracking_metadata
+
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    return (self._trackable_saved_model_saver
+            .list_extra_dependencies_for_serialization(serialization_cache))
+
+  def _list_functions_for_serialization(self, serialization_cache):
+    return (self._trackable_saved_model_saver
+            .list_functions_for_serialization(serialization_cache))
 
 
 class TensorFlowOpLayer(Layer):
@@ -2549,6 +2468,7 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
+    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
     else:
@@ -2634,6 +2554,9 @@ class AddLoss(Layer):
   """
 
   def __init__(self, unconditional, **kwargs):
+    # Pass autocast=False, as there is no reason to cast loss to a different
+    # dtype.
+    kwargs['autocast'] = False
     super(AddLoss, self).__init__(**kwargs)
     self.unconditional = unconditional
 

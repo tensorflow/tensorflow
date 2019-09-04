@@ -773,7 +773,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     supported_ops = [
         'bitwise.bitwise_and', 'bitwise.bitwise_or', 'bitwise.bitwise_xor',
         'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
-        'clip_by_value', 'concat', 'debugging.check_numerics', 'dtypes.cast',
+        'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
         'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
         'gather', 'identity', 'io.decode_base64', 'io.decode_compressed',
         'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',

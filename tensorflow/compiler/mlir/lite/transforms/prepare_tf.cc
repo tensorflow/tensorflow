@@ -65,18 +65,6 @@ namespace TFL {
 // pass.
 namespace {
 
-// Returns the first result type of the given `op`.
-Type GetFirstResultType(Operation *op) { return *op->result_type_begin(); }
-// TODO(antiagainst): We need overload functions of the above to facilitate
-// changes brought by declarative rewrite rules. Remove this post variadic
-// operand support is improved.
-// NOLINTNEXTLINE
-Type GetFirstResultType(TF::TransposeOp op) { return op.getType(); }
-// NOLINTNEXTLINE
-Type GetFirstResultType(TF::ReshapeOp op) { return op.getType(); }
-// NOLINTNEXTLINE
-Type GetFirstResultType(Value *val) { return val->getType(); }
-
 // Prepare TF operations in functions for subsequent legalization.
 struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
   void runOnFunction() override;
@@ -207,7 +195,7 @@ struct ConvertTFConvOp : public RewritePattern {
     IntegerAttr height, width;
     if (!TFIntListIs1XY1(op, "strides", &height, &width)) return matchFailure();
 
-    auto state = llvm::make_unique<ConvertTFConvOpMatchState>();
+    auto state = std::make_unique<ConvertTFConvOpMatchState>();
 
     state->stride_height = height;
     state->stride_width = width;
@@ -415,7 +403,7 @@ void PrepareTFPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
-  return llvm::make_unique<PrepareTFPass>();
+  return std::make_unique<PrepareTFPass>();
 }
 
 static PassRegistration<PrepareTFPass> pass(

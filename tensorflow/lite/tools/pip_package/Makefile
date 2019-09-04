@@ -4,9 +4,11 @@ BASE_IMAGE ?= debian:buster
 PYTHON ?= python3
 # Values: rpi, aarch64, native
 TENSORFLOW_TARGET ?= native
+# Values: n, y
+BUILD_DEB ?= n
 
-ROOT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
-TENSORFLOW_DIR := $(ROOT_DIR)/../../../..
+MAKEFILE_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+TENSORFLOW_DIR := $(MAKEFILE_DIR)/../../../..
 NAME := $(word 1, $(subst :, ,$(BASE_IMAGE)))
 VERSION := $(word 2, $(subst :, ,$(BASE_IMAGE)))
 TAG_IMAGE := "tflite-builder-$(BASE_IMAGE)"
@@ -27,16 +29,18 @@ docker-image:
 	docker build -t $(TAG_IMAGE) --build-arg VERSION=$(VERSION) -f Dockerfile.$(NAME) .
 
 docker-shell: docker-image
-	docker run --rm -it $(TAG_IMAGE)
+	docker run --rm -it -v $(TENSORFLOW_DIR):/tensorflow $(TAG_IMAGE)
 
 docker-build: docker-image
 	docker run \
 		-e "PYTHON=$(PYTHON)" \
 		-e "TENSORFLOW_TARGET=$(TENSORFLOW_TARGET)" \
+		-e "BUILD_DEB=$(BUILD_DEB)" \
 		-v $(TENSORFLOW_DIR):/tensorflow \
 		-v $(CURDIR):/out \
 		--rm -it $(TAG_IMAGE) \
-		/bin/bash -c "bash /tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && cp /tmp/tflite_pip/$(PYTHON)/dist/*.whl /out"
+		/bin/bash -c "tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
+		              cp /tmp/tflite_pip/*.deb /tmp/tflite_pip/$(PYTHON)/dist/*.whl /out"
 
 clean:
 	rm -f *.whl

@@ -27,6 +27,14 @@ uint64 AlgorithmDesc::hash() const {
   return absl::Hash<decltype(p)>()(p);
 }
 
+string AlgorithmDesc::ToString() const {
+  if (tensor_ops_enabled()) {
+    return absl::StrCat(algo_id(), "#TC");
+  } else {
+    return absl::StrCat(algo_id());
+  }
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
@@ -223,15 +231,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  AlgorithmDesc::Index algo_id = -1;
+  string algo = "none";
   if (algorithm().has_value()) {
-    algo_id = algorithm()->algo_id();
+    algo = algorithm()->ToString();
   }
-  AlgorithmDesc::Index algo_id_no_scratch = -1;
+  string algo_no_scratch = "none";
   if (algorithm_no_scratch().has_value()) {
-    algo_id_no_scratch = algorithm_no_scratch()->algo_id();
+    algo_no_scratch = algorithm_no_scratch()->ToString();
   }
-  return absl::StrCat(algo_id, ", ", algo_id_no_scratch);
+  return absl::StrCat(algo, ", ", algo_no_scratch);
 }
 
 // -- BatchDescriptor

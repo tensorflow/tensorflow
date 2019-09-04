@@ -252,9 +252,10 @@ class RNNCell(base_layer.Layer):
           variable in tf_variables.trainable_variables() or
           (isinstance(variable, tf_variables.PartitionedVariable) and
            list(variable)[0] in tf_variables.trainable_variables()))
-    if trainable and variable not in self._trainable_weights:
+    if trainable and all(variable is not v for v in self._trainable_weights):
       self._trainable_weights.append(variable)
-    elif not trainable and variable not in self._non_trainable_weights:
+    elif not trainable and all(
+        variable is not v for v in self._non_trainable_weights):
       self._non_trainable_weights.append(variable)
     return variable
 
@@ -301,7 +302,7 @@ class RNNCell(base_layer.Layer):
 
       batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
-    if None in [batch_size, dtype]:
+    if batch_size is None or dtype is None:
       raise ValueError(
           "batch_size and dtype cannot be None while constructing initial "
           "state: batch_size={}, dtype={}".format(batch_size, dtype))

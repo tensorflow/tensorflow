@@ -222,7 +222,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
   };
 
   const std::vector<string> filenames_;
-  const string compression_type_;
+  const tstring compression_type_;
   const bool use_compression_;
   const io::ZlibCompressionOptions options_;
 };
@@ -238,9 +238,9 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, filenames_tensor->dims() <= 1,
       errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
-  string compression_type;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kCompressionType,
-                                                  &compression_type));
+  tstring compression_type;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
+                                                   &compression_type));
 
   int64 buffer_size = -1;
   OP_REQUIRES_OK(ctx,

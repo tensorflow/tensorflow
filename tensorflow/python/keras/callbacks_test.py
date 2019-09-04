@@ -49,6 +49,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -147,6 +148,7 @@ class CallbackCountsTest(keras_parameterized.TestCase):
   def test_callback_hooks_are_called_in_fit(self, data):
     x, y = data
     val_x, val_y = np.ones((4, 10)), np.ones((4, 1))
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
@@ -154,7 +156,8 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         x,
         y,
         validation_data=(val_x, val_y),
-        batch_size=2,
+        batch_size=2 if not is_sequence else None,
+        steps_per_epoch=5 if is_sequence else None,
         epochs=5,
         callbacks=[counter])
 
@@ -182,10 +185,16 @@ class CallbackCountsTest(keras_parameterized.TestCase):
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_evaluate(self, data):
     x, y = data
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
-    model.evaluate(x, y, batch_size=2, callbacks=[counter])
+    model.evaluate(
+        x,
+        y,
+        batch_size=2 if not is_sequence else None,
+        steps=5 if is_sequence else None,
+        callbacks=[counter])
     self._check_counts(
         counter, {
             'on_test_batch_begin': 5,
@@ -198,10 +207,15 @@ class CallbackCountsTest(keras_parameterized.TestCase):
                                   ('with_sequence', _get_sequence()))
   def test_callback_hooks_are_called_in_predict(self, data):
     x = data[0]
+    is_sequence = isinstance(x, keras.utils.data_utils.Sequence)
 
     model = self._get_model()
     counter = Counter()
-    model.predict(x, batch_size=2, callbacks=[counter])
+    model.predict(
+        x,
+        batch_size=2 if not is_sequence else None,
+        steps=5 if is_sequence else None,
+        callbacks=[counter])
     self._check_counts(
         counter, {
             'on_predict_batch_begin': 5,
@@ -272,6 +286,36 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_validation_data(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    training_dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*5/5.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(training_dataset, epochs=2, validation_data=val_dataset)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_validation_split(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = np.ones((100, 3))
+    y = np.zeros((100, 2))
+    expected_log = (
+        r'(?s).*1/2.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:'
+        r'.*2/2.*80/80.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
@@ -878,6 +922,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       assert (
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+
+      cbks = [
+          keras.callbacks.LearningRateScheduler(
+              lambda epoch, _: learning_rate_schedule.CosineDecay(0.01, 2)
+              (epoch))
+      ]
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+
+      cosine_decay_np = 0.5 * (1 + np.cos(np.pi * (1 / 2)))
+      decayed_learning_rate = 0.01 * cosine_decay_np
+
+      assert (float(keras.backend.get_value(model.optimizer.lr)) -
+              decayed_learning_rate) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
     with self.cached_session():

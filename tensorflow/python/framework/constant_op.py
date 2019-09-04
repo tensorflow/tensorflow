@@ -264,7 +264,7 @@ def _constant_impl(
           value, dtype=dtype, shape=shape, verify_shape=verify_shape,
           allow_broadcast=allow_broadcast))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
-  const_tensor = g.create_op(
+  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
       "Const", [], [dtype_value.type],
       attrs={"value": tensor_value,
              "dtype": dtype_value},

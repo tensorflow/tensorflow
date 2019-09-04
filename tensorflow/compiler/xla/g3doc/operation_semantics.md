@@ -1379,6 +1379,12 @@ For a more intuitive description, see the "Informal Description" section below.
 :                        :                     : map indices in                :
 :                        :                     : `start_indices` to legal      :
 :                        :                     : indices into operand.         :
+| `indices_are_sorted`   | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be sorted by    :
+:                        :                     : the caller.                   :
+| `unique_indices`       | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be unique by    :
+:                        :                     : the caller.                   :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1442,6 +1448,15 @@ calculated as follows:
 and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
 `offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
 `2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
+
+If `unique_indices` is set to true then XLA can assume that all element
+scattered to are unique. So XLA could use non-atomic operations. If
+`unique_indices` is set to true and the indices being scattered to are not
+unique then the semantics is implementation defined.
 
 ### Informal Description and Examples
 
@@ -2228,6 +2243,7 @@ Arguments                      | Type                | Semantics
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
 `scatter_dims_to_operand_dims` | `ArraySlice<int64>` | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`indices_are_sorted`           | `bool`              | Whether the indices are guaranteed to be sorted by the caller.
 
 If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
 `scatter_indices` to have a trailing `1` dimension.
@@ -2313,6 +2329,10 @@ Note that the first parameter that is passed into the `update_computation` will
 always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
 
 Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
 the scatter op updates the elements in the input that are extracted by the

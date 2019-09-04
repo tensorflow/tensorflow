@@ -1214,7 +1214,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
     scaling_factors_ptr[i] = scaling_factors_ptr[i / rows_per_batch];
   }
 
-  tensor_utils::ZeroVector(output_data, output_rows * output_cols);
+  std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
@@ -5049,7 +5049,7 @@ inline void TransposeConvV2(
   lhs_params.rows = hwoi_ordered_filter_total_size;
   lhs_params.cols = input_depth;
   float* output_data_p = output_data;
-  tensor_utils::ZeroVector(output_data, output_offset * batch_size);
+  std::fill_n(output_data, output_offset * batch_size, 0.0f);
   for (int i = 0; i < batch_size; ++i) {
     cpu_backend_gemm::MatrixParams<float> rhs_params;
     rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -5154,6 +5154,8 @@ inline void Requantize(const input_type* input_data, int32_t size,
 
 #ifdef USE_NEON
 
+// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
+// neon_tensor_utils.cc.
 inline void MultiplyByQuantizedMultiplier4Rows(
     const int32x4_t input_val_1, const int32x4_t input_val_2,
     const int32x4_t input_val_3, const int32x4_t input_val_4,

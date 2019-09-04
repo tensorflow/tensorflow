@@ -26,11 +26,11 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string start_key;
+    tstring start_key;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<string>(ctx, "start_key", &start_key));
-    string end_key;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "end_key", &end_key));
+                   ParseScalarArgument<tstring>(ctx, "start_key", &start_key));
+    tstring end_key;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, "end_key", &end_key));
 
     core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
@@ -108,7 +108,7 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
                       const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         Tensor output_tensor(ctx->allocator({}), DT_STRING, {});
-        output_tensor.scalar<tstring>()() = string(row.row_key());
+        output_tensor.scalar<tstring>()() = tstring(row.row_key());
         out_tensors->emplace_back(std::move(output_tensor));
         return Status::OK();
       }

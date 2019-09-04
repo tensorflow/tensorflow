@@ -604,6 +604,12 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       VLOG(1) << "Shape not fully known for " << node->name();
       continue;
     }
+    DataType dtype = node->attr().at("T").type();
+    if (dtype != DT_HALF && dtype != DT_FLOAT && dtype != DT_DOUBLE &&
+        dtype != DT_INT64) {  // Only GPU-supported TemporaryVariable types.
+      VLOG(1) << "Unsupported dtype for " << node->name();
+      continue;
+    }
 
     // Compute a topological ordering for the node fanin.
     std::unordered_map<const NodeDef*, int> topo_order;
@@ -651,7 +657,6 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       }
     }
 
-    DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
     const string tmp_var_name = strings::StrCat(node->name(), "/tmp_var");
     if (view.GetNode(tmp_var_name) != nullptr) {

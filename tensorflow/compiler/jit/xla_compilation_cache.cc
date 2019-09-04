@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
@@ -157,6 +158,7 @@ Status XlaCompilationCache::BuildExecutable(
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
   auto compile_result =
       client_->Compile(*result.computation, argument_layouts, build_options);
@@ -225,6 +227,20 @@ Status XlaCompilationCache::CompileSingleOp(
                      /*compile_threshold=*/absl::nullopt,
                      out_compilation_result, out_executable);
 }
+
+namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
+}  // namespace
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
@@ -357,6 +373,7 @@ Status XlaCompilationCache::CompileImpl(
       auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
+      LogOnceXlaCompiledFirstCluster();
       VLOG(1) << "compiled " << function.name() << " "
               << it->second.compile_count
               << " times, compile time: " << compile_time_us

@@ -88,12 +88,6 @@ Status ConnectCancellationManagers(CancellationManager* parent,
                                    CancellationManager* child,
                                    std::function<void()>* deregister_fn);
 
-// Rewrites the input dataset using the given config.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -135,7 +129,7 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   // Returns OK iff the initialization was successful.
   Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, string* val) override;
+  Status ReadScalar(StringPiece key, tstring* val) override;
   Status ReadTensor(StringPiece key, Tensor* val) override;
   bool Contains(StringPiece key) override;
 
@@ -154,7 +148,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
   Status WriteScalar(StringPiece key, const int64 val) override;
-  Status WriteScalar(StringPiece key, const string& val) override;
+  Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteTensor(StringPiece key, const Tensor& val) override;
 
   // Writes the metadata to `data_`.

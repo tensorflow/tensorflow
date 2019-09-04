@@ -25,6 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -41,6 +44,14 @@ llvm::Optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
     flatbuffers::FlatBufferBuilder *fbb);
+
+// Populate the array of mlir::NamedAttributes corresponding to the given
+// tflite::FlatbufferOptionsUnion.
+// We use an out parameter per LLVM convention
+void BuiltinOptionsToAttributes(
+    tflite::BuiltinOptionsUnion op_union, mlir::Builder builder,
+    // NOLINTNEXTLINE
+    llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
 
 }  // namespace mlir
 

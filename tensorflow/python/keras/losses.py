@@ -164,7 +164,7 @@ class Loss(object):
           '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
           'size like:\n```\nwith strategy.scope():\n'
           '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
-          'reduction=tf.keras.losses.reduction.NONE)\n....\n'
+          'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
           'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
@@ -484,8 +484,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   cce = tf.keras.losses.SparseCategoricalCrossentropy()
   loss = cce(
-    [0, 1, 2],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
+    tf.convert_to_tensor([0, 1, 2]),
+    tf.convert_to_tensor([[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]))
   print('Loss: ', loss.numpy())  # Loss: 0.3239
   ```
 
@@ -1056,9 +1056,6 @@ def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-# Retaining the legacy namespaces: 'cosine_proximity' and 'cosine'.
-# TODO(psv): Change name of this function to `cosine_similarity` after fixing
-# estimator test.
 @keras_export(
     'keras.losses.cosine_similarity',
     v1=[
@@ -1068,11 +1065,27 @@ def poisson(y_true, y_pred):
         'keras.losses.cosine',
         'keras.losses.cosine_similarity',
     ])
-def cosine_proximity(y_true, y_pred, axis=-1):
-  """Computes the cosine similarity between labels and predictions."""
+def cosine_similarity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions.
+
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets.
+
+  `loss = -sum(y_true * y_pred)`
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+    axis: Axis along which to determine similarity.
+
+  Returns:
+    Cosine similarity tensor.
+  """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineSimilarity')
@@ -1130,7 +1143,6 @@ mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
-cosine_similarity = cosine_proximity
 
 
 def is_categorical_crossentropy(loss):

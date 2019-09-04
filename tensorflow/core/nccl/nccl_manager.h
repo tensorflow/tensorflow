@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 #define TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <vector>
 
@@ -28,7 +28,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -251,6 +255,6 @@ class NcclManager {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_

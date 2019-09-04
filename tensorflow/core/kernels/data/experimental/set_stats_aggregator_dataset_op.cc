@@ -88,9 +88,9 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     core::RefCountPtr<StatsAggregatorResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
-    string prefix;
+    tstring prefix;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "counter_prefix", &prefix));
 
     *output =
@@ -211,8 +211,8 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     const Tensor resource_handle_;
     StatsAggregatorResource* stats_aggregator_resource_;
-    string tag_;
-    string prefix_;
+    tstring tag_;
+    tstring prefix_;
   };
 };
 

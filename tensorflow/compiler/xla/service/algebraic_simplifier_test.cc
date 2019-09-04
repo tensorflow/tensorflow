@@ -1455,10 +1455,8 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Divide(m::Broadcast(), m::Parameter(0))));
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kBroadcast);
-  EXPECT_EQ(root->operand(0)->operand(0)->literal().GetFirstElement<float>(),
-            1);
+  EXPECT_THAT(root, GmockMatch(m::Divide(m::Constant(), m::Parameter(0))));
+  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
@@ -5603,6 +5601,42 @@ TEST_F(AlgebraicSimplifierTest, MaxOfMinToClamp) {
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
                           m::Broadcast(m::ConstantScalar(4.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ClampOfClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      c0 = f32[] clamp(p0, p1, p2)
+      ROOT c1 = f32[] clamp(p0, c0, p2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      c0 = f32[] clamp(p0, p1, p2)
+      ROOT m0 = f32[] maximum(p0, c0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
 }
 
 }  // namespace

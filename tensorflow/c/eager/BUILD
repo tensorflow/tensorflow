@@ -37,6 +37,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -79,6 +80,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -226,6 +228,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(

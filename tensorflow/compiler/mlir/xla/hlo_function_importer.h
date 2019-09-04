@@ -56,6 +56,15 @@ class HloFunctionImporter {
 
   StatusOr<mlir::FuncOp> ImportFunction(xla::HloComputation* computation);
 
+  // Imports the given computation in the specified region.
+  tensorflow::Status ImportComputation(HloComputation* computation,
+                                       mlir::Region* region);
+
+  // Imports instructions from the given computation in the specified block.
+  // Assumes that the block already has correct arguments populated.
+  tensorflow::Status ImportInstructions(HloComputation* computation,
+                                        mlir::Block* block);
+
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
                                                mlir::OpBuilder* func_builder);

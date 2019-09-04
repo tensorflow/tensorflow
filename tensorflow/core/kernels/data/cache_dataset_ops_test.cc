@@ -76,13 +76,13 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
       std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    TF_RETURN_IF_ERROR(ParseScalarArgument<string>(
+    TF_RETURN_IF_ERROR(ParseScalarArgument<tstring>(
         context->get(), CacheDatasetOp::kFileName, &filename_));
     return Status::OK();
   }
 
  private:
-  string filename_ = "";
+  tstring filename_ = "";
 };
 
 struct TestCase {
@@ -165,7 +165,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, GetNext) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -224,7 +225,8 @@ TEST_F(CacheDatasetOpTest, DatasetNodeName) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -252,7 +254,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, DatasetTypeString) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -281,7 +284,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, DatasetOutputDtypes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -310,7 +314,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, DatasetOutputShapes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -339,7 +344,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, Cardinality) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -367,7 +373,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, IteratorOutputShapes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -403,7 +410,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, IteratorOutputPrefix) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;
@@ -443,7 +451,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, Roundtrip) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  Tensor file_name = CreateTensor<string>(TensorShape{}, {test_case.file_name});
+  Tensor file_name =
+      CreateTensor<tstring>(TensorShape{}, {test_case.file_name});
   gtl::InlinedVector<TensorValue, 4> inputs(
       {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&file_name)});
   std::unique_ptr<OpKernelContext> cache_dataset_context;

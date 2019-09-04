@@ -36,7 +36,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [":friends"],
     deps = [
-        "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -46,6 +45,7 @@ py_library(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//third_party/py/numpy",
     ],
 )
@@ -125,20 +125,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "adamax_test",
-    size = "small",
-    srcs = ["adamax_test.py"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/contrib/opt:opt_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:training",
-    ],
-)
-
-tf_xla_py_test(
     name = "add_n_test",
     size = "small",
     srcs = ["add_n_test.py"],
@@ -151,34 +137,6 @@ tf_xla_py_test(
         "//tensorflow/python:list_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
-    name = "addsign_test",
-    size = "small",
-    srcs = ["addsign_test.py"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/contrib/opt:opt_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:training",
-    ],
-)
-
-tf_xla_py_test(
-    name = "powersign_test",
-    size = "small",
-    srcs = ["powersign_test.py"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/contrib/opt:opt_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:training",
     ],
 )
 
@@ -800,6 +758,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["random_ops_test.py"],
     shard_count = 5,
+    tags = [
+        "notsan",  # b/140243598
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1033,21 +994,25 @@ tf_xla_py_test(
     ],
 )
 
-tf_xla_py_test(
-    name = "unary_ops_test",
-    size = "medium",
-    srcs = ["unary_ops_test.py"],
-    tags = ["notap"],  # b/136030724
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
-    ],
-)
+# TODO(b/140174740): Re-enable when fixed.
+#tf_xla_py_test(
+#    name = "unary_ops_test",
+#    size = "medium",
+#    srcs = ["unary_ops_test.py"],
+#    tags = [
+#        "notap",  # b/136030724
+#    ],
+#    deps = [
+#        ":xla_test",
+#        "//third_party/py/numpy",
+#        "//tensorflow/python:array_ops",
+#        "//tensorflow/python:framework",
+#        "//tensorflow/python:math_ops",
+#        "//tensorflow/python:nn_ops",
+#        "//tensorflow/python:nn_ops_gen",
+#        "//tensorflow/python:platform_test",
+#    ],
+#)
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
@@ -1201,7 +1166,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1227,7 +1192,7 @@ cuda_py_test(
     srcs = ["dense_layer_test.py"],
     additional_deps = [
         ":test_utils",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/python/compiler/xla:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -1409,6 +1374,7 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",

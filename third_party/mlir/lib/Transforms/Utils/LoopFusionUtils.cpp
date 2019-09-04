@@ -21,18 +21,18 @@
 
 #include "mlir/Transforms/LoopFusionUtils.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
@@ -114,12 +114,12 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
        it != Block::reverse_iterator(opA); ++it) {
     Operation *opX = &(*it);
     opX->walk([&](Operation *op) {
-      if (lastDepOp)
-        return;
       if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op)) {
-        if (isDependentLoadOrStoreOp(op, values))
+        if (isDependentLoadOrStoreOp(op, values)) {
           lastDepOp = opX;
-        return;
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
       }
       for (auto *value : op->getResults()) {
         for (auto *user : value->getUsers()) {
@@ -128,9 +128,11 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
           getLoopIVs(*user, &loops);
           if (llvm::is_contained(loops, cast<AffineForOp>(opB))) {
             lastDepOp = opX;
+            return WalkResult::interrupt();
           }
         }
       }
+      return WalkResult::advance();
     });
     if (lastDepOp)
       break;
@@ -257,15 +259,13 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
 /// in 'stats' for loop nest rooted at 'forOp'. Returns true on success,
 /// returns false otherwise.
 bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
-  bool ret = true;
-  forOpRoot.getOperation()->walk<AffineForOp>([&](AffineForOp forOp) {
+  auto walkResult = forOpRoot.walk([&](AffineForOp forOp) {
     auto *childForOp = forOp.getOperation();
     auto *parentForOp = forOp.getOperation()->getParentOp();
     if (!llvm::isa<FuncOp>(parentForOp)) {
       if (!isa<AffineForOp>(parentForOp)) {
         LLVM_DEBUG(llvm::dbgs() << "Expected parent AffineForOp");
-        ret = false;
-        return;
+        return WalkResult::interrupt();
       }
       // Add mapping to 'forOp' from its parent AffineForOp.
       stats->loopMap[parentForOp].push_back(forOp);
@@ -279,18 +279,20 @@ bool mlir::getLoopNestStats(AffineForOp forOpRoot, LoopNestStats *stats) {
         ++count;
     }
     stats->opCountMap[childForOp] = count;
+
     // Record trip count for 'forOp'. Set flag if trip count is not
     // constant.
     Optional<uint64_t> maybeConstTripCount = getConstantTripCount(forOp);
     if (!maybeConstTripCount.hasValue()) {
       // Currently only constant trip count loop nests are supported.
       LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count unsupported");
-      ret = false;
-      return;
+      return WalkResult::interrupt();
     }
+
     stats->tripCountMap[childForOp] = maybeConstTripCount.getValue();
+    return WalkResult::advance();
   });
-  return ret;
+  return !walkResult.wasInterrupted();
 }
 
 // Computes the total cost of the loop nest rooted at 'forOp'.

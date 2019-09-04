@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 import numpy as np
 import six
 
@@ -655,6 +653,10 @@ def _check_index(idx):
     raise TypeError(_SLICE_TYPE_ERROR + ", got {!r}".format(idx))
 
 
+def _is_undefined_dimension(d):
+  return isinstance(d, tensor_shape.Dimension) and d.value is None
+
+
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -730,24 +732,19 @@ def _slice_helper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _BaseSlice):
-      # python doesn't always use None when constructing ranges
-      # for example a[:] gives slice(None,sys.maxsize,None)
-      # whereas a[::1] gives slice(None,None,None)
-      if s.start is not None and (isinstance(s.start, ops.Tensor) or
-                                  s.start != sys.maxsize):
+      if s.start is not None and not _is_undefined_dimension(s.start):
         _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
-      if s.stop is not None and (isinstance(s.stop, ops.Tensor) or
-                                 s.stop != sys.maxsize):
+      if s.stop is not None and not _is_undefined_dimension(s.stop):
         _check_index(s.stop)
         end.append(s.stop)
       else:
         end.append(0)
         end_mask |= (1 << index)
-      if s.step is not None:
+      if s.step is not None and not _is_undefined_dimension(s.step):
         _check_index(s.step)
         strides.append(s.step)
       else:
@@ -1346,38 +1343,34 @@ def concat(values, axis, name="concat"):
 
   For example:
 
-  ```python
-  t1 = [[1, 2, 3], [4, 5, 6]]
-  t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 0)  # [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 1)  # [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+  >>> t1 = [[1, 2, 3], [4, 5, 6]]
+  >>> t2 = [[7, 8, 9], [10, 11, 12]]
+  >>> concat([t1, t2], 0)
+  <tf.Tensor: id=..., shape=(4, 3), dtype=int32, numpy=
+  array([[ 1,  2,  3],
+         [ 4,  5,  6],
+         [ 7,  8,  9],
+         [10, 11, 12]], dtype=int32)>
 
-  # tensor t3 with shape [2, 3]
-  # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
-  tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
-  ```
+  >>> concat([t1, t2], 1)
+  <tf.Tensor: id=..., shape=(2, 6), dtype=int32, numpy=
+  array([[ 1,  2,  3,  7,  8,  9],
+         [ 4,  5,  6, 10, 11, 12]], dtype=int32)>
+
   As in Python, the `axis` could also be negative numbers. Negative `axis`
   are interpreted as counting from the end of the rank, i.e.,
    `axis + rank(values)`-th dimension.
 
   For example:
 
-  ```python
-  t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
-  t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
-  tf.concat([t1, t2], -1)
-  ```
-
-  would produce:
-
-  ```python
-  [[[ 1,  2,  7,  4],
-    [ 2,  3,  8,  4]],
-
-   [[ 4,  4,  2, 10],
-    [ 5,  3, 15, 11]]]
-  ```
+  >>> t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
+  >>> t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
+  >>> tf.concat([t1, t2], -1)
+  <tf.Tensor: id=..., shape=(2, 2, 4), dtype=int32, numpy=
+    array([[[ 1,  2,  7,  4],
+            [ 2,  3,  8,  4]],
+           [[ 4,  4,  2, 10],
+            [ 5,  3, 15, 11]]], dtype=int32)>
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
@@ -2059,7 +2052,7 @@ def matrix_diag(diagonal,
     A Tensor. Has the same type as `diagonal`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2171,7 +2164,7 @@ def matrix_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2278,7 +2271,7 @@ def matrix_set_diag(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 8, 31):
+  if compat.forward_compatible(2019, 10, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
@@ -3791,7 +3784,7 @@ def where_v2(condition, x=None, y=None, name=None):
   Returns:
     A `Tensor` with the same type as `x` and `y`, and shape that
       is broadcast from `condition`, `x`, and `y`, if `x`, `y` are non-None.
-    A `Tensor` with shape `(num_true, dim_size(condition))`.
+    Otherwise, a `Tensor` with shape `(num_true, dim_size(condition))`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
@@ -3944,7 +3937,7 @@ def gather(params,
 
   if axis is None:
     axis = batch_dims
-  if axis != 0:
+  if tensor_util.constant_value(axis) != 0:
     return gen_array_ops.gather_v2(
         params, indices, axis, batch_dims=batch_dims, name=name)
   try:
@@ -4428,39 +4421,66 @@ def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
                             range_given=False,
                             round_mode="HALF_TO_EVEN",
                             name=None,
-                            narrow_range=False):
+                            narrow_range=False,
+                            axis=None):
   """Quantizes then dequantizes a tensor.
 
   Args:
     input: A `Tensor` to quantize and dequantize.
-    input_min: If range_given=True, the minimum input value that needs to be
-      represented in the quantized representation.
+    input_min: If range_given=True, the minimum input value, that needs to be
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of minimum values for each slice along axis.
     input_max: If range_given=True, the maximum input value that needs to be
-      represented in the quantized representation.
+      represented in the quantized representation. If axis is specified, this
+      should be a vector of maximum values for each slice along axis.
     signed_input: True if the quantization is signed or unsigned.
     num_bits: The bitwidth of the quantization.
     range_given: If true use `input_min` and `input_max` for the range of the
       input, otherwise determine min and max from the input `Tensor`.
     round_mode: Rounding mode when rounding from float values to quantized ones.
+      one of ['HALF_TO_EVEN', 'HALF_UP']
     name: Optional name for the operation.
     narrow_range: If true, then the absolute value of the quantized minimum
       value is the same as the quantized maximum value, instead of 1 greater.
       i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
+    axis: Integer. If specified, refers to a dimension of the input tensor,
+      such that quantization will be per slice along that dimension.
 
   Returns:
     A `Tensor`. Each element is the result of quantizing and dequantizing the
     corresponding element of `input`.
   """
-  return gen_array_ops.quantize_and_dequantize_v2(
-      input,
-      input_min=input_min,
-      input_max=input_max,
-      signed_input=signed_input,
-      num_bits=num_bits,
-      range_given=range_given,
-      round_mode=round_mode,
-      narrow_range=narrow_range,
-      name=name)
+  if axis is not None:
+    if axis < 0:
+      if input.shape.ndims is None:
+        raise ValueError("input should have known rank to use negative axis.")
+      axis %= input.shape.ndims
+  else:
+    axis = -1
+
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+    return gen_array_ops.quantize_and_dequantize_v2(
+        input,
+        input_min=input_min,
+        input_max=input_max,
+        signed_input=signed_input,
+        num_bits=num_bits,
+        range_given=range_given,
+        round_mode=round_mode,
+        narrow_range=narrow_range,
+        axis=axis,
+        name=name)
+  else:
+    return gen_array_ops.quantize_and_dequantize_v2(
+        input,
+        input_min=input_min,
+        input_max=input_max,
+        signed_input=signed_input,
+        num_bits=num_bits,
+        range_given=range_given,
+        round_mode=round_mode,
+        narrow_range=narrow_range,
+        name=name)
 
 
 @tf_export("searchsorted")
@@ -4715,3 +4735,232 @@ def fingerprint(data, method="farmhash64", name=None):
     fingerprint algorithm.
   """
   return gen_array_ops.fingerprint(data, method, name)
+
+
+def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
+  """Converts the given value to an integer Tensor."""
+  tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
+  if tensor.dtype.is_integer:
+    tensor = gen_math_ops.cast(tensor, dtype)
+  else:
+    raise TypeError("%s must be an integer tensor; dtype=%s" %
+                    (name, tensor.dtype))
+  return tensor
+
+
+def get_positive_axis(axis, ndims):
+  """Validate an `axis` parameter, and normalize it to be positive.
+
+  If `ndims` is known (i.e., not `None`), then check that `axis` is in the
+  range `-ndims <= axis < ndims`, and return `axis` (if `axis >= 0`) or
+  `axis + ndims` (otherwise).
+  If `ndims` is not known, and `axis` is positive, then return it as-is.
+  If `ndims` is not known, and `axis` is negative, then report an error.
+
+  Args:
+    axis: An integer constant
+    ndims: An integer constant, or `None`
+
+  Returns:
+    The normalized `axis` value.
+
+  Raises:
+    ValueError: If `axis` is out-of-bounds, or if `axis` is negative and
+      `ndims is None`.
+  """
+  if not isinstance(axis, int):
+    raise TypeError("axis must be an int; got %s" % type(axis).__name__)
+  if ndims is not None:
+    if 0 <= axis < ndims:
+      return axis
+    elif -ndims <= axis < 0:
+      return axis + ndims
+    else:
+      raise ValueError("axis=%s out of bounds: expected %s<=axis<%s" %
+                       (axis, -ndims, ndims))
+  elif axis < 0:
+    raise ValueError("axis may only be negative if ndims is statically known.")
+  return axis
+
+
+# This op is intended to exactly match the semantics of numpy.repeat, with
+# one exception: numpy.repeat has special (and somewhat non-intuitive) behavior
+# when axis is not specified.  Rather than implement that special behavior, we
+# simply make `axis` be a required argument.
+#
+# External (OSS) `tf.repeat` feature request:
+# https://github.com/tensorflow/tensorflow/issues/8246
+def repeat_with_axis(data, repeats, axis, name=None):
+  """Repeats elements of `data`.
+
+  Args:
+    data: An `N`-dimensional tensor.
+    repeats: A 1-D integer tensor specifying how many times each element in
+      `axis` should be repeated.  `len(repeats)` must equal `data.shape[axis]`.
+      Supports broadcasting from a scalar value.
+    axis: `int`.  The axis along which to repeat values.  Must be less than
+      `max(N, 1)`.
+    name: A name for the operation.
+
+  Returns:
+    A tensor with `max(N, 1)` dimensions.  Has the same shape as `data`,
+    except that dimension `axis` has size `sum(repeats)`.
+  #### Examples:
+    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+    <tf.Tensor: ..., shape=(5,), dtype=string,
+    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+    <tf.Tensor: ..., shape=(5, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [1, 2],
+           [3, 4],
+           [3, 4],
+           [3, 4]], dtype=int32)>
+    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+    <tf.Tensor: ..., shape=(2, 5), dtype=int32, numpy=
+    array([[1, 1, 2, 2, 2],
+           [3, 3, 4, 4, 4]], dtype=int32)>
+  """
+  if not isinstance(axis, int):
+    raise TypeError("axis must be an int; got %s" % type(axis).__name__)
+
+  with ops.name_scope(name, "Repeat", [data, repeats]):
+    data = ops.convert_to_tensor(data, name="data")
+    repeats = convert_to_int_tensor(repeats, name="repeats")
+    repeats.shape.with_rank_at_most(1)
+
+    # If `data` is a scalar, then upgrade it to a vector.
+    data = _with_nonzero_rank(data)
+    data_shape = shape(data)
+
+    # If `axis` is negative, then convert it to a positive value.
+    axis = get_positive_axis(axis, data.shape.ndims)
+
+    # Check data Tensor shapes.
+    if repeats.shape.ndims == 1:
+      data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
+
+    # If we know that `repeats` is a scalar, then we can just tile & reshape.
+    if repeats.shape.ndims == 0:
+      expanded = expand_dims(data, axis + 1)
+      tiled = tile_one_dimension(expanded, axis + 1, repeats)
+      result_shape = concat([data_shape[:axis], [-1], data_shape[axis + 1:]],
+                            axis=0)
+      return reshape(tiled, result_shape)
+
+    # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
+    if repeats.shape.ndims != axis + 1:
+      repeats_shape = shape(repeats)
+      repeats_ndims = rank(repeats)
+      broadcast_shape = concat(
+          [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
+      repeats = broadcast_to(repeats, broadcast_shape)
+      repeats.set_shape([None] * (axis + 1))
+
+    # Create a "sequence mask" based on `repeats`, where slices across `axis`
+    # contain one `True` value for each repetition.  E.g., if
+    # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
+    max_repeat = gen_math_ops.maximum(
+        0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
+    mask = sequence_mask(repeats, max_repeat)
+
+    # Add a new dimension around each value that needs to be repeated, and
+    # then tile that new dimension to match the maximum number of repetitions.
+    expanded = expand_dims(data, axis + 1)
+    tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+
+    # Use `boolean_mask` to discard the extra repeated values.  This also
+    # flattens all dimensions up through `axis`.
+    masked = boolean_mask(tiled, mask)
+
+    # Reshape the output tensor to add the outer dimensions back.
+    if axis == 0:
+      result = masked
+    else:
+      result_shape = concat([data_shape[:axis], [-1], data_shape[axis + 1:]],
+                            axis=0)
+      result = reshape(masked, result_shape)
+
+    # Preserve shape information.
+    if data.shape.ndims is not None:
+      new_axis_size = 0 if repeats.shape[0] == 0 else None
+      result.set_shape(data.shape[:axis].concatenate(
+          [new_axis_size]).concatenate(data.shape[axis + 1:]))
+
+    return result
+
+
+def tile_one_dimension(data, axis, multiple):
+  """Tiles a single dimension of a tensor."""
+  # Assumes axis is a nonnegative int.
+  if data.shape.ndims is not None:
+    multiples = [1] * data.shape.ndims
+    multiples[axis] = multiple
+  else:
+    ones_value = ones(rank(data), dtypes.int32)
+    multiples = concat([ones_value[:axis], [multiple], ones_value[axis + 1:]],
+                       axis=0)
+  return tile(data, multiples)
+
+
+def _with_nonzero_rank(data):
+  """If `data` is scalar, then add a dimension; otherwise return as-is."""
+  if data.shape.ndims is not None:
+    if data.shape.ndims == 0:
+      return stack([data])
+    else:
+      return data
+  else:
+    data_shape = shape(data)
+    data_ndims = rank(data)
+    return reshape(data, concat([[1], data_shape], axis=0)[-data_ndims:])
+
+
+@tf_export("repeat")
+def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
+  """Repeat elements of `input`.
+
+  Args:
+    input: An `N`-dimensional Tensor.
+    repeats: An 1-D `int` Tensor. The number of repetitions for each element.
+      repeats is broadcasted to fit the shape of the given axis. `len(repeats)`
+      must equal `input.shape[axis]` if axis is not None.
+    axis: An int. The axis along which to repeat values. By default (axis=None),
+      use the flattened input array, and return a flat output array.
+    name: A name for the operation.
+
+  Returns:
+    A Tensor which has the same shape as `input`, except along the given axis.
+      If axis is None then the output array is flattened to match the flattened
+      input array.
+  #### Examples:
+
+    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+    <tf.Tensor: ..., shape=(5,), dtype=string,
+    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+
+    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+    <tf.Tensor: id=..., shape=(5, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [1, 2],
+           [3, 4],
+           [3, 4],
+           [3, 4]], dtype=int32)>
+
+    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+    <tf.Tensor: id=..., shape=(2, 5), dtype=int32, numpy=
+    array([[1, 1, 2, 2, 2],
+           [3, 3, 4, 4, 4]], dtype=int32)>
+
+    >>> repeat(3, repeats=4)
+    <tf.Tensor: id=..., shape=(4,), dtype=int32,
+    numpy=array([3, 3, 3, 3], dtype=int32)>
+
+    >>> repeat([[1,2], [3,4]], repeats=2)
+    <tf.Tensor: id=..., shape=(8,), dtype=int32,
+    numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
+  """
+  if axis is None:
+    input = reshape(input, [-1])
+    axis = 0
+  return repeat_with_axis(input, repeats, axis, name)

@@ -76,6 +76,12 @@ class TF_Op<string mnemonic, list<OpTrait> traits = []> :
 def TF_TFDialectType :
     Type<CPred<"$_self.isa<TensorFlowType>()">, "TensorFlow type">;
 
+// Class for any TensorFlow dialect specific type
+class TF_TensorFlowType <string name, string description> :
+    Type<CPred<"$_self.isa<mlir::TF::" # name # "Type>()">,
+         "TensorFlow " # description # " type">,
+    BuildableType<"getType<mlir::TF::" # name # "Type>()">;
+
 // Any tensor element type allowed in TensorFlow ops
 def TF_ElementType : Type<Or<[AnyFloat.predicate, AnyInteger.predicate,
                                  TF_TFDialectType.predicate]>,
@@ -91,21 +97,10 @@ def TF_I32Or64 : IntOfWidths<[32, 64]>;
 
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
-def TF_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
-                    "TensorFlow uint8 type">,
-               BuildableType<"getType<mlir::TF::Uint8Type>()">;
-
-def TF_Uint16 : Type<CPred<"$_self.isa<mlir::TF::Uint16Type>()">,
-                     "TensorFlow uint16 type">,
-               BuildableType<"getType<mlir::TF::Uint16Type>()">;
-
-def TF_Uint32 : Type<CPred<"$_self.isa<mlir::TF::Uint32Type>()">,
-                     "TensorFlow uint32 type">,
-               BuildableType<"getType<mlir::TF::Uint32Type>()">;
-
-def TF_Uint64 : Type<CPred<"$_self.isa<mlir::TF::Uint64Type>()">,
-                     "TensorFlow uint64 type">,
-                BuildableType<"getType<mlir::TF::Uint64Type>()">;
+def TF_Uint8  : TF_TensorFlowType<"Uint8", "uint8">;
+def TF_Uint16 : TF_TensorFlowType<"Uint16", "uint16">;
+def TF_Uint32 : TF_TensorFlowType<"Uint32", "uint32">;
+def TF_Uint64 : TF_TensorFlowType<"Uint64", "uint64">;
 
 // Any unsigned integer type
 def TF_UInt : AnyTypeOf<[TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>;
@@ -120,6 +115,17 @@ def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt]>;
 def TF_IntTensor : TensorOf<[TF_Int]>;
 
 //===----------------------------------------------------------------------===//
+// Quantized types
+def TF_Qint8   : TF_TensorFlowType<"Qint8", "qint8">;
+def TF_Qint16  : TF_TensorFlowType<"Qint16", "qint16">;
+def TF_Qint32  : TF_TensorFlowType<"Qint32", "qint32">;
+def TF_Quint8  : TF_TensorFlowType<"Quint8", "quint8">;
+def TF_Quint16 : TF_TensorFlowType<"Quint16", "quint16">;
+
+// Any quantized type
+def TF_AnyQuantized : AnyTypeOf<[TF_Qint8, TF_Qint16, TF_Qint32, TF_Quint8,
+                              TF_Quint16]>;
+//===----------------------------------------------------------------------===//
 // Floating-point types
 
 def TF_F32Or64 : FloatOfWidths<[32, 64]>;
@@ -132,12 +138,10 @@ def TF_FpTensor : TensorOf<[AnyFloat]>;
 //===----------------------------------------------------------------------===//
 // Complex types
 
-def TF_Complex64 :
-    Type<CPred<"$_self.isa<TF::Complex64Type>()">, "complex64 type">;
+def TF_Complex64 : TF_TensorFlowType<"Complex64", "complex64">;
 def TF_Complex64Tensor : TensorOf<[TF_Complex64]>;
 
-def TF_Complex128 :
-    Type<CPred<"$_self.isa<TF::Complex128Type>()">, "complex128 type">;
+def TF_Complex128 : TF_TensorFlowType<"Complex128", "complex128">;
 def TF_Complex128Tensor : TensorOf<[TF_Complex128]>;
 
 def TF_AnyComplex : AnyTypeOf<[TF_Complex64, TF_Complex128],
@@ -148,19 +152,13 @@ def TF_ComplexTensor : TensorOf<[TF_AnyComplex]>;
 //===----------------------------------------------------------------------===//
 // String/variant/resource types
 
-def TF_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
-                  "TensorFlow string type">,
-             BuildableType<"getType<mlir::TF::StringType>()">;
+def TF_Str : TF_TensorFlowType<"String", "string">;
 def TF_StrTensor : TensorOf<[TF_Str]>;
 
-def TF_Variant : Type<CPred<"$_self.isa<mlir::TF::VariantType>()">,
-                      "TensorFlow variant type">,
-                 BuildableType<"getType<mlir::TF::VariantType>()">;
+def TF_Variant : TF_TensorFlowType<"Variant", "variant">;
 def TF_VariantTensor : TensorOf<[TF_Variant]>;
 
-def TF_Resource : Type<CPred<"$_self.isa<mlir::TF::ResourceType>()">,
-                       "TensorFlow variant type">,
-                  BuildableType<"getType<mlir::TF::ResourceType>()">;
+def TF_Resource : TF_TensorFlowType<"Resource", "resource">;
 def TF_ResourceTensor : TensorOf<[TF_Resource]>;
 
 //===----------------------------------------------------------------------===//
@@ -175,7 +173,8 @@ def TF_IntOrFpTensor : TensorOf<[TF_Int, AnyFloat]>;
 
 def TF_FpOrComplexTensor : TensorOf<[AnyFloat, TF_AnyComplex]>;
 
-def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyComplex], "number">;
+def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],
+                             "number">;
 
 def TF_NumberTensor : TensorOf<[TF_AnyNumber]>;
 

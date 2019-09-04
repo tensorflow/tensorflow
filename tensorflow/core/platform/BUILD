@@ -20,10 +20,15 @@ load(
     "tf_additional_rocdl_deps",
     "tf_additional_rocdl_srcs",
     "tf_additional_test_srcs",
-    "tf_env_time_srcs",
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
+    "tf_protobuf_compiler_deps",
+    "tf_protobuf_deps",
+)
+load(
+    "//tensorflow/core/platform:default/build_refactor.bzl",
+    "tf_instantiate_platform_libraries",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -36,6 +41,16 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+# Note(bmzhao): These are temporary BUILD rule helpers for
+# platform-specific library dependencies. These temporarily
+# exist to allow us incrementally add granular targets
+# to tf/core/platform/BUILD. We will remove these helpers,
+# after we finish refactoring tf/core/platform/BUILD.
+tf_instantiate_platform_libraries(names = [
+    "context",
+    "cord",
+])
 
 cc_library(
     name = "abi",
@@ -64,6 +79,24 @@ cc_library(
 )
 
 cc_library(
+    name = "context",
+    textual_hdrs = ["context.h"],
+    deps = [
+        # See call to tf_instantiate_platform_libraries() above.
+        ":context_impl",
+    ],
+)
+
+cc_library(
+    name = "cord",
+    hdrs = ["cord.h"],
+    deps = [
+        ":cord_impl",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "cpu_feature_guard",
     srcs = ["cpu_feature_guard.cc"],
     hdrs = ["cpu_feature_guard.h"],
@@ -76,9 +109,7 @@ cc_library(
 
 cc_library(
     name = "cpu_info",
-    srcs = ["cpu_info.cc"] + tf_platform_srcs([
-        "cpu_info.h",
-    ]),
+    srcs = ["cpu_info.cc"],
     hdrs = ["cpu_info.h"],
     copts = tf_copts(),
     deps = [
@@ -104,7 +135,7 @@ cc_library(
 
 cc_library(
     name = "env_time",
-    srcs = ["env_time.cc"] + tf_env_time_srcs(),
+    srcs = tf_platform_srcs(["env_time.cc"]),
     hdrs = ["env_time.h"],
     deps = [
         ":types",
@@ -142,6 +173,21 @@ cc_library(
 )
 
 cc_library(
+    name = "numbers",
+    srcs = ["numbers.cc"],
+    hdrs = ["numbers.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "@double_conversion//:double-conversion",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
     hdrs = ["rocm_rocdl_path.h"],
@@ -157,9 +203,48 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_strings",
+    srcs = [
+        "platform_strings.cc",
+        "platform_strings_computed.h",
+    ],
+    hdrs = ["platform_strings.h"],
+)
+
+cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     deps = [":platform"],
+)
+
+cc_library(
+    name = "protobuf",
+    srcs = [
+        "protobuf.cc",
+        "protobuf_util.cc",
+    ],
+    hdrs = ["protobuf.h"],
+    deps = [
+        ":platform",
+        ":types",
+    ] + tf_protobuf_deps(),
+)
+
+cc_library(
+    name = "protobuf_compiler",
+    hdrs = ["protobuf_compiler.h"],
+    deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "scanner",
+    srcs = ["scanner.cc"],
+    hdrs = ["scanner.h"],
+    deps = [
+        ":macros",
+        ":str_util",
+        ":stringpiece",
+    ],
 )
 
 cc_library(
@@ -174,12 +259,48 @@ cc_library(
 )
 
 cc_library(
+    name = "stacktrace_handler",
+    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
+    hdrs = ["stacktrace_handler.h"],
+    deps = [
+        ":platform",
+        ":stacktrace",
+    ],
+)
+
+cc_library(
     name = "setround",
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
     deps = [
         ":logging",
         ":macros",
+    ],
+)
+
+cc_library(
+    name = "str_util",
+    srcs = ["str_util.cc"],
+    hdrs = ["str_util.h"],
+    deps = [
+        ":logging",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "strcat",
+    srcs = ["strcat.cc"],
+    hdrs = ["strcat.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":numbers",
+        ":stringpiece",
+        ":types",
+        "@com_google_absl//absl/meta:type_traits",
     ],
 )
 
@@ -199,6 +320,11 @@ cc_library(
         ":macros",
         ":types",
     ],
+)
+
+cc_library(
+    name = "thread_annotations",
+    hdrs = ["thread_annotations.h"],
 )
 
 cc_library(
@@ -244,6 +370,7 @@ filegroup(
             "**/stream_executor.h",
             "**/env_time.cc",
             "**/device_tracer.cc",
+            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -251,8 +378,11 @@ filegroup(
             "**/rocm_rocdl_path.cc",
             "abi.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
         ],
     ),
@@ -316,6 +446,7 @@ filegroup(
             "jpeg.h",
             "png.h",
             "stringprintf.h",
+            "str_util.h",
             "**/cuda.h",
             "**/rocm.h",
             "**/stream_executor.h",
@@ -338,6 +469,7 @@ filegroup(
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
             "**/device_tracer.cc",
+            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -345,9 +477,13 @@ filegroup(
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "scanner.cc",
+            "strcat.cc",
             "stringprintf.cc",
+            "str_util.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],

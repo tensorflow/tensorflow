@@ -25,6 +25,7 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class DialectInterface;
 class OpBuilder;
 class Type;
 
@@ -132,22 +133,6 @@ public:
     llvm_unreachable("dialect has no registered type printing hook");
   }
 
-  /// Registered hooks for getting identifier aliases for symbols. The
-  /// identifier is used in place of the symbol when printing textual IR.
-  ///
-  /// Hook for defining Attribute kind aliases. This will generate an alias for
-  /// all attributes of the given kind in the form : <alias>[0-9]+. These
-  /// aliases must not contain `.`.
-  virtual void getAttributeKindAliases(
-      SmallVectorImpl<std::pair<unsigned, StringRef>> &aliases) {}
-  /// Hook for defining Attribute aliases. These aliases must not contain `.` or
-  /// end with a numeric digit([0-9]+).
-  virtual void getAttributeAliases(
-      SmallVectorImpl<std::pair<Attribute, StringRef>> &aliases) {}
-  /// Hook for defining Type aliases.
-  virtual void
-  getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) {}
-
   //===--------------------------------------------------------------------===//
   // Verification Hooks
   //===--------------------------------------------------------------------===//
@@ -165,6 +150,21 @@ public:
   /// failure if the verification failed, success otherwise.
   virtual LogicalResult verifyOperationAttribute(Operation *, NamedAttribute) {
     return success();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Interfaces
+  //===--------------------------------------------------------------------===//
+
+  /// Lookup an interface for the given ID if one is registered, otherwise
+  /// nullptr.
+  const DialectInterface *getRegisteredInterface(ClassID *interfaceID) {
+    auto it = registeredInterfaces.find(interfaceID);
+    return it != registeredInterfaces.end() ? it->getSecond().get() : nullptr;
+  }
+  template <typename InterfaceT> const InterfaceT *getRegisteredInterface() {
+    return static_cast<const InterfaceT *>(
+        getRegisteredInterface(InterfaceT::getInterfaceID()));
   }
 
 protected:
@@ -237,6 +237,18 @@ protected:
   /// Enable support for unregistered types.
   void allowUnknownTypes(bool allow = true) { unknownTypesAllowed = allow; }
 
+  /// Register a dialect interface with this dialect instance.
+  void addInterface(std::unique_ptr<DialectInterface> interface);
+
+  /// Register a set of dialect interfaces with this dialect instance.
+  template <typename T, typename T2, typename... Tys> void addInterfaces() {
+    addInterfaces<T>();
+    addInterfaces<T2, Tys...>();
+  }
+  template <typename T> void addInterfaces() {
+    addInterface(std::make_unique<T>(this));
+  }
+
 private:
   // Register a symbol(e.g. type) with its given unique class identifier.
   void addSymbol(const ClassID *const classID);
@@ -263,6 +275,9 @@ private:
   /// types prefixed with the dialect namespace but not registered with addType.
   /// These types are represented with OpaqueType.
   bool unknownTypesAllowed = false;
+
+  /// A collection of registered dialect interfaces.
+  DenseMap<ClassID *, std::unique_ptr<DialectInterface>> registeredInterfaces;
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;

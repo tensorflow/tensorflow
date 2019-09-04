@@ -22,9 +22,9 @@
 
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -85,23 +85,35 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
   if (auto funcAttr = attr.dyn_cast<SymbolRefAttr>())
     return functionMapping.lookup(funcAttr.getValue());
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
-    auto *vectorType = cast<llvm::VectorType>(llvmType);
-    auto *child = getLLVMConstant(vectorType->getElementType(),
-                                  splatAttr.getSplatValue(), loc);
-    return llvm::ConstantVector::getSplat(vectorType->getNumElements(), child);
+    auto *sequentialType = cast<llvm::SequentialType>(llvmType);
+    auto elementType = sequentialType->getElementType();
+    uint64_t numElements = sequentialType->getNumElements();
+    auto *child = getLLVMConstant(elementType, splatAttr.getSplatValue(), loc);
+    if (llvmType->isVectorTy())
+      return llvm::ConstantVector::getSplat(numElements, child);
+    if (llvmType->isArrayTy()) {
+      auto arrayType = llvm::ArrayType::get(elementType, numElements);
+      SmallVector<llvm::Constant *, 8> constants(numElements, child);
+      return llvm::ConstantArray::get(arrayType, constants);
+    }
   }
-  if (auto denseAttr = attr.dyn_cast<DenseElementsAttr>()) {
-    auto *vectorType = cast<llvm::VectorType>(llvmType);
+  if (auto elementsAttr = attr.dyn_cast<ElementsAttr>()) {
+    auto *sequentialType = cast<llvm::SequentialType>(llvmType);
+    auto elementType = sequentialType->getElementType();
+    uint64_t numElements = sequentialType->getNumElements();
     SmallVector<llvm::Constant *, 8> constants;
-    uint64_t numElements = vectorType->getNumElements();
     constants.reserve(numElements);
-    for (auto n : denseAttr.getAttributeValues()) {
-      constants.push_back(
-          getLLVMConstant(vectorType->getElementType(), n, loc));
+    for (auto n : elementsAttr.getValues<Attribute>()) {
+      constants.push_back(getLLVMConstant(elementType, n, loc));
       if (!constants.back())
         return nullptr;
     }
-    return llvm::ConstantVector::get(constants);
+    if (llvmType->isVectorTy())
+      return llvm::ConstantVector::get(constants);
+    if (llvmType->isArrayTy()) {
+      auto arrayType = llvm::ArrayType::get(elementType, numElements);
+      return llvm::ConstantArray::get(arrayType, constants);
+    }
   }
   if (auto stringAttr = attr.dyn_cast<StringAttr>()) {
     return llvm::ConstantDataArray::get(
@@ -202,7 +214,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return position;
   };
 
-#include "mlir/LLVMIR/LLVMConversions.inc"
+#include "mlir/Dialect/LLVMIR/LLVMConversions.inc"
 
   // Emit function calls.  If the "callee" attribute is present, this is a
   // direct function call and we also need to look up the remapped function
@@ -297,7 +309,8 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
-// Create named global variables that correspond to llvm.global definitions.
+// Create named global variables that correspond to llvm.mlir.global
+// definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
     llvm::Constant *cst;

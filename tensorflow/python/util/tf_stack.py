@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import collections
 import inspect
-import linecache
-import sys
 import threading
 
 import six
+
+# TODO(b/138203821): change to from ...util import ... once the bug is fixed.
+from tensorflow.python import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
 # https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed
@@ -37,13 +38,6 @@ if six.PY3:
 else:
   import thread  # pylint: disable=g-import-not-at-top
   _get_thread_key = thread.get_ident
-
-
-# Names for indices into TF traceback tuples.
-TB_FILENAME = 0
-TB_LINENO = 1
-TB_FUNCNAME = 2
-TB_CODEDICT = 3  # Dictionary of Python interpreter state.
 
 
 _source_mapper_stacks = collections.defaultdict(list)
@@ -134,11 +128,7 @@ class CurrentModuleFilter(StackTraceFilter):
     return self._filtered_filenames
 
 
-EMPTY_FROZEN_MAP = {}
-EMPTY_FROZEN_SET = frozenset()
-
-
-def extract_stack(limit=None):
+def extract_stack(limit=-1):
   """A lightweight, extensible re-implementation of traceback.extract_stack.
 
   NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
@@ -151,116 +141,16 @@ def extract_stack(limit=None):
     limit: A limit on the number of frames to return.
 
   Returns:
-    A list of 5-tuples
-        (filename, lineno, name, frame_globals, func_start_lineno)
-    corresponding to the call stack of the current thread.  The returned tuples
-    have the innermost stack frame at the end, unlike the Python inspect
-    module's stack() function.
+    A sequence of FrameSummary objects (filename, lineno, name, line)
+    corresponding to the call stack of the current thread.
   """
-  try:
-    raise ZeroDivisionError
-  except ZeroDivisionError:
-    f = sys.exc_info()[2].tb_frame.f_back
-  ret = []
-  length = 0
-
+  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
+  # traversing the stack.
   thread_key = _get_thread_key()
-  source_mappers = _source_mapper_stacks[thread_key]
-  # TODO(mdan): Use sentinels instead.
-  if source_mappers:
-    source_map = source_mappers[-1].get_effective_source_map()
-  else:
-    source_map = EMPTY_FROZEN_MAP
+  return _tf_stack.extract_stack(
+      limit,
+      _source_mapper_stacks[thread_key],
+      _source_filter_stacks[thread_key])
 
-  source_filters = _source_filter_stacks[thread_key]
-  if source_filters:
-    filtered_filenames = source_filters[-1].get_filtered_filenames()
-  else:
-    filtered_filenames = EMPTY_FROZEN_SET
-
-  while f is not None and (limit is None or length < limit):
-    lineno = f.f_lineno
-    co = f.f_code
-    filename = co.co_filename
-    name = co.co_name
-    frame_globals = f.f_globals
-    func_start_lineno = co.co_firstlineno
-
-    # TODO(mdan): Show some indication that the frame was translated.
-    filename, lineno, name = source_map.get(
-        (filename, lineno), (filename, lineno, name))
-
-    # Note: we never filter the innermost frame.
-    if not (ret and filename in filtered_filenames):
-      ret.append((filename, lineno, name, frame_globals, func_start_lineno))
-      length += 1
-
-    f = f.f_back
-
-  ret.reverse()
-  return ret
-
-
-FileAndLine = collections.namedtuple('FileAndLine', ['file', 'line'])
-
-
-def extract_stack_file_and_line(max_length=1000):
-  """A version of extract_stack that only returns filenames and line numbers.
-
-  Callers often only require filenames and line numbers, and do not need the
-  additional information gathered by extract_stack, as they never call
-  convert_stack.
-
-  As a further optimisation, we allow users to specify a limit on the number of
-  frames examined.
-
-  Args:
-    max_length: The maximum length of stack to extract.
-
-  Returns:
-    A list of FileAndLine objects corresponding to the call stack of the current
-    thread.
-  """
-  try:
-    raise ZeroDivisionError
-  except ZeroDivisionError:
-    frame = sys.exc_info()[2].tb_frame.f_back
-  ret = []
-  length = 0
-  while frame is not None and length < max_length:
-    ret.append(FileAndLine(frame.f_code.co_filename, frame.f_lineno))
-    length += 1
-    frame = frame.f_back
-  ret.reverse()
-  return ret
-
-
-def convert_stack(stack, include_func_start_lineno=False):
-  """Converts a stack extracted using extract_stack() to a traceback stack.
-
-  Args:
-    stack: A list of n 5-tuples,
-      (filename, lineno, name, frame_globals, func_start_lineno).
-    include_func_start_lineno: True if function start line number should be
-      included as the 5th entry in return tuples.
-
-  Returns:
-    A tuple of n 4-tuples or 5-tuples
-    (filename, lineno, name, code, [optional: func_start_lineno]), where the
-    code tuple element is calculated from the corresponding elements of the
-    input tuple.
-  """
-  def _tuple_generator():  # pylint: disable=missing-docstring
-    for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame_globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
-      if include_func_start_lineno:
-        yield (filename, lineno, name, line, func_start_lineno)
-      else:
-        yield (filename, lineno, name, line)
-
-  return tuple(_tuple_generator())
+StackSummary = _tf_stack.StackSummary
+FrameSummary = _tf_stack.FrameSummary

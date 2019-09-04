@@ -22,7 +22,6 @@ from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -254,8 +253,6 @@ class Affine(bijector.Bijector):
       super(Affine, self).__init__(
           forward_min_event_ndims=1,
           graph_parents=(
-              [self._scale] if tensor_util.is_tensor(self._scale)
-              else self._scale.graph_parents +
               [self._shift] if self._shift is not None else []),
           is_constant_jacobian=True,
           dtype=dtype,

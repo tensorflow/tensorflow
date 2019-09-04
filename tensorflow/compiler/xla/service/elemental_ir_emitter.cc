@@ -1707,7 +1707,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     source_index_phis[operand_id] =
         PHI(source_index.GetType(), operand_usage_count[operand_id]);
     std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
-    operand_multi_index[concat_dim] = source_index_phis[operand_id];
+    operand_multi_index[concat_dim] =
+        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
@@ -1721,25 +1722,24 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
-  std::vector<llvm::Value*> source_multi_index = source_index.multidim();
+  int64 concat_dim_size = 0;
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    auto concat_dim_size = source_index.GetConstantWithIndexType(
-        operand->shape().dimensions(concat_dim));
     int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(source_multi_index[concat_dim],
-                                               b_->GetInsertBlock());
-    CondBr(ICmpULT(source_multi_index[concat_dim], concat_dim_size),
+    source_index_phis[operand_id]->addIncoming(
+        source_index.GetConstantWithIndexType(concat_dim_size),
+        b_->GetInsertBlock());
+    concat_dim_size += operand->shape().dimensions(concat_dim);
+    CondBr(ICmpULT(source_index[concat_dim],
+                   source_index.GetConstantWithIndexType(concat_dim_size)),
            emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
     b_->SetInsertPoint(false_block);
-    source_multi_index[concat_dim] =
-        Sub(source_multi_index[concat_dim], concat_dim_size);
   }
 
   Unreachable();

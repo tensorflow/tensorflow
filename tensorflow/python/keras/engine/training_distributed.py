@@ -601,8 +601,12 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
     dist_utils.validate_inputs(x, y)
 
     batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
-        model._distribution_strategy, x, batch_size, steps_per_epoch,
-        ModeKeys.TRAIN)
+        model._distribution_strategy,
+        x,
+        batch_size,
+        steps_per_epoch,
+        ModeKeys.TRAIN,
+        validation_split=validation_split)
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
     dataset = model._distribution_standardize_user_data(

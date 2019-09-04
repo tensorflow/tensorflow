@@ -16,7 +16,7 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
-include "mlir/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -124,6 +124,7 @@ def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;
+def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
@@ -283,6 +284,9 @@ def : Pat<(TF_SpaceToBatchNDOp $input, $block_shape, $paddings), (TFL_SpaceToBat
 
 def : Pat<(TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format),
           (TFL_SpaceToDepthOp $input, (convertIntAttrTo32Bit $block_size))>;
+
+def : Pat<(TF_DepthToSpaceOp $input, $block_size, IsDataFormatNHWC:$data_format),
+          (TFL_DepthToSpaceOp $input, (convertIntAttrTo32Bit $block_size))>;
 
 def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners)>;
 def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners)>;

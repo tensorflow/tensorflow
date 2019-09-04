@@ -23,9 +23,9 @@
 #include "mlir/Target/NVVMIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/NVVMDialect.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
@@ -38,10 +38,11 @@ using namespace mlir;
 
 namespace {
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
-                                        llvm::Intrinsic::ID intrinsic) {
+                                        llvm::Intrinsic::ID intrinsic,
+                                        ArrayRef<llvm::Value *> args = {}) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
-  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic, {});
-  return builder.CreateCall(fn);
+  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic);
+  return builder.CreateCall(fn, args);
 }
 
 class ModuleTranslation : public LLVM::ModuleTranslation {
@@ -55,7 +56,7 @@ protected:
   LogicalResult convertOperation(Operation &opInst,
                                  llvm::IRBuilder<> &builder) override {
 
-#include "mlir/LLVMIR/NVVMConversions.inc"
+#include "mlir/Dialect/LLVMIR/NVVMConversions.inc"
 
     return LLVM::ModuleTranslation::convertOperation(opInst, builder);
   }

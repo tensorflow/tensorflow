@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -121,7 +122,7 @@ tensorflow::Status GetAllRemoteDevices(
     n.WaitForNotification();
   }
   std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::DeviceMgr(std::move(remote_devices)));
+      new tensorflow::StaticDeviceMgr(std::move(remote_devices)));
 
   TF_RETURN_IF_ERROR(status);
 
@@ -384,7 +385,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(std::move(devices)));
+      new tensorflow::StaticDeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
@@ -893,10 +894,9 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
   VLOG(1) << "Calling TFE_Execute() on op " << op;
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
-      *num_retvals);
-  status->status =
-      tensorflow::EagerExecute(&op->operation, &handle_retvals, num_retvals);
+  absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
+  status->status = tensorflow::EagerExecute(&op->operation,
+                                            handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }
@@ -952,12 +952,10 @@ unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
 
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(true);
-  ctx->context->SetShouldStoreStepStats(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(false);
-  ctx->context->SetShouldStoreStepStats(false);
 }
 
 }  // extern "C"

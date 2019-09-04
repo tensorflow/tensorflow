@@ -16,14 +16,31 @@ limitations under the License.
 
 #include <utility>
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/env.h"
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+using se::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+using se::rocm::ScopedActivateExecutorContext;
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+#endif
 
 #define NCCL_RETURN_IF_ERROR(...)                               \
   do {                                                          \
@@ -40,8 +57,6 @@ namespace tensorflow {
       return errors::Internal(cudaGetErrorString(cuda_status)); \
     }                                                           \
   } while (0)
-
-using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
@@ -709,4 +724,4 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

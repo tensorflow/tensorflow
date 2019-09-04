@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -191,6 +192,7 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToBatchNd:
     case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinDepthToSpace:
     case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
@@ -296,21 +298,6 @@ static size_t getNumPaddingBytes(size_t byte_size) {
   return num_padding_bytes;
 }
 
-std::string SimpleJoin(const std::vector<const char*>& elements,
-                       const char* separator) {
-  // Note that we avoid use of sstream to avoid binary size bloat.
-  std::string joined_elements;
-  for (auto it = elements.begin(); it != elements.end(); ++it) {
-    if (separator && it != elements.begin()) {
-      joined_elements += separator;
-    }
-    if (*it) {
-      joined_elements += *it;
-    }
-  }
-  return joined_elements;
-}
-
 // Return NNAPI device handle with the provided null-terminated device name. If
 // no matching device could be found, nullptr will be returned.
 ANeuralNetworksDevice* GetDeviceHandle(TfLiteContext* context,
@@ -321,7 +308,6 @@ ANeuralNetworksDevice* GetDeviceHandle(TfLiteContext* context,
   uint32_t num_devices = 0;
   NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
 
-  std::vector<const char*> device_names;
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* buffer = nullptr;
@@ -331,14 +317,13 @@ ANeuralNetworksDevice* GetDeviceHandle(TfLiteContext* context,
       device_handle = device;
       break;
     }
-    device_names.push_back(buffer);
   }
   if (!device_handle) {
     context->ReportError(context,
                          "Could not find the specified NNAPI accelerator: %s. "
                          "Must be one of: {%s}.",
                          device_name_ptr,
-                         SimpleJoin(device_names, ",").c_str());
+                         nnapi::GetStringDeviceNamesList().c_str());
   }
   return device_handle;
 }
@@ -1845,6 +1830,21 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
         };
       }
     } break;
+    case kTfLiteBuiltinDepthToSpace: {
+      const TfLiteType input_type =
+          context->tensors[node->inputs->data[0]].type;
+      if (version <= 1 &&
+          (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+           input_type == kTfLiteInt8)) {
+        return [](const NNAPIOpMappingArgs& mapping_args)
+                   -> ANeuralNetworksOperationType {
+          auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
+              mapping_args.node->builtin_data);
+          mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+          return ANEURALNETWORKS_DEPTH_TO_SPACE;
+        };
+      }
+    } break;
     case kTfLiteBuiltinSvdf:
       // NNAPI only support float32 weights.
       // Only delegate to NNAPI 1.1, as SVDF does not support rank > 1
@@ -2312,8 +2312,8 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinTopkV2: {
       if (version <= 2 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
-        const auto& input = context->tensors[node->outputs->data[0]];
-        const auto& k_param = context->tensors[node->outputs->data[1]];
+        const auto& input = context->tensors[node->inputs->data[0]];
+        const auto& k_param = context->tensors[node->inputs->data[1]];
         if ((input.type == kTfLiteFloat32 || input.type == kTfLiteInt32 ||
              input.type == kTfLiteUInt8 || input.type == kTfLiteInt8) &&
             (k_param.type == kTfLiteInt32 &&

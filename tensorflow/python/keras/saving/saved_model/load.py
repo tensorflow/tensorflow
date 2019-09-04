@@ -213,6 +213,8 @@ class RevivedLayer(object):
       if metadata.get('activity_regularizer') is not None:
         revived_obj.activity_regularizer = regularizers.deserialize(
             metadata['activity_regularizer'])
+      if metadata.get('_is_feature_layer') is not None:
+        revived_obj._is_feature_layer = metadata['_is_feature_layer']
 
       # Store attributes revived from SerializedAttributes in a un-tracked
       # dictionary. The attributes are the ones listed in CommonEndpoints or

@@ -79,6 +79,7 @@ cuda_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",

@@ -68,6 +68,7 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
     StringRef getDevice() { return device(); }
   }];
 

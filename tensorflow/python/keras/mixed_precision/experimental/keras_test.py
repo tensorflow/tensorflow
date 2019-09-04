@@ -243,6 +243,23 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
+  def test_layer_with_int_variable(self, strategy_fn):
+    class LayerWithIntVar(base_layer.Layer):
+
+      def build(self, _):
+        self.v = self.add_weight('v', dtype='int32', trainable=False)
+
+      def call(self, inputs):
+        # Only float variables should be autocasted. This will fail if self.v is
+        # autocasted to float32
+        return math_ops.cast(inputs, 'int32') + self.v
+
+    x = constant_op.constant([1.])
+    layer = LayerWithIntVar(dtype=policy.Policy('mixed_float16'))
+    self.assertEqual(layer(x).dtype, 'int32')
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
   def test_layer_with_non_autocast_variable(self, strategy_fn):
     x = constant_op.constant([1.], dtype=dtypes.float16)
     with strategy_fn().scope():
@@ -763,6 +780,17 @@ class KerasModelTest(keras_parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError,
                                    'optimizer" must be an instance of '):
         model.compile(optimizers.SGD(1.), 'mse')
+
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_functional_model_loss_dtype(self):
+    with policy.policy_scope('float16'):
+      x = layers.Input(shape=(1,))
+      y = AddLayer()(x)
+      model = models.Model(x, y)
+      model.add_loss(math_ops.cast(y, 'float32'))
+      # The loss should not be casted to the policy's dtype.
+      self.assertEqual(model.losses[0].dtype, 'float32')
 
   @parameterized.named_parameters(
       {

@@ -17,24 +17,25 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 using namespace mlir;
 
 namespace {
 struct LegalizeTF : public FunctionPass<LegalizeTF> {
-  /// Perform the lowering to XLA dialect.
+  /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeTFPass() {
-  return llvm::make_unique<LegalizeTF>();
+std::unique_ptr<mlir::FunctionPassBase> mlir::xla_hlo::createLegalizeTFPass() {
+  return std::make_unique<LegalizeTF>();
 }
 
 /// Returns if the given TF data format string is the default format.
@@ -130,21 +131,26 @@ static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
 }
 
 namespace mlir {
-namespace XLA {
+namespace xla {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
-}  // end namespace XLA
+}  // end namespace xla
 }  // end namespace mlir
 
-/// Perform the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
-
+void mlir::xla_hlo::legalizeTF(Operation *op) {
   // Add the generated patterns to the list.
-  XLA::populateWithGenerated(func.getContext(), &patterns);
-  applyPatternsGreedily(func, patterns);
+  OwningRewritePatternList patterns;
+  xla::populateWithGenerated(op->getContext(), &patterns);
+
+  // Recursively applies rewrite patterns to nested operations.
+  applyPatternsGreedily(op, patterns);
+}
+
+/// Performs the lowering to XLA dialect.
+void LegalizeTF::runOnFunction() {
+  auto func = getFunction();
+  mlir::xla_hlo::legalizeTF(func);
 }
 
 static PassRegistration<LegalizeTF> pass(

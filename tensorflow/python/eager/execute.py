@@ -137,12 +137,17 @@ def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Monkey-patch to execute to enable execution callbacks."""
   tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
   for callback in ctx.post_execution_callbacks:
-    callback(op_name, inputs, attrs, tensors, name)
+    callback(op_name, tuple(inputs), attrs, tensors, name)
 
   return tensors
 
 
 execute = quick_execute
+
+
+def must_record_gradient():
+  """Import backprop if you want gradients recorded."""
+  return False
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,

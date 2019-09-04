@@ -892,6 +892,8 @@ class FunctionalOpsTest(test.TestCase):
     self._testForMLP(False)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla(
+      "Test uses strided slice without compile time constant values")
   def testForMLPWhile(self):
     self._testForMLP(True)
 

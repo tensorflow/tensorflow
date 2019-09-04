@@ -399,8 +399,8 @@ def create_dir(dirname):
 
   Args:
     dirname: string, name of the directory to be created
-  Notes: The parent directories need to exist. Use recursive_create_dir instead
-    if there is the possibility that the parent dirs don't exist.
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -414,8 +414,8 @@ def create_dir_v2(path):
 
   Args:
     path: string, name of the directory to be created
-  Notes: The parent directories need to exist. Use recursive_create_dir instead
-    if there is the possibility that the parent dirs don't exist.
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.

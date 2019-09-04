@@ -44,6 +44,9 @@ Status MakeIteratorFromInputElement(
     int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
     StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
+
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
 //

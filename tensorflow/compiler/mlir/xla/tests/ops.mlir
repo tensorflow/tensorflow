@@ -242,7 +242,7 @@ func @clamp_scalar(%arg0: tensor<1xi32>, %arg1: tensor<i32>) -> tensor<1xi32> {
 
 // -----
 
-func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+func @clamp_invalid_clamp_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
   // expected-error@+1 {{'xla_hlo.clamp' op requires the same element type for all operands and results}}
   %0 = "xla_hlo.clamp"(%arg1, %arg0, %arg0) : (tensor<1xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
@@ -250,7 +250,7 @@ func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>)
 
 // -----
 
-func @clamp_invalid_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
+func @clamp_invalid_clamp_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
   // expected-error@+1 {{min shape [2] is not scalar and does not match operand shape [1]}}
   %0 = "xla_hlo.clamp"(%arg1, %arg0, %arg0) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
@@ -258,17 +258,17 @@ func @clamp_invalid_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> ten
 
 // -----
 
-func @clamp_invalid_max_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
-  // expected-error@+1 {{'xla_hlo.clamp' op requires the same element type for all operands and results}}
-  %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
+func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+  // expected-error@+1 {{'xla_hlo.min' op requires the same element type for all operands and results}}
+  %0 = "xla_hlo.min"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
 // -----
 
-func @clamp_invalid_max_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
-  // expected-error@+1 {{max shape [2] is not scalar and does not match operand shape [1]}}
-  %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<1xi32>
+func @clamp_invalid_max_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+  // expected-error@+1 {{'xla_hlo.max' op requires the same element type for all operands and results}}
+  %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
@@ -310,6 +310,38 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 func @tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "xla_hlo.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
   return %0: tensor<1xf32>
+}
+
+// -----
+
+func @exp_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.exp' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.exp"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @floor_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.floor' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @log_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.log' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.log"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @rsqrt_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.rsqrt' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.rsqrt"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
 }
 
 // -----

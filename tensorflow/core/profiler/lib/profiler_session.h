@@ -32,7 +32,11 @@ namespace tensorflow {
 class ProfilerSession {
  public:
   // Creates and ProfilerSession and starts profiling.
-  static std::unique_ptr<ProfilerSession> Create();
+  static std::unique_ptr<ProfilerSession> Create(
+      const profiler::ProfilerOptions& options);
+  static std::unique_ptr<ProfilerSession> Create() {
+    return Create(profiler::ProfilerOptions());
+  }
 
   // Deletes an exsiting Profiler and enables starting a new one.
   ~ProfilerSession();
@@ -44,7 +48,7 @@ class ProfilerSession {
 
  private:
   // Constructs an instance of the class and starts profiling
-  ProfilerSession();
+  explicit ProfilerSession(const profiler::ProfilerOptions& options);
 
   // ProfilerSession is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;

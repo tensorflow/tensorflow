@@ -46,6 +46,7 @@ cc_library(
     srcs = ["resources.cc"],
     hdrs = ["resources.h"],
     deps = [
+        ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
@@ -95,6 +96,7 @@ tf_kernel_library(
         ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
         "//third_party/eigen3",
     ],
 )

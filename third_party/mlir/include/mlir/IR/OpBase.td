@@ -396,6 +396,27 @@ def F16Tensor  : TensorOf<[F16]>;
 def F32Tensor  : TensorOf<[F32]>;
 def F64Tensor  : TensorOf<[F64]>;
 
+// Whether a type is a ranked tensor type.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a type is a ranked tensor type with one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
+// Ranked tensor type with one of the specified types and ranks.
+class TensorRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[TensorOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         TensorOf<allowedTypes>.description>;
+
+class 0DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [0]>;
+class 1DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [1]>;
+class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
+class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
+class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
+
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
@@ -416,6 +437,13 @@ def BF16MemRef : MemRefOf<[BF16]>;
 def F16MemRef  : MemRefOf<[F16]>;
 def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
+
+// TODO(b/130064155) Have an easy way to add another constraint to a type.
+class StaticShapeMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
+           "statically shaped " # MemRefOf<allowedTypes>.description>;
+
+def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
 
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
@@ -624,6 +652,21 @@ def NonNegativeI32Attr : NonNegativeIntAttrBase<
 def NonNegativeI64Attr : NonNegativeIntAttrBase<
     I64, "non-negative 64-bit integer attribute">;
 
+class PositiveIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"$_self.cast<IntegerAttr>().getValue()"
+                 ".isStrictlyPositive()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def PositiveI32Attr : PositiveIntAttrBase<
+    I32, "positive 32-bit integer attribute">;
+def PositiveI64Attr : PositiveIntAttrBase<
+    I64, "positive 64-bit integer attribute">;
+
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
     TypedAttrBase<attrValType, "FloatAttr",
@@ -807,6 +850,15 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
+class DictionaryAttrBase : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+                          "dictionary of named attribute values"> {
+  let storageType = [{ DictionaryAttr }];
+  let returnType = [{ DictionaryAttr }];
+  let convertFromStorage = "$_self";
+}
+
+def DictionaryAttr : DictionaryAttrBase;
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
@@ -864,12 +916,53 @@ def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
 }
 
+def I32ElementsAttr : Attr<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(32)">,
+  "32-bit integer elements attribute"> {
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+  let constBuilderCall = "$_builder.getDenseElementsAttr("
+    "$_builder.getTensorType({}, $_builder.getIntegerType(32)), "
+      "{$_builder.getI32IntegerAttr($0)})";
+  let convertFromStorage = "$_self";
+}
+// Attribute information for an Attribute field within a StructAttr.
+class StructFieldAttr<string thisName, Attr thisType> {
+  // Name of this field in the StructAttr.
+  string name = thisName;
+
+  // Attribute type wrapped by the struct attr.
+  Attr type = thisType;
+}
+
+// Structured attribute that wraps a DictionaryAttr and provides both a
+// validation method and set of accessors for a fixed set of fields. This is
+// useful when representing data that would normally be in a structure.
+class StructAttr<string name, Dialect dialect,
+                 list<StructFieldAttr> attributes> : DictionaryAttrBase {
+  // Name for this StructAttr.
+  string className = name;
+
+  // The dialect this StructAttr belongs to.
+  Dialect structDialect = dialect;
+
+  // List of fields that the StructAttr contains.
+  list<StructFieldAttr> fields = attributes;
+}
+
 // Attributes containing symbol references.
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {
   let storageType = [{ SymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+}
+
+def SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "symbol ref array attribute"> {
+  let constBuilderCall = ?;
 }
 
 //===----------------------------------------------------------------------===//
@@ -991,7 +1084,7 @@ class OpTrait;
 // purpose to wrap around C++ symbol string with this class is to make
 // traits specified for ops in TableGen less alien and more integrated.
 class NativeOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // ParamNativeOpTrait corresponds to the template-parameterized traits in the
@@ -1007,7 +1100,7 @@ class ParamNativeOpTrait<string prop, string params>
 // affects op definition generator internals, like how op builders and
 // operand/attribute/result getters are generated.
 class GenInternalOpTrait<string prop> : OpTrait {
-  string trait = prop;
+  string trait = "OpTrait::" # prop;
 }
 
 // PredOpTrait is an op trait implemented by way of a predicate on the op.
@@ -1017,19 +1110,25 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 }
 
 // Op supports operand broadcast behavior.
-def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
+def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
-def Commutative      : NativeOpTrait<"IsCommutative">;
+def Commutative  : NativeOpTrait<"IsCommutative">;
+// Op is isolated from above.
+def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
-def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+def NoSideEffect : NativeOpTrait<"HasNoSideEffect">;
 // Op has the same operand type.
-def SameTypeOperands  : NativeOpTrait<"SameTypeOperands">;
+def SameTypeOperands : NativeOpTrait<"SameTypeOperands">;
+// Op has same shape for all operands.
+def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 // Op has same operand and result shape.
-def SameOperandsAndResultShape   : NativeOpTrait<"SameOperandsAndResultShape">;
+def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
-def SameOperandsAndResultType    : NativeOpTrait<"SameOperandsAndResultType">;
+def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
+// Op has the same element type for all operands.
+def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
 // Op has the same operand and result element type.
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
@@ -1065,11 +1164,54 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
 
 //===----------------------------------------------------------------------===//
-// Op definitions
+// OpInterface definitions
 //===----------------------------------------------------------------------===//
 
-// Marker used to identify the argument list for an op.
+// Marker used to identify the argument list for an op or interface method.
 def ins;
+
+// OpInterfaceTrait corresponds to a specific 'OpInterface' class defined in
+// C++. The purpose to wrap around C++ symbol string with this class is to make
+// interfaces specified for ops in TableGen less alien and more integrated.
+class OpInterfaceTrait<string name> : NativeOpTrait<""> {
+  let trait = name # "::Trait";
+}
+
+// This class represents a single, optionally static, interface method.
+// Note: non-static interface methods have an implicit 'op' parameter
+// corresponding to an instance of the derived operation.
+class InterfaceMethod<string retTy, string methodName,
+                      dag args = (ins), code methodBody = [{}]> {
+  /// The name of the interface method.
+  string name = methodName;
+
+  /// The c++ type-name of the return type.
+  string returnType = retTy;
+
+  /// A dag of string that correspond to the arguments of the method.
+  dag arguments = args;
+
+  /// An optional body to the method.
+  code body = methodBody;
+}
+
+// This class represents a single static interface method.
+class StaticInterfaceMethod<string retTy, string methodName,
+                            dag args = (ins), code methodBody = [{}]>
+    : InterfaceMethod<retTy, methodName, args, methodBody>;
+
+// OpInterface represents an interface regarding an op.
+class OpInterface<string name> : OpInterfaceTrait<name> {
+  // The name given to the c++ interface class.
+  string cppClassName = name;
+
+  /// The list of methods defined by this interface.
+  list<InterfaceMethod> methods = [];
+}
+
+//===----------------------------------------------------------------------===//
+// Op definitions
+//===----------------------------------------------------------------------===//
 
 // Marker used to identify the result list for an op.
 def outs;
