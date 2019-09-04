@@ -1218,7 +1218,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor *= 1. / len(self.devices)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(tuple(
             _assign_on_device(v.device, v, tensor) for v in self._values))
       else:
