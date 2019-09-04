@@ -17,7 +17,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr char kNodeName[] = "batch_dataset_v2";
+constexpr char kNodeName[] = "batch_dataset";
 
 class BatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
@@ -30,7 +30,7 @@ BatchDatasetParams BatchDatasetParams1() {
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
@@ -42,7 +42,7 @@ BatchDatasetParams BatchDatasetParams2() {
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
@@ -54,7 +54,7 @@ BatchDatasetParams BatchDatasetParams3() {
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({-1})},
-                            /*node_name=*/"batch_dataset_0");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
@@ -66,7 +66,7 @@ BatchDatasetParams BatchDatasetParams4() {
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({3})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
@@ -78,7 +78,7 @@ BatchDatasetParams BatchDatasetParams5() {
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({12})},
-                            /*node_name=*/kNodeName);
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
@@ -90,7 +90,7 @@ BatchDatasetParams BatchDatasetParams6() {
                             /*parallel_copy=*/true,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({-1})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
@@ -102,7 +102,7 @@ BatchDatasetParams BatchDatasetParams7() {
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({4})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 // Test Case 8: test BatchDatasetV2 with an invalid batch size
@@ -113,7 +113,7 @@ BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
                             /*parallel_copy=*/false,
                             /*output_dtypes=*/{DT_INT64},
                             /*output_shapes=*/{PartialTensorShape({3})},
-                            /*node_name=*/"batch_dataset_v2");
+                            /*node_name=*/"batch_dataset");
 }
 
 std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {

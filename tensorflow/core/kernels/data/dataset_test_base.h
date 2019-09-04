@@ -130,14 +130,14 @@ class DatasetParams {
   ~DatasetParams() {}
 
   // Returns the dataset input values as a TensorValue vector.
-  virtual Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
+  virtual Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
 
   // Returns the dataset input names as a string vector.
-  virtual Status MakeInputPlaceholder(
+  virtual Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const = 0;
 
   // Returns the dataset attributes as a vector.
-  virtual Status MakeAttributes(AttributeVector* attributes) const = 0;
+  virtual Status GetAttributes(AttributeVector* attributes) const = 0;
 
   // Checks if the tensor is a dataset variant tensor.
   static bool IsDatasetTensor(const Tensor& tensor);
@@ -177,6 +177,8 @@ class DatasetParams {
   int op_version_ = 1;
 };
 
+// `RangeDatasetParams` is a common dataset parameter type that are used in
+// testing.
 class RangeDatasetParams : public DatasetParams {
  public:
   RangeDatasetParams(int64 start, int64 stop, int64 step,
@@ -186,12 +188,12 @@ class RangeDatasetParams : public DatasetParams {
 
   RangeDatasetParams(int64 start, int64 stop, int64 step);
 
-  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  Status MakeInputPlaceholder(
+  Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
 
-  Status MakeAttributes(AttributeVector* attr_vector) const override;
+  Status GetAttributes(AttributeVector* attr_vector) const override;
 
  private:
   Tensor start_;
@@ -199,6 +201,8 @@ class RangeDatasetParams : public DatasetParams {
   Tensor step_;
 };
 
+// `BatchDatasetParams` is a common dataset parameter type that are used in
+// testing.
 class BatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
@@ -218,12 +222,12 @@ class BatchDatasetParams : public DatasetParams {
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
   }
 
-  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  Status MakeInputPlaceholder(
+  Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
 
-  Status MakeAttributes(AttributeVector* attr_vector) const override;
+  Status GetAttributes(AttributeVector* attr_vector) const override;
 
   int op_version() const override;
 
@@ -234,6 +238,8 @@ class BatchDatasetParams : public DatasetParams {
   int op_version_ = 2;
 };
 
+// `MapDatasetParams` is a common dataset parameter type that are used in
+// testing.
 class MapDatasetParams : public DatasetParams {
  public:
   template <typename T>
@@ -258,12 +264,12 @@ class MapDatasetParams : public DatasetParams {
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
   }
 
-  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
 
-  Status MakeInputPlaceholder(
+  Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
 
-  Status MakeAttributes(AttributeVector* attr_vector) const override;
+  Status GetAttributes(AttributeVector* attr_vector) const override;
 
   std::vector<FunctionDef> func_lib() const override;
 

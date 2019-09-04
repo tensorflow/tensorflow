@@ -688,7 +688,7 @@ Status DatasetOpsTestBaseV2::Initialize(DatasetParams& dataset_params) {
     TF_RETURN_IF_ERROR(MakeDatasetTensor(pair.first.get(), &pair.second));
   }
   gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(dataset_params.MakeInputs(&inputs));
+  TF_RETURN_IF_ERROR(dataset_params.GetInputs(&inputs));
   TF_RETURN_IF_ERROR(
       CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
   TF_RETURN_IF_ERROR(
@@ -705,9 +705,9 @@ Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
   std::vector<string> input_placeholder;
-  TF_RETURN_IF_ERROR(dataset_params.MakeInputPlaceholder(&input_placeholder));
+  TF_RETURN_IF_ERROR(dataset_params.GetInputPlaceholder(&input_placeholder));
   AttributeVector attributes;
-  TF_RETURN_IF_ERROR(dataset_params.MakeAttributes(&attributes));
+  TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
   NodeDef node_def = test::function::NDef(
       dataset_params.node_name(),
       name_utils::OpName(ToString(dataset_params.type()), params),
@@ -724,9 +724,9 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(DatasetParams* dataset_params,
   }
 
   AttributeVector attributes;
-  TF_RETURN_IF_ERROR(dataset_params->MakeAttributes(&attributes));
+  TF_RETURN_IF_ERROR(dataset_params->GetAttributes(&attributes));
   gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(dataset_params->MakeInputs(&inputs));
+  TF_RETURN_IF_ERROR(dataset_params->GetInputs(&inputs));
   std::vector<Tensor> input_tensors;
   for (auto& tensor_value : inputs) {
     input_tensors.emplace_back(*tensor_value.tensor);
@@ -756,7 +756,7 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensorFunc(
     case DatasetParamsType::Map: {
       std::vector<string> input_placeholder;
       TF_RETURN_IF_ERROR(
-          dataset_params.MakeInputPlaceholder(&input_placeholder));
+          dataset_params.GetInputPlaceholder(&input_placeholder));
       bool has_other_args = input_placeholder.size() > 1;
       *fdef = test::function::MakeMapDataset(has_other_args);
       break;
@@ -808,26 +808,26 @@ RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
       stop_(CreateTensor<int64>(TensorShape({}), {stop})),
       step_(CreateTensor<int64>(TensorShape({}), {step})) {}
 
-Status RangeDatasetParams::MakeInputs(
+Status RangeDatasetParams::GetInputs(
     gtl::InlinedVector<TensorValue, 4>* inputs) {
   *inputs = {TensorValue(&start_), TensorValue(&stop_), TensorValue(&step_)};
   return Status::OK();
 }
 
-Status RangeDatasetParams::MakeInputPlaceholder(
+Status RangeDatasetParams::GetInputPlaceholder(
     std::vector<string>* input_placeholder) const {
   *input_placeholder = {RangeDatasetOp::kStart, RangeDatasetOp::kStop,
                         RangeDatasetOp::kStep};
   return Status::OK();
 }
 
-Status RangeDatasetParams::MakeAttributes(AttributeVector* attr_vector) const {
+Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{RangeDatasetOp::kOutputTypes, output_dtypes_},
                   {RangeDatasetOp::kOutputShapes, output_shapes_}};
   return Status::OK();
 }
 
-Status BatchDatasetParams::MakeInputs(
+Status BatchDatasetParams::GetInputs(
     gtl::InlinedVector<TensorValue, 4>* inputs) {
   inputs->reserve(input_dataset_params_group_.size());
   for (auto& pair : input_dataset_params_group_) {
@@ -844,7 +844,7 @@ Status BatchDatasetParams::MakeInputs(
   return Status::OK();
 }
 
-Status BatchDatasetParams::MakeInputPlaceholder(
+Status BatchDatasetParams::GetInputPlaceholder(
     std::vector<string>* input_placeholder) const {
   *input_placeholder = {BatchDatasetOp::kInputDataset,
                         BatchDatasetOp::kBatchSize,
@@ -852,7 +852,7 @@ Status BatchDatasetParams::MakeInputPlaceholder(
   return Status::OK();
 }
 
-Status BatchDatasetParams::MakeAttributes(AttributeVector* attr_vector) const {
+Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{BatchDatasetOp::kParallelCopy, parallel_copy_},
                   {BatchDatasetOp::kOutputTypes, output_dtypes_},
                   {BatchDatasetOp::kOutputShapes, output_shapes_}};
@@ -861,8 +861,7 @@ Status BatchDatasetParams::MakeAttributes(AttributeVector* attr_vector) const {
 
 int BatchDatasetParams::op_version() const { return op_version_; }
 
-Status MapDatasetParams::MakeInputs(
-    gtl::InlinedVector<TensorValue, 4>* inputs) {
+Status MapDatasetParams::GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) {
   inputs->reserve(input_dataset_params_group_.size());
   for (auto& pair : input_dataset_params_group_) {
     if (!IsDatasetTensor(pair.second)) {
@@ -879,7 +878,7 @@ Status MapDatasetParams::MakeInputs(
   return Status::OK();
 }
 
-Status MapDatasetParams::MakeInputPlaceholder(
+Status MapDatasetParams::GetInputPlaceholder(
     std::vector<string>* input_placeholder) const {
   input_placeholder->emplace_back(MapDatasetOp::kInputDataset);
   for (int i = 0; i < other_arguments_.size(); ++i) {
@@ -889,7 +888,7 @@ Status MapDatasetParams::MakeInputPlaceholder(
   return Status::OK();
 }
 
-Status MapDatasetParams::MakeAttributes(AttributeVector* attr_vector) const {
+Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {
       {MapDatasetOp::kFunc, func_},
       {MapDatasetOp::kTarguments, type_arguments_},
