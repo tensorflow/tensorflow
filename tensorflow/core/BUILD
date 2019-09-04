@@ -106,8 +106,6 @@ load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
-    "tf_additional_cloud_kernel_deps",
-    "tf_additional_cloud_op_deps",
     "tf_additional_core_deps",
     "tf_additional_device_tracer_cuda_deps",
     "tf_additional_device_tracer_test_flags",
@@ -1445,7 +1443,7 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + tf_additional_cloud_op_deps(),
+    ]),
     alwayslink = 1,
 )
 
@@ -1609,7 +1607,7 @@ cc_library(
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/sparse:kernels",
-    ] + tf_additional_cloud_kernel_deps() + if_not_windows([
+    ] + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
