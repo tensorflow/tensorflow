@@ -580,7 +580,7 @@ static PyObject* EagerTensor_datatype_enum(EagerTensor* self) {
 static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumDims(handle, self->status);
-  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+  if (MaybeRaiseExceptionFromTFStatus(self->status, nullptr)) {
     // Cleanup self->status before returning.
     TF_SetStatus(self->status, TF_OK, "");
     return nullptr;
@@ -590,7 +590,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   for (int i = 0; i < n; ++i) {
     PyObject* dim =
         PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, self->status));
-    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError) ||
+    if (MaybeRaiseExceptionFromTFStatus(self->status, nullptr) ||
         dim == nullptr || PyTuple_SetItem(shape, i, dim) != 0) {
       // Cleanup self->status before returning.
       TF_SetStatus(self->status, TF_OK, "");
@@ -606,7 +606,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
 // Getter for `_rank`.
 static PyObject* EagerTensor_rank(EagerTensor* self) {
   int num_dims = TFE_TensorHandleNumDims(self->handle, self->status);
-  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+  if (MaybeRaiseExceptionFromTFStatus(self->status, nullptr)) {
     // Cleanup self->status before returning.
     TF_SetStatus(self->status, TF_OK, "");
     return nullptr;
@@ -622,7 +622,7 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumElements(handle, self->status);
-  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+  if (MaybeRaiseExceptionFromTFStatus(self->status, nullptr)) {
     // Cleanup self->status before returning.
     TF_SetStatus(self->status, TF_OK, "");
     return nullptr;
@@ -680,14 +680,14 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   return EagerTensorFromHandle(handle);
 }
 
-// Function `_numpy`.
+// Function `_numpy_internal`.
 // Convert an EagerTensor to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
 // Note that if `self` is not on CPU, we raise an Exception.
-static PyObject* EagerTensor_numpy(EagerTensor* self) {
+static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   auto* py_array = TFE_TensorHandleToNumpy(self->handle, self->status);
-  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+  if (MaybeRaiseExceptionFromTFStatus(self->status, nullptr)) {
     Py_XDECREF(py_array);
     // Cleanup self->status before returning.
     TF_SetStatus(self->status, TF_OK, "");
@@ -754,8 +754,8 @@ static PyMemberDef EagerTensor_members[] = {
 #endif
 
 static PyMethodDef EagerTensor_methods[] = {
-    {"_numpy", (PyCFunction)EagerTensor_numpy, METH_NOARGS,
-     PyDoc_STR("_numpy")},
+    {"_numpy_internal", (PyCFunction)EagerTensor_numpy_internal, METH_NOARGS,
+     PyDoc_STR("_numpy_internal")},
     {"_datatype_enum", (PyCFunction)EagerTensor_datatype_enum, METH_NOARGS,
      PyDoc_STR("_datatype_enum")},
     {"_shape_tuple", (PyCFunction)EagerTensor_shape_tuple, METH_NOARGS,

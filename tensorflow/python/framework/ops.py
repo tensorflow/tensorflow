@@ -910,10 +910,21 @@ class _EagerTensorBase(Tensor):
     """Returns the length of the first dimension in the Tensor."""
     if not self.shape.ndims:
       raise TypeError("Scalar tensor has no `len()`")
-    return self._shape_tuple()[0]
+    # pylint: disable=protected-access
+    try:
+      return self._shape_tuple()[0]
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
+
+  def _numpy_internal(self):
+    raise NotImplementedError()
 
   def _numpy(self):
-    raise NotImplementedError()
+    # pylint: disable=protected-access
+    try:
+      return self._numpy_internal()
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
 
   @property
   def dtype(self):
@@ -1036,9 +1047,14 @@ class _EagerTensorBase(Tensor):
   @property
   def shape(self):
     if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
-      # `_tensor_shape` is declared and defined in the definition of
-      # `EagerTensor`, in C.
-      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      # pylint: disable=protected-access
+      try:
+        # `_tensor_shape` is declared and defined in the definition of
+        # `EagerTensor`, in C.
+        self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
+
     return self._tensor_shape
 
   def get_shape(self):
