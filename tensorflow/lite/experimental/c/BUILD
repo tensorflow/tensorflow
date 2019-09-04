@@ -63,6 +63,7 @@ cc_library(
         "c_api_types.h",
     ],
     copts = tflite_copts(),
+    tags = ["swift_module=TensorFlowLiteC"],
     visibility = [
         ":experimental",
     ],
