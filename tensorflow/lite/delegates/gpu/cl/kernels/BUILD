@@ -440,6 +440,7 @@ cc_library(
         ":util",
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",
         "//tensorflow/lite/delegates/gpu/cl:util",

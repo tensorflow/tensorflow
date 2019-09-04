@@ -168,9 +168,9 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
   if (info.vendor != Vendor::QUALCOMM) {
-    // In general we not expect that this kernel will be used with non Adreno
-    // so as it tuned for Adreno special memory.
-    return 256 * 16;  // 4KB
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
   } else {
     return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
   }
@@ -255,9 +255,6 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (!device.IsAdreno()) {
-    return false;
-  }
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;
