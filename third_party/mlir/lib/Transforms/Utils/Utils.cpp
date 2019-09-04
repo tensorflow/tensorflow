@@ -288,7 +288,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   for (auto *op : opsToReplace) {
     if (failed(replaceAllMemRefUsesWith(oldMemRef, newMemRef, op, extraIndices,
                                         indexRemap, extraOperands)))
-      assert(false && "memref replacement guaranteed to succeed here");
+      llvm_unreachable("memref replacement guaranteed to succeed here");
   }
 
   return success();
