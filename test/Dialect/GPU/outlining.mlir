@@ -66,3 +66,23 @@ func @multiple_launches() {
 
 // CHECK: func @multiple_launches_kernel()
 // CHECK: func @multiple_launches_kernel_0()
+
+// -----
+
+func @extra_constants(%arg0 : memref<?xf32>) {
+  %cst = constant 8 : index
+  %cst2 = constant 2 : index
+  %cst3 = constant 3 : index
+  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %arg0) {kernel = @extra_constants_kernel} : (index, index, index, index, index, index, memref<?xf32>) -> ()
+  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
+                                       %grid_z = %cst)
+             threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
+                                        %block_z = %cst)
+             args(%kernel_arg0 = %cst2, %kernel_arg1 = %arg0, %kernel_arg2 = %cst3) : index, memref<?xf32>, index {
+    // CHECK: constant
+    // CHECK: constant
+    "use"(%kernel_arg0, %kernel_arg1, %kernel_arg2) : (index, memref<?xf32>, index) -> ()
+    gpu.return
+  }
+  return
+}
