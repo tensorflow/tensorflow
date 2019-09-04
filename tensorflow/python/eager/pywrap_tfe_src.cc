@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstring>
-#include <thread>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -3146,14 +3145,14 @@ bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
 
 bool RunCallbacks(
     const FastPathOpExecInfo& op_exec_info, PyObject* args,
-    const std::vector<tensorflow::Safe_PyObjectPtr>* const flattened_inputs,
-    const std::vector<tensorflow::Safe_PyObjectPtr>* const flattened_attrs,
+    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_inputs,
+    const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_attrs,
     PyObject* flattened_result) {
-  if (!op_exec_info.run_callbacks) return true;
+  DCHECK(op_exec_info.run_callbacks);
 
-  tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(flattened_inputs->size()));
-  for (int i = 0; i < flattened_inputs->size(); i++) {
-    PyObject* input = (*flattened_inputs)[i].get();
+  tensorflow::Safe_PyObjectPtr inputs(PyTuple_New(flattened_inputs.size()));
+  for (int i = 0; i < flattened_inputs.size(); i++) {
+    PyObject* input = flattened_inputs[i].get();
     Py_INCREF(input);
     PyTuple_SET_ITEM(inputs.get(), i, input);
   }
@@ -3161,7 +3160,7 @@ bool RunCallbacks(
   int num_non_inferred_attrs = PyTuple_GET_SIZE(args) -
                                op_exec_info.op_def->input_arg_size() -
                                kFastPathExecuteInputStartIndex;
-  int num_attrs = flattened_attrs->size() + num_non_inferred_attrs;
+  int num_attrs = flattened_attrs.size() + num_non_inferred_attrs;
   tensorflow::Safe_PyObjectPtr attrs(PyTuple_New(num_attrs));
 
   for (int i = 0; i < num_non_inferred_attrs; i++) {
@@ -3173,7 +3172,7 @@ bool RunCallbacks(
   }
   for (int i = num_non_inferred_attrs; i < num_attrs; i++) {
     PyObject* attr_or_name =
-        flattened_attrs->at(i - num_non_inferred_attrs).get();
+        flattened_attrs.at(i - num_non_inferred_attrs).get();
     Py_INCREF(attr_or_name);
     PyTuple_SET_ITEM(attrs.get(), i, attr_or_name);
   }
@@ -3498,9 +3497,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     PyList_SET_ITEM(flat_result.get(), i, EagerTensorFromHandle(retvals[i]));
   }
 
-  if (!RunCallbacks(op_exec_info, args, flattened_inputs.get(),
-                    flattened_attrs.get(), flat_result.get())) {
-    return nullptr;
+  if (op_exec_info.run_callbacks) {
+    if (!RunCallbacks(op_exec_info, args, *flattened_inputs, *flattened_attrs,
+                      flat_result.get())) {
+      return nullptr;
+    }
   }
 
   // Unflatten results.
