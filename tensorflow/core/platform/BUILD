@@ -47,7 +47,10 @@ package(
 # exist to allow us incrementally add granular targets
 # to tf/core/platform/BUILD. We will remove these helpers,
 # after we finish refactoring tf/core/platform/BUILD.
-tf_instantiate_platform_libraries(names = ["context"])
+tf_instantiate_platform_libraries(names = [
+    "context",
+    "cord",
+])
 
 cc_library(
     name = "abi",
@@ -81,6 +84,15 @@ cc_library(
     deps = [
         # See call to tf_instantiate_platform_libraries() above.
         ":context_impl",
+    ],
+)
+
+cc_library(
+    name = "cord",
+    hdrs = ["cord.h"],
+    deps = [
+        ":cord_impl",
+        ":platform",
     ],
 )
 

@@ -17,6 +17,11 @@ TF_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
     },
+    "cord": {
+        "name": "cord_impl",
+        "hdrs": ["//tensorflow/core/platform:default/cord.h"],
+        "visibility": ["//visibility:private"],
+    },
 }
 
 def tf_instantiate_platform_libraries(names = []):
