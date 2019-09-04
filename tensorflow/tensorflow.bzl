@@ -1584,6 +1584,7 @@ def _py_wrap_cc_impl(ctx):
     args += [src.path]
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
     ctx.actions.run(
+        use_default_shell_env = True,
         executable = ctx.executable._swig,
         arguments = args,
         inputs = inputs.to_list(),
