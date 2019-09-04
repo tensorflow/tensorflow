@@ -217,6 +217,11 @@ Status ConvConstants::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno3xx()) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
+  if (definition_.precision != CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
