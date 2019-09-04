@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import pkgutil
+import re
 import numpy as np
 
 from absl import flags
@@ -31,7 +32,7 @@ tf.compat.v1.enable_v2_behavior()
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
 # Otherwise doctest tests aren't runnable at all.
-import doctest  # pylint: disable=g-import-not-at-top; import: after=absltest
+import doctest  # pylint: disable=g-import-not-at-top, g-bad-import-order
 
 FLAGS = flags.FLAGS
 
@@ -76,7 +77,26 @@ def filter_on_submodules(all_modules, submodule):
   return filtered_modules
 
 
-def load_tests(loader, tests, ignore):
+class TfTestCase(tf.test.TestCase):
+
+  def set_up(self, test):
+    self.setUp()
+
+  def tear_down(self, test):
+    self.tearDown()
+
+
+class CustomOutputChecker(doctest.OutputChecker):
+
+  def check_output(self, want, got, optionflags):
+    # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
+    # on each execution. Users may forget to use ellipsis while writing
+    # examples in docstrings, so replacing the id with `...` makes it safe.
+    want = re.sub(r'\bid=(\d+)\b', r'id=...', want)
+    return doctest.OutputChecker.check_output(self, want, got, optionflags)
+
+
+def load_tests(unused_loader, tests, unused_ignore):
   """Loads all the tests in the docstrings and runs them."""
 
   tf_modules = find_modules()
@@ -90,6 +110,7 @@ def load_tests(loader, tests, ignore):
     return tests
 
   for module in tf_modules:
+    testcase = TfTestCase()
     tests.addTests(
         doctest.DocTestSuite(
             module,
@@ -99,7 +120,11 @@ def load_tests(loader, tests, ignore):
                 'np': np,
                 'os': os
             },
-            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE)))
+            setUp=testcase.set_up,
+            tearDown=testcase.tear_down,
+            checker=CustomOutputChecker(),
+            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE),
+        ))
   return tests
 
 
