@@ -3532,6 +3532,49 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       self.assertAllClose(history.history[key], expected_val, 1e-3)
 
   @keras_parameterized.run_all_keras_modes
+  def test_add_metric_order(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, training=None, mask=None):
+        self.add_metric(
+            array_ops.ones([32]) * 2.0, name='two', aggregation='mean')
+        return inputs
+
+    class MyModel(keras.Model):
+
+      def __init__(self, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self._sampler = MyLayer(name='sampler')
+
+      def call(self, inputs, training=None, mask=None):
+        z = self._sampler(inputs)
+        self.add_metric(
+            array_ops.ones([32]) * 1.0, name='one', aggregation='mean')
+        self.add_metric(
+            array_ops.ones([32]) * 3.0, name='three', aggregation='mean')
+        return z
+
+    xdata = np.random.uniform(size=[32, 16]).astype(np.float32)
+    dataset_train = dataset_ops.Dataset.from_tensor_slices((xdata, xdata))
+    dataset_train = dataset_train.batch(32, drop_remainder=True)
+
+    model = MyModel()
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(dataset_train, epochs=3)
+    self.assertDictEqual(
+        history.history, {
+            'loss': [0.0, 0.0, 0.0],
+            'three': [3.0, 3.0, 3.0],
+            'two': [2.0, 2.0, 2.0],
+            'one': [1.0, 1.0, 1.0]
+        })
+
+  @keras_parameterized.run_all_keras_modes
   def test_model_with_nested_compiled_model(self):
 
     class LayerWithAddMetric(keras.layers.Layer):

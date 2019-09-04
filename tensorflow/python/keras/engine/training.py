@@ -414,6 +414,9 @@ class Model(network.Network):
   @property
   def metrics_names(self):
     """Returns the model's display labels for all outputs."""
+
+    # This property includes all output names including `loss` and per-output
+    # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
       # Add output loss metric names to the metric names list.
@@ -424,13 +427,8 @@ class Model(network.Network):
             if not e.should_skip_target()
         ])
 
-      # Add compile metrics/weighted metrics' names to the metric names list.
-      metrics_names.extend([m.name for m in self._compile_metric_functions])
-
-    # Add metric names from layers.
-    for layer in self.layers:
-      metrics_names += [m.name for m in layer._metrics]  # pylint: disable=protected-access
-    metrics_names += [m.name for m in self._metrics]
+    # Add all metric names.
+    metrics_names += [m.name for m in self.metrics]
     return metrics_names
 
   @property
