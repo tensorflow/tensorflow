@@ -282,7 +282,7 @@ Unlike LLVM IR, MLIR does not have first-class constant values. Therefore, all
 constants must be created as SSA values before being used in other operations.
 `llvm.mlir.constant` creates such values for scalars and vectors. It has a
 mandatory `value` attribute, which may be an integer, floating point attribute;
-splat, dense or sparse attribute containing integers or floats. The type of the
+dense or sparse attribute containing integers or floats. The type of the
 attribute is one the corresponding MLIR standard types. It may be omitted for
 `i64` and `f64` types that are implied. The operation produces a new SSA value
 of the specified LLVM IR dialect type. The type of that value _must_ correspond
@@ -300,8 +300,8 @@ Examples:
 // Floating point constant.
 %2 = llvm.mlir.constant(42.0 : f32) : !llvm.float
 
-// Splat vector constant,.
-%3 = llvm.mlir.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
+// Splat dense vector constant.
+%3 = llvm.mlir.constant(dense<1.0> : vector<4xf32>) : !llvm<"<4 x float>">
 ```
 
 #### `llvm.mlir.global`
