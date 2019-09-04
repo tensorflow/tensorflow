@@ -3,11 +3,17 @@
 // CHECK: @i32_global = internal global i32 42
 llvm.mlir.global @i32_global(42: i32) : !llvm.i32
 
-// CHECK: @i32_global_const = internal constant i53 52
-llvm.mlir.global constant @i32_global_const(52: i53) : !llvm.i53
+// CHECK: @i32_const = internal constant i53 52
+llvm.mlir.global constant @i32_const(52: i53) : !llvm.i53
+
+// CHECK: @int_global_array = internal global [3 x i32] [i32 62, i32 62, i32 62]
+llvm.mlir.global @int_global_array(dense<62> : vector<3xi32>) : !llvm<"[3 x i32]">
 
 // CHECK: @float_global = internal global float 0.000000e+00
 llvm.mlir.global @float_global(0.0: f32) : !llvm.float
+
+// CHECK: @float_global_array = internal global [1 x float] [float -5.000000e+00]
+llvm.mlir.global @float_global_array(dense<[-5.0]> : vector<1xf32>) : !llvm<"[1 x float]">
 
 // CHECK: @string_const = internal constant [6 x i8] c"foobar"
 llvm.mlir.global constant @string_const("foobar") : !llvm<"[6 x i8]">
