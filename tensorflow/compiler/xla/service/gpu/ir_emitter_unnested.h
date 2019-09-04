@@ -52,12 +52,6 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
-  // A function object to prepare for the code generation for a tiling kernel.
-  using KernelPrologueGenerator = std::function<void(llvm::Value* lane_id)>;
-
-  // A function object to finalize the code generation for a tiling kernel.
-  using KernelEpilogueGenerator = std::function<void(llvm::Value* lane_id)>;
-
   // A function object to generate code to process one element in a tile.
   //
   // hlo: the instruction for which the code is generated for.
@@ -211,11 +205,11 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  void EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
-                        llvm::Type* index_ty,
-                        TileElementGenerator tile_element_generator,
-                        KernelPrologueGenerator kernel_prologue_generator,
-                        KernelEpilogueGenerator kernel_epilogue_generator);
+  //
+  // Returns lane_id as an LLVM value.
+  llvm::Value* EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
+                                llvm::Type* index_ty,
+                                TileElementGenerator tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
