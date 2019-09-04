@@ -5,10 +5,11 @@ op {
 @compatibility(numpy)
 Equivalent to np.isfinite
 @end_compatibility
+  Example:
 
 ```python
-x = tf.constant([5.0, 4.8, 6.8, np.inf])
-tf.math.is_finite(x) ==> [True, True, True, False]
+x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
+tf.math.is_finite(x) ==> [True, True, True, False, False]
 ```
 END
 }
