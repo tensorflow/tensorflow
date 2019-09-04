@@ -671,6 +671,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 py_library(
