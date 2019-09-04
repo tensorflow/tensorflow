@@ -662,3 +662,42 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "compile_mlir_util",
+    srcs = ["utils/compile_mlir_util.cc"],
+    hdrs = ["utils/compile_mlir_util.h"],
+    copts = ["-std=c++14"],
+    deps = [
+        ":convert_type",
+        ":error_util",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:span",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "compile_mlir_util_test",
+    size = "small",
+    srcs = ["utils/compile_mlir_util_test.cc"],
+    deps = [
+        ":compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
