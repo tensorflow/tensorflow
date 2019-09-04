@@ -34,6 +34,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
@@ -107,6 +108,7 @@ def _is_namedtuple(instance, strict=False):
 
 # See the swig file (util.i) for documentation.
 _is_mapping = _pywrap_tensorflow.IsMapping
+_is_mapping_view = _pywrap_tensorflow.IsMappingView
 _is_attrs = _pywrap_tensorflow.IsAttrs
 _is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
 _is_type_spec = _pywrap_tensorflow.IsTypeSpec
@@ -131,7 +133,17 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in instance)
+    instance_type = type(instance)
+    if instance_type == _collections.defaultdict:
+      d = _collections.defaultdict(instance.default_factory)
+      for key in instance:
+        d[key] = result[key]
+      return d
+    else:
+      return instance_type((key, result[key]) for key in instance)
+  elif _is_mapping_view(instance):
+    # We can't directly construct mapping views, so we create a list instead
+    return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
@@ -1316,3 +1328,4 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
 
 _pywrap_tensorflow.RegisterType("Mapping", _collections_abc.Mapping)
 _pywrap_tensorflow.RegisterType("Sequence", _collections_abc.Sequence)
+_pywrap_tensorflow.RegisterType("MappingView", _collections_abc.MappingView)
