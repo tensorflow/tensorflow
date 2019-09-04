@@ -1067,6 +1067,9 @@ class LayerNormalization(Layer):
           in_dim = in_dim * dim_tensor
       
       squeezed_shape = [1, pre_dim, in_dim, 1]
+      # TODO: this fused operation requires reshaped inputs to be NCHW. The
+      # fused_batch_norm supports NCHW only on GPUs. We can lift this limitation
+      # when we have CPU implementation.
       data_format = 'NCHW'
 
       inputs = array_ops.reshape(inputs, squeezed_shape)
@@ -1074,6 +1077,10 @@ class LayerNormalization(Layer):
       def _set_const_tensor(val, dtype, shape):
         return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
 
+      # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
+      # we cannot pass them as the scale and offset parameters. Therefore, we
+      # create two constant tensors in correct shapes for fused_batch_norm and
+      # later contuct a separate calculation on the scale and offset.
       scale = _set_const_tensor(1.0, inputs.dtype, [pre_dim])
       offset = _set_const_tensor(0.0, inputs.dtype, [pre_dim])
 

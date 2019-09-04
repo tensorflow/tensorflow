@@ -549,16 +549,19 @@ def _run_fused_layernorm_correctness_test(layer, axis, dtype='float32'):
 
   np.testing.assert_allclose(out_ref, out, atol=1e-1)
 
+def _get_test_configs():
+  devices = ["/cpu:0"]
+  use_fused = [False]
+  if tf_test_util.is_gpu_available():
+    devices += ["/gpu:0", "/gpu:0"]
+    use_fused += [True, False]
+  return zip(devices, use_fused) 
+
 class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_basic_layernorm(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         testing_utils.layer_test(
             keras.layers.LayerNormalization,
@@ -586,12 +589,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_weights(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         layer = keras.layers.LayerNormalization(scale=False, center=False,
                                                 fused=fused)
@@ -606,12 +604,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_regularization(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         layer = keras.layers.LayerNormalization(
             gamma_regularizer='l1', beta_regularizer='l1', fused=fused)
@@ -626,12 +619,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_convnet_channel_last(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         model = keras.models.Sequential()
         norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3),
@@ -655,12 +643,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_correctness(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         _run_layernorm_correctness_test(
             normalization.LayerNormalization, dtype='float32', fused=fused)
@@ -676,12 +659,7 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_mixed_precision(self):
-    devices = ["/cpu:0"]
-    fused_vals = [False]
-    if tf_test_util.is_gpu_available():
-      devices.append("/gpu:0")
-      fused_vals.append(True)
-    for device, fused in zip(devices, fused_vals):
+    for device, fused in _get_test_configs():
       with ops.device(device):
         _run_layernorm_correctness_test(
             normalization.LayerNormalization, dtype='float16', fused=fused)
