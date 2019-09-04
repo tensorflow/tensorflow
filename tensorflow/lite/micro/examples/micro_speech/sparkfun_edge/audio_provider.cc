@@ -318,14 +318,25 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
     g_is_audio_initialized = true;
   }
 
-  // This is the 'zero' level of the microphone when no audio is present, and
+  // kAdcSampleDC is the 'zero' level of the microphone when no audio is present, and
   // should be recalibrated if the hardware configuration ever changes. It was
   // generated experimentally by averaging some samples captured on a board.
+  // Unfortunately the hardware 'zero' level is derived from VDD and not from a
+  // voltage reference source. As such the real 'zero' level is dependent
+  // on the power source voltage (battery, USB/serial adapter) and response to load
+  // changes. (High frequency from MCU, low from LEDs, ..)
+  // This could be derived from sampling VDD by the MCU or averaging (sliding)
+  // over audio samples - but does it matter as the filterbank seems to discard
+  // DC?
+#ifdef SPARCFUN_EDGE_V1_PROTO
   const int16_t kAdcSampleDC = 6003;
-
   // Temporary gain emulation to deal with too-quiet audio on prototype boards.
   const int16_t kAdcSampleGain = 10;
-
+#else
+   // (sample - kAdcSampleGain) * kAdcSampleGain should not overflow int16_t
+  const int16_t kAdcSampleDC =  1 << 13;  // 14bit ADC
+  const int16_t kAdcSampleGain = 4;
+#endif
   // This should only be called when the main thread notices that the latest
   // audio sample data timestamp has changed, so that there's new data in the
   // capture ring buffer. The ring buffer will eventually wrap around and
