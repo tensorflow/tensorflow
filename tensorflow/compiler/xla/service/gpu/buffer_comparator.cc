@@ -619,13 +619,11 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
-      constexpr ComparisonType kMaxFp16Value =
-          std::is_same<ElementType, Eigen::half>::value ? 65505. : 0;
+      constexpr ComparisonType kMaxFp16Value = 65505.;
       if (std::isnan(a)) {
         return a;
       }
-      return std::max(static_cast<ComparisonType>(-kMaxFp16Value),
-                      static_cast<ComparisonType>(std::min(a, kMaxFp16Value)));
+      return std::max(-kMaxFp16Value, std::min(a, kMaxFp16Value));
     }
     return a;
   };
