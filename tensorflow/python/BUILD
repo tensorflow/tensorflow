@@ -385,11 +385,6 @@ tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["util/util_wrapper.cc"],
     hdrs = ["util/util.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "_pywrap_utils",
     deps = [
         "//third_party/python_runtime:headers",
@@ -400,11 +395,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_stat_summarizer",
     srcs = ["util/stat_summarizer_wrapper.cc"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "_pywrap_stat_summarizer",
     deps = [
         "//tensorflow/core:framework",
@@ -419,11 +409,6 @@ pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["util/port_wrapper.cc"],
     hdrs = ["//tensorflow/core:util_port_hdrs"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "_pywrap_util_port",
     deps = [
         "//tensorflow/core:util_port",
@@ -4663,8 +4648,6 @@ py_library(
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
-    copts = ["-fexceptions"],
-    features = ["-use_header_modules"],
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [

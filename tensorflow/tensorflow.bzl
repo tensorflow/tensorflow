@@ -2391,7 +2391,7 @@ def pybind_extension(
         features = [],
         srcs_version = "PY2AND3",
         data = [],
-        copts = None,
+        copts = [],
         linkopts = [],
         deps = [],
         visibility = None,
@@ -2437,7 +2437,7 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts,
+        copts = copts + ["-fexceptions"],
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
@@ -2452,7 +2452,7 @@ def pybind_extension(
             exported_symbols_file,
             version_script_file,
         ],
-        features = features,
+        features = features + ["-use_header_modules"],
         linkshared = 1,
         testonly = testonly,
         licenses = licenses,
@@ -2493,9 +2493,9 @@ def tf_python_pybind_extension(
         name,
         srcs,
         module_name,
-        hdrs = [],
         features = [],
-        copts = None,
+        copts = [],
+        hdrs = [],
         deps = []):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
@@ -2506,9 +2506,9 @@ def tf_python_pybind_extension(
         name,
         srcs + tf_binary_additional_srcs(),
         module_name,
-        hdrs = hdrs,
         features = features,
         copts = copts,
+        hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps(),
     )
 
