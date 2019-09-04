@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -417,7 +416,7 @@ class EMBenchmarkHelper {
       attr.set_on_host(on_host);
       attrs->push_back(attr);
     }
-    params->output_attr_array = gtl::vector_as_array(attrs);
+    params->output_attr_array = attrs->data();
     params->forward_from_array = {};
   }
 

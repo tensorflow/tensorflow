@@ -123,7 +123,13 @@ if tf.__version__.startswith('1'):
       'tf.contrib.util': ['loader'],
   }
 else:
-  PRIVATE_MAP = {'tf': ['python', 'core', 'compiler', 'examples', 'tools']}
+  PRIVATE_MAP = {
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
+  }
   DO_NOT_DESCEND_MAP = {}
   tf.__doc__ = """
     ## TensorFlow 2.0 RC
@@ -234,11 +240,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
-  base_dir = path.dirname(tf.__file__)
+  base_dir = path.normpath(path.join(tf.__file__, "../.."))
 
   base_dirs = (
-      base_dir,
-      # External packages base directories,
+      path.join(base_dir, "tensorflow_core"),
+      # External packages base directories
       path.dirname(tensorboard.__file__),
       path.dirname(tensorflow_estimator.__file__),
   )

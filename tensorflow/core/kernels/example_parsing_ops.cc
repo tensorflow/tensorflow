@@ -132,10 +132,10 @@ class ParseExampleOp : public OpKernel {
       config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
     }
 
-    auto serialized_t = serialized->flat<string>();
-    auto names_t = names->flat<string>();
-    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
-    gtl::ArraySlice<string> names_slice(names_t.data(), names_t.size());
+    auto serialized_t = serialized->flat<tstring>();
+    auto names_t = names->flat<tstring>();
+    gtl::ArraySlice<tstring> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<tstring> names_slice(names_t.data(), names_t.size());
 
     OP_REQUIRES_OK(
         ctx,
@@ -352,11 +352,11 @@ class ParseSequenceExampleOp : public OpKernel {
            attrs_.feature_list_sparse_types[d]});
     }
 
-    auto serialized_t = serialized->flat<string>();
-    auto debug_name_t = debug_name->flat<string>();
-    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
-    gtl::ArraySlice<string> names_slice(debug_name_t.data(),
-                                        debug_name_t.size());
+    auto serialized_t = serialized->flat<tstring>();
+    auto debug_name_t = debug_name->flat<tstring>();
+    gtl::ArraySlice<tstring> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<tstring> names_slice(debug_name_t.data(),
+                                         debug_name_t.size());
 
     OP_REQUIRES_OK(
         ctx,
@@ -853,10 +853,12 @@ class DecodeJSONExampleOp : public OpKernel {
                                   &binary_examples));
 
     for (int i = 0; i < json_examples->NumElements(); ++i) {
-      const string& json_example = json_examples->flat<string>()(i);
-      auto status = protobuf::util::JsonToBinaryString(
-          resolver_.get(), "type.googleapis.com/tensorflow.Example",
-          json_example, &binary_examples->flat<string>()(i));
+      const tstring& json_example = json_examples->flat<tstring>()(i);
+      protobuf::io::ArrayInputStream in(json_example.data(),
+                                        json_example.size());
+      TStringOutputStream out(&binary_examples->flat<tstring>()(i));
+      auto status = protobuf::util::JsonToBinaryStream(
+          resolver_.get(), "type.googleapis.com/tensorflow.Example", &in, &out);
       OP_REQUIRES(ctx, status.ok(),
                   errors::InvalidArgument("Error while parsing JSON: ",
                                           string(status.error_message())));

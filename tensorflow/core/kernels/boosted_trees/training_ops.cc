@@ -406,7 +406,7 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
           left_node_contribs_list[feature_idx].matrix<float>();
       const auto& right_node_contribs =
           right_node_contribs_list[feature_idx].matrix<float>();
-      const auto& split_types = split_types_list[feature_idx].vec<string>();
+      const auto& split_types = split_types_list[feature_idx].vec<tstring>();
 
       for (size_t candidate_idx = 0; candidate_idx < node_ids.size();
            ++candidate_idx) {

@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import string
 
+from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
@@ -2118,7 +2120,6 @@ def _convert_strided_slice_grad(pfor_input):
 
 # math_ops
 
-
 @RegisterPFor("MatMul")
 def _convert_matmul(pfor_input):
   # TODO(agarwal): Check if tiling is faster than two transposes.
@@ -2690,6 +2691,44 @@ def _convert_multinomial(pfor_input):
 
 
 # linalg_ops
+
+# TODO(jmenick) - the same logic applies to other einsums. Generalize this
+# in a future CL.
+@RegisterPFor("XlaEinsum")
+def _convert_einsum(pfor_input):
+  first_input, first_input_stacked, _ = pfor_input.input(0)
+  second_input, second_input_stacked, _ = pfor_input.input(1)
+
+  # Parse the einsum equation.
+  equation = pfor_input.get_attr("equation").decode("utf-8")
+  input_expr, output_expr = equation.split("->")
+  input_a_expr, input_b_expr = input_expr.split(",")
+
+  # pick a placeholder symbol to use for the new axis
+  chosen_symbol = None
+  for s in string.ascii_letters:
+    if s in equation:
+      continue
+    else:
+      chosen_symbol = s
+      break
+
+  if chosen_symbol is None:
+    raise ValueError("Could not figure out what symbol to use for new axis.")
+
+  assert first_input_stacked or second_input_stacked
+  if first_input_stacked:
+    input_a_expr = "{}{}".format(chosen_symbol, input_a_expr)
+  if second_input_stacked:
+    input_b_expr = "{}{}".format(chosen_symbol, input_b_expr)
+  output_expr = "{}{}".format(chosen_symbol, output_expr)
+
+  new_equation = "{},{}->{}".format(input_a_expr, input_b_expr, output_expr)
+  result = xla.einsum(
+      equation=new_equation,
+      a=first_input,
+      b=second_input)
+  return wrap(result, True)
 
 
 @RegisterPFor("Cholesky")

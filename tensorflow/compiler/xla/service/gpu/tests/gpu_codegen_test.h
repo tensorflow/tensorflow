@@ -34,21 +34,6 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
   // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
   void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
                            absl::string_view pattern);
-
-  // Compiles the given `hlo` with optimizations, and verifies that optimized
-  // HLO matches the given FileCheck pattern.
-  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
-                         bool print_operand_shape = false);
-
-  // LikeMatchOptimizedHlo, but checks operand shapes as well.
-  void MatchOptimizedHloWithShapes(absl::string_view hlo,
-                                   absl::string_view pattern) {
-    MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
-  }
-
-  // Compiles and returns module with optimizations from a given HLO.
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      absl::string_view hlo);
 };
 
 }  // namespace gpu

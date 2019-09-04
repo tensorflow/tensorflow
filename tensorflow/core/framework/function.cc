@@ -921,11 +921,6 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(strings::StrCat(
         "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
   }
-  for (const auto& iter : options.input_tensor_shapes) {
-    entries.push_back(
-        strings::StrCat("_input_tensor_shape", iter.first, "=",
-                        absl::CEscape(iter.second.DebugString())));
-  }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
     entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
                                       DataTypeString(iter.second.dtype)));

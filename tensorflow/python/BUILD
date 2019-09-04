@@ -26,7 +26,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_gdr_deps", "tf_additional_mpi_deps", "tf_additional_plugin_deps", "tf_additional_verbs_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -395,6 +395,24 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_stat_summarizer",
+    srcs = ["util/stat_summarizer_wrapper.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    module_name = "_pywrap_stat_summarizer",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/memory",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "cpp_python_util",
     srcs = ["util/util.cc"],
@@ -703,6 +721,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_stat_summarizer",
         ":_pywrap_utils",
         ":common_shapes",
         ":composite_tensor",
@@ -812,7 +831,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":util",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -2320,7 +2339,6 @@ tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
-        "//tensorflow/contrib/tpu:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
@@ -4210,7 +4228,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -4278,7 +4295,6 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -5000,7 +5016,6 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/scoped_annotation.i",
-        "util/stat_summarizer.i",
         "util/tfprof.i",
         "util/traceme.i",
         "util/transform_graph.i",
@@ -5056,10 +5071,7 @@ tf_py_wrap_cc(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
     ] + (tf_additional_lib_deps() +
-         tf_additional_plugin_deps() +
-         tf_additional_verbs_deps() +
-         tf_additional_mpi_deps() +
-         tf_additional_gdr_deps()) + if_ngraph([
+         tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
     ]),
 )
@@ -5074,8 +5086,8 @@ genrule(
     name = "pywrap_tensorflow_filtered_def_file",
     srcs = [
         "//tensorflow:tensorflow_def_file",
+        ":pybind_symbol_target_libs_file",
         "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ":cpp_python_util",
     ],
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
@@ -5084,12 +5096,31 @@ genrule(
               --input $(location //tensorflow:tensorflow_def_file) \\
               --output $@ \\
               --target _pywrap_tensorflow_internal.pyd \\
-              --lib_paths $(execpath :cpp_python_util) \\
-              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind)
+              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind) \\
+              --lib_paths $(location :pybind_symbol_target_libs_file)
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
     tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
+)
+
+# Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
+genrule(
+    name = "pybind_symbol_target_libs_file",
+    srcs = [
+        ":cpp_python_util",  # util
+        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+    ],
+    outs = ["pybind_symbol_target_libs_file.txt"],
+    cmd = select({
+        "//tensorflow:windows": """
+            for SRC in $(SRCS); do
+              echo $$SRC | sed 's/third_party\\///g' >> $@
+            done
+          """,
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -5691,7 +5722,6 @@ cuda_py_tests(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

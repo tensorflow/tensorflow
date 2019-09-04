@@ -5,7 +5,6 @@
 /tenosrflow/core/debug @caisq
 /tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mrry
-/tensorflow/core/platform/s3 @yongtang
 /tensorflow/python/autograph/ @mdanatg @kkimdev
 /tensorflow/python/debug @caisq
 /tensorflow/python/eager @jaingaurav @alextp
@@ -37,9 +36,7 @@
 /tensorflow/contrib/hadoop @yongtang
 /tensorflow/contrib/hvx/ @satok16
 /tensorflow/contrib/integrate/ @shoyer
-/tensorflow/contrib/kafka @yongtang
 /tensorflow/contrib/kernel_methods/ @petrosmol
-/tensorflow/contrib/kinesis @yongtang
 /tensorflow/contrib/ios_examples/ @petewarden
 /tensorflow/contrib/labeled_tensor/ @shoyer
 /tensorflow/contrib/layers/ @fchollet @martinwicke

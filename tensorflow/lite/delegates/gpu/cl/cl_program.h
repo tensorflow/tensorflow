@@ -35,7 +35,7 @@ namespace cl {
 //   Some our algorithms actually rely on exact size, for example on full
 //   SIMD size, so we need this define.
 //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD size.
-enum class CompilerOptions { ADRENO_FULL_SIMD_LINE };
+enum class CompilerOptions { ADRENO_FULL_SIMD_LINE, POWERVR_FP16 };
 
 std::string CompilerOptionsToString(
     const CLDevice& device,

@@ -262,7 +262,8 @@ class TensorLikeDataAdapter(DataAdapter):
     # 4. optimized permutation batching
     # 5. disabled static optimizations
 
-    indices_dataset = dataset_ops.DatasetV2.range(1).repeat()
+    indices_dataset = dataset_ops.DatasetV2.range(1).repeat(epochs)
+
     def permutation(_):
       # It turns out to be more performant to make a new set of indices rather
       # than reusing the same range Tensor. (presumably because of buffer

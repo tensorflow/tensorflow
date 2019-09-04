@@ -104,9 +104,15 @@ tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
 tensorflow/lite/experimental/ruy/context.cc \
 tensorflow/lite/experimental/ruy/detect_arm.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx2.cc \
+tensorflow/lite/experimental/ruy/have_built_path_for_avx512.cc \
 tensorflow/lite/experimental/ruy/kernel_arm32.cc \
 tensorflow/lite/experimental/ruy/kernel_arm64.cc \
+tensorflow/lite/experimental/ruy/kernel_avx2.cc \
+tensorflow/lite/experimental/ruy/kernel_avx512.cc \
 tensorflow/lite/experimental/ruy/pack_arm.cc \
+tensorflow/lite/experimental/ruy/pack_avx2.cc \
+tensorflow/lite/experimental/ruy/pack_avx512.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
 tensorflow/lite/experimental/ruy/trace.cc \
@@ -123,6 +129,9 @@ $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
+CORE_CC_ALL_SRCS += \
+	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -132,7 +141,7 @@ $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true

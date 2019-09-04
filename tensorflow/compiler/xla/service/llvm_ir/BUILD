@@ -141,29 +141,11 @@ cc_library(
 )
 
 cc_library(
-    name = "kernel_tiling",
-    srcs = ["kernel_tiling.cc"],
-    hdrs = ["kernel_tiling.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/gpu:target_util",
-        "//tensorflow/core:lib",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
     name = "fused_ir_emitter",
     srcs = ["fused_ir_emitter.cc"],
     hdrs = ["fused_ir_emitter.h"],
     deps = [
         ":ir_array",
-        ":kernel_tiling",
         ":llvm_util",
         ":loop_emitter",
         ":tuple_ops",
@@ -174,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

@@ -23,9 +23,10 @@
 
 namespace mlir {
 class FuncOp;
-class FunctionPassBase;
 struct LogicalResult;
 class MLIRContext;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 class RewritePattern;
 
 // Owning list of rewriting patterns.
@@ -38,7 +39,7 @@ void populateLoopToStdConversionPatterns(OwningRewritePatternList &patterns,
                                          MLIRContext *ctx);
 
 /// Creates a pass to convert loop.for, loop.if and loop.terminator ops to CFG.
-FunctionPassBase *createConvertToCFGPass();
+std::unique_ptr<FunctionPassBase> createLowerToCFGPass();
 
 } // namespace mlir
 

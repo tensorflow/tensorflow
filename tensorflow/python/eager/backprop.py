@@ -24,8 +24,8 @@ import sys
 
 import six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import imperative_grad
@@ -142,11 +142,16 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
 pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
+def _must_record_gradient():
+  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+
+
 def _record_gradient(op_name, inputs, attrs, results, name):
   return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
                                                  results, name)
 
 
+execute.must_record_gradient = _must_record_gradient
 execute.record_gradient = _record_gradient
 
 

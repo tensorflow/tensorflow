@@ -195,8 +195,7 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          if submodule_index > 0:
-            import_from += '.' + '.'.join(module_split[:submodule_index])
+          import_from = '.'
           self.add_import(
               symbol=None,
               source_module_name=import_from,
@@ -428,6 +427,18 @@ def get_api_init_text(packages,
             module_code_builder, attr, module.__name__, module_contents_name,
             api_name, compat_api_version,
             _COMPAT_MODULE_TEMPLATE % compat_api_version)
+
+  # Include compat.vN-1 under compat.vN.
+  # For e.g. import compat.v1 under compat.v2.compat
+  for version in compat_api_versions:
+    if version - 1 in compat_api_versions:
+      prev_version = 'v%d' % (version - 1)
+      module_code_builder.add_import(
+          symbol=None,
+          source_module_name='%s.compat' % output_package,
+          source_name=prev_version,
+          dest_module_name='compat.v%d.compat' % version,
+          dest_name=prev_version)
 
   return module_code_builder.build()
 

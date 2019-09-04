@@ -8,9 +8,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = [
-        "//tensorflow/compiler/xla:friends",
-    ],
+    includes = ["//tensorflow/compiler/xla:friends"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -38,7 +36,10 @@ cc_library(
     hdrs = ["mlir_compiler.h"],
     deps = [
         ":failover_compiler",
+        ":kernel_lowering",
         ":lhlo_dialect_emitter",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
@@ -51,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "@local_config_mlir//:GPUDialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
     ],
@@ -58,10 +60,26 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dialect_emitter",
+    srcs = ["hlo_dialect_emitter.cc"],
+    hdrs = ["hlo_dialect_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/types:span",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+    ],
+)
+
+cc_library(
     name = "lhlo_dialect_emitter",
     srcs = ["lhlo_dialect_emitter.cc"],
     hdrs = ["lhlo_dialect_emitter.h"],
     deps = [
+        ":hlo_dialect_emitter",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -75,5 +93,45 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:LLVMDialect",
         "@local_config_mlir//:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "kernel_lowering",
+    srcs = ["kernel_lowering.cc"],
+    hdrs = ["kernel_lowering.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/mlir_gpu/transforms:legalize_to_affine",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:GPUDialect",
+        "@local_config_mlir//:GPUToNVVMTransforms",
+        "@local_config_mlir//:GPUTransforms",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:LLVMDialect",
+        "@local_config_mlir//:LLVMTransforms",
+        "@local_config_mlir//:LoopsToGPUPass",
+        "@local_config_mlir//:NVVMDialect",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Transforms",
+    ],
+)
+
+cc_library(
+    name = "mlir_irgen_test_base",
+    testonly = True,
+    srcs = ["mlir_irgen_test_base.cc"],
+    hdrs = ["mlir_irgen_test_base.h"],
+    deps = [
+        ":failover_compiler",
+        ":mlir_compiler",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:codegen_test_base",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/core:test",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
     ],
 )

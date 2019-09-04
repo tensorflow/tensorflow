@@ -48,7 +48,8 @@ template <typename T, int ElementCount>
 class SampleCopier {
  public:
   inline __device__ void operator()(
-      T* buf, const tensorflow::random::Array<T, ElementCount>& array) const {
+      T* __restrict__ buf,
+      const tensorflow::random::Array<T, ElementCount>& array) const {
 #pragma unroll
     for (int i = 0; i < ElementCount; i++) {
       buf[i] = array[i];
@@ -63,7 +64,8 @@ class SampleCopier<float, 4> {
   // which is true for tensor data, and all offsets that are a multiple of the
   // vector size (because the vectors are 128 bits long).
   inline __device__ void operator()(
-      float* buf, const tensorflow::random::Array<float, 4>& array) const {
+      float* __restrict__ buf,
+      const tensorflow::random::Array<float, 4>& array) const {
     // NOTE(ringwalt): It's not safe to cast &array[0] to a float4, because they
     // have 32-bit alignment vs 128-bit alignment. There seems to be no
     // performance loss when assigning each element to a vector.
@@ -84,7 +86,8 @@ class SampleCopier<int32, 4> {
   // which is true for tensor data, and all offsets that are a multiple of the
   // vector size (because the vectors are 128 bits long).
   inline __device__ void operator()(
-      int32* buf, const tensorflow::random::Array<int32, 4>& array) const {
+      int32* __restrict__ buf,
+      const tensorflow::random::Array<int32, 4>& array) const {
     int4 vec;
     vec.x = array[0];
     vec.y = array[1];
@@ -102,7 +105,8 @@ class SampleCopier<double, 2> {
   // which is true for tensor data, and all offsets that are a multiple of the
   // vector size (because the vectors are 128 bits long).
   inline __device__ void operator()(
-      double* buf, const tensorflow::random::Array<double, 2>& array) const {
+      double* __restrict__ buf,
+      const tensorflow::random::Array<double, 2>& array) const {
     double2 vec;
     vec.x = array[0];
     vec.y = array[1];
@@ -118,7 +122,8 @@ class SampleCopier<int64, 2> {
   // which is true for tensor data, and all offsets that are a multiple of the
   // vector size (because the vectors are 128 bits long).
   inline __device__ void operator()(
-      int64* buf, const tensorflow::random::Array<int64, 2>& array) const {
+      int64* __restrict__ buf,
+      const tensorflow::random::Array<int64, 2>& array) const {
     longlong2 vec;
     vec.x = array[0];
     vec.y = array[1];

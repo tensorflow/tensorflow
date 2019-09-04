@@ -481,7 +481,9 @@ class DistributedDataset(_IterableInput):
     # pipeline and only receive its own shard of the dataset.
     if split_batch_by:
       try:
-        dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        with ops.colocate_with(dataset._variant_tensor):
+          dataset = distribute._RebatchDataset(dataset, split_batch_by)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
           six.reraise(
@@ -504,19 +506,18 @@ class DistributedDataset(_IterableInput):
     if input_context:
       # Between-graph where we rely on the input_context for sharding
       assert input_workers.num_workers == 1
-      dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
-          dataset, input_context.num_input_pipelines,
-          input_context.input_pipeline_id)
+      dataset = input_ops.auto_shard_dataset(dataset,
+                                             input_context.num_input_pipelines,
+                                             input_context.input_pipeline_id)
       self._cloned_datasets.append(dataset)
     else:
+      replicated_ds = distribute.replicate(dataset,
+                                           input_workers.worker_devices)
       for i, worker in enumerate(input_workers.worker_devices):
         with ops.device(worker):
-          cloned_dataset = dataset
-          if not context.executing_eagerly():
-            cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
-            cloned_dataset = cloned_dataset.with_options(dataset.options())
-          # TODO(b/129506833): Figure out between graph cases
-          cloned_dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
+          cloned_dataset = replicated_ds[worker]
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
+          cloned_dataset = input_ops.auto_shard_dataset(
               cloned_dataset, len(input_workers.worker_devices), i)
           self._cloned_datasets.append(cloned_dataset)
 

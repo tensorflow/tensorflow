@@ -30,6 +30,51 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
+// TODO(kreeger): Move to common code!
+inline void SignedSymmetricQuantizeFloats(const float* values, const int size,
+                                          float* min_value, float* max_value,
+                                          int8_t* quantized_values,
+                                          float* scaling_factor) {
+  // First, find min/max in values
+  *min_value = values[0];
+  *max_value = values[0];
+  for (int i = 1; i < size; ++i) {
+    if (values[i] < *min_value) {
+      *min_value = values[i];
+    }
+    if (values[i] > *max_value) {
+      *max_value = values[i];
+    }
+  }
+  const float range = fmaxf(fabsf(*min_value), fabsf(*max_value));
+  if (range == 0.0f) {
+    for (int i = 0; i < size; ++i) {
+      quantized_values[i] = 0;
+    }
+    *scaling_factor = 1;
+    return;
+  }
+
+  const int kScale = 127;
+  *scaling_factor = range / kScale;
+  const float scaling_factor_inv = kScale / range;
+  for (int i = 0; i < size; ++i) {
+    const int32_t quantized_value =
+        static_cast<int32_t>(roundf(values[i] * scaling_factor_inv));
+    // Clamp: just in case some odd numeric offset.
+    quantized_values[i] = fminf(kScale, fmaxf(-kScale, quantized_value));
+  }
+}
+
+inline void SymmetricQuantizeFloats(const float* values, const int size,
+                                    float* min_value, float* max_value,
+                                    uint8_t* quantized_values,
+                                    float* scaling_factor) {
+  SignedSymmetricQuantizeFloats(values, size, min_value, max_value,
+                                reinterpret_cast<int8_t*>(quantized_values),
+                                scaling_factor);
+}
+
 // How many elements are in the array with this shape.
 inline int ElementCount(const TfLiteIntArray& dims) {
   int result = 1;
@@ -133,6 +178,8 @@ inline TfLiteIntArray* IntArrayFromInts(const int* int_array) {
       reinterpret_cast<const TfLiteIntArray*>(int_array));
 }
 
+// TODO(kreeger): Don't use this anymore in our tests. Optimized compiler
+// settings can play with pointer placement on the stack (b/140130236).
 inline TfLiteIntArray* IntArrayFromInitializer(
     std::initializer_list<int> int_initializer) {
   return IntArrayFromInts(int_initializer.begin());
@@ -239,6 +286,46 @@ inline TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
                                           const char* name, float min,
                                           float max, bool is_variable = false) {
   return CreateQuantizedTensor(data.begin(), dims, name, min, max, is_variable);
+}
+
+inline TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
+                                          TfLiteIntArray* dims,
+                                          const char* name,
+                                          bool is_variable = false) {
+  TfLiteTensor result;
+  float min, max;
+  SymmetricQuantizeFloats(data, ElementCount(*dims), &min, &max, quantized_data,
+                          &result.params.scale);
+  result.data.uint8 = quantized_data;
+  result.type = kTfLiteUInt8;
+  result.dims = dims;
+  result.params.zero_point = 128;
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(uint8_t);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = is_variable;
+  return result;
+}
+
+inline TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
+                                          TfLiteIntArray* dims,
+                                          const char* name,
+                                          bool is_variable = false) {
+  TfLiteTensor result;
+  float min, max;
+  SignedSymmetricQuantizeFloats(data, ElementCount(*dims), &min, &max,
+                                quantized_data, &result.params.scale);
+  result.data.int8 = quantized_data;
+  result.type = kTfLiteInt8;
+  result.dims = dims;
+  result.params.zero_point = 0;
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(int8_t);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = is_variable;
+  return result;
 }
 
 inline TfLiteTensor CreateQuantized32Tensor(const int32_t* data,

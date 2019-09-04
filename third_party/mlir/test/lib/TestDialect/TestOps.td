@@ -50,10 +50,19 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
-def I32TensorRank0Or1Op : TEST_Op<"i32_tensor_rank_0_or_1"> {
+def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   let arguments = (ins
-    Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0, 1]>]>,
-         "tensor<i32> or tensor<?xi32>">:$arg0
+    0DTensorOf<[F32]>:$arg0,
+    1DTensorOf<[F32]>:$arg1,
+    2DTensorOf<[I16]>:$arg2,
+    3DTensorOf<[I16]>:$arg3,
+    4DTensorOf<[I16]>:$arg4
+  );
+}
+
+def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
+  let arguments = (ins
+    TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
 }
 
@@ -109,8 +118,9 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let printer = [{ *p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
-    Type stringType = OpaqueType::get(Identifier::get("foo", result->context),
-                                      "string", result->context);
+    Type stringType = OpaqueType::get(Identifier::get("foo",
+                                      result->getContext()), "string",
+                                      result->getContext());
     return parser->parseAttribute(attr, stringType, "attr", result->attributes);
   }];
 }
@@ -152,6 +162,10 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
 // Test Regions
 //===----------------------------------------------------------------------===//
 
+def OneRegionOp : TEST_Op<"one_region_op", []> {
+  let regions = (region AnyRegion);
+}
+
 def TwoRegionOp : TEST_Op<"two_region_op", []> {
   let regions = (region AnyRegion, AnyRegion);
 }
@@ -164,8 +178,19 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 // Test Traits
 //===----------------------------------------------------------------------===//
 
+def SameOperandElementTypeOp : TEST_Op<"same_operand_type",
+    [SameOperandsElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
 def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
     [SameOperandsAndResultElementType]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
+def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
   let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
   let results = (outs AnyVectorOrTensor:$res);
 }
@@ -338,9 +363,23 @@ def : Pat<(OpAllAttrConstraint1
           (OpAllAttrConstraint2 $attr)>;
 
 // Op for testing RewritePattern removing op with inner ops.
-def TestOpWithRegion : TEST_Op<"op_with_region"> {
+def TestOpWithRegionPattern : TEST_Op<"op_with_region_pattern"> {
   let regions = (region SizedRegion<1>:$region);
   let hasCanonicalizer = 1;
+}
+
+// Op for testing trivial removal via folding of op with inner ops and no uses.
+def TestOpWithRegionFoldNoSideEffect : TEST_Op<
+    "op_with_region_fold_no_side_effect", [NoSideEffect]> {
+  let regions = (region SizedRegion<1>:$region);
+}
+
+// Op for testing folding of outer op with inner ops.
+def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
+  let arguments = (ins I32:$operand);
+  let results = (outs I32:$result);
+  let regions = (region SizedRegion<1>:$region);
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

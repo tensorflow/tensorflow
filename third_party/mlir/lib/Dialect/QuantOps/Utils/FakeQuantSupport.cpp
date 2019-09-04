@@ -71,10 +71,12 @@ mlir::quant::fakeQuantAttrsToType(Location loc, unsigned numBits, double rmin,
             nullptr);
   }
 
-  // Special case where min/max is a point. Must be 0.
-  if (rmin == rmax) {
+  // Special case where min/max is close enough. The tensor contents are all
+  // 0.0s, so the scale is set to 1.0 and the tensor can be quantized to zero
+  // points and dequantized to 0.0.
+  if (std::fabs(rmax - rmin) < std::numeric_limits<double>::epsilon()) {
     return UniformQuantizedType::getChecked(flags, storageType, expressedType,
-                                            0.0, 0, qmin, qmax, loc);
+                                            1.0, qmin, qmin, qmax, loc);
   }
 
   // Determine the scale.

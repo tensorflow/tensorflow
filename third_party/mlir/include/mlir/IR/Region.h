@@ -124,9 +124,27 @@ public:
   /// they are to be deleted.
   void dropAllReferences();
 
-  /// Walk the operations in this block in postorder, calling the callback for
-  /// each operation.
-  void walk(llvm::function_ref<void(Operation *)> callback);
+  /// Walk the operations in this region in postorder, calling the callback for
+  /// each operation. This method is invoked for void-returning callbacks.
+  /// See Operation::walk for more details.
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  typename std::enable_if<std::is_same<RetT, void>::value, RetT>::type
+  walk(FnT &&callback) {
+    for (auto &block : *this)
+      block.walk(callback);
+  }
+
+  /// Walk the operations in this region in postorder, calling the callback for
+  /// each operation. This method is invoked for interruptible callbacks.
+  /// See Operation::walk for more details.
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  typename std::enable_if<std::is_same<RetT, WalkResult>::value, RetT>::type
+  walk(FnT &&callback) {
+    for (auto &block : *this)
+      if (block.walk(callback).wasInterrupted())
+        return WalkResult::interrupt();
+    return WalkResult::advance();
+  }
 
   /// Displays the CFG in a window. This is for use from the debugger and
   /// depends on Graphviz to generate the graph.

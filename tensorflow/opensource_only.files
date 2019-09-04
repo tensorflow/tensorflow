@@ -4,8 +4,9 @@ tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
-tensorflow/contrib/mpi/BUILD
 tensorflow/python/autograph/core/config.py
+tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
+tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
@@ -92,8 +93,6 @@ tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/icu/udata.patch
 tensorflow/third_party/jsoncpp.BUILD
-tensorflow/third_party/kafka/BUILD
-tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/llvm/BUILD
@@ -109,8 +108,6 @@ tensorflow/third_party/mkl/mkl.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/mpi/.gitignore
-tensorflow/third_party/mpi/BUILD
-tensorflow/third_party/mpi_collectives/BUILD
 tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/nccl/LICENSE

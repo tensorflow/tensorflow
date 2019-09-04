@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <memory>
 #include <string>
@@ -41,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
-#endif
 
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
@@ -76,14 +74,9 @@ namespace gpu {
 // destroyed.
 
 /* static */ bool NcclAllReduceThunk::NcclIsEnabled() {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return true;
-#else
-  return false;
-#endif
+  return true;  // Skylark selects this source file if NCCL is enabled.
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 
 using tensorflow::BlockingCounter;
@@ -740,36 +733,6 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 NcclAllReduceThunk::~NcclAllReduceThunk() {}
-
-#else
-
-Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-}
-
-NcclAllReduceThunk::~NcclAllReduceThunk() = default;
-
-/*static*/ absl::flat_hash_set<int>
-NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
-  return {};
-}
-
-struct NcclAllReduceThunk::AuxData {};
-
-NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
-      replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace gpu
 }  // namespace xla

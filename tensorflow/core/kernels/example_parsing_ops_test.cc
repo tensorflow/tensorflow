@@ -124,7 +124,7 @@ struct ExampleStore {
         Features* features = example.mutable_features();
         (*features->mutable_feature())[k_str] = f;
       }
-      CHECK(example.SerializeToString(&string_t(b)));
+      CHECK(SerializeToTString(example, &string_t(b)));
     }
     (*examples)[std::make_tuple(batch_size, num_keys, feature_size)] =
         record_string;

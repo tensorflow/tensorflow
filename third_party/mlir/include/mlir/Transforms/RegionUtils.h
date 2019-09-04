@@ -45,6 +45,11 @@ void replaceAllUsesInRegionWith(Value *orig, Value *replacement,
 void getUsedValuesDefinedAbove(Region &region, Region &limit,
                                llvm::SetVector<Value *> &values);
 
+/// Fill `values` with a list of values used within any of the regions provided
+/// but defined in one of the ancestors.
+void getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+                               llvm::SetVector<Value *> &values);
+
 } // namespace mlir
 
 #endif // MLIR_TRANSFORMS_REGIONUTILS_H_

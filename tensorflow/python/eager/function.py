@@ -29,11 +29,12 @@ import weakref
 
 import numpy as np
 import six
+from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
@@ -77,48 +78,28 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
-class CacheKey(
-    collections.namedtuple("CacheKey", [
-        "input_signature", "parent_graph", "device_functions",
-        "colocation_stack", "in_cross_replica_context"
-    ])):
-  """Named tuple used to key the function cache."""
+def _make_input_signature_hashable(elem):
+  """Ensure elem is hashable even if a Variable is nested in it."""
+  # TODO(slebedev): consider using nest.
+  if isinstance(elem, tuple):
+    return tuple(map(_make_input_signature_hashable, elem))
 
-  def __hash__(self):
-    """Provide a hash even if the input signature objects aren't hashable."""
-    return hash(self._fields_safe)
+  # If the element is not hashable, assume it is a weakref to a variable
+  # and return the dtype & shape. Else, simply return the element
+  try:
+    hash(elem)
+  except TypeError:
+    assert isinstance(elem, weakref.ReferenceType)
+    v = elem()
+    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype)
 
-  @property
-  def _fields_safe(self):
-    """Hash & equality-safe version of all the namedtuple fields."""
-    return (self._hash_fix(self.input_signature), self.parent_graph,
-            self.device_functions, self.colocation_stack,
-            self.in_cross_replica_context)
-
-  def _hash_fix(self, elem):
-    """Ensure elem is hashable even if a Variable is nested in it."""
-    # Descend into tuples
-    if isinstance(elem, tuple):
-      return tuple(self._hash_fix(i) for i in elem)
-
-    if isinstance(elem, set):
-      return {self._hash_fix(i) for i in elem}
-
-    # If the element is not hashable, assume it is a weakref to a variable and
-    # return the dtype & shape. Else, simply return the element
-    try:
-      hash(elem)
-    except TypeError:
-      v = elem()
-      return (v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype))
-
-    return elem
-
-  def __eq__(self, other):
-    return self._fields_safe == other._fields_safe  # pylint: disable=protected-access
+  return elem
 
 
-CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
+CacheKey = collections.namedtuple("CacheKey", [
+    "input_signature", "parent_graph", "device_functions", "colocation_stack",
+    "in_cross_replica_context"
+])
 
 
 def _flat_shape_list(*params):
@@ -661,7 +642,7 @@ class _DelayedRewriteGradientFunctions(object):
     """Add outputs to the forward call and feed them to the grad function."""
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
-      return []
+      return backwards_function.structured_outputs
     forward_function.add_to_graph(op.graph)
 
     # pylint: disable=protected-access
@@ -887,7 +868,7 @@ class _TapeGradientFunctions(object):
     def _backward_function_wrapper(*args):
       """Process output gradients and call the backward function."""
       if not self._backward.outputs:
-        return []
+        return self._backward.structured_outputs
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
@@ -2007,8 +1988,12 @@ class Function(object):
     except (AttributeError, IndexError):
       pass
 
-    return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack, in_cross_replica_context)
+    return CacheKey(
+        _make_input_signature_hashable(input_signature),
+        parent_graph,
+        device_functions,
+        colocation_stack,
+        in_cross_replica_context)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -2126,7 +2111,9 @@ class Function(object):
                    args,
                    kwargs)
 
-      call_context_key = cache_key.replace(input_signature=None)
+      # pylint: disable=protected-access
+      call_context_key = cache_key._replace(input_signature=None)
+      # pylint: disable=protected-access
 
       ag_status = (
           ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)

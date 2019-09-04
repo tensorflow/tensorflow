@@ -142,7 +142,7 @@ def _sequence_like(instance, args):
       return d
     else:
       return instance_type((key, result[key]) for key in instance)
-  if _is_mapping_view(instance):
+  elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):

@@ -18,8 +18,27 @@
 #include "TestDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// TestDialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants.
+  virtual bool shouldMaterializeInto(Region *region) const {
+    // If this is a one region operation, then insert into it.
+    return isa<OneRegionOp>(region->getParentOp());
+  }
+};
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // TestDialect
@@ -31,6 +50,7 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
+  addInterfaces<TestOpFolderDialectInterface>();
   allowUnknownOperations();
 }
 
@@ -82,10 +102,11 @@ static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
-  using OpRewritePattern<TestOpWithRegion>::OpRewritePattern;
+struct TestRemoveOpWithInnerOps
+    : public OpRewritePattern<TestOpWithRegionPattern> {
+  using OpRewritePattern<TestOpWithRegionPattern>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TestOpWithRegion op,
+  PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
@@ -93,9 +114,13 @@ struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
 };
 } // end anonymous namespace
 
-void TestOpWithRegion::getCanonicalizationPatterns(
+void TestOpWithRegionPattern::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TestRemoveOpWithInnerOps>(context);
+}
+
+OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
+  return operand();
 }
 
 // Static initialization for Test dialect registration.

@@ -289,6 +289,15 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
   return Status::OK();
 }
 
+Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
+                                                   std::string attribute,
+                                                   std::string value) {
+  TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
+  auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
+  (*frontend_attributes->mutable_map())[attribute] = std::move(value);
+  return Status::OK();
+}
+
 XlaComputation XlaBuilder::BuildAndNoteError() {
   DCHECK(parent_builder_ != nullptr);
   auto build_status = Build();
@@ -606,10 +615,22 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
 
 XlaOp XlaBuilder::ConstantLiteral(const LiteralSlice& literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = literal.shape().ToProto();
-    *instr.mutable_literal() = literal.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kConstant);
+    if (literal.shape().IsArray() && literal.element_count() > 1 &&
+        literal.IsAllFirst()) {
+      Literal scalar = LiteralUtil::GetFirstScalarLiteral(literal);
+      HloInstructionProto instr;
+      *instr.mutable_shape() = scalar.shape().ToProto();
+      *instr.mutable_literal() = scalar.ToProto();
+      TF_ASSIGN_OR_RETURN(
+          XlaOp scalar_op,
+          AddInstruction(std::move(instr), HloOpcode::kConstant));
+      return Broadcast(scalar_op, literal.shape().dimensions());
+    } else {
+      HloInstructionProto instr;
+      *instr.mutable_shape() = literal.shape().ToProto();
+      *instr.mutable_literal() = literal.ToProto();
+      return AddInstruction(std::move(instr), HloOpcode::kConstant);
+    }
   });
 }
 
@@ -1215,8 +1236,9 @@ XlaOp XlaBuilder::ConvGeneralDilated(
           rhs_shape.dimensions(dimension_numbers.kernel_spatial_dimensions(i));
     }
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   lhs_dilation, rhs_dilation));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            lhs_dilation, rhs_dilation));
 
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferConvolveShape(
@@ -1235,60 +1257,6 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     return AddInstruction(std::move(instr), HloOpcode::kConvolution,
                           {lhs, rhs});
   });
-}
-
-StatusOr<Window> XlaBuilder::MakeWindow(
-    absl::Span<const int64> window_dimensions,
-    absl::Span<const int64> window_strides,
-    absl::Span<const std::pair<int64, int64>> padding,
-    absl::Span<const int64> lhs_dilation,
-    absl::Span<const int64> rhs_dilation) const {
-  const auto verify_size = [&](const size_t x, const char* x_name) {
-    if (x == 0 || x == window_dimensions.size()) {
-      return Status::OK();
-    } else {
-      return InvalidArgument(
-          "%s", absl::StrCat(
-                    "Window has different number of window dimensions than of ",
-                    x_name,
-                    "\nNumber of window dimensions: ", window_dimensions.size(),
-                    "\nNumber of ", x_name, ": ", x, "\n"));
-    }
-  };
-  TF_RETURN_IF_ERROR(verify_size(window_strides.size(), "window strides"));
-  TF_RETURN_IF_ERROR(verify_size(padding.size(), "padding entries"));
-  TF_RETURN_IF_ERROR(verify_size(lhs_dilation.size(), "lhs dilation factors"));
-  TF_RETURN_IF_ERROR(verify_size(rhs_dilation.size(), "rhs dilation factors"));
-
-  Window window;
-  for (size_t i = 0; i < window_dimensions.size(); i++) {
-    auto dim = window.add_dimensions();
-    dim->set_size(window_dimensions[i]);
-    if (!window_strides.empty()) {
-      dim->set_stride(window_strides[i]);
-    } else {
-      dim->set_stride(1);
-    }
-    if (!padding.empty()) {
-      dim->set_padding_low(padding[i].first);
-      dim->set_padding_high(padding[i].second);
-    } else {
-      dim->set_padding_low(0);
-      dim->set_padding_high(0);
-    }
-    if (!lhs_dilation.empty()) {
-      dim->set_base_dilation(lhs_dilation[i]);
-    } else {
-      dim->set_base_dilation(1);
-    }
-    if (!rhs_dilation.empty()) {
-      dim->set_window_dilation(rhs_dilation[i]);
-    } else {
-      dim->set_window_dilation(1);
-    }
-    dim->set_window_reversal(false);
-  }
-  return window;
 }
 
 XlaOp XlaBuilder::Fft(const XlaOp& operand, const FftType fft_type,
@@ -1967,9 +1935,10 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/base_dilations,
-                                   /*rhs_dilation=*/window_dilations));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/base_dilations,
+                            /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferReduceWindowShape(
                                          operand_shape, init_shape,
                                          instr.window(), to_apply_shape));
@@ -2214,8 +2183,9 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
     TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
                         scatter.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
-                        MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+                        ShapeInference::InferWindowFromDimensions(
+                            window_dimensions, window_strides, padding,
+                            /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSelectAndScatterShape(
                             operand_shape, select_shape, instr.window(),
@@ -2677,6 +2647,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   if (sharding_) {
     *instr.mutable_sharding() = *sharding_;
   }
+  *instr.mutable_frontend_attributes() = frontend_attributes_;
 
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
@@ -2734,32 +2705,67 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
   }
 }
 
-StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
-    const XlaOp& op) const {
-  TF_RETURN_IF_ERROR(first_error_);
+namespace {
 
-  if (op.builder_ == nullptr) {
+template <typename InstructionType>
+StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+    const absl::flat_hash_map<int64, int64>& handle_to_index,
+    const std::vector<HloInstructionProto>& instructions, int64 handle) {
+  auto it = handle_to_index.find(handle);
+  if (it == handle_to_index.end()) {
+    return InvalidArgument("No XlaOp with handle %d", handle);
+  }
+  return const_cast<InstructionType>(&instructions.at(it->second));
+}
+
+template <typename InstructionType, typename OpBuilderType,
+          typename BuilderType, typename OpType>
+StatusOr<InstructionType> LookUpInstructionInternal(
+    const absl::flat_hash_map<int64, int64>& handle_to_index,
+    const std::vector<HloInstructionProto>& instructions,
+    OpBuilderType op_builder, BuilderType builder, OpType op_handle) {
+  if (op_builder == nullptr) {
     return InvalidArgument(
         "invalid XlaOp with handle %d; the builder of this op is freed",
-        op.handle());
+        op_handle);
   }
-  if (op.builder_ != this) {
+  if (op_builder != builder) {
     return InvalidArgument(
         "XlaOp with handle %d is built by builder '%s', but is trying to use "
         "it in builder '%s'",
-        op.handle(), op.builder_->name(), this->name());
+        op_handle, op_builder->name(), builder->name());
   }
 
-  return LookUpInstructionByHandle(op.handle());
+  return LookUpInstructionByHandleInternal<InstructionType>(
+      handle_to_index, instructions, op_handle);
+}
+
+}  // namespace
+
+StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
+    const XlaOp op) const {
+  TF_RETURN_IF_ERROR(first_error_);
+  return LookUpInstructionInternal<const HloInstructionProto*>(
+      handle_to_index_, instructions_, op.builder_, this, op.handle());
 }
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
     int64 handle) const {
-  auto it = handle_to_index_.find(handle);
-  if (it == handle_to_index_.end()) {
-    return InvalidArgument("No XlaOp with handle %d", handle);
-  }
-  return &instructions_[it->second];
+  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(
+      handle_to_index_, instructions_, handle);
+}
+
+StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstruction(
+    const XlaOp op) {
+  TF_RETURN_IF_ERROR(first_error_);
+  return LookUpInstructionInternal<HloInstructionProto*>(
+      handle_to_index_, instructions_, op.builder_, this, op.handle());
+}
+
+StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstructionByHandle(
+    int64 handle) {
+  return LookUpInstructionByHandleInternal<HloInstructionProto*>(
+      handle_to_index_, instructions_, handle);
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was

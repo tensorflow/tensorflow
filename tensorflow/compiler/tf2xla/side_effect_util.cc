@@ -28,6 +28,9 @@ const char kXlaHasHostTransferAttrName[] = "_xla_has_host_transfer";
 
 const char kXlaReplicaIdAttrName[] = "_xla_replica_id";
 
+const char kXlaIsPlaceholderForTailOcAttrName[] =
+    "_xla_is_placeholder_for_tail_oc";
+
 Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
     return errors::InvalidArgument("Node ", node->DebugString(),

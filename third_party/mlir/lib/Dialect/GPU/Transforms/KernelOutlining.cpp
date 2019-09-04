@@ -71,7 +71,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk<mlir::gpu::Return>([](mlir::gpu::Return op) {
+  outlinedFunc.walk([](mlir::gpu::Return op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();
@@ -98,7 +98,7 @@ public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk<mlir::gpu::LaunchOp>([&](mlir::gpu::LaunchOp op) {
+      func.walk([&](mlir::gpu::LaunchOp op) {
         FuncOp outlinedFunc = outlineKernelFunc(op);
         moduleManager.insert(outlinedFunc);
         convertToLaunchFuncOp(op, outlinedFunc);

@@ -19,11 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
@@ -31,6 +34,26 @@ from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class PForTest(PForTestCase):
+
+  def test_einsum(self):
+    num_loop = 10
+    x_series = random_ops.random_uniform([num_loop, 9, 9])
+    y_series = random_ops.random_uniform([num_loop, 9, 1])
+
+    def loop_fn(i):
+      x = array_ops.gather(x_series, 0)  # invariant.
+      y = array_ops.gather(y_series, 0)  # invariant.
+      x_i = array_ops.gather(x_series, i)
+      y_i = array_ops.gather(y_series, i)
+      z1 = xla_ops.einsum(x_i, y, "ab,bc->ac")
+      z2 = xla_ops.einsum(x, y_i, "ab,bc->ac")
+      z3 = xla_ops.einsum(x, y, "ab,bc->ac")
+      z4 = xla_ops.einsum(x_i, y_i, "ab,bc->ac")
+      z5 = xla_ops.einsum(y_i, x_i, "cd,ce->de")  # Includes transpose.
+      outputs = [z1, z2, z3, z4, z5]
+      return outputs
+
+    self._test_loop_fn(loop_fn, num_loop, loop_fn_dtypes=[dtypes.float32] * 5)
 
   def test_xla(self):
 

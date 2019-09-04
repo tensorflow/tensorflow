@@ -26551,6 +26551,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
@@ -26605,6 +26612,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
@@ -39725,6 +39739,27 @@ op {
       i: 1
     }
   }
+  attr {
+    name: "shuffle_on_read"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "Softmax"
@@ -45355,6 +45390,20 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "is_mirrored_variable"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "index"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {

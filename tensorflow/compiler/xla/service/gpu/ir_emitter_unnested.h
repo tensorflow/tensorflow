@@ -18,11 +18,12 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
 namespace xla {
 namespace gpu {
@@ -51,49 +52,11 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
-  // Parameter block_contains_multi_tiles indicates whether a tile block
-  // consists of multiple tiles or not. If the tile block contains only one
-  // tile, there is no need to use atomic operation to accumulate a local result
-  // to a global result to implement reduction.
-  using TileGenerator =
-      std::function<void(const llvm_ir::IrArray::Index& output_tile_origin,
-                         absl::Span<llvm::Value* const> output_tile_bounds)>;
-  // KernelCodegenInfo records the common information to support the code
-  // generation for a kernel to process tensor elements by blocks. A block of
-  // tensor elements may contain one or multiple tiles. The code generators that
-  // generate code for tile elements or block prologue/epilogue refer to this
-  // class in their prototypes. If the implementations of such code generators
-  // require other information that are specific to the HLO instructions, the
-  // implementations need to define and use derived classes of this class.
-  class KernelCodegenInfo {
-   public:
-    explicit KernelCodegenInfo(llvm_ir::KernelMappingScheme* mapping_scheme)
-        : mapping_scheme_(mapping_scheme),
-          lane_id_(nullptr),
-          index_ty_(nullptr) {}
-    virtual ~KernelCodegenInfo() {}
+  // A function object to prepare for the code generation for a tiling kernel.
+  using KernelPrologueGenerator = std::function<void(llvm::Value* lane_id)>;
 
-    void SetLaneId(llvm::Value* v) { lane_id_ = v; }
-    void SetIndexType(llvm::Type* t) { index_ty_ = t; }
-
-    llvm::Value* GetLaneId() const { return lane_id_; }
-    llvm_ir::KernelMappingScheme* GetKernelMappingScheme() const {
-      return mapping_scheme_;
-    }
-    llvm::Type* GetIndexType() const { return index_ty_; }
-
-   protected:
-    llvm_ir::KernelMappingScheme* mapping_scheme_;
-    llvm::Value* lane_id_;
-    llvm::Type* index_ty_;
-  };
-
-  // A function object to prepare for the code generation for a tile block.
-  using BlockPrologueGenerator =
-      std::function<void(HloInstruction* hlo, KernelCodegenInfo* kernel_info)>;
-  // A function object to finalize the code generation for a tile block.
-  using BlockEpilogueGenerator =
-      std::function<void(HloInstruction* hlo, KernelCodegenInfo* kernel_info)>;
+  // A function object to finalize the code generation for a tiling kernel.
+  using KernelEpilogueGenerator = std::function<void(llvm::Value* lane_id)>;
 
   // A function object to generate code to process one element in a tile.
   //
@@ -108,40 +71,11 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num)>;
 
+  // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
       llvm::Value* y, llvm::Value* x, const llvm_ir::IrArray::Index& index,
       const string& loop_name, llvm::Value* tile_height,
       llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
-
-  // KernelCodeGenerator records the code generator objects that generate code
-  // for tile elements or tile block prologue/epilogue.
-  class KernelCodeGenerator {
-   public:
-    explicit KernelCodeGenerator(
-        TileElementGenerator tile_element_generator,
-        BlockPrologueGenerator block_prologue_generator =
-            [](HloInstruction*, KernelCodegenInfo*) {},
-        BlockEpilogueGenerator block_epilogue_generator =
-            [](HloInstruction*, KernelCodegenInfo*) {})
-        : tile_element_generator_(std::move(tile_element_generator)),
-          block_prologue_generator_(std::move(block_prologue_generator)),
-          block_epilogue_generator_(std::move(block_epilogue_generator)) {}
-
-    const TileElementGenerator& GetTileElementGenerator() const {
-      return tile_element_generator_;
-    }
-    const BlockPrologueGenerator& GetBlockPrologueGenerator() const {
-      return block_prologue_generator_;
-    }
-    const BlockEpilogueGenerator& GetBlockEpilogueGenerator() const {
-      return block_epilogue_generator_;
-    }
-
-   private:
-    TileElementGenerator tile_element_generator_;
-    BlockPrologueGenerator block_prologue_generator_;
-    BlockEpilogueGenerator block_epilogue_generator_;
-  };
 
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     const HloComputation* hlo_computation,
@@ -249,9 +183,8 @@ class IrEmitterUnnested : public IrEmitter,
   // and first_reduce are the same instruction. For a kInput fusion,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
-  std::tuple<llvm_ir::KernelMappingScheme, bool>
-  ComputeMappingSchemeAndReductionKind(const HloInstruction* unnested_hlo,
-                                       const HloInstruction* first_reduce);
+  ReductionCodegenInfo ComputeReductionCodegenInfo(
+      const HloInstruction* unnested_hlo, const HloInstruction* first_reduce);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
@@ -264,26 +197,27 @@ class IrEmitterUnnested : public IrEmitter,
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
   bool CheckAndEmitHloWithTile021(HloInstruction* hlo);
-  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
-  // returns the launch dimensions for the kernel. This is a helper to support
-  // the implementation of CheckAndEmitHloWithTile021.
-  LaunchDimensions EmitHlo021Tile(HloInstruction* hlo,
-                                  absl::Span<const int64> reduced_output_dims,
-                                  absl::Span<const int64> tiled_param_ids);
-  // Emits a kernel for an unnested HLO instruction.
-  LaunchDimensions EmitKernel(HloInstruction* unnested_hlo,
-                              absl::Span<const int64> param_ids,
-                              const KernelCodeGenerator& kernel_generator,
-                              KernelCodegenInfo* kernel_info);
 
-  void EmitBlock(KernelCodegenInfo* kernel_info, KernelSupportLibrary* ksl,
-                 llvm::Type* index_ty, TileGenerator emit_one_tile);
+  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
+  // sets the corresponding launch dimensions. This is a helper to support
+  // the implementation of CheckAndEmitHloWithTile021.
+  void EmitHlo021Tile(HloInstruction* hlo, Thunk* kernel_thunk,
+                      absl::Span<const int64> reduced_output_dims,
+                      absl::Span<const int64> tiled_param_ids);
+
+  // Emits a kernel for the hlo instruction using the given kernel mapping
+  // scheme.
+  void EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
+                        llvm::Type* index_ty,
+                        TileElementGenerator tile_element_generator,
+                        KernelPrologueGenerator kernel_prologue_generator,
+                        KernelEpilogueGenerator kernel_epilogue_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
   void EmitTileElementForCopy(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num,
       absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -291,7 +225,7 @@ class IrEmitterUnnested : public IrEmitter,
   // HLO containing parameters that are 0-2-1 transpose of its outputs.
   void EmitTileElementForFusion(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num,
       absl::Span<llvm::Value* const> param_shmem_buffers);
 
@@ -301,20 +235,27 @@ class IrEmitterUnnested : public IrEmitter,
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
       const llvm_ir::IrArray::Index& index,
-      const KernelCodegenInfo* kernel_info, int64 x_iter_num);
+      const ReductionCodegenInfo& kernel_info,
+      absl::Span<HloComputation* const> reducers, int64 x_iter_num);
+
   // Prepares for the code generation for a tile block of a reduction kernel.
   void EmitPrologueForReduction(
-      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-      absl::Span<HloInstruction* const> output_instructions);
+      HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
+      absl::Span<HloInstruction* const> reduce_instructions,
+      llvm::Type* index_type);
+
   void EmitPrologueForOneReduction(HloInstruction* unnested_hlo,
                                    HloInstruction* reduce_inst, int reduce_idx,
-                                   KernelCodegenInfo* kernel_info,
-                                   GpuElementalIrEmitter* elemental_emitter,
-                                   ShapeIndex output_shape_index);
+                                   ReductionCodegenInfo* kernel_info,
+                                   GpuElementalIrEmitter* elemental_emitter);
+
   // Wraps up the code generation for a tile block of a reduction kernel.
   void EmitEpilogueForReduction(
-      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
-      absl::Span<const HloInstruction* const> reduce_instructions);
+      HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
+      absl::Span<const HloInstruction* const> reduce_instructions,
+      absl::Span<const ShapeIndex> reduction_output_shape_indices,
+      absl::Span<HloComputation* const> reducers, llvm::Value* lane_id);
+
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(

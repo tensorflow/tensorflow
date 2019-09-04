@@ -227,6 +227,9 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (producer.IsMultiOutputFusion()) {
     return false;
   }
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
@@ -263,6 +266,9 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   }
 
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    return false;
+  }
+  if (CreatesNestedLoop(producer, consumer)) {
     return false;
   }
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {

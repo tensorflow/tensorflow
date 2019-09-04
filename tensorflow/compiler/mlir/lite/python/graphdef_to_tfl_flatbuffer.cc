@@ -138,7 +138,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
 
-  mlir::PassManager pm;
+  mlir::PassManager pm(module->getContext());
   bool run_quantize = tensorflow::ShouldRunQuantizePasses(module.get());
   mlir::TFL::PassConfig pass_config;
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;

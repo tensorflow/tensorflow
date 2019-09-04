@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm;
+  mlir::PassManager pm(&context);
   bool run_quantize =
       tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
   mlir::TFL::PassConfig pass_config;

@@ -124,7 +124,7 @@ Returns a tensor with the same shape and contents as input.
     TF_Tensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_IfOp : TF_Op<"If", []> {

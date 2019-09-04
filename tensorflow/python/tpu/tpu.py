@@ -287,7 +287,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
-                                            name=name + "/handle")
+                                            name=name + "/handle",
+                                            is_mirrored_variable=True)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -939,8 +940,13 @@ def split_compile_and_replicate(computation,
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    flat_replicated_inputs.append(
-        tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
+    if api_compat.forward_compatible(2019, 9, 19):
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i),
+                                       index=i))
+    else:
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph

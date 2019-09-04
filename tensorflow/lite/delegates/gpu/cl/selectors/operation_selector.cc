@@ -129,7 +129,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
-      SelectReLU(attr, op_def, gpu_op);
+      SelectReLU(creation_context, attr, op_def, gpu_op);
       return OkStatus();
     }
     case OperationType::RESHAPE: {

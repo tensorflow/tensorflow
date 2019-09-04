@@ -19,8 +19,11 @@
 
 namespace mlir {
 class LLVMTypeConverter;
-class ModulePassBase;
+class ModuleOp;
 class OwningRewritePatternList;
+
+template <typename T> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 /// Collect a set of patterns to convert from the Vector dialect to LLVM.
 void populateVectorToLLVMConversionPatterns(LLVMTypeConverter &converter,

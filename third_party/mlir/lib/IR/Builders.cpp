@@ -253,12 +253,11 @@ ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
 
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
+  case StandardTypes::BF16:
   case StandardTypes::F16:
-    return getF16FloatAttr(0);
   case StandardTypes::F32:
-    return getF32FloatAttr(0);
   case StandardTypes::F64:
-    return getF64FloatAttr(0);
+    return getFloatAttr(type, 0.0);
   case StandardTypes::Integer: {
     auto width = type.cast<IntegerType>().getWidth();
     if (width == 1)

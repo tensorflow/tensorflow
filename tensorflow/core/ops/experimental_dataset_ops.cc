@@ -814,6 +814,9 @@ REGISTER_OP("SnapshotDataset")
     .Attr("reader_buffer_size: int = 1")
     .Attr("num_writer_threads: int = 1")
     .Attr("writer_buffer_size: int = 1")
+    .Attr("shuffle_on_read: bool = false")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

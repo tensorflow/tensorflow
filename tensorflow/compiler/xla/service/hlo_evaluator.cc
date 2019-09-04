@@ -919,9 +919,8 @@ void Dft1D(int64 length, int64 start, int64 stride, bool inverse,
 
 // Helper to reverse the order of dimension lengths in the passed-in literal.
 std::vector<int64> GetDimensionLengths(const Literal& literal) {
-  std::vector<int64> lengths = literal.shape().dimensions();
-  absl::c_reverse(lengths);
-  return lengths;
+  auto dimensions = literal.shape().dimensions();
+  return std::vector<int64>(dimensions.rbegin(), dimensions.rend());
 }
 
 // Helper to compute strides for creating linear indices into multidimensional
@@ -2373,7 +2372,6 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     arg_dim_steps[dim] = 1;
     arg_dim_counts[dim] = arg_dimensions[dim];
   }
-  auto reduced_dimensions = arg_shape.dimensions();
 
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.

@@ -272,6 +272,7 @@ cuda_py_test(
         ":forwardprop",
         ":forwardprop_util",
         ":test",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     shard_count = 5,
     xla_enable_strict_auto_jit = True,
@@ -694,10 +695,12 @@ cuda_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],
     additional_deps = [
+        ":backprop",
         ":def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
     ],
     tags = [
         "no_mac",

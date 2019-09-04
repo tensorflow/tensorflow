@@ -255,7 +255,6 @@ inline llvm::hash_code hash_value(OperationName arg) {
 /// be used as a temporary object on the stack.  It is generally unwise to put
 /// this in a collection.
 struct OperationState {
-  MLIRContext *const context;
   Location location;
   OperationName name;
   SmallVector<Value *, 4> operands;
