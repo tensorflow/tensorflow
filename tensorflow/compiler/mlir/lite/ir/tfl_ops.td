@@ -1441,7 +1441,7 @@ def TFL_NegOp: TFL_Op<"neg", [NoSideEffect, SameOperandsAndResultType]> {
   let hasOptions = 0b1;
 }
 
-def TFL_PackOp : TFL_Op<"pack", [NoSideEffect]> {
+def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
 
   let description = [{
@@ -1472,14 +1472,14 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I8, I16, I32, I64]>>:$values,
+    Variadic<TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>>:$values,
 
     I32Attr:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I16, I32, I64]>:$output
+    TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2342,7 +2342,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   let hasOptions = 1;
 }
 
-def TFL_CastOp : TFL_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
+def TFL_CastOp : TFL_Op<"cast", [
+    NoSideEffect, SameOperandsAndResultShape, NoQuantizableResult]> {
   let summary = "Cast operator";
 
   let description = [{
