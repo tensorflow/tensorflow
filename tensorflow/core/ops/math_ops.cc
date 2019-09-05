@@ -686,7 +686,19 @@ REGISTER_OP("GreaterEqual").COMPARISON();
           "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
           "int64, complex64, quint8, qint8, qint32, string, bool, "        \
           "complex128}")                                                   \
-      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+      .Attr("incompatible_shape_error: bool = true")                       \
+      .SetShapeFn([](InferenceContext* c) {                                \
+        ShapeHandle x = c->input(0);                                       \
+        ShapeHandle y = c->input(1);                                       \
+        ShapeHandle output;                                                \
+        bool incompatible_shape_error;                                     \
+        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",          \
+                                      &incompatible_shape_error));         \
+        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(           \
+            c, x, y, incompatible_shape_error, &output));                  \
+        c->set_output(0, output);                                          \
+        return Status::OK();                                               \
+      })
 
 REGISTER_OP("Equal").EQUALITY_COMPARISON();
 
@@ -863,10 +875,10 @@ REGISTER_OP("SelectV2")
       ShapeHandle else_ = c->input(2);
       ShapeHandle other;
       TF_RETURN_IF_ERROR(
-          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, &other));
+          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, true, &other));
       ShapeHandle output;
       TF_RETURN_IF_ERROR(
-          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, &output));
+          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, true, &output));
       c->set_output(0, output);
       return Status::OK();
     });

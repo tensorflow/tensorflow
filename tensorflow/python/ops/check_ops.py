@@ -557,7 +557,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     x_static = tensor_util.constant_value(x)
     y_static = tensor_util.constant_value(y)
     if x_static is not None and y_static is not None:
-      condition_static = (x_static == y_static).all()
+      condition_static = np.all(np.equal(x_static, y_static))
       _assert_static(condition_static, data)
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
