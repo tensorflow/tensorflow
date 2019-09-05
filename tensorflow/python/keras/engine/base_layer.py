@@ -950,7 +950,7 @@ class Layer(module.Module):
   def trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('trainable_weights')
-      return self._trainable_weights + nested
+      return self._dedup_weights(self._trainable_weights + nested)
     else:
       return []
 
@@ -958,10 +958,12 @@ class Layer(module.Module):
   def non_trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('non_trainable_weights')
-      return self._non_trainable_weights + nested
+      non_trainable_weights = self._non_trainable_weights + nested
     else:
       nested = self._gather_children_attribute('weights')
-      return self._trainable_weights + self._non_trainable_weights + nested
+      non_trainable_weights = (
+          self._trainable_weights + self._non_trainable_weights + nested)
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def weights(self):
@@ -2392,14 +2394,13 @@ class Layer(module.Module):
   def _eager_losses(self, losses):
     self._thread_local._eager_losses = losses
 
-  @property
-  def _unique_trainable_weights(self):
-    """Dedupe trainable weights while maintaining order as much as possible."""
-    trainable_weights = self.trainable_weights
+  def _dedup_weights(self, weights):
+    """Dedupe weights while maintaining order as much as possible."""
     output, seen_weights = [], object_identity.ObjectIdentitySet()
-    for w in trainable_weights:
+    for w in weights:
       if w not in seen_weights:
         output.append(w)
+        # Track the Variable's identity to avoid __eq__ issues.
         seen_weights.add(w)
     return output
 

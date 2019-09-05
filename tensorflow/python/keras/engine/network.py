@@ -471,6 +471,11 @@ class Network(base_layer.Layer):
     Returns:
       A list of variables.
     """
+    return self._dedup_weights(self._undeduplicated_weights)
+
+  @property
+  def _undeduplicated_weights(self):
+    """Returns the undeduplicated list of all layer variables/weights."""
     self._assert_weights_created()
     weights = []
     for layer in self._layers:
@@ -534,18 +539,21 @@ class Network(base_layer.Layer):
   @property
   def trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._trainable_weights))
 
   @property
   def non_trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_non_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._non_trainable_weights + self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_non_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._non_trainable_weights +
+            self._trainable_weights))
 
   @property
   def input_spec(self):
