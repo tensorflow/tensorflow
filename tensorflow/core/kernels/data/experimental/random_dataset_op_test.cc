@@ -13,7 +13,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 
 namespace tensorflow {
