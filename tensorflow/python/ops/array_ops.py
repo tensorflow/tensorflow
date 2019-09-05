@@ -4390,7 +4390,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis is not None:
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4470,7 +4470,7 @@ def dequantize(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis is not None:
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
     return gen_array_ops.dequantize(
         input, min_range, max_range, mode=mode, name=name, axis=axis)
   return gen_array_ops.dequantize(
@@ -4524,7 +4524,7 @@ def quantize_and_dequantize(
   else:
     axis = -1
 
-  if compat.forward_compatible(2019, 9, 25) or axis is not None:
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
     return gen_array_ops.quantize_and_dequantize_v2(
         input,
         input_min=input_min,
