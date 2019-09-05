@@ -776,6 +776,10 @@ string ToString(DatasetParamsType type) {
       return "Batch";
     case DatasetParamsType::Map:
       return "Map";
+    case DatasetParamsType::MapAndBatch:
+      return "MapAndBatch";
+    case DatasetParamsType::Sampling:
+      return "Sampling";
   }
 }
 

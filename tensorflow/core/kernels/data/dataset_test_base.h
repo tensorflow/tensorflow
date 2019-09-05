@@ -113,6 +113,8 @@ enum class DatasetParamsType {
   Range,
   Batch,
   Map,
+  MapAndBatch,
+  Sampling,
 };
 
 // Returns a string representation for the given dataset parameter type. Note
