@@ -311,7 +311,6 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
 }
 
 Status SetArgShape(
-    const std::unordered_map<int, TensorShape>& input_tensor_shapes,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
         input_resource_dtypes_and_shapes,
     const std::vector<Node*>& arg_nodes) {
@@ -320,16 +319,7 @@ Status SetArgShape(
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
     DataType dtype;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
-    if (dtype != DT_RESOURCE) {
-      auto shape_iter = input_tensor_shapes.find(index);
-      if (shape_iter != input_tensor_shapes.end()) {
-        TensorShapeProto shape_proto;
-        shape_iter->second.AsProto(&shape_proto);
-        AttrValue attr_value;
-        *attr_value.mutable_list()->add_shape() = shape_proto;
-        n->AddAttr("_output_shapes", attr_value);
-      }
-    } else {
+    if (dtype == DT_RESOURCE) {
       auto dtype_and_shape_iter = input_resource_dtypes_and_shapes.find(index);
       if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
         AttrValue dtype_attr_value;
@@ -620,9 +610,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectRawGraph(def);
   }
 
-  TF_RETURN_IF_ERROR(SetArgShape(options.input_tensor_shapes,
-                                 options.input_resource_dtypes_and_shapes,
-                                 arg_nodes));
+  TF_RETURN_IF_ERROR(
+      SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(options.input_devices,
                                     options.output_devices, device_set_,
                                     arg_nodes, ret_nodes));
