@@ -218,6 +218,7 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",

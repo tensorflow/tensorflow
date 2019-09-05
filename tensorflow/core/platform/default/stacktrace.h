@@ -20,8 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
-#if !defined(IS_MOBILE_PLATFORM) && !defined(PLATFORM_WINDOWS) && \
-    (defined(__clang__) || defined(__GNUC__))
+#if !defined(IS_MOBILE_PLATFORM) && (defined(__clang__) || defined(__GNUC__))
 #define TF_HAS_STACKTRACE
 #endif
 
