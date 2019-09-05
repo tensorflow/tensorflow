@@ -945,6 +945,12 @@ class StructAttr<string name, Dialect dialect,
   // Name for this StructAttr.
   string className = name;
 
+  // Return type should match the name of the structure.
+  let returnType = name;
+
+  // Storage type should match the name of the structure.
+  let storageType = name;
+
   // The dialect this StructAttr belongs to.
   Dialect structDialect = dialect;
 
