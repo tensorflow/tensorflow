@@ -83,6 +83,8 @@ enum class CuptiTracerEventType {
   Generic = 100,
 };
 
+const char* GetTraceEventTypeName(const CuptiTracerEventType& type);
+
 enum class CuptiTracerEventSource {
   DriverCallback = 0,
   Activity = 1,
