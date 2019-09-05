@@ -97,14 +97,6 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #endif
 }
 
-inline int64_t AccumulateNeonLane64(const int64x2_t lane) {
-#ifdef __aarch64__
-  return vaddvq_s64(lane);
-#else
-  return vgetq_lane_s64(lane, 0) + vgetq_lane_s64(lane, 1);
-#endif
-}
-
 // TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
 // neon_tensor_utils.cc.
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
@@ -823,14 +815,14 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
   int64x2x2_t result;
   const int64x2_t lhs_low = vmovl_s32(vget_low_s32(lhs));
-  const int64x2_t lhs_high = vmovl_s32(vget_low_s32(lhs));
+  const int64x2_t lhs_high = vmovl_s32(vget_high_s32(lhs));
   const int64_t lhs_0 = vgetq_lane_s64(lhs_low, 0);
   const int64_t lhs_1 = vgetq_lane_s64(lhs_low, 1);
   const int64_t lhs_2 = vgetq_lane_s64(lhs_high, 0);
   const int64_t lhs_3 = vgetq_lane_s64(lhs_high, 1);
 
   const int64x2_t rhs_low = vmovl_s32(vget_low_s32(rhs));
-  const int64x2_t rhs_high = vmovl_s32(vget_low_s32(rhs));
+  const int64x2_t rhs_high = vmovl_s32(vget_high_s32(rhs));
   const int64_t rhs_0 = vgetq_lane_s64(rhs_low, 0);
   const int64_t rhs_1 = vgetq_lane_s64(rhs_low, 1);
   const int64_t rhs_2 = vgetq_lane_s64(rhs_high, 0);
@@ -857,7 +849,7 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
     int64_t sum_sq = 0;
 
     int j = 0;
-    for (; j <= n_input - 16; j += 16) {
+    for (; j <= n_input - 8; j += 8) {
       const int32 index = i * n_input + j;
       const int16x8_t val_s16 = vld1q_s16(input + index);
       const int32x4_t val_s32_0 = vmovl_s16(vget_low_s16(val_s16));
@@ -866,10 +858,10 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_0));
       sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_1));
 
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_0)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_0)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_1)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_1)));
+      sum_sq += static_cast<int64_t>(
+          AccumulateNeonLane(vmulq_s32(val_s32_0, val_s32_0)));
+      sum_sq += static_cast<int64_t>(
+          AccumulateNeonLane(vmulq_s32(val_s32_1, val_s32_1)));
     }
     for (; j < n_input; ++j) {
       const int32 index = i * n_input + j;
@@ -894,11 +886,11 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 
     j = 0;
     const int32x4_t mean_dup = vdupq_n_s32(mean);
-    for (; j <= n_input - 32; j += 32) {
-      // Load 32 items at once.
+    for (; j <= n_input - 16; j += 16) {
+      // Load 16 items at once.
       const int32 index = i * n_input + j;
       const int16x8_t val_s16_0 = vld1q_s16(input + index);
-      const int16x8_t val_s16_1 = vld1q_s16(input + index + 16);
+      const int16x8_t val_s16_1 = vld1q_s16(input + index + 8);
 
       int32x4x4_t shifted;
       shifted.val[0] = vsubq_s32(
