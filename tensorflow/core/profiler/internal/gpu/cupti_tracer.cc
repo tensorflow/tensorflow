@@ -755,6 +755,7 @@ Status CuptiTracer::Finalize() {
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *callback_info) {
+  if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (callback_info->callbackSite == CUPTI_API_ENTER) {
     // Stash away the current Cupti timestamp into callback_info.
