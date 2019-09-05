@@ -34,7 +34,6 @@ tensorflow/core/lib/strings/ordered_code.cc
 tensorflow/core/lib/strings/proto_text_util.cc
 tensorflow/core/lib/wav/wav_io.cc
 tensorflow/core/platform/cpu_info.cc
-tensorflow/core/platform/default/env_time.cc
 tensorflow/core/platform/default/logging.cc
 tensorflow/core/platform/default/mutex.cc
 tensorflow/core/platform/default/tracing.cc
@@ -44,6 +43,7 @@ tensorflow/core/platform/file_system.cc
 tensorflow/core/platform/file_system_helper.cc
 tensorflow/core/platform/numbers.cc
 tensorflow/core/platform/posix/env.cc
+tensorflow/core/platform/posix/env_time.cc
 tensorflow/core/platform/posix/error.cc
 tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/posix/port.cc
