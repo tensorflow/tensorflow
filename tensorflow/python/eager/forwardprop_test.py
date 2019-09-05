@@ -310,6 +310,15 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testKerasLayers(self, value, op_fn, atol=1e-6):
     layer = op_fn()
     input_value = constant_op.constant(value, dtype=dtypes.float32)
+    layer.build(input_value.shape)
+    # Make sure the test is deterministic by avoiding random variable
+    # initialization.
+    for v in layer.trainable_variables:
+      v.assign(array_ops.reshape(
+          math_ops.range(
+              -1., 1., 2. / array_ops.size(v, out_type=dtypes.float32),
+              dtype=dtypes.float32),
+          v.shape))
     _test_gradients(
         self, layer, [input_value], atol=atol,
         # These are linear, so second-order is pretty boring.
