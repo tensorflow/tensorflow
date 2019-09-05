@@ -24,6 +24,7 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -48,6 +49,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.tracking import tracking
@@ -414,6 +416,48 @@ class SavingOptionsTest(test.TestCase):
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
+
+  def test_save_debug_info_enabled(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root,
+        save_dir,
+        root.f,
+        options=save_options.SaveOptions(save_debug_info=True))
+    debug_info_file_name = os.path.join(save_dir, "debug",
+                                        "saved_model_debug_info.pb")
+    self.assertTrue(os.path.exists(debug_info_file_name))
+    debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    with open(debug_info_file_name, "rb") as f:
+      debug_info.ParseFromString(f.read())
+
+    # Verify that there is a trace for DEBUG_INFO_OP just to ensure that
+    # function debug info tracing is nominally functioning.
+    found_op = False
+    for key in debug_info.traces.keys():
+      if key.startswith("DEBUG_INFO_OP@"):
+        found_op = True
+        break
+    self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
+
+  def test_save_debug_info_disabled(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root,
+        save_dir,
+        root.f,
+        options=save_options.SaveOptions(save_debug_info=False))
+    debug_info_file_name = os.path.join(save_dir, "debug",
+                                        "saved_model_debug_info.pb")
+    self.assertFalse(os.path.exists(debug_info_file_name))
 
 
 class AssetTests(test.TestCase):
