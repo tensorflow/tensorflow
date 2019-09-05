@@ -1132,8 +1132,16 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
   }
 }
 
-void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-                  int n_input, int shift, int8_t* output) {
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                  int32_t multiplier, int shift, int n_batch, int n_input,
+                  int32_t output_zp, int8_t* output) {
+  const int32_t output_min = std::numeric_limits<int8_t>::min();
+  const int32_t output_max = std::numeric_limits<int8_t>::max();
+
+  const int32x4_t output_zp_dup = vdupq_n_s32(-output_zp);
+  const int32x4_t max_val_dup = vdupq_n_s32(output_max);
+  const int32x4_t min_val_dup = vdupq_n_s32(output_min);
+
   for (int batch = 0; batch < n_batch; ++batch) {
     int i = 0;
     for (; i <= n_input - 8; i += 8) {
@@ -1145,25 +1153,33 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
       const int32x4_t b_s32_0 = vmovl_s16(vget_low_s16(b));
       const int32x4_t b_s32_1 = vmovl_s16(vget_high_s16(b));
 
-      int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
-      int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
-      x_0 = gemmlowp::RoundingDivideByPOT(x_0, shift);
-      x_1 = gemmlowp::RoundingDivideByPOT(x_1, shift);
+      int32x4x2_t temp_val;
+      temp_val.val[0] = vmulq_s32(a_s32_0, b_s32_0);
+      temp_val.val[1] = vmulq_s32(a_s32_1, b_s32_1);
+      temp_val =
+          MultiplyByQuantizedMultiplier2Rows(temp_val, multiplier, shift);
 
-      const int16x8_t result = vcombine_s16(vmovn_s32(x_0), vmovn_s32(x_1));
+      temp_val.val[0] = vaddq_s32(temp_val.val[0], output_zp_dup);
+      temp_val.val[1] = vaddq_s32(temp_val.val[1], output_zp_dup);
+      temp_val.val[0] =
+          vmaxq_s32(vminq_s32(temp_val.val[0], max_val_dup), min_val_dup);
+      temp_val.val[1] =
+          vmaxq_s32(vminq_s32(temp_val.val[1], max_val_dup), min_val_dup);
+
+      const int16x8_t result =
+          vcombine_s16(vmovn_s32(temp_val.val[0]), vmovn_s32(temp_val.val[1]));
       vst1_s8(output + index, vmovn_s16(result));
     }
     for (; i < n_input; ++i) {
       const int index = batch * n_input + i;
       const int16_t a = input_1[index];
       const int16_t b = input_2[index];
-      int64_t x = a * b;
-      if (x > std::numeric_limits<std::int32_t>::max()) {
-        x = std::numeric_limits<std::int32_t>::max();
-      }
-      const int32_t value = static_cast<int32_t>(x);
-      output[index] =
-          static_cast<int8_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+      int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
+      value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
+      value -= output_zp;
+      value = std::min(std::max(-128, value), 127);
+
+      output[index] = static_cast<int8>(value);
     }
   }
 }

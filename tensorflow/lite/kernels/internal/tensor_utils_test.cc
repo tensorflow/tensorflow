@@ -386,27 +386,6 @@ TEST(uKernels, QuantMul16bitOut19ShiftTest) {
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
-// Quantized Multiply with 8bit output and 32 bit shift.
-TEST(uKernels, QuantMul8bitOut23ShiftTest) {
-  const std::vector<int16_t> input1 = {
-      2491, 32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 2157,
-      4545, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
-      1399, 4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
-  };
-  const std::vector<int16_t> input2 = {
-      -1156, 32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  -10132,
-      -964,  1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
-      5180,  -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
-  };
-  std::vector<int8_t> output(2 * 15, 0);
-  CwiseMul(input1.data(), input2.data(), 2, 15, 23, output.data());
-  const std::vector<int8_t> expected_output = {
-      0,  -128, -128, -128, -128, 9, 0, -1, 1, -3, -1, 2,  0,  3, 9,
-      -2, -2,   1,    -5,   2,    1, 0, 0,  2, -1, -1, -1, -2, 3, -6,
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
 // Quantized Multiply with arbitrary scale.
 TEST(uKernels, QuantMul8bitArbitrarySclaeTest) {
   // scale = 0.000028.
