@@ -26,6 +26,7 @@ import threading
 
 import numpy as np
 import six
+from six.moves import map  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -2146,39 +2147,14 @@ class Operation(object):
     """The list of `Tensor` objects representing the outputs of this op."""
     return self._outputs
 
-  class _InputList(object):
-    """Immutable input list wrapper."""
-
-    def __init__(self, inputs):
-      self._inputs = inputs
-
-    def __iter__(self):
-      return iter(self._inputs)
-
-    def __len__(self):
-      return len(self._inputs)
-
-    def __bool__(self):
-      return bool(self._inputs)
-
-    # Python 3 wants __bool__, Python 2.7 wants __nonzero__
-    __nonzero__ = __bool__
-
-    def __getitem__(self, i):
-      return self._inputs[i]
-
   @property
   def inputs(self):
-    """The list of `Tensor` objects representing the data inputs of this op."""
+    """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
       # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
+      self._inputs_val = tuple(map(self.graph._get_tensor_by_tf_output,
+                                   c_api.GetOperationInputs(self._c_op)))
       # pylint: enable=protected-access
-      self._inputs_val = Operation._InputList(retval)
     return self._inputs_val
 
   @property
