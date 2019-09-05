@@ -28,19 +28,14 @@ make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   clean clean_downloads
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
-  TARGET="arduino" \
-  TAGS="portable_optimized" \
-  generate_non_kernel_projects
+  TARGET=mbed \
+  TAGS="portable_optimized disco_f746ng" \
+  generate_projects
 
-tensorflow/lite/experimental/micro/tools/ci_build/install_arduino_cli.sh
+tensorflow/lite/experimental/micro/tools/ci_build/install_mbed_cli.sh
 
-for f in tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/*/*.zip; do
-  # There are too many kernel tests, so the presubmit takes too long. Skip any
-  # kernel-only tests to speed the process up.
-  if [[ ${f} =~ kernel_ ]]; then
-    continue
-  fi
-  tensorflow/lite/experimental/micro/tools/ci_build/test_arduino_library.sh ${f}
+for f in tensorflow/lite/experimental/micro/tools/make/gen/mbed_*/prj/*/mbed; do
+  tensorflow/lite/experimental/micro/tools/ci_build/test_mbed_library.sh ${f}
 done
 
 # Needed to solve CI build bug triggered by files added to source tree.
