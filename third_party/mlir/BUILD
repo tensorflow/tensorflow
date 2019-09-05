@@ -275,6 +275,7 @@ cc_library(
 cc_library(
     name = "AffineOps",
     srcs = [
+        "include/mlir/Transforms/InliningUtils.h",
         "lib/Dialect/AffineOps/AffineOps.cpp",
     ],
     hdrs = [

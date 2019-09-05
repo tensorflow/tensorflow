@@ -24,6 +24,7 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/Debug.h"
@@ -31,6 +32,43 @@ using namespace mlir;
 using llvm::dbgs;
 
 #define DEBUG_TYPE "affine-analysis"
+
+//===----------------------------------------------------------------------===//
+// AffineOpsDialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class defines the interface for handling inlining with affine
+/// operations.
+struct AffineInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Returns true if the given region 'src' can be inlined into the region
+  /// 'dest' that is attached to an operation registered to the current dialect.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    // Conservatively don't allow inlining into affine structures.
+    return false;
+  }
+
+  /// Returns true if the given operation 'op', that is registered to this
+  /// dialect, can be inlined into the given region, false otherwise.
+  bool isLegalToInline(Operation *op, Region *region,
+                       BlockAndValueMapping &valueMapping) const final {
+    // Always allow inlining affine operations. There are some edge cases when
+    // inlining *into* affine structures, but that is handled in the other
+    // 'isLegalToInline' hook above.
+    return true;
+  }
+
+  /// Affine regions should be analyzed recursively.
+  bool shouldAnalyzeRecursively(Operation *op) const final { return true; }
+};
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // AffineOpsDialect
@@ -43,6 +81,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/AffineOps/AffineOps.cpp.inc"
                 >();
+  addInterfaces<AffineInlinerInterface>();
 }
 
 /// A utility function to check if a given region is attached to a function.
