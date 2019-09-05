@@ -174,6 +174,11 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
+def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+  let regions = (region AnyRegion:$body);
+  let results = (outs FunctionType);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Traits
 //===----------------------------------------------------------------------===//
