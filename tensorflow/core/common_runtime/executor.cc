@@ -1010,7 +1010,9 @@ class ExecutorState {
     explicit FrameState(const ExecutorImpl* impl, int parallel_iters)
         : executor(impl),
           max_parallel_iterations(parallel_iters),
-          num_outstanding_iterations(1) {}
+          num_outstanding_iterations(1),
+          iterations(parallel_iters + 1),
+          iterations_raw(iterations.data()) {}
 
     // A new frame is created for each loop. Execution starts at iteration 0.
     // When a value at iteration 0 passes through a NextIteration node,
@@ -1072,9 +1074,13 @@ class ExecutorState {
     // The number of outstanding iterations.
     int num_outstanding_iterations GUARDED_BY(mu) = 1;
 
+   private:
     // The active iteration states of this frame.
     gtl::InlinedVector<IterationState*, 12> iterations;
+    IterationState** const iterations_raw GUARDED_BY(mu);
+    IterationState* iterations_first GUARDED_BY(mu);
 
+   public:
     // The NextIteration nodes to enter a new iteration. If the number of
     // outstanding iterations reaches the limit, we will defer the start of
     // the next iteration until the number of outstanding iterations falls
@@ -1113,15 +1119,22 @@ class ExecutorState {
 
     inline IterationState* GetIteration(int64 iter)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      size_t index = iter % iterations.size();
-      return iterations[index];
+      if (TF_PREDICT_TRUE(iter == 0)) {
+        return iterations_first;
+      } else {
+        size_t index = iter % (max_parallel_iterations + 1);
+        return iterations_raw[index];
+      }
     }
 
     inline void SetIteration(int64 iter, IterationState* state)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      size_t index = iter % iterations.size();
+      size_t index = iter % (max_parallel_iterations + 1);
       DCHECK(state == nullptr || iterations[index] == nullptr);
-      iterations[index] = state;
+      iterations_raw[index] = state;
+      if (index == 0) {
+        iterations_first = state;
+      }
     }
 
     // Decrement the outstanding op count and clean up the iterations in the
@@ -1168,7 +1181,7 @@ class ExecutorState {
 
     // Add a new loop invariant and make it available to all active
     // iterations.
-    void AddLoopInv(const NodeItem* item, const Entry& value,
+    void AddLoopInv(const NodeItem* item, const Entry& entry,
                     TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate the successors of a node. Contents of *outputs are left in an
@@ -1180,6 +1193,16 @@ class ExecutorState {
     // Cleanup iterations of this frame starting from iteration iter.
     bool CleanupIterations(const GraphView* gview, int64 iter,
                            TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    void DumpIterationState(ExecutorState* parent) {
+      mutex_lock l(mu);
+      for (IterationState* iteration : iterations) {
+        if (iteration) {
+          LOG(WARNING) << "  Iteration:";
+          parent->DumpIterationState(this, iteration);
+        }
+      }
+    }
 
     ~FrameState() {
       for (size_t i = 0; i < iterations.size(); ++i) {
@@ -1419,9 +1442,9 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   root_frame_->InitializeFrameInfo(root_frame_->frame_name);
 
   // Initialize iteration 0.
-  root_frame_->iterations.resize(root_frame_->max_parallel_iterations);
-  root_frame_->iterations[0] = new IterationState(
-      root_frame_->pending_counts, root_frame_->total_input_tensors);
+  root_frame_->SetIteration(
+      0, new IterationState(root_frame_->pending_counts,
+                            root_frame_->total_input_tensors));
 
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
 }
@@ -1542,7 +1565,10 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
     done(Status::OK());
   } else {
     num_outstanding_ops_ = ready.size();
-    root_frame_->iterations[0]->outstanding_ops = ready.size();
+    {
+      mutex_lock l(root_frame_->mu);
+      root_frame_->GetIteration(0)->outstanding_ops = ready.size();
+    }
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
     ScheduleReady(ready, nullptr);
@@ -2311,7 +2337,6 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   }
   if (curr_expensive_node) {
     if (inline_ready->empty()) {
-      // Tail recursion optimization
       inline_ready->push_back(*curr_expensive_node);
     } else {
       // There are inline nodes to run already. We dispatch this expensive
@@ -2443,11 +2468,7 @@ void ExecutorState::DumpState() {
     for (auto& frame : outstanding_frames_) {
       LOG(WARNING) << frame.first;
       FrameState* frame_state = frame.second;
-      mutex_lock frame_lock(frame_state->mu);
-      for (IterationState* iteration : frame_state->iterations) {
-        LOG(WARNING) << "  Iteration:";
-        DumpIterationState(frame_state, iteration);
-      }
+      frame_state->DumpIterationState(this);
     }
     dumped_on_error_ = true;
   }
@@ -2578,11 +2599,12 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   temp->parent_iter = iter;
   temp->InitializeFrameInfo(enter_name);
 
-  // 'iterations' is a fixed-length circular buffer.
-  temp->iterations.resize(temp->max_parallel_iterations + 1);
   // Initialize iteration 0.
-  temp->iterations[0] =
-      new IterationState(temp->pending_counts, temp->total_input_tensors);
+  {
+    mutex_lock l(temp->mu);
+    temp->SetIteration(
+        0, new IterationState(temp->pending_counts, temp->total_input_tensors));
+  }
 
   {
     mutex_lock executor_lock(mu_);
