@@ -23,11 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -102,7 +101,7 @@ void Unflatten(const string& prefix, const std::vector<string>& output_sizes,
 string TensorPBString(const TensorProto& pb) {
   // Note: This gets used in the argument list, and so must survive naive
   // word wrapping.
-  return strings::StrCat("\"\"\"", ProtoShortDebugString(pb), "\"\"\"");
+  return strings::StrCat("\"\"\"", pb.ShortDebugString(), "\"\"\"");
 }
 
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
@@ -118,7 +117,8 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string Code() override;
 
  protected:
-  void HandleGraphMode(const string& function_setup);
+  void HandleGraphMode(const string& function_setup,
+                       const std::vector<string>& output_sizes);
 
   string GetEagerNotAllowedError();
   void ExpectListArg(const string& indentation, const string& arg_name,
@@ -360,7 +360,8 @@ string GenEagerPythonOp::Code() {
   return prelude_ + result_;
 }
 
-void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
+void GenEagerPythonOp::HandleGraphMode(
+    const string& function_setup, const std::vector<string>& output_sizes) {
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
   strings::StrAppend(&result_, function_setup);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
@@ -383,9 +384,9 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
                          "  if not _result:\n"
                          "    return _op\n");
     }
-    strings::StrAppend(&result_, "  _inputs_flat = _op.inputs\n");
 
-    // Compute graph-mode attrs.
+    // Compute graph-mode attrs when we need to record a gradient.
+    strings::StrAppend(&result_, "  if _execute.must_record_gradient():\n");
     if (op_def_.attr_size() > 0) {
       string attr_values;
       for (int i = 0; i < op_def_.attr_size(); ++i) {
@@ -394,17 +395,48 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
         if (op_def_.attr(i).type() == "type") {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op._get_attr_type(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "bool") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_bool(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "int") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_int(\"", attr_name, "\")");
         } else {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op.get_attr(\"", attr_name, "\")");
         }
       }
       strings::StrAppend(&attr_values, ")");
-      strings::StrAppend(
-          &result_, WordWrap("  _attrs = (", attr_values, kRightMargin), "\n");
+      strings::StrAppend(&result_,
+                         WordWrap("    _attrs = (", attr_values, kRightMargin),
+                         "\n");
+
     } else {
-      strings::StrAppend(&result_, "  _attrs = None\n");
+      strings::StrAppend(&result_, "    _attrs = ()\n");
     }
+
+    strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
+    strings::StrAppend(&result_, "    _execute.record_gradient(\n",
+                       "        \"", op_def_.name(),
+                       "\", _inputs_flat, _attrs, _result, name)\n");
+
+    if (num_outs_ == 1 && !output_sizes[0].empty()) {
+      // Single list result.
+    } else if (num_outs_ == 1) {
+      // Execute returns a single-element list which we need to destructure.
+      strings::StrAppend(&result_, "  ", "_result, = _result\n");
+    } else {
+      // Have multiple outputs, so we will need to reformat the return
+      // value of execute() to be a list with one entry per op output
+      // (that entry will be a list of tensors if that output is of list
+      // type).
+      // For list outputs, convert the right subrange of _result into a list.
+      Unflatten("  ", output_sizes, "_result", &result_);
+      // Convert to a named tuple.
+      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
+                         "Output._make(_result)\n");
+    }
+    strings::StrAppend(&result_, "  return _result\n\n");
   } else {
     strings::StrAppend(&result_, "  return _op\n");
   }
@@ -615,8 +647,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
     bool execute_record_gradient) {
   if (num_outs_ > 0) {
     if (execute_record_gradient) {
-      strings::StrAppend(&result_, indentation, "_execute.record_gradient(\n",
-                         "      \"", op_def_.name(),
+      strings::StrAppend(&result_, indentation,
+                         "if _execute.must_record_gradient():\n");
+      strings::StrAppend(&result_, indentation, "  _execute.record_gradient(\n",
+                         "        \"", op_def_.name(),
                          "\", _inputs_flat, _attrs, _result, name)\n");
     }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
@@ -659,11 +693,10 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  strings::StrAppend(
-      &result_,
-      "  _ctx = _context._context or _context.context()\n"
-      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
-      "\n");
+  strings::StrAppend(&result_,
+                     "  _ctx = _context._context or _context.context()\n"
+                     "  if _ctx._thread_local_data.is_eager:",
+                     "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
@@ -676,9 +709,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     result_ = function_setup;
     return false;
   }
-  HandleGraphMode(function_setup);
-  AddEagerFunctionTeardown("  ", output_sizes,
-                           true /* execute_record_gradient */);
+  HandleGraphMode(function_setup, output_sizes);
 
   AddRawOpExport(parameters);
   strings::StrAppend(&result_, "\n\n");
@@ -727,7 +758,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
       "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
-      op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
+      op_def_.name(), "\", ", "name, _ctx.post_execution_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
@@ -993,8 +1024,6 @@ from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
 from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
-from tensorflow.python.framework import errors as _errors
-from tensorflow.python.framework import tensor_shape as _tensor_shape
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 # Needed to trigger the call to _set_call_cpp_shape_fn.
@@ -1077,11 +1106,6 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
   return op_def_lib
 )");
 
-  result.append("# ");
-  auto ops_text = ProtoDebugString(cleaned_ops);
-  absl::StripTrailingAsciiWhitespace(&ops_text);
-  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
-  result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
                    absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;

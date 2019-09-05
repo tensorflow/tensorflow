@@ -186,7 +186,7 @@ class MultivariateNormalLinearOperator(
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    with ops.name_scope(name, values=[loc] + scale.graph_parents) as name:
+    with ops.name_scope(name, values=[loc]) as name:
       # Since expand_dims doesn't preserve constant-ness, we obtain the
       # non-dynamic value if possible.
       loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc
@@ -329,8 +329,7 @@ def _kl_brute_force(a, b, name=None):
             isinstance(x, linalg.LinearOperatorScaledIdentity) or
             isinstance(x, linalg.LinearOperatorDiag))
 
-  with ops.name_scope(name, "kl_mvn", values=[a.loc, b.loc] +
-                      a.scale.graph_parents + b.scale.graph_parents):
+  with ops.name_scope(name, "kl_mvn", values=[a.loc, b.loc]):
     # Calculation is based on:
     # http://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
     # and,

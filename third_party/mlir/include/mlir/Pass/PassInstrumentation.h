@@ -20,11 +20,11 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/Any.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
 using AnalysisID = ClassID;
+class Operation;
 class Pass;
 
 namespace detail {
@@ -39,32 +39,32 @@ public:
   virtual ~PassInstrumentation() = 0;
 
   /// A callback to run before a pass is executed. This function takes a pointer
-  /// to the pass to be executed, as well as an llvm::Any holding a pointer to
-  /// the IR unit being transformed on.
-  virtual void runBeforePass(Pass *pass, const llvm::Any &ir) {}
+  /// to the pass to be executed, as well as the current operation being
+  /// operated on.
+  virtual void runBeforePass(Pass *pass, Operation *op) {}
 
   /// A callback to run after a pass is successfully executed. This function
-  /// takes a pointer to the pass to be executed, as well as an llvm::Any
-  /// holding a pointer to the IR unit being transformed on.
-  virtual void runAfterPass(Pass *pass, const llvm::Any &ir) {}
+  /// takes a pointer to the pass to be executed, as well as the current
+  /// operation being operated on.
+  virtual void runAfterPass(Pass *pass, Operation *op) {}
 
   /// A callback to run when a pass execution fails. This function takes a
-  /// pointer to the pass that was being executed, as well as an llvm::Any
-  /// holding a pointer to the IR unit that was being transformed. Note
-  /// that the ir unit may be in an invalid state.
-  virtual void runAfterPassFailed(Pass *pass, const llvm::Any &ir) {}
+  /// pointer to the pass that was being executed, as well as the current
+  /// operation being operated on. Note that the operation may be in an invalid
+  /// state.
+  virtual void runAfterPassFailed(Pass *pass, Operation *op) {}
 
   /// A callback to run before an analysis is computed. This function takes the
-  /// name of the analysis to be computed, its AnalysisID, as well as an
-  /// llvm::Any holding a pointer to the IR unit being analyzed on.
+  /// name of the analysis to be computed, its AnalysisID, as well as the
+  /// current operation being analyzed.
   virtual void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                                 const llvm::Any &ir) {}
+                                 Operation *op) {}
 
   /// A callback to run before an analysis is computed. This function takes the
-  /// name of the analysis that was computed, its AnalysisID, as well as an
-  /// llvm::Any holding a pointer to the IR unit that was analyzed.
+  /// name of the analysis that was computed, its AnalysisID, as well as the
+  /// current operation being analyzed.
   virtual void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                                const llvm::Any &ir) {}
+                                Operation *op) {}
 };
 
 /// This class holds a collection of PassInstrumentation objects, and invokes
@@ -77,54 +77,25 @@ public:
   ~PassInstrumentor();
 
   /// See PassInstrumentation::runBeforePass for details.
-  template <typename IRUnitT> void runBeforePass(Pass *pass, IRUnitT ir) {
-    runBeforePass(pass, llvm::Any(ir));
-  }
+  void runBeforePass(Pass *pass, Operation *op);
 
   /// See PassInstrumentation::runAfterPass for details.
-  template <typename IRUnitT> void runAfterPass(Pass *pass, IRUnitT ir) {
-    runAfterPass(pass, llvm::Any(ir));
-  }
+  void runAfterPass(Pass *pass, Operation *op);
 
   /// See PassInstrumentation::runAfterPassFailed for details.
-  template <typename IRUnitT> void runAfterPassFailed(Pass *pass, IRUnitT ir) {
-    runAfterPassFailed(pass, llvm::Any(ir));
-  }
+  void runAfterPassFailed(Pass *pass, Operation *op);
 
   /// See PassInstrumentation::runBeforeAnalysis for details.
-  template <typename IRUnitT>
-  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT ir) {
-    runBeforeAnalysis(name, id, llvm::Any(ir));
-  }
+  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
 
   /// See PassInstrumentation::runAfterAnalysis for details.
-  template <typename IRUnitT>
-  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT ir) {
-    runAfterAnalysis(name, id, llvm::Any(ir));
-  }
+  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
 
   /// Add the given instrumentation to the collection. This takes ownership over
   /// the given pointer.
   void addInstrumentation(PassInstrumentation *pi);
 
 private:
-  /// See PassInstrumentation::runBeforePass for details.
-  void runBeforePass(Pass *pass, const llvm::Any &ir);
-
-  /// See PassInstrumentation::runAfterPass for details.
-  void runAfterPass(Pass *pass, const llvm::Any &ir);
-
-  /// See PassInstrumentation::runAfterPassFailed for details.
-  void runAfterPassFailed(Pass *pass, const llvm::Any &ir);
-
-  /// See PassInstrumentation::runBeforeAnalysis for details.
-  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                         const llvm::Any &ir);
-
-  /// See PassInstrumentation::runAfterAnalysis for details.
-  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                        const llvm::Any &ir);
-
   std::unique_ptr<detail::PassInstrumentorImpl> impl;
 };
 

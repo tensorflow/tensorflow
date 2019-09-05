@@ -23,6 +23,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.pywrap_tensorflow import PythonTraceMe
 
 
@@ -32,8 +34,8 @@ class TraceMe(object):
   def __init__(self, name, **kwargs):
     if PythonTraceMe.IsEnabled():
       if kwargs:
-        name += '#' + ','.join(
-            [key + '=' + str(value) for key, value in kwargs.iteritems()]) + '#'
+        name += '#' + ','.join(key + '=' + str(value)
+                               for key, value in six.iteritems(kwargs)) + '#'
       self._traceme = PythonTraceMe(name)
     else:
       self._traceme = None

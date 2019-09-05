@@ -859,8 +859,9 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map)
 
   @property
   def device(self):
@@ -1217,7 +1218,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor *= 1. / len(self.devices)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(tuple(
             _assign_on_device(v.device, v, tensor) for v in self._values))
       else:
@@ -1390,7 +1391,14 @@ def regroup(device_map, values, wrap_class=PerReplica):
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.values[replica_id] if isinstance(x, DistributedValues) else x
+    # `DistributedValues` would be sliced according to replica unless it is a
+    # `DistributedVariable` because `DistributedVariable` can be handled
+    # directly in the replica context.
+    if (isinstance(x, DistributedVariable) or
+        not isinstance(x, DistributedValues)):
+      return x
+    else:
+      return x.values[replica_id]
 
   return nest.map_structure(_get, structured)
 

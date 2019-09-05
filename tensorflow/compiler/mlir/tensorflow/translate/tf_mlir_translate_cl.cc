@@ -95,3 +95,10 @@ opt<bool> convert_legacy_fed_inputs(
 opt<bool> graph_as_function("tf-graph-as-function",
                             llvm::cl::desc("Treat main graph as a function "),
                             llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<std::string> saved_model_tags(
+    "tf-savedmodel-tags",
+    llvm::cl::desc("Tags used to indicate which MeataGraphDef to import, "
+                   "separated by ','"),
+    llvm::cl::init("serve"));

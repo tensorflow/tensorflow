@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/micro_allocator.h"
 
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 
 namespace tflite {
 
@@ -133,6 +134,11 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
           &context_->tensors[i]);
       if (status != kTfLiteOk) {
         return status;
+      }
+
+      // Set default value for variable tensors:
+      if (tensor->is_variable()) {
+        tflite::ResetVariableTensor(&context_->tensors[i]);
       }
     }
   }

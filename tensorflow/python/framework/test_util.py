@@ -49,6 +49,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
@@ -276,19 +277,19 @@ def _strip_hash_table_shared_name(graph_def):
 
 
 def IsGoogleCudaEnabled():
-  return pywrap_tensorflow.IsGoogleCudaEnabled()
+  return _pywrap_util_port.IsGoogleCudaEnabled()
 
 
 def IsBuiltWithROCm():
-  return pywrap_tensorflow.IsBuiltWithROCm()
+  return _pywrap_util_port.IsBuiltWithROCm()
 
 
 def GpuSupportsHalfMatMulAndConv():
-  return pywrap_tensorflow.GpuSupportsHalfMatMulAndConv()
+  return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 
 
 def IsMklEnabled():
-  return pywrap_tensorflow.IsMklEnabled()
+  return _pywrap_util_port.IsMklEnabled()
 
 
 def InstallStackTraceHandler():
@@ -1224,6 +1225,19 @@ def deprecated_graph_mode_only(func=None):
 
 
 run_deprecated_v1 = deprecated_graph_mode_only
+
+
+def run_all_in_deprecated_graph_mode_only(cls):
+  """Execute all tests in a class in graph mode."""
+  base_decorator = deprecated_graph_mode_only
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name == "test_session"):
+      continue
+    value = getattr(cls, name, None)
+    if callable(value):
+      setattr(cls, name, base_decorator(value))
+  return cls
 
 
 def run_v1_only(reason, func=None):

@@ -52,7 +52,8 @@ class PReLU : public ElementwiseOperation {
                             const PReLUAttributes& attr, PReLU* result);
 
  private:
-  PReLU(const OperationDef& definition, const PReLUAttributes& attr);
+  PReLU(const OperationDef& definition, const PReLUAttributes& attr,
+        CalculationsPrecision scalar_precision);
 
   template <DataType T>
   Status UploadParameters(const ::tflite::gpu::Tensor<Linear, T>& parameters,

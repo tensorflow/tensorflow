@@ -60,6 +60,7 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
@@ -69,12 +70,15 @@ cc_library(
     name = "TestTransforms",
     srcs = [
         "lib/Transforms/TestConstantFold.cpp",
+        "lib/Transforms/TestInlining.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
+    includes = ["lib/TestDialect"],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",

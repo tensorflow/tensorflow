@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -198,7 +198,7 @@ string PrintTensor(const TensorProto& tensor_proto) {
       return ret;
     }
     default: {
-      LOG(FATAL) << "Not handling type " << EnumName_DataType(t.dtype());
+      LOG(FATAL) << "Not handling type " << DataType_Name(t.dtype());
       return string();
     }
   }
@@ -223,7 +223,7 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
-      return EnumName_DataType(attr_value.type());
+      return DataType_Name(attr_value.type());
     case AttrValue::kShape:
       return PrintTensorShape(attr_value.shape());
     case AttrValue::kTensor:
@@ -254,8 +254,7 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
       } else if (attr_value.list().type_size() > 0) {
         for (int i = 0; i < attr_value.list().type_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret,
-                             EnumName_DataType(attr_value.list().type(i)));
+          strings::StrAppend(&ret, DataType_Name(attr_value.list().type(i)));
         }
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {

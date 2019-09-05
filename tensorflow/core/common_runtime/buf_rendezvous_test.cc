@@ -47,7 +47,7 @@ class BufRendezvousTest : public ::testing::Test {
                         const uint64 incarnation) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(NewDevice(device, type, incarnation));
-    dev_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     br_ = absl::make_unique<BufRendezvous>(123, dev_mgr_.get());
   }
 

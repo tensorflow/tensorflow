@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -238,11 +236,11 @@ def if_override_eigen_strong_inline(a):
         "//conditions:default": [],
     })
 
-def if_nccl(a):
+def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow:no_nccl_support": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": a,
+        "//tensorflow:no_nccl_support": if_false,
+        "//tensorflow:windows": if_false,
+        "//conditions:default": if_true,
     })
 
 def get_win_copts(is_external = False):
@@ -267,7 +265,6 @@ def get_win_copts(is_external = False):
     else:
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
 
-# LINT.IfChange
 def tf_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
@@ -328,8 +325,6 @@ def tf_opts_nortti_if_android():
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
-
-# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 def tf_opts_nortti_if_emscripten():
     return if_emscripten([
@@ -2396,7 +2391,7 @@ def pybind_extension(
         features = [],
         srcs_version = "PY2AND3",
         data = [],
-        copts = None,
+        copts = [],
         linkopts = [],
         deps = [],
         visibility = None,
@@ -2442,7 +2437,7 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts,
+        copts = copts + ["-fexceptions"],
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
@@ -2457,7 +2452,7 @@ def pybind_extension(
             exported_symbols_file,
             version_script_file,
         ],
-        features = features,
+        features = features + ["-use_header_modules"],
         linkshared = 1,
         testonly = testonly,
         licenses = licenses,
@@ -2498,9 +2493,9 @@ def tf_python_pybind_extension(
         name,
         srcs,
         module_name,
-        hdrs = [],
         features = [],
-        copts = None,
+        copts = [],
+        hdrs = [],
         deps = []):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
@@ -2511,9 +2506,9 @@ def tf_python_pybind_extension(
         name,
         srcs + tf_binary_additional_srcs(),
         module_name,
-        hdrs = hdrs,
         features = features,
         copts = copts,
+        hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps(),
     )
 

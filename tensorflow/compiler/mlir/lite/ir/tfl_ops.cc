@@ -20,6 +20,8 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -27,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -401,6 +402,23 @@ static LogicalResult Verify(PackOp op) {
   if (op.getOperation()->getNumOperands() != op.values_count())
     return op.emitOpError("input count should match 'values_count' attribute");
 
+  Value *operand0 = op.getOperand(0);
+  auto input_type = operand0->getType().cast<ShapedType>();
+
+  // Check axis bounds.
+  int64_t axis_value = op.axis().getSExtValue();
+  if (abs(axis_value) > input_type.getRank())
+    return op.emitOpError("op attribute 'axis' is out of bounds, got ")
+           << axis_value;
+
+  // Make sure all inputs have the same shape and element type.
+  // TODO(rahulsp): Simplify once b/135032064 is fixed.
+  for (Value *operand : op.getOperands()) {
+    auto other_type = operand->getType().cast<ShapedType>();
+    if (input_type != other_type)
+      return op.emitOpError("operands should be of the same type");
+  }
+
   return success();
 }
 
@@ -457,6 +475,74 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SliceOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto begin_type = op.begin()->getType().cast<ShapedType>();
+  auto size_type = op.size()->getType().cast<ShapedType>();
+  if (input_type.hasStaticShape() && begin_type.hasStaticShape() &&
+      size_type.hasStaticShape()) {
+    if (input_type.getRank() != begin_type.getNumElements()) {
+      return op.emitError(
+          "begin tensor elements size is not equal to input tensor rank");
+    }
+
+    if (input_type.getRank() != size_type.getNumElements()) {
+      return op.emitError(
+          "size tensor elements size is not equal to input tensor rank");
+    }
+  }
+
+  DenseIntElementsAttr begin;
+  if (matchPattern(op.begin(), m_Constant(&begin))) {
+    int axis = 0;
+    for (auto begin_i : llvm::enumerate(begin)) {
+      if (begin_i.value().getSExtValue() < 0) {
+        return op.emitError(
+            llvm::formatv("begin[{0}] cannot be negative", axis));
+      }
+      axis++;
+    }
+  }
+
+  DenseIntElementsAttr size;
+  if (matchPattern(op.size(), m_Constant(&size))) {
+    int axis = 0;
+    for (auto size_i : llvm::enumerate(size)) {
+      if (size_i.value().getSExtValue() < -1) {
+        return op.emitError(
+            llvm::formatv("size[{0}] cannot be negative other than -1", axis));
+      }
+      axis++;
+    }
+  }
+
+  if (begin && size && input_type.hasStaticShape()) {
+    const int input_rank = begin.getNumElements();
+    for (uint64_t i = 0; i < input_rank; i++) {
+      int begin_i =
+          begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int size_i =
+          size.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int dim_i = input_type.getShape()[i];
+      if (begin_i >= dim_i) {
+        return op.emitOpError(llvm::formatv(
+            "begin[{0}] cannot exceed dimension length: {1}", i, dim_i));
+      }
+      if (size_i >= 0 && begin_i + size_i > dim_i) {
+        return op.emitError(llvm::formatv(
+            "begin[{0}] + size[{0}] cannot exceed dimension length: {1}", i,
+            dim_i));
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -561,6 +647,170 @@ static LogicalResult Verify(UnpackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+// Extracts and returns the signed integer constant in a 0-rank integer tensor
+// if 'value' is a constant.
+static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
+  ElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr))) return {};
+  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  return int_attr.getValue().getSExtValue();
+}
+
+// Returns a RankedTensorType which is similar to `input_type` but replaces the
+// dimension size of `dim` with `dim_size`.  For example,
+// `SubstituteRankedTensorTypeDimSize(tensor<3x4xi32>, 1, 2)` returns
+// `tensor<3x2xi32>`.
+static RankedTensorType SubstituteRankedTensorTypeDimSize(
+    RankedTensorType input_type, int64_t dim, int64_t dim_size) {
+  auto shape = input_type.getShape().vec();
+  shape[dim] = dim_size;
+  return RankedTensorType::get(shape, input_type.getElementType());
+}
+
+// Verifies the output tensor types of SplitOp or SplitVOp.
+template <typename ExpectedOutputTypeGetter>
+static LogicalResult VerifySplitOpOutputTypes(
+    Operation *op, int64_t num_splits,
+    ExpectedOutputTypeGetter get_expected_output_type) {
+  for (int64_t i = 0; i < num_splits; ++i) {
+    auto expected_output_type = get_expected_output_type(i);
+    Value *output = op->getResult(i);
+    auto output_type = output->getType().dyn_cast<RankedTensorType>();
+    if (!output_type || output_type != expected_output_type)
+      return op->emitOpError()
+             << "output #" << i << " should be " << expected_output_type;
+  }
+  return success();
+}
+
+static LogicalResult Verify(SplitOp op) {
+  int64_t num_splits = op.num_splits().getSExtValue();
+  if (op.getNumResults() != num_splits)
+    return op.emitOpError("output count should match 'num_splits' attribute");
+
+  // If 'split_dim' is not a constant, there are no other checks.
+  llvm::Optional<int64_t> split_dim_opt =
+      ExtractConstantIntFromTensor(op.split_dim());
+  if (!split_dim_opt) return success();
+
+  // If 'input' is not a ranked tensor, there are no other checks.
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t split_dim = split_dim_opt.getValue();
+  const int64_t rank = input_type.getRank();
+  if (split_dim < 0) split_dim += rank;
+  if (split_dim < 0 || split_dim >= rank)
+    return op.emitOpError("'split_dim' should be in [-rank, rank)");
+
+  // If the 'split_dim' dimension of the 'input' tensor has a dynamic size,
+  // there are no other checks.
+  const int64_t dim_size = input_type.getDimSize(split_dim);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  if (dim_size % num_splits != 0)
+    return op.emitOpError("'num_splits' should evenly divide 'split_dim' axis");
+
+  // Verifies output tensor types.
+  RankedTensorType expected_output_type = SubstituteRankedTensorTypeDimSize(
+      input_type, split_dim, dim_size / num_splits);
+  return VerifySplitOpOutputTypes(
+      op.getOperation(), num_splits,
+      [expected_output_type](int64_t) { return expected_output_type; });
+}
+
+static LogicalResult Verify(SplitVOp op) {
+  int64_t num_splits = op.num_splits().getSExtValue();
+  if (op.getNumResults() != num_splits)
+    return op.emitOpError("output count should match 'num_splits' attribute");
+
+  // If 'split_dim' is not a constant, there are no other checks.
+  llvm::Optional<int64_t> split_dim_opt =
+      ExtractConstantIntFromTensor(op.split_dim());
+  if (!split_dim_opt) return success();
+
+  // If 'input' is not a ranked tensor, there are no other checks.
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t split_dim = split_dim_opt.getValue();
+  const int64_t rank = input_type.getRank();
+  if (split_dim < 0) split_dim += rank;
+  if (split_dim < 0 || split_dim >= rank)
+    return op.emitOpError("'split_dim' should be in [-rank, rank)");
+
+  // If the 'split_dim' dimension of the 'input' tensor has a dynamic size,
+  // there are no other checks.
+  const int64_t dim_size = input_type.getDimSize(split_dim);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  // If 'size_splits' is not a constant, there are no other checks.
+  ElementsAttr size_splits_attr;
+  if (!matchPattern(op.size_splits(), m_Constant(&size_splits_attr)))
+    return success();
+
+  if (size_splits_attr.getNumElements() != num_splits) {
+    auto size_splits_type =
+        op.size_splits()->getType().cast<RankedTensorType>();
+    RankedTensorType expected_size_splits_type =
+        RankedTensorType::get({num_splits}, size_splits_type.getElementType());
+    return op.emitOpError("'size_splits' should be ")
+           << expected_size_splits_type;
+  }
+
+  // Normalizes and verifies 'size_splits'.
+  // Note: TensorFlow allows one -1 element in 'size_splits'.  The -1 element
+  // means the rest of the dimension size.
+  llvm::SmallVector<int64_t, 4> size_splits;
+  size_splits.reserve(num_splits);
+
+  int64_t negative_size_split_loc = -1;
+  int64_t total_size_splits = 0;
+
+  for (int64_t i = 0; i < num_splits; ++i) {
+    auto size_split_attr = size_splits_attr.getValue<IntegerAttr>(i);
+    int64_t size_split = size_split_attr.getValue().getSExtValue();
+    size_splits.push_back(size_split);
+    if (size_split >= 0) {
+      total_size_splits += size_split;
+      continue;
+    }
+    if (size_split < -1)
+      return op.emitOpError(
+          "elements of 'size_splits' should be greater than or equal to -1");
+    if (negative_size_split_loc != -1)
+      return op.emitOpError("'size_splits' can only have one -1");
+    negative_size_split_loc = i;
+  }
+
+  if (negative_size_split_loc != -1) {
+    if (total_size_splits > dim_size)
+      return op.emitOpError(
+          "sum of non-negative elements of 'size_splits' is greater than the "
+          "dimension size of 'split_dim' axis");
+    size_splits[negative_size_split_loc] = dim_size - total_size_splits;
+    total_size_splits = dim_size;
+  }
+
+  if (total_size_splits != dim_size)
+    return op.emitOpError(
+        "sum of 'size_splits' should match the dimension size of 'split_dim' "
+        "axis");
+
+  // Verifies result tensor types.
+  auto get_expected_output_type = [input_type, split_dim,
+                                   &size_splits](int64_t i) {
+    return SubstituteRankedTensorTypeDimSize(input_type, split_dim,
+                                             size_splits[i]);
+  };
+  return VerifySplitOpOutputTypes(op.getOperation(), num_splits,
+                                  get_expected_output_type);
+}
+
+//===----------------------------------------------------------------------===//
 // MeanOp
 //===----------------------------------------------------------------------===//
 
@@ -602,6 +852,18 @@ static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
   }
   return op.emitError(
       "UnidirectionalSequenceRNNOp expected to have one stateful operand");
+}
+
+//===----------------------------------------------------------------------===//
+// SvdfOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SVDFOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 1 && operands[0] == 4) {
+    return success();
+  }
+  return op.emitError("SvdfOp expected to have one stateful operand");
 }
 
 //===----------------------------------------------------------------------===//

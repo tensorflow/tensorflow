@@ -16,7 +16,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -24,6 +23,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
@@ -38,8 +39,8 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
-using tensorflow::Status;
 
+// Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> print_function_result_mapping(
     "print-function-result-mapping",
@@ -100,9 +101,8 @@ static int PrintFunctionResultMapping(const std::string &result,
 }
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   // TODO(jpienaar): Revise the command line option parsing here.
-  llvm::InitLLVM y(argc, argv);
+  tensorflow::InitMlir y(&argc, &argv);
 
   // TODO(antiagainst): We are pulling in multiple transformations as follows.
   // Each transformation has its own set of command-line options; options of one
@@ -113,13 +113,8 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
-
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
-
-  // TODO(ashwinm): Enable command line parsing for both sides.
-  int fake_argc = 1;
-  tensorflow::port::InitMain(argv[0], &fake_argc, &argv);
 
   MLIRContext context;
   llvm::SourceMgr source_mgr;
@@ -136,12 +131,16 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm;
+  mlir::PassManager pm(&context);
   bool run_quantize =
       tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
-  tensorflow::AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                                         emit_quant_adaptor_ops,
-                                         lower_tensor_list_ops, &pm);
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
+  pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.run_quantize = run_quantize;
+
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
@@ -150,7 +149,12 @@ int main(int argc, char **argv) {
       lower_tensor_list_ops, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
-  auto output = mlir::openOutputFile(output_file_name);
+  std::string error_msg;
+  auto output = mlir::openOutputFile(output_file_name, &error_msg);
+  if (output == nullptr) {
+    llvm::errs() << error_msg << '\n';
+    return kTrFailure;
+  }
   output->os() << result;
   output->keep();
 

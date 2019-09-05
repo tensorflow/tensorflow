@@ -20,8 +20,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
-CMSIS_MD5 := "f451f1dccc844e894939055db278a40e"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/04c0b9a8646ab267d0a5d5abe413a916aa7464f6.zip"
+CMSIS_MD5 := "d9f473201070758be8999cd9f1df8660"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
 AM_SDK_MD5 := "70332bc6968602bd85bee600ca81d06f"

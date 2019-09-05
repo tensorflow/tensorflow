@@ -24,16 +24,28 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
+from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import convolutional
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import normalization_v2
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -52,7 +64,12 @@ def _jvp(f, primals, tangents):
   with forwardprop.ForwardGradientAccumulator() as acc:
     acc.watch(primals, tangents)
     primals_out = f(*primals)
-  return primals_out, acc.jvp(primals_out)
+  tangents_out = acc.jvp(primals_out)
+  if primals_out is not None and tangents_out is None:
+    # TODO(allenl): Support UnconnectedGradients as an accumulator constructor
+    # argument.
+    return primals_out, array_ops.zeros_like(primals_out)
+  return primals_out, tangents_out
 
 
 def _jacfwd(f, primals):
@@ -258,6 +275,129 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
+  def testExceptionInCustomGradientNotSwallowed(self):
+
+    @custom_gradient.custom_gradient
+    def f(unused_x):
+      def grad(unused_dy):
+        raise ValueError("test_error_string")
+      return 1., grad
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      with self.assertRaisesRegexp(ValueError, "test_error_string"):
+        f(c)
+
+  @parameterized.named_parameters(
+      [("EluM5", -0.5, nn_ops.elu),
+       ("EluP5", [0.5], nn_ops.elu),
+       ("SwishP5", 0.5, nn_impl.swish),
+       ("SwishM5", [-0.5], nn_impl.swish)])
+  def testElementwiseNNOps(self, value, op_fn):
+    _test_gradients(self, op_fn, [constant_op.constant(value)], order=3)
+
+  @parameterized.named_parameters(
+      [("Dense", [[0.1]], functools.partial(core.Dense, 5)),
+       ("Conv2D",
+        np.reshape(np.arange(start=-1., stop=1., step=2. / (1 * 2 * 4 * 4)),
+                   [1, 2, 4, 4]),
+        functools.partial(convolutional.Conv2D, 2, 2),
+        1e-4),
+       ("BatchNorm", [[0.1], [0.2], [-0.3]],
+        normalization_v2.BatchNormalization)])
+  def testKerasLayers(self, value, op_fn, atol=1e-6):
+    layer = op_fn()
+    input_value = constant_op.constant(value, dtype=dtypes.float32)
+    layer.build(input_value.shape)
+    # Make sure the test is deterministic by avoiding random variable
+    # initialization.
+    for v in layer.trainable_variables:
+      v.assign(array_ops.reshape(
+          math_ops.range(
+              -1., 1., 2. / array_ops.size(v, out_type=dtypes.float32),
+              dtype=dtypes.float32),
+          v.shape))
+    _test_gradients(
+        self, layer, [input_value], atol=atol,
+        # These are linear, so second-order is pretty boring.
+        order=2)
+
+  @parameterized.named_parameters(
+      [("Function", def_function.function),
+       ("NoFunction", lambda f: f)])
+  def testVariablesHVP(self, decorator):
+
+    if test.is_built_with_rocm():
+      # TODO(rocm)
+      # This test was recently added and has never passed on the
+      # ROCm platform. Remove this skip once the test is passing again
+      self.skipTest("NoFunction decorator test fails on the ROCm platform")
+
+    class _Model(module.Module):
+
+      def __init__(self):
+        self._first_dense = core.Dense(18)
+        self._conv = convolutional.Conv2D(2, 2)
+        self._norm = normalization_v2.BatchNormalization()
+        self._second_dense = core.Dense(1)
+
+      def __call__(self, x):
+        x = self._first_dense(x)
+        x = nn_ops.relu(x)
+        x = self._norm(x)
+        x = nn_ops.relu(self._conv(array_ops.reshape(x, [-1, 2, 3, 3])))
+        return self._second_dense(x)
+
+    model = _Model()
+    def _loss():
+      input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])
+      target = constant_op.constant([[-1.], [2.]])
+      return math_ops.reduce_sum((model(input_value) - target) ** 2.)
+
+    @decorator
+    def _compute_hvps():
+      with backprop.GradientTape() as tape:
+        loss = _loss()
+      vector = tape.gradient(loss, model.trainable_variables)
+      variable_input_fn = lambda unused_variables: _loss()
+      forward_over_back_hvp = _hvp(
+          variable_input_fn, [model.trainable_variables], [vector])
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(model.trainable_variables)
+        loss = _loss()
+        first_grads = tape.gradient(loss, model.trainable_variables)
+      back_over_back_hvp = tape.gradient(
+          first_grads, model.trainable_variables, output_gradients=vector)
+      return forward_over_back_hvp, back_over_back_hvp
+    self.assertAllClose(*_compute_hvps(), rtol=1e-5, atol=1e-5)
+
+  def testPushPopAccumulatorState(self):
+    # Note that this example is somewhat contrived. push_forwardprop_state is
+    # probably only useful in practice for building functions that compute jvps
+    # alongside their usual outputs.
+    with forwardprop.ForwardGradientAccumulator() as acc:
+
+      @custom_gradient.custom_gradient
+      def f(x):
+        y = math_ops.sin(x.numpy())
+
+        def grad(dy):
+          with forwardprop_util.push_forwardprop_state():
+            x_copy = constant_op.constant(x.numpy())
+            acc.watch(x_copy, dy)
+            y_copy = math_ops.sin(x_copy)
+          return dy * acc.jvp(y_copy)
+
+        return y, grad
+
+      c = constant_op.constant(1.)
+      d = constant_op.constant(2.)
+      acc.watch(c, d)
+      output = f(c)
+      self.assertAllClose(d * math_ops.cos(c), acc.jvp(output))
+
   @parameterized.named_parameters(
       [("Order{}".format(order), order, expected)
        for order, expected in enumerate(_X11_35_DERIVATIVES)])
@@ -304,6 +444,35 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testJVPPacking(self):
+    two = constant_op.constant(2.)
+    with forwardprop.ForwardGradientAccumulator() as outer_acc:
+      primal_in = constant_op.constant(1.)
+      outer_acc.watch(primal_in, constant_op.constant(2.))
+      with forwardprop.ForwardGradientAccumulator() as inner_acc:
+        inner_jvp = constant_op.constant(3.)
+        inner_acc.watch(primal_in, inner_jvp)
+        outer_acc.watch(inner_jvp, constant_op.constant(4.))
+        packed_input_indices, packed_input_tangents = (
+            forwardprop_util.pack_tangents([primal_in]))
+        self.assertAllClose([3., 2., 4.], packed_input_tangents)
+        expected_indices = (
+            # inner_acc watches primal_in
+            ((0, 1),),
+            # outer_acc watches primal_in and inner_jvp
+            ((0, 2),
+             (1, 3)))
+        self.assertAllEqual(expected_indices, packed_input_indices)
+        primal_out = primal_in * two
+        self.assertAllClose(6., inner_acc.jvp(primal_out))
+        self.assertAllClose(4., outer_acc.jvp(primal_out))
+        self.assertAllClose(8., outer_acc.jvp(inner_acc.jvp(primal_out)))
+        packed_output_indices, packed_output_tangents = (
+            forwardprop_util.pack_tangents([primal_out]))
+        self.assertAllClose([6., 4., 8.], packed_output_tangents)
+        self.assertAllEqual(expected_indices, packed_output_indices)
+
   def testFunctionGradInFunctionPureForward(self):
 
     @def_function.function
@@ -339,6 +508,27 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         f,
         [constant_op.constant([1., 2.])],
         order=3)
+
+  def testReusingForwardGradient(self):
+    m1 = random_ops.random_uniform((256, 2096))
+    m2 = array_ops.identity(m1)
+    tangent1 = random_ops.random_uniform((256, 2096))
+    tangent2 = random_ops.random_uniform((256, 2096))
+    matmul = def_function.function(math_ops.matmul)
+
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(m1, tangent1)
+      result1 = matmul(m1, m1, transpose_b=True)
+      acc.watch(m2, tangent2)
+      result2 = matmul(m2, m2, transpose_b=True)
+
+    def _expected(mat, tangent):
+      return (math_ops.matmul(tangent, mat, transpose_b=True)
+              + math_ops.matmul(mat, tangent, transpose_b=True))
+
+    self.assertAllClose(result1, result2)
+    self.assertAllClose(_expected(m1, tangent1), acc.jvp(result1))
+    self.assertAllClose(_expected(m2, tangent2), acc.jvp(result2))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testHVPMemory(self):
@@ -376,6 +566,138 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
     self.assertAllClose(backback_hvp, forwardback_hvp_function)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testShouldRecordAndStopRecord(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      c_tangent = constant_op.constant(2.)
+      acc.watch(c, c_tangent)
+      with backprop.GradientTape() as tape:
+        self.assertFalse(tape_lib.should_record_backprop([c]))
+        self.assertEqual(
+            1, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        tape.watch(c)
+        self.assertEqual(
+            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertTrue(tape_lib.should_record_backprop([c]))
+        with tape_lib.stop_recording():
+          self.assertEqual(
+              0, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+          self.assertFalse(tape_lib.should_record_backprop([c]))
+          d = c * 2.
+        self.assertEqual(
+            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertTrue(tape_lib.should_record_backprop([c]))
+        self.assertFalse(tape_lib.should_record_backprop([d]))
+        self.assertIsNone(acc.jvp(d))
+      self.assertIsNone(tape.gradient(d, c))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecordingSelectively(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      c_tangent = constant_op.constant(2.)
+      acc.watch(c, c_tangent)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(c)
+        with tape_lib.stop_recording():
+          two = constant_op.constant(2.)
+          d = c * two
+          three = constant_op.constant(3.)
+          e = c * three
+        self.assertIsNone(acc.jvp(d))
+        self.assertIsNone(acc.jvp(e))
+        self.assertIsNone(tape.gradient(d, c))
+        self.assertIsNone(tape.gradient(e, c))
+        tape_lib.record_operation_forwardprop_only(
+            "CustomForwardMul", [d], [c, two],
+            lambda dd: (two * dd, c * dd), None)
+        tape_lib.record_operation_backprop_only(
+            "CustomBackwardMul", [e], [c, three],
+            lambda de: (three * de, c * de))
+        self.assertAllClose(4., acc.jvp(d))
+        self.assertIsNone(acc.jvp(e))
+        self.assertIsNone(tape.gradient(d, c))
+        self.assertAllClose(3., tape.gradient(e, c))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testOpWithNoTrainableOutputs(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = variables.Variable(1.)
+      acc.watch(v, 11.)
+      v.assign_sub(0.5)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecordingWithJVPIndices(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      c = constant_op.constant(1.)
+      acc.watch(c, 10.)
+      packed_input_tangents = forwardprop_util.pack_tangents([c]).tangents
+      self.assertAllClose([10.], packed_input_tangents)
+      d = constant_op.constant(2.)
+      d_tangent = constant_op.constant(3.)
+      tape_lib.record_operation_forwardprop_only(
+          "FunctionWithInlineJVPs",
+          [d] + [d_tangent],
+          [c] + packed_input_tangents,
+          None, (((0, 1),),))
+      self.assertAllClose(3., acc.jvp(d))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testVariableWatched(self):
+    v = variables.Variable([1., 2., 3.])
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(v, constant_op.constant([.1, -.2, .3]))
+      self.assertAllClose([.1, -.2, .3], acc.jvp(v))
+      x = v * 2.
+      self.assertAllClose([.2, -.4, .6], acc.jvp(x))
+      x2 = v + .1
+      self.assertAllClose([.1, -.2, .3], acc.jvp(x2))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testVariableWatchedFunction(self):
+
+    class _Model(module.Module):
+
+      def __init__(self):
+        self._v = None
+
+      @def_function.function
+      def compute_jvps(self):
+        if self._v is None:
+          self._v = variables.Variable([1., 2., 3.])
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(self._v, constant_op.constant([.1, -.2, .3]))
+          x = self._v * 2.
+          x2 = self._v + .1
+        return acc.jvp((self._v, x, x2))
+
+    model = _Model()
+    v_jvp, x_jvp, x2_jvp = model.compute_jvps()
+    self.assertAllClose([.1, -.2, .3], v_jvp)
+    self.assertAllClose([.2, -.4, .6], x_jvp)
+    self.assertAllClose([.1, -.2, .3], x2_jvp)
+
+  # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
+  # test... could be something wrong with the test decorator, or some sort of
+  # nondeterminstic caching.
+  def testMirroredVariableWatched(self):
+
+    def _replicated(input_tangent):
+      with forwardprop.ForwardGradientAccumulator() as acc:
+        acc.watch(v, input_tangent)
+        self.assertAllClose([.1, -.2, .3], acc.jvp(v))
+        x = v * 2.
+        self.assertAllClose([.2, -.4, .6], acc.jvp(x))
+        x2 = v + .1
+        self.assertAllClose([.1, -.2, .3], acc.jvp(x2))
+
+    strategy = mirrored_strategy.MirroredStrategy()
+    with strategy.scope():
+      v = variables.Variable([1., 2., 3.])
+      strategy.experimental_run_v2(
+          _replicated, args=(constant_op.constant([.1, -.2, .3]),))
 
 
 if __name__ == "__main__":

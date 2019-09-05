@@ -23,7 +23,7 @@ def tflite_copts():
             "-msse4.1",
         ],
         str(Label("//tensorflow:windows")): [
-            "/DTF_COMPILE_LIBRARY",
+            "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
@@ -354,6 +354,14 @@ def generated_test_models():
 # If you have to disable a test, please add here with a link to the appropriate
 # bug or issue.
 def generated_test_models_failing(conversion_mode):
+    """Returns the list of failing test models.
+
+    Args:
+      conversion_mode: Conversion mode.
+
+    Returns:
+      List of failing test models for the conversion mode.
+    """
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
@@ -364,10 +372,57 @@ def generated_test_models_failing(conversion_mode):
         return []
     return []
 
+def generated_test_models_successful(conversion_mode):
+    """Returns the list of successful test models.
+
+    Args:
+      conversion_mode: Conversion mode.
+
+    Returns:
+      List of successful test models for the conversion mode.
+    """
+    return [test_model for test_model in generated_test_models() if test_model not in generated_test_models_failing(conversion_mode)]
+
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
     return ["toco-flex", "forward-compat", ""]
+
+def common_test_args_for_generated_models(conversion_mode, failing):
+    """Returns test args for generated model tests.
+
+    Args:
+      conversion_mode: Conversion mode.
+      failing: True if the generated model test is failing.
+
+    Returns:
+      test args of generated models.
+    """
+    args = []
+
+    # Flex conversion shouldn't suffer from the same conversion bugs
+    # listed for the default TFLite kernel backend.
+    if conversion_mode == "toco-flex":
+        args.append("--ignore_known_bugs=false")
+
+    return args
+
+def common_test_tags_for_generated_models(conversion_mode, failing):
+    """Returns test tags for generated model tests.
+
+    Args:
+      conversion_mode: Conversion mode.
+      failing: True if the generated model test is failing.
+
+    Returns:
+      tags for the failing generated model tests.
+    """
+    tags = []
+
+    if failing:
+        return ["notap", "manual"]
+
+    return tags
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -382,20 +437,124 @@ def generated_test_models_all():
     for conversion_mode in conversion_modes:
         failing_tests = generated_test_models_failing(conversion_mode)
         for test in tests:
-            tags = []
-            args = []
-            if test in failing_tests:
-                tags.append("notap")
-                tags.append("manual")
+            failing = test in failing_tests
             if conversion_mode:
                 test += "_%s" % conversion_mode
-
-            # Flex conversion shouldn't suffer from the same conversion bugs
-            # listed for the default TFLite kernel backend.
-            if conversion_mode == "toco-flex":
-                args.append("--ignore_known_bugs=false")
+            tags = common_test_tags_for_generated_models(conversion_mode, failing)
+            args = common_test_args_for_generated_models(conversion_mode, failing)
             options.append((conversion_mode, test, tags, args))
     return options
+
+def merged_test_model_name():
+    """Returns the name of merged test model.
+
+    Returns:
+      The name of merged test model.
+    """
+    return "merged_models"
+
+def max_number_of_test_models_in_merged_zip():
+    """Returns the maximum number of merged test models in a zip file.
+
+    Returns:
+      Maximum number of merged test models in a zip file.
+    """
+    return 15
+
+def number_of_merged_zip_file(conversion_mode):
+    """Returns the number of merged zip file targets.
+
+    Returns:
+      Number of merged zip file targets.
+    """
+    m = max_number_of_test_models_in_merged_zip()
+    return (len(generated_test_models_successful(conversion_mode)) + m - 1) // m
+
+def merged_test_models():
+    """Generates a list of merged tests with the different converters.
+
+    This model list should be referred only if :generate_examples supports
+    --no_tests_limit and --test_sets flags.
+
+    Returns:
+      List of tuples representing:
+            (conversion mode, name of group, test tags, test args).
+    """
+    conversion_modes = generated_test_conversion_modes()
+    tests = generated_test_models()
+    options = []
+    for conversion_mode in conversion_modes:
+        test = merged_test_model_name()
+        if conversion_mode:
+            test += "_%s" % conversion_mode
+        successful_tests = generated_test_models_successful(conversion_mode)
+        if len(successful_tests) > 0:
+            tags = common_test_tags_for_generated_models(conversion_mode, False)
+
+            # Only non-merged tests are executed on TAP.
+            # Merged test rules are only for running on the real device environment.
+            if "notap" not in tags:
+                tags.append("notap")
+            args = common_test_args_for_generated_models(conversion_mode, False)
+            n = number_of_merged_zip_file(conversion_mode)
+            for i in range(n):
+                test_i = "%s_%d" % (test, i)
+                options.append((conversion_mode, test_i, tags, args))
+    return options
+
+def flags_for_merged_test_models(test_name, conversion_mode):
+    """Returns flags for generating zipped-example data file for merged tests.
+
+    Args:
+      test_name: str. Test name in the form of "<merged_model_name>_[<conversion_mode>_]%d".
+      conversion_mode: str. Which conversion mode to run with. Comes from the
+        list above.
+
+    Returns:
+      Flags for generating zipped-example data file for merged tests.
+    """
+    prefix = merged_test_model_name() + "_"
+    if not test_name.startswith(prefix):
+        fail(msg = "Invalid test name " + test_name + ": test name should start " +
+                   "with " + prefix + " when using flags of merged test models.")
+
+    # Remove prefix and conversion_mode from the test name
+    # to extract merged test index number.
+    index_string = test_name[len(prefix):]
+    if conversion_mode:
+        index_string = index_string.replace("%s_" % conversion_mode, "")
+
+    # If the maximum number of test models in a file is 15 and the number of
+    # successful test models are 62, 5 zip files will be generated.
+    # To assign the test models fairly among these files, each zip file
+    # should contain 12 or 13 test models. (62 / 5 = 12 ... 2)
+    # Each zip file will have 12 test models and the first 2 zip files will have
+    # 1 more test model each, resulting [13, 13, 12, 12, 12] assignment.
+    # So Zip file 0, 1, 2, 3, 4 and 5 will have model[0:13], model[13:26],
+    # model[26,38], model[38,50] and model[50,62], respectively.
+    zip_index = int(index_string)
+    num_merged_zips = number_of_merged_zip_file(conversion_mode)
+    test_models = generated_test_models_successful(conversion_mode)
+
+    # Each zip file has (models_per_zip) or (models_per_zip+1) test models.
+    models_per_zip = len(test_models) // num_merged_zips
+
+    # First (models_remaining) zip files have (models_per_zip+1) test models each.
+    models_remaining = len(test_models) % num_merged_zips
+    if zip_index < models_remaining:
+        # Zip files [0:models_remaining] have (models_per_zip+1) models.
+        begin = (models_per_zip + 1) * zip_index
+        end = begin + (models_per_zip + 1)
+    else:
+        # Zip files [models_remaining:] have (models_per_zip) models.
+        begin = models_per_zip * zip_index + models_remaining
+        end = begin + models_per_zip
+    tests_csv = ""
+    for test_model in test_models[begin:end]:
+        tests_csv += "%s," % test_model
+    if tests_csv != "":
+        tests_csv = tests_csv[:-1]  # Remove trailing comma.
+    return " --no_tests_limit --test_sets=%s" % tests_csv
 
 def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """Generate a zipped-example test and its dependent zip files.
@@ -413,6 +572,8 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         flags += " --ignore_converter_errors --run_with_flex"
     elif conversion_mode == "forward-compat":
         flags += " --make_forward_compat_test"
+    if test_name.startswith(merged_test_model_name() + "_"):
+        flags += flags_for_merged_test_models(test_name, conversion_mode)
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

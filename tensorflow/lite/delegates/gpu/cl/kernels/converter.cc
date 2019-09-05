@@ -65,7 +65,7 @@ class FromTensorConverter : public OpenClConverterImpl {
   static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
     return IsSupportedDataType(input.data_type) &&
            IsSupportedDataType(output.data_type) &&
-           // Output is always Buffer/BHWC
+           // Output is always Buffer/(BHWC|DHWC4)
            output.object_type == ObjectType::OPENCL_BUFFER &&
            (output.data_layout == DataLayout::BHWC ||
             output.data_layout == DataLayout::DHWC4) &&
@@ -156,7 +156,7 @@ __kernel void from_tensor()" +
                  const TensorObject& output_obj) override {
     auto output = absl::get_if<OpenClBuffer>(&output_obj);
     if (!output || !output->memobj) {
-      return InvalidArgumentError("Missing output in to_bhwc converter");
+      return InvalidArgumentError("Missing output in from_tensor converter");
     }
     auto input_texture = absl::get_if<OpenClTexture>(&input_obj);
     if (input_texture && input_texture->memobj) {
@@ -166,7 +166,7 @@ __kernel void from_tensor()" +
     if (input_buffer && input_buffer->memobj) {
       return DispatchKernel(input_buffer->memobj, output->memobj);
     }
-    return InvalidArgumentError("Missing input in to_bhwc converter");
+    return InvalidArgumentError("Missing input in from_tensor converter");
   }
 };
 
@@ -258,7 +258,7 @@ __kernel void to_tensor()" +
                  const TensorObject& output_obj) override {
     auto input = absl::get_if<OpenClBuffer>(&input_obj);
     if (!input || !input->memobj) {
-      return InvalidArgumentError("Missing input in from_bhwc converter");
+      return InvalidArgumentError("Missing input in to_tensor converter");
     }
     auto output_texture = absl::get_if<OpenClTexture>(&output_obj);
     if (output_texture && output_texture->memobj) {
@@ -268,7 +268,7 @@ __kernel void to_tensor()" +
     if (output_buffer && output_buffer->memobj) {
       return DispatchKernel(input->memobj, output_buffer->memobj);
     }
-    return InvalidArgumentError("Missing input in from_bhwc converter");
+    return InvalidArgumentError("Missing input in to_tensor converter");
   }
 };
 
@@ -296,11 +296,17 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   return region;
 }
 
+bool IsOpenClTextureOrBuffer(ObjectType type) {
+  return type == ObjectType::OPENCL_BUFFER ||
+         type == ObjectType::OPENCL_TEXTURE;
+}
+
 // Copies data from one object of the same type and layout to another object.
 class TrivialCopier : public OpenClConverterImpl {
  public:
   static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
-    return input.data_type == output.data_type &&
+    return IsOpenClTextureOrBuffer(input.object_type) &&
+           input.data_type == output.data_type &&
            input.object_type == output.object_type &&
            input.data_layout == output.data_layout;
   }
@@ -327,7 +333,7 @@ class TrivialCopier : public OpenClConverterImpl {
     if (buffer_input && buffer_output) {
       return Copy(*buffer_input, *buffer_output);
     }
-    return UnimplementedError("Unsupported conversion");
+    return InternalError("Unexpected object");
   }
 
   Status Copy(const OpenClBuffer& input, const OpenClBuffer& output) {
@@ -354,11 +360,6 @@ class TrivialCopier : public OpenClConverterImpl {
   DataType data_type_ = DataType::UNKNOWN;
   std::array<size_t, 3> region_;
 };
-
-static bool IsOpenClTextureOrBuffer(ObjectType type) {
-  return type == ObjectType::OPENCL_BUFFER ||
-         type == ObjectType::OPENCL_TEXTURE;
-}
 
 // Copies data from/to CPU into a tensor.
 class CpuCopier : public OpenClConverterImpl {
@@ -411,7 +412,7 @@ class CpuCopier : public OpenClConverterImpl {
             buffer_input->memobj, cpu_output->size_bytes, cpu_output->data);
       }
     }
-    return UnimplementedError("Unsupported conversion");
+    return InternalError("Unexpected object");
   }
 
  private:

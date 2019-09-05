@@ -272,11 +272,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
               ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
-          std::vector<string> slice_vec;
+          std::vector<tstring> slice_vec;
           for (const Tensor& t : input) {
-            auto serialized_t = t.flat<string>();
-            gtl::ArraySlice<string> slice(serialized_t.data(),
-                                          serialized_t.size());
+            auto serialized_t = t.flat<tstring>();
+            gtl::ArraySlice<tstring> slice(serialized_t.data(),
+                                           serialized_t.size());
             for (auto it = slice.begin(); it != slice.end(); it++)
               slice_vec.push_back(*it);
           }

@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "SparseMatrixTranspose"
+  in_arg {
+    name: "input"
+    description: "A CSRSparseMatrix."
+  }
+  out_arg {
+    name: "output"
+    description: "A CSRSparseMatrix."
+  }
+  attr {
+    name: "conjugate"
+    description: "Indicates whether `input` should be conjugated."
+  }
+  summary: "Transposes the inner (matrix) dimensions of a CSRSparseMatrix."
+  description: <<END
+Transposes the inner (matrix) dimensions of a SparseMatrix and optionally
+conjugates its values.
+END
+}

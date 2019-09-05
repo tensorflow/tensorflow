@@ -307,16 +307,13 @@ void TestUnpackThreeOutputsQuantized32(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      // CreateQuantizedTensor needs min/max values as input, but these values
-      // don't matter as to the functionality of UNPACK, so just set as 0
-      // and 10.
-      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 0, 10),
-      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor", 0,
-                              10),
-      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor", 0,
-                              10),
-      CreateQuantized32Tensor(output3_data, output3_dims, "output3_tensor", 0,
-                              10)};
+      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 1.0),
+      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor",
+                              1.0),
+      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor",
+                              1.0),
+      CreateQuantized32Tensor(output3_data, output3_dims, "output3_tensor",
+                              1.0)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {

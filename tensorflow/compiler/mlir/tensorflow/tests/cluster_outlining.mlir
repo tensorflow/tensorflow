@@ -110,3 +110,20 @@ module {
 // CHECK: %[[TPU0_FUNC_A_OUTPUT:[0-9]*]] = "tf.A"()
 // CHECK: return %[[TPU0_FUNC_A_OUTPUT]]
 }
+
+// -----
+
+// Tests launch attributes are copied over to launch_func.
+
+module {
+  // CHECK-LABEL: func @launch_attrs
+  func @launch_attrs() -> tensor<?xi32> {
+    %0 = "tf_device.launch"() ( {
+      %1 = "tf.A"() : () -> tensor<?xi32>
+      "tf_device.return"(%1) : (tensor<?xi32>) -> ()
+    }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<?xi32>
+    return %0 : tensor<?xi32>
+  }
+
+// CHECK: launch_attr = "launch_attr"
+}

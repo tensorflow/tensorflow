@@ -37,6 +37,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -147,6 +148,8 @@ class LinearOperator(module.Module):
     way.
   """
 
+  @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
+                               " no longer be used.", "graph_parents")
   def __init__(self,
                dtype,
                graph_parents=None,
@@ -163,8 +166,8 @@ class LinearOperator(module.Module):
     Args:
       dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
-      graph_parents: Python list of graph prerequisites of this `LinearOperator`
-        Typically tensors that are passed during initialization.
+      graph_parents: (Deprecated) Python list of graph prerequisites of this
+        `LinearOperator` Typically tensors that are passed during initialization
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
@@ -200,7 +203,8 @@ class LinearOperator(module.Module):
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
     self._graph_parents = graph_parents
@@ -229,6 +233,7 @@ class LinearOperator(module.Module):
     return self._name
 
   @property
+  @deprecation.deprecated(None, "Do not call `graph_parents`.")
   def graph_parents(self):
     """List of graph dependencies of this `LinearOperator`."""
     return self._graph_parents
@@ -270,7 +275,7 @@ class LinearOperator(module.Module):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.get_shape()`.
+    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.shape`.
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
@@ -307,7 +312,7 @@ class LinearOperator(module.Module):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb])`, equivalent to `A.get_shape()[:-2]`
+    `TensorShape([B1,...,Bb])`, equivalent to `A.shape[:-2]`
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
@@ -622,7 +627,7 @@ class LinearOperator(module.Module):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              x.get_shape()[arg_dim])
+              x.shape[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -663,7 +668,7 @@ class LinearOperator(module.Module):
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(x.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(x.shape[-1])
       return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
@@ -808,7 +813,7 @@ class LinearOperator(module.Module):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[arg_dim])
+              rhs.shape[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -862,8 +867,7 @@ class LinearOperator(module.Module):
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(rhs.shape[-1])
 
       return self._solvevec(rhs, adjoint=adjoint)
 

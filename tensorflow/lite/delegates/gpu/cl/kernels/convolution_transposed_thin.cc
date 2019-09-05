@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
@@ -31,13 +32,15 @@ std::string GenerateConvolutionTransposedCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     int src_depth, int dst_channels, const int2& kernel_size,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
   std::string c = GetCommonDefines(precision);
   const std::string channel_x = dst_channels == 1 ? "" : ".x";
-  const std::vector<std::string> channel = {channel_x, ".y", ".z", ".w"};
+  const std::vector<std::string> postfix = {channel_x, ".y", ".z", ".w"};
+  const std::vector<std::string> channel = {".x", ".y", ".z", ".w"};
 
   const std::string type_postfix =
       dst_channels == 1 ? "" : std::to_string(dst_channels);
@@ -69,14 +72,17 @@ std::string GenerateConvolutionTransposedCode(
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " + src_tensor.Read3D("X", "Y", "0") + ";\n";
+  c += "  FLT4 src = " +
+       src_tensor.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ";\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
       std::string r_s =
           "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
+      const std::string to_accum =
+          precision == CalculationsPrecision::F32_F16 ? "convert_float" : "";
       for (int d = 0; d < dst_channels; ++d) {
-        c += r_s + channel[d] + " = TO_ACCUM_FLT(dot(src, filters[" +
+        c += r_s + postfix[d] + " = " + to_accum + "(dot(src, filters[" +
              std::to_string(index) + "]));\n";
         index++;
       }
@@ -89,14 +95,16 @@ std::string GenerateConvolutionTransposedCode(
     } else {
       c += "  {\n";
     }
-    c += "  FLT4 src = " + src_tensor.Read3D("X", "Y", std::to_string(i)) +
+    c += "  FLT4 src = " +
+         src_tensor.Read3D("X", "Y", std::to_string(i),
+                           TextureAddressMode::DONT_CARE) +
          ";\n";
     for (int y = 0; y < kernel_size.y; ++y) {
       for (int x = 0; x < kernel_size.x; ++x) {
         std::string r_s =
             "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
         for (int d = 0; d < dst_channels; ++d) {
-          c += r_s + channel[d] + " += TO_ACCUM_FLT(dot(src, filters[" +
+          c += r_s + postfix[d] + " += TO_ACCUM_FLT(dot(src, filters[" +
                std::to_string(index) + "]));\n";
           index++;
         }
@@ -117,7 +125,7 @@ std::string GenerateConvolutionTransposedCode(
       c += "    FLT4 result = bias_value;\n";
       for (int d = 0; d < dst_channels; ++d) {
         c += "    result" + channel[d] + " += r[" + std::to_string(y) + "][" +
-             std::to_string(x) + "]" + channel[d] + ";\n";
+             std::to_string(x) + "]" + postfix[d] + ";\n";
       }
       c += "    " +
            dst_tensor.GetAddress("address", "X + " + std::to_string(x),
@@ -178,7 +186,8 @@ Status ConvolutionTransposedThin::Compile(
   const auto code = GenerateConvolutionTransposedCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, IntegralDivideRoundUp(src_channels_, 4),
-      dst_channels_, kernel_size_, linked_operations_);
+      dst_channels_, kernel_size_, *creation_context.device,
+      linked_operations_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -222,8 +231,7 @@ Status ConvolutionTransposedThin::AddToQueue(CLCommandQueue* queue) {
 
 bool IsConvolutionTransposedThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
-  return device.IsAdreno() && attr.weights.shape.o <= 4 &&
-         attr.weights.shape.w == attr.stride.w &&
+  return attr.weights.shape.o <= 4 && attr.weights.shape.w == attr.stride.w &&
          attr.weights.shape.h == attr.stride.h &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0;
 }

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -525,11 +526,8 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
     TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
                       kTfLiteArenaRwPersistent);
     TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-    int value = 0;
-    if (tensor.type == kTfLiteInt8) {
-      value = tensor.params.zero_point;
-    }
-    memset(tensor.data.raw, value, tensor.bytes);
+
+    tflite::ResetVariableTensor(&tensor);
   }
   return kTfLiteOk;
 }

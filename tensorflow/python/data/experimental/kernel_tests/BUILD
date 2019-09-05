@@ -661,6 +661,7 @@ py_test(
 
 py_test(
     name = "snapshot_test",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     python_version = "PY2",
     shard_count = 10,

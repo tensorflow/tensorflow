@@ -350,6 +350,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // in the MklUtil.h (IsMklElementWiseOp method) to ensure that the
     // MklInputConversion op is added before it.
     csinfo_.add = "Add";
+    csinfo_.add_v2 = "AddV2";
     csinfo_.maximum = "Maximum";
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
@@ -362,6 +363,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.add_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.add_v2),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
@@ -468,10 +473,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
 
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
@@ -867,6 +874,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
   typedef struct {
     string addn;
     string add;
+    string add_v2;
     string avg_pool;
     string avg_pool_grad;
     string avg_pool3d;

@@ -344,6 +344,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices", &PyLocalClient::devices)
+      .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
@@ -417,7 +418,13 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("device",
+           [](PyLocalBuffer* buffer) -> std::shared_ptr<Device> {
+             return buffer->client()->local_devices()[buffer->device_ordinal()];
+           })
+      // TODO(skye): get rid of `device_ordinal` once everything uses `device`
+      .def("device_ordinal", &PyLocalBuffer::device_ordinal)
+      .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
              return buffer.DeviceBuffer() == nullptr;
@@ -573,7 +580,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("IRFFT", FftType::IRFFT);
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"));
+          py::arg("dimension_numbers"), py::arg("slice_sizes"),
+          py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
   ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
           py::arg("config") = "");

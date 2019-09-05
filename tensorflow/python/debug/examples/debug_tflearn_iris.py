@@ -21,10 +21,11 @@ import argparse
 import sys
 import tempfile
 
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
 
+tf = tensorflow.compat.v1
 
 _IRIS_INPUT_DIM = 4
 

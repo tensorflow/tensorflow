@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -460,8 +460,9 @@ void ParallelFor(const std::function<void(size_t)>& f, size_t n,
   }
 }
 
-enum class Type { Sparse, Dense };
+enum class Type { Sparse, Dense, Ragged };
 
+// Note: We use SparseBuffer for sparse, ragged, and dense_varlen features.
 struct SparseBuffer {
   // Features are in one of the 3 vectors below depending on config's dtype.
   // Other 2 vectors remain empty.
@@ -548,9 +549,11 @@ Status FastParseSerializedExample(
     SeededHasher hasher, std::vector<Tensor>* output_dense,
     std::vector<SparseBuffer>* output_varlen_dense,
     std::vector<SparseBuffer>* output_sparse,
+    std::vector<SparseBuffer>* output_ragged,
     PerExampleFeatureStats* output_stats) {
   DCHECK(output_dense != nullptr);
   DCHECK(output_sparse != nullptr);
+  DCHECK(output_ragged != nullptr);
   parsed::Example parsed_example;
   if (!ParseExample(serialized_example, &parsed_example)) {
     return errors::InvalidArgument("Could not parse example input, value: '",
@@ -558,6 +561,7 @@ Status FastParseSerializedExample(
   }
   std::vector<int64> sparse_feature_last_example(config.sparse.size(), -1);
   std::vector<int64> dense_feature_last_example(config.dense.size(), -1);
+  std::vector<int64> ragged_feature_last_example(config.ragged.size(), -1);
 
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
@@ -584,13 +588,15 @@ Status FastParseSerializedExample(
 
     size_t d = d_and_type.first;
     bool is_dense = d_and_type.second == Type::Dense;
+    bool is_ragged = d_and_type.second == Type::Ragged;
 
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name = is_dense
-                                              ? config.dense[d].feature_name
-                                              : config.sparse[d].feature_name;
+      const string& config_feature_name =
+          is_dense ? config.dense[d].feature_name
+                   : (is_ragged ? config.ragged[d].feature_name
+                                : config.sparse[d].feature_name);
       if (feature_name != config_feature_name) continue;
     }
 
@@ -756,25 +762,30 @@ Status FastParseSerializedExample(
         }
       }
     } else {
+      // Feature is sparse or ragged.
+      auto& last_example =
+          is_ragged ? ragged_feature_last_example : sparse_feature_last_example;
+
       // If feature was already visited, skip.
       // Compare comment at the beginning of the loop.
-      if (sparse_feature_last_example[d] == example_index) {
+      if (last_example[d] == example_index) {
         LogSparseFeatureDataLoss(feature_name);
         continue;
       }
-      sparse_feature_last_example[d] = example_index;
+      last_example[d] = example_index;
 
       // Handle sparse features.
-      SparseBuffer& out = (*output_sparse)[d];
-      if (example_dtype != DT_INVALID &&
-          example_dtype != config.sparse[d].dtype) {
-        return example_error(strings::StrCat(
-            "Data types don't match. ",
-            "Expected type: ", DataTypeString(config.sparse[d].dtype),
-            ", Actual type: ", DataTypeString(example_dtype)));
+      SparseBuffer& out = is_ragged ? (*output_ragged)[d] : (*output_sparse)[d];
+      DataType feature_dtype =
+          is_ragged ? config.ragged[d].dtype : config.sparse[d].dtype;
+      if (example_dtype != DT_INVALID && example_dtype != feature_dtype) {
+        return example_error(
+            strings::StrCat("Data types don't match. ",
+                            "Expected type: ", DataTypeString(feature_dtype),
+                            ", Actual type: ", DataTypeString(example_dtype)));
       }
 
-      switch (config.sparse[d].dtype) {
+      switch (feature_dtype) {
         case DT_INT64: {
           if (example_dtype != DT_INVALID) {
             if (!feature.ParseInt64List(&out.int64_list)) {
@@ -880,6 +891,15 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
+  // Handle missing ragged features.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    if (ragged_feature_last_example[d] == example_index) continue;
+    SparseBuffer& out = (*output_ragged)[d];
+    size_t prev_example_end_index =
+        out.example_end_indices.empty() ? 0 : out.example_end_indices.back();
+    out.example_end_indices.push_back(prev_example_end_index);
+  }
+
   return Status::OK();
 }
 
@@ -893,6 +913,24 @@ Status CheckConfigDataType(DataType dtype) {
       return errors::InvalidArgument("Invalid config dtype: ",
                                      DataTypeString(dtype));
   }
+}
+
+Status CheckConfigDataTypes(Config config) {
+  // Check config so we can safely CHECK(false) in switches on config.*.dtype
+  for (auto& c : config.sparse) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+  }
+  for (auto& c : config.dense) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+  }
+  for (auto& c : config.ragged) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    if (!(c.splits_dtype == DT_INT32 || c.splits_dtype == DT_INT64)) {
+      return errors::InvalidArgument("Invalid ragged_split_type: ",
+                                     DataTypeString(c.splits_dtype));
+    }
+  }
+  return Status::OK();
 }
 
 template <typename T>
@@ -999,6 +1037,46 @@ class TensorVector {
   T* data_ = nullptr;
 };
 
+void CountSparseFeatures(
+    const std::vector<std::vector<SparseBuffer>>& sparse_buffers, size_t d,
+    size_t* total_num_features, size_t* max_num_features) {
+  for (auto& sparse_values_tmp : sparse_buffers) {
+    const std::vector<size_t>& end_indices =
+        sparse_values_tmp[d].example_end_indices;
+    *total_num_features += end_indices.back();
+    *max_num_features = std::max(*max_num_features, end_indices[0]);
+    for (size_t i = 1; i < end_indices.size(); ++i) {
+      size_t example_size = end_indices[i] - end_indices[i - 1];
+      *max_num_features = std::max(*max_num_features, example_size);
+    }
+  }
+}
+
+void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
+                              Tensor* dst) {
+  switch (dtype) {
+    case DT_INT64: {
+      std::copy(src->int64_list.begin(), src->int64_list.end(),
+                dst->flat<int64>().data() + offset);
+      break;
+    }
+    case DT_FLOAT: {
+      std::copy(src->float_list.begin(), src->float_list.end(),
+                dst->flat<float>().data() + offset);
+      break;
+    }
+    case DT_STRING: {
+      std::move(src->bytes_list.begin(), src->bytes_list.end(),
+                dst->flat<string>().data() + offset);
+      break;
+    }
+    default:
+      // We checked that dtype was one of these three values with
+      // CheckConfigDataTypes().
+      DCHECK(false) << "Should not happen.";
+  }
+}
+
 }  // namespace
 
 Status FastParseExample(const Config& config,
@@ -1007,18 +1085,14 @@ Status FastParseExample(const Config& config,
                         thread::ThreadPool* thread_pool, Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
-  for (auto& c : config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
-  for (auto& c : config.dense) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
+  TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
 
   if (config.collect_feature_stats) {
     result->feature_stats.resize(serialized.size());
   }
 
-  size_t config_size = config.dense.size() + config.sparse.size();
+  size_t config_size =
+      config.dense.size() + config.sparse.size() + config.ragged.size();
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
@@ -1031,6 +1105,10 @@ Status FastParseExample(const Config& config,
     for (size_t d = 0; d < config.sparse.size(); ++d) {
       ok &= config_index.InsertUnique(hasher(config.sparse[d].feature_name),
                                       {d, Type::Sparse});
+    }
+    for (size_t d = 0; d < config.ragged.size(); ++d) {
+      ok &= config_index.InsertUnique(hasher(config.ragged[d].feature_name),
+                                      {d, Type::Ragged});
     }
     if (ok) break;
     LOG(WARNING) << "Collision found. This should happen only if you have "
@@ -1045,7 +1123,7 @@ Status FastParseExample(const Config& config,
   }
 
   // Allocate dense output for fixed length dense values
-  // (variable-length dense and sparse have to be buffered).
+  // (variable-length dense and sparse and ragged have to be buffered).
   std::vector<Tensor> fixed_dense_values(config.dense.size());
   for (size_t d = 0; d < config.dense.size(); ++d) {
     if (config.dense[d].variable_length) continue;
@@ -1097,10 +1175,12 @@ Status FastParseExample(const Config& config,
   // Do minibatches in parallel.
   std::vector<std::vector<SparseBuffer>> sparse_buffers(num_minibatches);
   std::vector<std::vector<SparseBuffer>> varlen_dense_buffers(num_minibatches);
+  std::vector<std::vector<SparseBuffer>> ragged_buffers(num_minibatches);
   std::vector<Status> status_of_minibatch(num_minibatches);
   auto ProcessMiniBatch = [&](size_t minibatch) {
     sparse_buffers[minibatch].resize(config.sparse.size());
     varlen_dense_buffers[minibatch].resize(config.dense.size());
+    ragged_buffers[minibatch].resize(config.ragged.size());
     size_t start = first_example_of_minibatch(minibatch);
     size_t end = first_example_of_minibatch(minibatch + 1);
     for (size_t e = start; e < end; ++e) {
@@ -1112,7 +1192,8 @@ Status FastParseExample(const Config& config,
           serialized[e],
           (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
           config_index, hasher, &fixed_dense_values,
-          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch], stats);
+          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch],
+          &ragged_buffers[minibatch], stats);
       if (!status_of_minibatch[minibatch].ok()) break;
     }
   };
@@ -1132,16 +1213,8 @@ Status FastParseExample(const Config& config,
     // Loop over minibatches
     size_t total_num_features = 0;
     size_t max_num_features = 0;
-    for (auto& sparse_values_tmp : sparse_buffers) {
-      const std::vector<size_t>& end_indices =
-          sparse_values_tmp[d].example_end_indices;
-      total_num_features += end_indices.back();
-      max_num_features = std::max(max_num_features, end_indices[0]);
-      for (size_t i = 1; i < end_indices.size(); ++i) {
-        size_t example_size = end_indices[i] - end_indices[i - 1];
-        max_num_features = std::max(max_num_features, example_size);
-      }
-    }
+    CountSparseFeatures(sparse_buffers, d, &total_num_features,
+                        &max_num_features);
 
     TensorShape indices_shape;
     indices_shape.AddDim(total_num_features);
@@ -1161,7 +1234,7 @@ Status FastParseExample(const Config& config,
 
     size_t offset = 0;
     for (size_t i = 0; i < sparse_buffers.size(); ++i) {
-      const SparseBuffer& buffer = sparse_buffers[i][d];
+      SparseBuffer& buffer = sparse_buffers[i][d];
 
       // Update indices.
       int64* ix_p = &indices->matrix<int64>()(offset, 0);
@@ -1180,28 +1253,61 @@ Status FastParseExample(const Config& config,
         ++example_index;
       }
 
-      // Copy values over.
-      switch (config.sparse[d].dtype) {
-        case DT_INT64: {
-          std::copy(buffer.int64_list.begin(), buffer.int64_list.end(),
-                    values->flat<int64>().data() + offset);
-          break;
+      CopySparseBufferToTensor(config.sparse[d].dtype, offset, &buffer, values);
+      offset += delta;
+    }
+  };
+
+  // Merge SparseBuffers from all minibatches for every config.ragged.
+  auto MergeRaggedMinibatches = [&](size_t d) {
+    // Loop over minibatches
+    size_t total_num_features = 0;
+    size_t max_num_features = 0;
+    CountSparseFeatures(ragged_buffers, d, &total_num_features,
+                        &max_num_features);
+
+    TensorShape row_splits_shape;
+    row_splits_shape.AddDim(serialized.size() + 1);
+    result->ragged_splits.emplace_back(config.ragged[d].splits_dtype,
+                                       row_splits_shape);
+    Tensor* row_splits = &result->ragged_splits.back();
+    if (config.ragged[d].splits_dtype == DT_INT64) {
+      row_splits->flat<int64>()(0) = 0;
+    } else {
+      row_splits->flat<int32>()(0) = 0;
+    }
+
+    TensorShape values_shape;
+    values_shape.AddDim(total_num_features);
+    result->ragged_values.emplace_back(config.ragged[d].dtype, values_shape);
+    Tensor* values = &result->ragged_values.back();
+
+    size_t values_offset = 0;
+    size_t splits_offset = 0;
+    for (size_t i = 0; i < ragged_buffers.size(); ++i) {
+      SparseBuffer& buffer = ragged_buffers[i][d];
+      if (buffer.example_end_indices.empty()) continue;
+
+      // Update row_splits.  row_splits are formed by concatenating the example
+      // end_indices (adjusting each to start after the previous one ends).
+      if (config.ragged[d].splits_dtype == DT_INT64) {
+        int64* row_splits_out = &row_splits->flat<int64>()(splits_offset);
+        int64 start = *row_splits_out;
+        for (size_t example_end_index : buffer.example_end_indices) {
+          *++row_splits_out = start + example_end_index;
         }
-        case DT_FLOAT: {
-          std::copy(buffer.float_list.begin(), buffer.float_list.end(),
-                    values->flat<float>().data() + offset);
-          break;
+      } else {
+        int32* row_splits_out = &row_splits->flat<int32>()(splits_offset);
+        int32 start = *row_splits_out;
+        for (size_t example_end_index : buffer.example_end_indices) {
+          *++row_splits_out = start + example_end_index;
         }
-        case DT_STRING: {
-          std::move(buffer.bytes_list.begin(), buffer.bytes_list.end(),
-                    values->flat<tstring>().data() + offset);
-          break;
-        }
-        default:
-          LOG(FATAL) << "Should not happen.";
       }
 
-      offset += delta;
+      CopySparseBufferToTensor(config.ragged[d].dtype, values_offset, &buffer,
+                               values);
+      values_offset += buffer.example_end_indices.back();
+      splits_offset += buffer.example_end_indices.size();
     }
   };
 
@@ -1270,6 +1376,10 @@ Status FastParseExample(const Config& config,
     MergeSparseMinibatches(d);
   }
 
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    MergeRaggedMinibatches(d);
+  }
+
   return Status::OK();
 }
 
@@ -1277,12 +1387,7 @@ Status FastParseSingleExample(const Config& config,
                               absl::string_view serialized, Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
-  for (auto& c : config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
-  for (auto& c : config.dense) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
+  TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
 
   PerExampleFeatureStats* stats = nullptr;
   if (config.collect_feature_stats) {

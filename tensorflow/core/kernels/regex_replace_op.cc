@@ -48,11 +48,15 @@ Status InternalCompute(const RE2& match, const string& rewrite,
   }
   auto output_flat = output_tensor->flat<tstring>();
   for (size_t i = 0; i < output_flat.size(); ++i) {
+    // TODO(dero): Mitigate copy; Global and GlobalReplace below currently only
+    // accept std::string.
+    string buf = output_flat(i);
     if (replace_global) {
-      RE2::GlobalReplace(&output_flat(i), match, rewrite);
+      RE2::GlobalReplace(&buf, match, rewrite);
     } else {
-      RE2::Replace(&output_flat(i), match, rewrite);
+      RE2::Replace(&buf, match, rewrite);
     }
+    output_flat(i) = std::move(buf);
   }
   return Status::OK();
 }

@@ -22,12 +22,12 @@
 
 #include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -270,8 +270,8 @@ void ControlFlowToCFGPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *mlir::createConvertToCFGPass() {
-  return new ControlFlowToCFGPass();
+std::unique_ptr<FunctionPassBase> mlir::createLowerToCFGPass() {
+  return std::make_unique<ControlFlowToCFGPass>();
 }
 
 static PassRegistration<ControlFlowToCFGPass>

@@ -837,6 +837,10 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
+  if (new_instruction->frontend_attributes().map().empty()) {
+    new_instruction->set_frontend_attributes(
+        old_instruction->frontend_attributes());
+  }
 
   // Like the metadata above, if the user didn't specify any sharding
   // information on the new instruction we should copy the old sharding
@@ -866,25 +870,6 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   return unreachable_roots;
 }
 
-template <typename HloInstructionPtr>
-Status HloComputation::Accept(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
-  // Visit unreachable roots. Beware that the visitor might delete the currently
-  // visited root, which would invalidate iterators if the unreachable roots
-  // weren't computed ahead of time.
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    VLOG(3) << "Traversing unreachable root: " << root->ToString();
-    // Call FinishVisit only at the end.
-    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
-  }
-  // Visit the computation root instruction last.
-  return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
-}
-
-// Explicit instantiations.
-template Status HloComputation::Accept(DfsHloVisitor* visitor) const;
-template Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
-
 Status HloComputation::AcceptWithOperandOrder(
     DfsHloVisitor* visitor,
     const HloInstruction::CompareFunction& operand_order) const {
@@ -900,42 +885,6 @@ Status HloComputation::AcceptWithOperandOrder(
   return root_instruction()->AcceptWithOperandOrder(visitor, operand_order,
                                                     /*call_finish_visit=*/true);
 }
-
-template <typename HloInstructionPtr>
-Status HloComputation::AcceptOrdered(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor,
-    absl::Span<HloInstruction* const> order) const {
-  VLOG(3) << "Accepting visitor with order.";
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
-  }
-  TF_RET_CHECK(order.size() == instruction_count());
-  absl::flat_hash_set<const HloInstruction*> visited;
-  for (const HloInstruction* instruction : order) {
-    VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_iterators_.contains(instruction))
-        << "Instruction " << instruction->name() << " is not in computation "
-        << name();
-    TF_RET_CHECK(!visited.contains(instruction))
-        << "Instruction " << instruction->name()
-        << " appears more than once in order";
-    HloInstruction* mutable_instruction =
-        const_cast<HloInstruction*>(instruction);
-    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
-    visitor->SetVisited(*mutable_instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
-    visited.insert(instruction);
-  }
-  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
-  return Status::OK();
-}
-
-// Explicit instantiations.
-template Status HloComputation::AcceptOrdered(
-    DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
-template Status HloComputation::AcceptOrdered(
-    ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {

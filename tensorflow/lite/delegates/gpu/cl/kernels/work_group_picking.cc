@@ -129,8 +129,9 @@ std::vector<int3> GenerateWorkGroupSizesXY128Linear(
 }
 
 std::vector<int3> GenerateWorkGroupSizes(const int3& grid,
-                                         int min_work_group_size,
-                                         int max_work_group_size,
+                                         int min_work_group_total_size,
+                                         int max_work_group_total_size,
+                                         const int3& max_work_group_sizes,
                                          WorkGroupSizeAlignment x_alignment,
                                          WorkGroupSizeAlignment y_alignment,
                                          WorkGroupSizeAlignment z_alignment) {
@@ -142,11 +143,14 @@ std::vector<int3> GenerateWorkGroupSizes(const int3& grid,
   std::vector<int> sizes_z = GetPossibleSizes(grid.z, z_alignment);
 
   for (auto x : sizes_x) {
+    if (x > max_work_group_sizes.x) continue;
     for (auto y : sizes_y) {
+      if (y > max_work_group_sizes.y) continue;
       for (auto z : sizes_z) {
+        if (z > max_work_group_sizes.z) continue;
         const int work_group_size = x * y * z;
-        if (work_group_size < min_work_group_size ||
-            work_group_size > max_work_group_size)
+        if (work_group_size < min_work_group_total_size ||
+            work_group_size > max_work_group_total_size)
           continue;
         work_groups.push_back({x, y, z});
       }
@@ -156,7 +160,8 @@ std::vector<int3> GenerateWorkGroupSizes(const int3& grid,
   return work_groups;
 }
 
-void AddCornerCases(const int3& grid, int max_work_group_size,
+void AddCornerCases(const int3& grid, int max_work_group_total_size,
+                    const int3& max_work_group_sizes,
                     WorkGroupSizeAlignment x_alignment,
                     WorkGroupSizeAlignment y_alignment,
                     WorkGroupSizeAlignment z_alignment,
@@ -164,25 +169,27 @@ void AddCornerCases(const int3& grid, int max_work_group_size,
   for (int x = 1; x <= 4; ++x) {
     for (int y = 1; y <= 4; ++y) {
       for (int z = 1; z <= 4; ++z) {
-        int grid_x = IntegralDivideRoundUp(grid.x, x);
-        int grid_y = IntegralDivideRoundUp(grid.y, y);
-        int grid_z = IntegralDivideRoundUp(grid.z, z);
-        if (grid_x * grid_y * grid_z > max_work_group_size) {
+        int wg_x = IntegralDivideRoundUp(grid.x, x);
+        int wg_y = IntegralDivideRoundUp(grid.y, y);
+        int wg_z = IntegralDivideRoundUp(grid.z, z);
+        if (wg_x > max_work_group_sizes.x || wg_y > max_work_group_sizes.y ||
+            wg_z > max_work_group_sizes.z ||
+            wg_x * wg_y * wg_z > max_work_group_total_size) {
           continue;
         }
         if (x_alignment == WorkGroupSizeAlignment::PRECISE &&
-            grid.x % grid_x != 0) {
+            grid.x % wg_x != 0) {
           continue;
         }
         if (y_alignment == WorkGroupSizeAlignment::PRECISE &&
-            grid.y % grid_y != 0) {
+            grid.y % wg_y != 0) {
           continue;
         }
         if (z_alignment == WorkGroupSizeAlignment::PRECISE &&
-            grid.z % grid_z != 0) {
+            grid.z % wg_z != 0) {
           continue;
         }
-        work_groups->push_back({grid_x, grid_y, grid_z});
+        work_groups->push_back({wg_x, wg_y, wg_z});
       }
     }
   }
@@ -191,7 +198,9 @@ void AddCornerCases(const int3& grid, int max_work_group_size,
   for (int x = 1; x <= 4; ++x) {
     for (int y = 1; y <= 4; ++y) {
       for (int z = 1; z <= 4; ++z) {
-        if (x * y * z > max_work_group_size) {
+        if (x > max_work_group_sizes.x || y > max_work_group_sizes.y ||
+            z > max_work_group_sizes.z ||
+            x * y * z > max_work_group_total_size) {
           continue;
         }
         if (x_alignment == WorkGroupSizeAlignment::PRECISE && grid.x % x != 0) {
@@ -214,12 +223,13 @@ Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
                                      int3* best_work_group) {
   auto alignment = WorkGroupSizeAlignment::PRECISE;
   std::vector<int3> work_groups = GenerateWorkGroupSizes(
-      grid, /*min_work_group_size = */ 32, kernel.GetMaxWorkGroupSize(),
-      alignment, alignment, alignment);
+      grid, /*min_work_group_total_size = */ 32, kernel.GetMaxWorkGroupSize(),
+      params.info->max_work_group_sizes, alignment, alignment, alignment);
   int best_work_group_index;
   // If the grid parameter too small, method below cannot generate workgroups.
   if (work_groups.empty()) {
-    AddCornerCases(grid, kernel.GetMaxWorkGroupSize(), alignment, alignment,
+    AddCornerCases(grid, kernel.GetMaxWorkGroupSize(),
+                   params.info->max_work_group_sizes, alignment, alignment,
                    alignment, &work_groups);
   }
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(

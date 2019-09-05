@@ -28,6 +28,9 @@ DoNotConvert = config_lib.DoNotConvert
 # This list is evaluated in order and stops at the first rule that tests True
 # for a definitely_convert of definitely_bypass call.
 CONVERSION_RULES = (
+    # Known packages
+    Convert('tensorflow.python.training.experimental'),
+
     # Builtin modules
     DoNotConvert('collections'),
     DoNotConvert('copy'),

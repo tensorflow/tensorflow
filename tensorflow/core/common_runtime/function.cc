@@ -1103,7 +1103,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled(""));
+    done(errors::Cancelled("Function was cancelled before it was started"));
     return;
   }
   Options run_opts = opts;

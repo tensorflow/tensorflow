@@ -13,6 +13,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
@@ -84,29 +85,37 @@ static bool parseNumberX(StringRef &spec, int64_t &number) {
   return true;
 }
 
+static bool isValidSPIRVIntType(IntegerType type) {
+  return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
+                            type.getWidth());
+}
+
 static bool isValidSPIRVScalarType(Type type) {
   if (type.isa<FloatType>()) {
     return !type.isBF16();
   }
   if (auto intType = type.dyn_cast<IntegerType>()) {
-    return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
-                              intType.getWidth());
+    return isValidSPIRVIntType(intType);
   }
   return false;
 }
 
-bool SPIRVDialect::isValidSPIRVType(Type type) const {
+static bool isValidSPIRVVectorType(VectorType type) {
+  return type.getRank() == 1 && isValidSPIRVScalarType(type.getElementType()) &&
+         type.getNumElements() >= 2 && type.getNumElements() <= 4;
+}
+
+bool SPIRVDialect::isValidType(Type type) {
   // Allow SPIR-V dialect types
-  if (&type.getDialect() == this) {
+  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
+      type.getKind() <= TypeKind::LAST_SPIRV_TYPE) {
     return true;
   }
   if (isValidSPIRVScalarType(type)) {
     return true;
   }
   if (auto vectorType = type.dyn_cast<VectorType>()) {
-    return (isValidSPIRVScalarType(vectorType.getElementType()) &&
-            vectorType.getNumElements() >= 2 &&
-            vectorType.getNumElements() <= 4);
+    return isValidSPIRVVectorType(vectorType);
   }
   return false;
 }
@@ -132,9 +141,8 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
       return Type();
     }
   } else if (auto t = type.dyn_cast<IntegerType>()) {
-    if (!llvm::is_contained(llvm::ArrayRef<unsigned>({8, 16, 32, 64}),
-                            t.getWidth())) {
-      emitError(loc, "only 8/16/32/64-bit integer type allowed but found ")
+    if (!isValidSPIRVIntType(t)) {
+      emitError(loc, "only 1/8/16/32/64-bit integer type allowed but found ")
           << type;
       return Type();
     }
@@ -626,4 +634,17 @@ void SPIRVDialect::printType(Type type, llvm::raw_ostream &os) const {
   default:
     llvm_unreachable("unhandled SPIR-V type");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Constant
+//===----------------------------------------------------------------------===//
+
+Operation *SPIRVDialect::materializeConstant(OpBuilder &builder,
+                                             Attribute value, Type type,
+                                             Location loc) {
+  if (!ConstantOp::isBuildableWith(type))
+    return nullptr;
+
+  return builder.create<spirv::ConstantOp>(loc, type, value);
 }

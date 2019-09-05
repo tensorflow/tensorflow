@@ -228,6 +228,7 @@ def cc_proto_library(
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
     native.cc_library(
@@ -580,7 +581,13 @@ def tf_protos_grappler():
         otherwise = ["//tensorflow/core/grappler/costs:op_performance_data_cc"],
     )
 
-def tf_additional_cupti_wrapper_deps():
+def tf_additional_device_tracer_srcs():
+    return ["default/device_tracer.cc"]
+
+def tf_additional_cupti_utils_cuda_deps():
+    return []
+
+def tf_additional_device_tracer_cuda_deps():
     return [
         "//tensorflow/stream_executor/cuda:cupti_stub",
         "@com_google_absl//absl/base",
@@ -590,30 +597,11 @@ def tf_additional_cupti_wrapper_deps():
         "@com_google_absl//absl/container:flat_hash_map",
     ]
 
-def tf_additional_device_tracer_srcs():
-    return ["default/device_tracer.cc"]
-
-def tf_additional_device_tracer_cuda_deps():
-    return []
-
-def tf_additional_device_tracer_deps():
-    return [
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
-    ]
-
 def tf_additional_device_tracer_test_flags():
     return []
 
 def tf_additional_cupti_test_flags():
     return []
-
-def tf_additional_profiler_lib_deps():
-    return [
-        "//tensorflow/core/profiler/internal/cpu:host_tracer",
-    ] + if_cuda([
-        "//tensorflow/core/profiler/internal/gpu:device_tracer",
-    ])
 
 def tf_additional_libdevice_data():
     return []
@@ -694,38 +682,6 @@ def tf_additional_core_deps():
         ],
     })
 
-# TODO(jart, jhseu): Delete when GCP is default on.
-def tf_additional_cloud_op_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
-            "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
-        ],
-    })
-
-# TODO(jhseu): Delete when GCP is default on.
-def tf_additional_cloud_kernel_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
-            "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
-        ],
-    })
-
 def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",
@@ -737,24 +693,6 @@ def tf_lib_proto_compiler_deps():
     return [
         "@com_google_protobuf//:protoc_lib",
     ]
-
-def tf_additional_verbs_lib_defines():
-    return select({
-        "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_mpi_lib_defines():
-    return select({
-        "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
-        "//conditions:default": [],
-    })
-
-def tf_additional_gdr_lib_defines():
-    return select({
-        "//tensorflow:with_gdr_support": ["TENSORFLOW_USE_GDR"],
-        "//conditions:default": [],
-    })
 
 def tf_additional_numa_lib_defines():
     return select({
@@ -827,12 +765,12 @@ def tf_logging_absl_deps():
         "@com_google_absl//absl/strings",
     ]
 
-def tf_env_time_srcs():
-    return select({
-        "//tensorflow:windows": [
-            "windows/env_time.cc",
-        ],
-        "//conditions:default": [
-            "posix/env_time.cc",
-        ],
-    })
+def tf_protobuf_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]
+
+def tf_protobuf_compiler_deps():
+    return [
+        "@com_google_protobuf//:protobuf",
+    ]

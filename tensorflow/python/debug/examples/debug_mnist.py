@@ -28,10 +28,11 @@ import argparse
 import sys
 import tempfile
 
-import tensorflow as tf
+import tensorflow
 
-from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 IMAGE_SIZE = 28
@@ -42,18 +43,28 @@ RAND_SEED = 42
 
 def main(_):
   # Import data
-  mnist = input_data.read_data_sets(FLAGS.data_dir,
-                                    one_hot=True,
-                                    fake_data=FLAGS.fake_data)
+  if FLAGS.fake_data:
+    imgs = tf.random.uniform(maxval=256, shape=(10, 28, 28), dtype=tf.int32)
+    labels = tf.random.uniform(maxval=10, shape=(10,), dtype=tf.int32)
+    mnist_train = imgs, labels
+    mnist_test = imgs, labels
+  else:
+    mnist_train, mnist_test = tf.keras.datasets.mnist.load_data()
 
-  def feed_dict(train):
-    if train or FLAGS.fake_data:
-      xs, ys = mnist.train.next_batch(FLAGS.train_batch_size,
-                                      fake_data=FLAGS.fake_data)
-    else:
-      xs, ys = mnist.test.images, mnist.test.labels
+  def format_example(imgs, labels):
+    imgs = tf.reshape(imgs, [-1, 28 * 28])
+    imgs = tf.cast(imgs, tf.float32) / 255.0
+    labels = tf.one_hot(labels, depth=10, dtype=tf.float32)
+    return imgs, labels
 
-    return {x: xs, y_: ys}
+  ds_train = tf.data.Dataset.from_tensor_slices(mnist_train)
+  ds_train = ds_train.shuffle(1000).repeat().batch(FLAGS.train_batch_size)
+  ds_train = ds_train.map(format_example)
+  it_train = ds_train.make_initializable_iterator()
+
+  ds_test = tf.data.Dataset.from_tensors(mnist_test).repeat()
+  ds_test = ds_test.map(format_example)
+  it_test = ds_test.make_initializable_iterator()
 
   sess = tf.InteractiveSession()
 
@@ -61,9 +72,12 @@ def main(_):
 
   # Input placeholders.
   with tf.name_scope("input"):
-    x = tf.placeholder(
-        tf.float32, [None, IMAGE_SIZE * IMAGE_SIZE], name="x-input")
-    y_ = tf.placeholder(tf.float32, [None, NUM_LABELS], name="y-input")
+    handle = tf.placeholder(tf.string, shape=())
+
+    iterator = tf.data.Iterator.from_string_handle(
+        handle, (tf.float32, tf.float32), ((None, IMAGE_SIZE * IMAGE_SIZE), ()))
+
+    x, y_ = iterator.get_next()
 
   def weight_variable(shape):
     """Create a weight variable with appropriate initialization."""
@@ -120,6 +134,10 @@ def main(_):
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
   sess.run(tf.global_variables_initializer())
+  sess.run(it_train.initializer)
+  sess.run(it_test.initializer)
+  train_handle = sess.run(it_train.string_handle())
+  test_handle = sess.run(it_test.string_handle())
 
   if FLAGS.debug and FLAGS.tensorboard_debug_address:
     raise ValueError(
@@ -139,10 +157,10 @@ def main(_):
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.
   for i in range(FLAGS.max_steps):
-    acc = sess.run(accuracy, feed_dict=feed_dict(False))
+    acc = sess.run(accuracy, feed_dict={handle: train_handle})
     print("Accuracy at step %d: %s" % (i, acc))
 
-    sess.run(train_step, feed_dict=feed_dict(True))
+    sess.run(train_step, feed_dict={handle: test_handle})
 
 
 if __name__ == "__main__":

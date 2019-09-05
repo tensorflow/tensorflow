@@ -31,6 +31,7 @@ std::string GenerateConvolutionTransposedCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     const LinearStorage& biases, int src_depth, int dst_depth,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
@@ -94,10 +95,12 @@ std::string GenerateConvolutionTransposedCode(
       c += "    src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z) + ";\n";
       c += "  }\n";
     } else {
-      c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z) + ";\n";
-      c += "  FLT4 src1 = " + src_tensor.Read3D("X + 1", "Y", z) + ";\n";
-      c += "  FLT4 src2 = " + src_tensor.Read3D("X", "Y + 1", z) + ";\n";
-      c += "  FLT4 src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z) + ";\n";
+      const auto mode = GetFastestZeroMode(device);
+      c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z, mode) + ";\n";
+      c += "  FLT4 src1 = " + src_tensor.Read3D("X + 1", "Y", z, mode) + ";\n";
+      c += "  FLT4 src2 = " + src_tensor.Read3D("X", "Y + 1", z, mode) + ";\n";
+      c += "  FLT4 src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z, mode) +
+           ";\n";
     }
     for (int d = 0; d < dst_depth; ++d) {
       const std::string layer = std::to_string(d);
@@ -181,7 +184,8 @@ Status ConvolutionTransposed3x3Thin::Compile(
   const auto code = GenerateConvolutionTransposedCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, biases_, IntegralDivideRoundUp(src_channels_, 4),
-      IntegralDivideRoundUp(dst_channels_, 4), linked_operations_);
+      IntegralDivideRoundUp(dst_channels_, 4), *creation_context.device,
+      linked_operations_);
 
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
@@ -219,10 +223,10 @@ Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
 
 bool IsConvolutionTransposed3x3ThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
-  return device.IsAdreno() && attr.weights.shape.o <= 8 &&
-         attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
-         attr.stride.w == 2 && attr.stride.h == 2 &&
-         attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
+  return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
+         attr.weights.shape.h == 3 && attr.stride.w == 2 &&
+         attr.stride.h == 2 && attr.padding.prepended.w == 1 &&
+         attr.padding.prepended.h == 1;
 }
 
 Status CreateConvolutionTransposed3x3Thin(

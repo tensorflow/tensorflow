@@ -305,7 +305,7 @@ def shapes_from_loc_and_scale(loc, scale, name="shapes_from_loc_and_scale"):
     ValueError:  If the last dimension of `loc` is determined statically to be
       different than the range of `scale`.
   """
-  with ops.name_scope(name, values=[loc] + scale.graph_parents):
+  with ops.name_scope(name, values=[loc]):
     # Get event shape.
     event_size = scale.range_dimension_tensor()
     event_size_const = tensor_util.constant_value(event_size)

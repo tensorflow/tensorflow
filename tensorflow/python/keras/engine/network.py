@@ -42,6 +42,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -470,6 +471,11 @@ class Network(base_layer.Layer):
     Returns:
       A list of variables.
     """
+    return self._dedup_weights(self._undeduplicated_weights)
+
+  @property
+  def _undeduplicated_weights(self):
+    """Returns the undeduplicated list of all layer variables/weights."""
     self._assert_weights_created()
     weights = []
     for layer in self._layers:
@@ -533,18 +539,21 @@ class Network(base_layer.Layer):
   @property
   def trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._trainable_weights))
 
   @property
   def non_trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_non_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._non_trainable_weights + self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_non_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._non_trainable_weights +
+            self._trainable_weights))
 
   @property
   def input_spec(self):
@@ -882,9 +891,6 @@ class Network(base_layer.Layer):
           kept_nodes += 1
     layer_configs = []
     for layer in self.layers:  # From the earliest layers on.
-      layer_class_name = layer.__class__.__name__
-      layer_config = layer.get_config()
-
       filtered_inbound_nodes = []
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
@@ -920,12 +926,10 @@ class Network(base_layer.Layer):
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
 
-      layer_configs.append({
-          'name': layer.name,
-          'class_name': layer_class_name,
-          'config': layer_config,
-          'inbound_nodes': filtered_inbound_nodes,
-      })
+      layer_config = generic_utils.serialize_keras_object(layer)
+      layer_config['name'] = layer.name
+      layer_config['inbound_nodes'] = filtered_inbound_nodes
+      layer_configs.append(layer_config)
     config['layers'] = layer_configs
 
     # Gather info about inputs and outputs.
@@ -1124,7 +1128,8 @@ class Network(base_layer.Layer):
            overwrite=True,
            include_optimizer=True,
            save_format=None,
-           signatures=None):
+           signatures=None,
+           options=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1153,6 +1158,8 @@ class Network(base_layer.Layer):
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
+      options: Optional `tf.saved_model.SaveOptions` object that specifies
+        options for saving to SavedModel.
 
     Example:
 
@@ -1168,7 +1175,7 @@ class Network(base_layer.Layer):
     ```
     """
     saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures)
+                      signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1618,10 +1625,6 @@ class Network(base_layer.Layer):
                        'inputs or `build()` is called with an `input_shape`.' %
                        self.name)
 
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_network'
-
   def _graph_network_add_loss(self, symbolic_loss):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
@@ -1639,6 +1642,10 @@ class Network(base_layer.Layer):
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
     self._insert_layers(new_layers, new_nodes)
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return network_serialization.NetworkSavedModelSaver(self)
 
 
 def _is_hdf5_filepath(filepath):

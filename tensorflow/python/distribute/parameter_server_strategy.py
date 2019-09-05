@@ -587,6 +587,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
           "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # With a PS job, PS strategy should always be considered as in multi
+    # worker mode.
+    return True
+
   @property
   def _num_replicas_in_sync(self):
     return self._device_map.num_replicas_in_graph

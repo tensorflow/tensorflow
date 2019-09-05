@@ -48,9 +48,14 @@ if __name__ == '__main__':
       '--label_file',
       default='/tmp/labels.txt',
       help='name of file containing labels')
-  parser.add_argument('--input_mean', default=127.5, help='input_mean')
   parser.add_argument(
-      '--input_std', default=127.5, help='input standard deviation')
+      '--input_mean',
+      default=127.5, type=float,
+      help='input_mean')
+  parser.add_argument(
+      '--input_std',
+      default=127.5, type=float,
+      help='input standard deviation')
   args = parser.parse_args()
 
   interpreter = Interpreter(model_path=args.model_file)

@@ -23,6 +23,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.pywrap_tensorflow import PythonScopedAnnotation
 
 
@@ -32,8 +34,8 @@ class ScopedAnnotation(object):
   def __init__(self, name, **kwargs):
     if PythonScopedAnnotation.IsEnabled():
       if kwargs:
-        name += '#' + ','.join(
-            [key + '=' + str(value) for key, value in kwargs.iteritems()]) + '#'
+        name += '#' + ','.join(key + '=' + str(value)
+                               for key, value in six.iteritems(kwargs)) + '#'
       self._scoped_annotation = PythonScopedAnnotation(name)
     else:
       self._scoped_annotation = None

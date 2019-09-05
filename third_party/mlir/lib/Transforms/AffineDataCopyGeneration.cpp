@@ -28,12 +28,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
+#include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/MapVector.h"
@@ -57,11 +58,10 @@ static llvm::cl::opt<unsigned long long> clFastMemoryCapacity(
 static llvm::cl::opt<bool>
     clDma("affine-data-copy-generate-dma",
           llvm::cl::desc("Generate DMA instead of point-wise copy"),
-          llvm::cl::cat(clOptionsCategory),
-          llvm::cl::init(true));
+          llvm::cl::cat(clOptionsCategory), llvm::cl::init(true));
 
 static llvm::cl::opt<unsigned> clFastMemorySpace(
-    "affine-data-copy-generate-fast-mem-space", llvm::cl::init(0),
+    "affine-data-copy-generate-fast-mem-space", llvm::cl::init(1),
     llvm::cl::desc(
         "Fast memory space identifier for copy generation (default: 1)"),
     llvm::cl::cat(clOptionsCategory));
@@ -118,6 +118,9 @@ struct AffineDataCopyGeneration
 
   LogicalResult generateCopy(const MemRefRegion &region, Block *block,
                              Block::iterator begin, Block::iterator end,
+                             Block *copyPlacementBlock,
+                             Block::iterator copyInPlacementStart,
+                             Block::iterator copyOutPlacementStart,
                              uint64_t *sizeInBytes, Block::iterator *nBegin,
                              Block::iterator *nEnd);
 
@@ -165,7 +168,7 @@ struct AffineDataCopyGeneration
 std::unique_ptr<FunctionPassBase> mlir::createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
     int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
-  return llvm::make_unique<AffineDataCopyGeneration>(
+  return std::make_unique<AffineDataCopyGeneration>(
       slowMemorySpace, fastMemorySpace, tagMemorySpace, minDmaTransferSize,
       fastMemCapacityBytes);
 }
@@ -277,7 +280,8 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
     b = forOp.getBodyBuilder();
     fastBufIndices.push_back(forOp.getInductionVar());
     // Construct the subscript for the slow memref being copied.
-    SmallVector<Value *, 2> operands = {memIndicesStart[d], forOp.getInductionVar()};
+    SmallVector<Value *, 2> operands = {memIndicesStart[d],
+                                        forOp.getInductionVar()};
     auto memIndex = b.create<AffineApplyOp>(
         loc,
         b.getAffineMap(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
@@ -298,37 +302,42 @@ static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
   return copyNestRoot;
 }
 
-/// Creates a buffer in the faster memory space for the specified region;
+/// Creates a buffer in the faster memory space for the specified memref region;
 /// generates a copy from the lower memory space to this one, and replaces all
-/// loads to load from that buffer. Returns failure if copies could not be
-/// generated due to yet unimplemented cases. `begin` and `end` specify the
-/// insertion points where the incoming copies and outgoing copies,
-/// respectively, should be inserted (the insertion happens right before the
-/// insertion point). Since `begin` can itself be invalidated due to the memref
-/// rewriting done from this method, the output argument `nBegin` is set to its
-/// replacement (set to `begin` if no invalidation happens). Since outgoing
-/// copies are inserted at `end`, the output argument `nEnd` is set to the one
-/// following the original end (since the latter could have been
-/// invalidated/replaced). `sizeInBytes` is set to the size of the fast buffer
-/// allocated.
+/// loads/stores in the block range [`begin', `end') of `block' to load/store
+/// from that buffer. Returns failure if copies could not be generated due to
+/// yet unimplemented cases. `copyInPlacementStart` and `copyOutPlacementStart`
+/// in copyPlacementBlock specify the insertion points where the incoming copies
+/// and outgoing copies, respectively, should be inserted (the insertion happens
+/// right before the insertion point). Since `begin` can itself be invalidated
+/// due to the memref rewriting done from this method, the output argument
+/// `nBegin` is set to its replacement (set to `begin` if no invalidation
+/// happens). Since outgoing copies could have  been inserted at `end`, the
+/// output argument `nEnd` is set to the new end. `sizeInBytes` is set to the
+/// size of the fast buffer allocated.
 LogicalResult AffineDataCopyGeneration::generateCopy(
     const MemRefRegion &region, Block *block, Block::iterator begin,
-    Block::iterator end, uint64_t *sizeInBytes, Block::iterator *nBegin,
-    Block::iterator *nEnd) {
+    Block::iterator end, Block *copyPlacementBlock,
+    Block::iterator copyInPlacementStart, Block::iterator copyOutPlacementStart,
+    uint64_t *sizeInBytes, Block::iterator *nBegin, Block::iterator *nEnd) {
   *nBegin = begin;
   *nEnd = end;
 
   if (begin == end)
     return success();
 
+  // Is the copy out point at the end of the block where we are doing
+  // explicit copying.
+  bool isCopyOutAtEndOfBlock = (end == copyOutPlacementStart);
+
   // Copies for read regions are going to be inserted at 'begin'.
-  OpBuilder prologue(block, begin);
+  OpBuilder prologue(copyPlacementBlock, copyInPlacementStart);
   // Copies for write regions are going to be inserted at 'end'.
-  OpBuilder epilogue(block, end);
+  OpBuilder epilogue(copyPlacementBlock, copyOutPlacementStart);
   OpBuilder &b = region.isWrite() ? epilogue : prologue;
 
   // Builder to create constants at the top level.
-  auto func = block->getParent()->getParentOfType<FuncOp>();
+  auto func = copyPlacementBlock->getParent()->getParentOfType<FuncOp>();
   OpBuilder top(func.getBody());
 
   auto loc = region.loc;
@@ -466,10 +475,10 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
         top.create<ConstantIndexOp>(loc, strideInfos[0].numEltPerStride);
   }
 
-  // Record the last operation just before the point where we insert the
-  // copy out's. We later do the memref replacement later only in [begin,
-  // postDomFilter] so that the original memref's in the data movement code
-  // themselves don't get replaced.
+  // Record the last operation where we want the memref replacement to end. We
+  // later do the memref replacement only in [begin, postDomFilter] so
+  // that the original memref's used in the data movement code themselves don't
+  // get replaced.
   auto postDomFilter = std::prev(end);
 
   // Create fully composed affine maps for each memref.
@@ -479,6 +488,7 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
   fullyComposeAffineMapAndOperands(&bufAffineMap, &bufIndices);
 
   if (!generateDma) {
+    // Point-wise copy generation.
     auto copyNest = generatePointWiseCopy(loc, memref, fastMemRef, memIndices,
                                           fastBufferShape,
                                           /*isCopyOut=*/region.isWrite(), b);
@@ -486,11 +496,12 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
     // Record this so that we can skip it from yet another copy.
     copyNests.insert(copyNest);
 
-    if (region.isWrite())
-      // Since new ops are being appended (for copy out's), adjust the end to
-      // mark end of block range being processed.
+    // Since new ops are being appended (for copy out's), adjust the end to
+    // mark end of block range being processed if necessary.
+    if (region.isWrite() && isCopyOutAtEndOfBlock)
       *nEnd = Block::iterator(copyNest.getOperation());
   } else {
+    // DMA generation.
     // Create a tag (single element 1-d memref) for the DMA.
     auto tagMemRefType =
         top.getMemRefType({1}, top.getIntegerType(32), {}, tagMemorySpace);
@@ -511,9 +522,10 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
           loc, fastMemRef, bufAffineMap, bufIndices, memref, memAffineMap,
           memIndices, tagMemRef, tagAffineMap, tagIndices, numElementsSSA,
           stride, numEltPerStride);
-      // Since new ops are being appended (for outgoing DMAs), adjust the end to
-      // mark end of block range being processed.
-      *nEnd = Block::iterator(op.getOperation());
+      // Since new ops may be appended at 'end' (for outgoing DMAs), adjust the
+      // end to mark end of block range being processed.
+      if (isCopyOutAtEndOfBlock)
+        *nEnd = Block::iterator(op.getOperation());
     }
 
     // Matching DMA wait to block on completion; tag always has a 0 index.
@@ -522,7 +534,7 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
 
     // Generate dealloc for the tag.
     auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
-    if (*nEnd == end)
+    if (*nEnd == end && isCopyOutAtEndOfBlock)
       // Since new ops are being appended (for outgoing DMAs), adjust the end to
       // mark end of range of the original.
       *nEnd = Block::iterator(tagDeallocOp.getOperation());
@@ -533,7 +545,7 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
     auto bufDeallocOp = epilogue.create<DeallocOp>(loc, fastMemRef);
     // When generating pointwise copies, `nEnd' has to be set to deallocOp on
     // the fast buffer (since it marks the new end insertion point).
-    if (!generateDma && *nEnd == end)
+    if (!generateDma && *nEnd == end && isCopyOutAtEndOfBlock)
       *nEnd = Block::iterator(bufDeallocOp.getOperation());
   }
 
@@ -556,19 +568,20 @@ LogicalResult AffineDataCopyGeneration::generateCopy(
   auto indexRemap = b.getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
 
   // Record the begin since it may be invalidated by memref replacement.
-  Block::iterator prev;
-  bool wasAtStartOfBlock = (begin == block->begin());
-  if (!wasAtStartOfBlock)
-    prev = std::prev(begin);
+  Block::iterator prevOfBegin;
+  bool isBeginAtStartOfBlock = (begin == block->begin());
+  if (!isBeginAtStartOfBlock)
+    prevOfBegin = std::prev(begin);
 
   // *Only* those uses within the range [begin, end) of 'block' are replaced.
-  replaceAllMemRefUsesWith(memref, fastMemRef,
-                           /*extraIndices=*/{}, indexRemap,
-                           /*extraOperands=*/regionSymbols,
-                           /*domInstFilter=*/&*begin,
-                           /*postDomInstFilter=*/&*postDomFilter);
+  if (failed(replaceAllMemRefUsesWith(memref, fastMemRef,
+                                      /*extraIndices=*/{}, indexRemap,
+                                      /*extraOperands=*/regionSymbols,
+                                      /*domInstFilter=*/&*begin,
+                                      /*postDomInstFilter=*/&*postDomFilter)))
+    llvm_unreachable("memref replacement guaranteed to succeed here");
 
-  *nBegin = wasAtStartOfBlock ? block->begin() : std::next(prev);
+  *nBegin = isBeginAtStartOfBlock ? block->begin() : std::next(prevOfBegin);
 
   return success();
 }
@@ -581,15 +594,13 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
   if (block->empty())
     return success();
 
-  copyNests.clear();
-
-  // Every affine.forop in the block starts and ends a block range for copying.
-  // A contiguous sequence of operations starting and ending with a load/store
-  // op is also identified as a copy block range. Straightline code (a
-  // contiguous chunk of operations excluding AffineForOp's) are always assumed
-  // to not exhaust memory. As a result, this approach is conservative in some
-  // cases at the moment; we do a check later and report an error with location
-  // info.
+  // Every affine.forop in the block starts and ends a block range for copying;
+  // in addition, a contiguous sequence of operations starting with a
+  // load/store op but not including any copy nests themselves is also
+  // identified as a copy block range. Straightline code (a contiguous chunk of
+  // operations excluding AffineForOp's) are always assumed to not exhaust
+  // memory. As a result, this approach is conservative in some cases at the
+  // moment; we do a check later and report an error with location info.
   // TODO(bondhugula): An 'affine.if' operation is being treated similar to an
   // operation. 'affine.if''s could have 'affine.for's in them;
   // treat them separately.
@@ -602,9 +613,15 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
                copyNests.count(&op) == 0;
       });
 
-  for (auto it = curBegin; it != block->end(); ++it) {
+  // Create [begin, end) ranges.
+  auto it = curBegin;
+  while (it != block->end()) {
     AffineForOp forOp;
+    // If you hit a non-copy for loop, we will split there.
     if ((forOp = dyn_cast<AffineForOp>(&*it)) && copyNests.count(forOp) == 0) {
+      // Perform the copying up unti this 'for' op first.
+      runOnBlock(/*begin=*/curBegin, /*end=*/it);
+
       // Returns true if the footprint is known to exceed capacity.
       auto exceedsCapacity = [&](AffineForOp forOp) {
         Optional<int64_t> footprint =
@@ -625,27 +642,31 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
                                                  : exceedsCapacity(forOp);
       if (recurseInner) {
         // We'll recurse and do the copies at an inner level for 'forInst'.
-        runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
         runOnBlock(forOp.getBody());
-        // The next block range starts right after the 'affine.for' operation.
-        curBegin = std::next(it);
       } else {
         // We have enough capacity, i.e., copies will be computed for the
         // portion of the block until 'it', and for 'it', which is 'forOp'. Note
         // that for the latter, the copies are placed just before this loop (for
         // incoming copies) and right after (for outgoing ones).
-        runOnBlock(/*begin=*/curBegin, /*end=*/it);
 
         // Inner loop copies have their own scope - we don't thus update
         // consumed capacity. The footprint check above guarantees this inner
         // loop's footprint fits.
         runOnBlock(/*begin=*/it, /*end=*/std::next(it));
-        curBegin = std::next(it);
       }
-    } else if (!isa<AffineLoadOp>(&*it) && !isa<AffineStoreOp>(&*it)) {
-      runOnBlock(/*begin=*/curBegin, /*end=*/it);
-      curBegin = std::next(it);
+      // Get to the next load or store op after 'forOp'.
+      curBegin = std::find_if(std::next(it), block->end(), [&](Operation &op) {
+        return (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
+                isa<AffineForOp>(op)) &&
+               copyNests.count(&op) == 0;
+      });
+      it = curBegin;
+    } else {
+      assert(copyNests.count(&*it) == 0 &&
+             "all copy nests generated should have been skipped above");
+      // We simply include this op in the current range and continue for more.
+      ++it;
     }
   }
 
@@ -653,7 +674,8 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
   if (curBegin != block->end()) {
     // Can't be a terminator because it would have been skipped above.
     assert(!curBegin->isKnownTerminator() && "can't be a terminator");
-    runOnBlock(/*begin=*/curBegin, /*end=*/block->end());
+    // Exclude the affine terminator - hence, the std::prev.
+    runOnBlock(/*begin=*/curBegin, /*end=*/std::prev(block->end()));
   }
 
   return success();
@@ -663,13 +685,13 @@ LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
 /// placed for it, and return the corresponding block, start and end positions
 /// in the block for placing incoming (read) and outgoing (write) copies
 /// respectively. The lowest depth depends on whether the region being accessed
-/// is invariant with respect to one or more immediately surrounding loops.
+/// is hoistable with respect to one or more immediately surrounding loops.
 static void
 findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
                              Block::iterator &begin, Block::iterator &end,
                              Block **copyPlacementBlock,
-                             Block::iterator *copyPlacementReadStart,
-                             Block::iterator *copyPlacementWriteStart) {
+                             Block::iterator *copyInPlacementStart,
+                             Block::iterator *copyOutPlacementStart) {
   const auto *cst = region.getConstraints();
   SmallVector<Value *, 4> symbols;
   cst->getIdValues(cst->getNumDimIds(), cst->getNumDimAndSymbolIds(), &symbols);
@@ -688,19 +710,20 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
 
   if (it != enclosingFors.rbegin()) {
     auto lastInvariantIV = *std::prev(it);
-    *copyPlacementReadStart = Block::iterator(lastInvariantIV.getOperation());
-    *copyPlacementWriteStart = std::next(*copyPlacementReadStart);
+    *copyInPlacementStart = Block::iterator(lastInvariantIV.getOperation());
+    *copyOutPlacementStart = std::next(*copyInPlacementStart);
     *copyPlacementBlock = lastInvariantIV.getOperation()->getBlock();
   } else {
-    *copyPlacementReadStart = begin;
-    *copyPlacementWriteStart = end;
+    *copyInPlacementStart = begin;
+    *copyOutPlacementStart = end;
     *copyPlacementBlock = &block;
   }
 }
 
 /// Generates copies for a contiguous sequence of operations in `block` in the
-/// iterator range [begin, end). Returns the total size of the fast buffers
-/// used.
+/// iterator range [`begin', `end'), where `end' can't be past the terminator of
+/// the block (since additional operations are potentially inserted right before
+/// `end'. Returns the total size of the fast buffers used.
 //  Since we generate alloc's and dealloc's for all fast buffers (before and
 //  after the range of operations resp.), all of the fast memory capacity is
 //  assumed to be available for processing this block range.
@@ -710,7 +733,8 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
     return 0;
 
   assert(begin->getBlock() == std::prev(end)->getBlock() &&
-         "Inconsistent args");
+         "Inconsistent block begin/end args");
+  assert(end != end->getBlock()->end() && "end can't be the block terminator");
 
   Block *block = begin->getBlock();
 
@@ -720,6 +744,8 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
 
   LLVM_DEBUG(llvm::dbgs() << "Generating copies at depth " << copyDepth
                           << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "from begin: " << *begin << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "to inclusive end: " << *std::prev(end) << "\n");
 
   readRegions.clear();
   writeRegions.clear();
@@ -743,7 +769,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(region->compute(opInst, copyDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
@@ -826,26 +852,24 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
       [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
               &regions) {
         for (const auto &regionEntry : regions) {
-          // For each region, hoist copy in/out past all invariant
+          // For each region, hoist copy in/out past all hoistable
           // 'affine.for's.
-          Block::iterator copyPlacementReadStart, copyPlacementWriteStart;
+          Block::iterator copyInPlacementStart, copyOutPlacementStart;
           Block *copyPlacementBlock;
           findHighestBlockForPlacement(
               *regionEntry.second, *block, begin, end, &copyPlacementBlock,
-              &copyPlacementReadStart, &copyPlacementWriteStart);
+              &copyInPlacementStart, &copyOutPlacementStart);
 
           uint64_t sizeInBytes;
           Block::iterator nBegin, nEnd;
-          LogicalResult iRet = generateCopy(
-              *regionEntry.second, copyPlacementBlock, copyPlacementReadStart,
-              copyPlacementWriteStart, &sizeInBytes, &nBegin, &nEnd);
+          LogicalResult iRet =
+              generateCopy(*regionEntry.second, block, begin, end,
+                           copyPlacementBlock, copyInPlacementStart,
+                           copyOutPlacementStart, &sizeInBytes, &nBegin, &nEnd);
           if (succeeded(iRet)) {
-            // copyPlacmentStart/End (or begin/end) may be invalidated; use
-            // nBegin, nEnd to reset.
-            if (copyPlacementBlock == block) {
-              begin = nBegin;
-              end = nEnd;
-            }
+            // begin/end could have been invalidated, and need update.
+            begin = nBegin;
+            end = nEnd;
             totalCopyBuffersSizeInBytes += sizeInBytes;
           }
           ret = ret & succeeded(iRet);
@@ -883,8 +907,16 @@ void AffineDataCopyGeneration::runOnFunction() {
   OpBuilder topBuilder(f.getBody());
   zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
 
+  // Clear recorded copy nests.
+  copyNests.clear();
+
   for (auto &block : f)
     runOnBlock(&block);
+
+  // Promote any single iteration loops in the copy nests.
+  for (auto nest : copyNests) {
+    nest->walk([](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
+  }
 }
 
 static PassRegistration<AffineDataCopyGeneration>

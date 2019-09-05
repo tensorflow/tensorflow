@@ -97,8 +97,6 @@ from __future__ import print_function
 
 import copy
 import enum  # pylint: disable=g-bad-import-order
-import json
-import os
 import threading
 import weakref
 
@@ -126,7 +124,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -953,20 +950,6 @@ class Strategy(object):
   def __copy__(self):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
 
-  def _in_multi_worker_mode(self):
-    """Method to infer if this `Strategy` is working in multi-worker settings.
-
-    Experimental. Signature and implementation are subject to change.
-
-    Returns:
-      Whether this strategy indicates working in multi-worker settings.
-    """
-    # TODO(b/137857865): Check for whether it is multi_worker_mode should not
-    # rely on TF_CONFIG environment variable.
-    tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
-    cluster_spec = server_lib.ClusterSpec(tf_config.get("cluster", {}))
-    return tf_config and "master" not in cluster_spec.jobs
-
 
 # TF v1.x version has additional deprecated APIs
 @tf_export(v1=["distribute.Strategy"])
@@ -1659,6 +1642,23 @@ class StrategyExtendedV2(object):
   def _update_config_proto(self, config_proto):
     return copy.deepcopy(config_proto)
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings.
+
+    Multi-worker training refers to the setup where the training is
+    distributed across multiple workers, as opposed to the case where
+    only a local process performs the training. This function is
+    used by higher-level apis such as Keras' `model.fit()` to infer
+    for example whether or not a distribute coordinator should be run,
+    and thus TensorFlow servers should be started for communication
+    with other servers in the cluster, or whether or not saving/restoring
+    checkpoints is relevant for preemption fault tolerance.
+
+    Subclasses should override this to provide whether the strategy is
+    currently in multi-worker setup.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
 
 @tf_export(v1=["distribute.StrategyExtended"])  # pylint: disable=missing-docstring
 class StrategyExtendedV1(StrategyExtendedV2):
@@ -2199,6 +2199,11 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # Default strategy doesn't indicate multi-worker training.
+    return False
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.

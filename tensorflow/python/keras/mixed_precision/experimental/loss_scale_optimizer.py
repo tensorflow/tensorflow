@@ -22,6 +22,7 @@ from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util.tf_export import keras_export
 
@@ -166,9 +167,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     if callable(loss):
-      return lambda: loss() * loss_scale
+      def new_loss():
+        loss_val = loss()
+        return loss_val * math_ops.cast(loss_scale, loss_val.dtype)
+      return new_loss
     else:
-      return loss * loss_scale
+      return loss * math_ops.cast(loss_scale, loss.dtype)
 
   def get_unscaled_gradients(self, grads):
     """Unscales the gradients by the loss scale.
@@ -193,7 +197,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     loss_scale_reciprocal = 1. / loss_scale
-    return [g * loss_scale_reciprocal if g is not None else None for g in grads]
+    return [g * math_ops.cast(loss_scale_reciprocal, g.dtype) if g is not None
+            else None for g in grads]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
     loss = self.get_scaled_loss(loss)

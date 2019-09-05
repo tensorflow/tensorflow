@@ -52,9 +52,10 @@ void SelectApplyMask(const OperationDef& op_def,
   *ptr = absl::make_unique<ApplyMask>(std::move(operation));
 }
 
-void SelectReLU(const ReLUAttributes& attr, const OperationDef& op_def,
+void SelectReLU(const CreationContext& creation_context,
+                const ReLUAttributes& attr, const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
-  ReLU relu = CreateReLU(op_def, attr);
+  ReLU relu = CreateReLU(creation_context, op_def, attr);
   *ptr = absl::make_unique<ReLU>(std::move(relu));
 }
 

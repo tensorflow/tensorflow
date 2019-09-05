@@ -128,7 +128,7 @@ struct ImageConnectedComponentsFunctor<CPUDevice, T> {
 // Connected components (arguably) make sense for number, bool, and string types
 TF_CALL_NUMBER_TYPES(REGISTER_IMAGE_CONNECTED_COMPONENTS);
 TF_CALL_bool(REGISTER_IMAGE_CONNECTED_COMPONENTS);
-TF_CALL_string(REGISTER_IMAGE_CONNECTED_COMPONENTS);
+TF_CALL_tstring(REGISTER_IMAGE_CONNECTED_COMPONENTS);
 #undef REGISTER_IMAGE_CONNECTED_COMPONENTS
 
 // TODO(ringwalt): Implement on GPU. We probably want to stick to the original

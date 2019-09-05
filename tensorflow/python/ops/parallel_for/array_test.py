@@ -54,6 +54,19 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 20)
 
+  def test_gather_nd(self):
+    x = random_ops.random_uniform([3, 3, 3])
+
+    def loop_fn(i):
+      outputs = []
+      x_i = array_ops.gather(x, i)
+      outputs.append(array_ops.gather_nd(x_i, [0], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [i], batch_dims=0))
+      outputs.append(array_ops.gather_nd(x_i, [[i], [i], [i]], batch_dims=1))
+      return outputs
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
   def test_shape(self):
     x = random_ops.random_uniform([3, 2, 3])
 
@@ -314,7 +327,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       diagonal = array_ops.gather(x, i)
-      if compat.forward_compatible(2019, 8, 31):
+      if compat.forward_compatible(2019, 10, 31):
         return array_ops.matrix_diag(diagonal, k=(0, 1), num_rows=4, num_cols=5)
       return array_ops.matrix_diag(diagonal)
 
@@ -325,7 +338,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       input = array_ops.gather(x, i)  # pylint: disable=redefined-builtin
-      if compat.forward_compatible(2019, 8, 31):
+      if compat.forward_compatible(2019, 10, 31):
         return array_ops.matrix_diag_part(input, k=(-2, 0), padding_value=3)
       return array_ops.matrix_diag_part(input)
 
@@ -335,7 +348,7 @@ class ArrayTest(PForTestCase):
     matrices = random_ops.random_uniform([3, 4, 4])
     diags = random_ops.random_uniform([3, 4])
     num_outputs = 3
-    if compat.forward_compatible(2019, 8, 31):
+    if compat.forward_compatible(2019, 10, 31):
       bands = random_ops.random_uniform([3, 3, 4])
       num_outputs = 6
 
@@ -347,7 +360,7 @@ class ArrayTest(PForTestCase):
           array_ops.matrix_set_diag(matrices[0, ...], diag_i),
           array_ops.matrix_set_diag(matrix_i, diags[0, ...])
       ]
-      if compat.forward_compatible(2019, 8, 31):
+      if compat.forward_compatible(2019, 10, 31):
         k = (-1, 1)
         band_i = array_ops.gather(bands, i)
         results.extend([

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -40,6 +41,64 @@ struct EigenEnvironment;
 
 class ThreadPool {
  public:
+  // Scheduling strategies for ParallelFor. The strategy governs how the given
+  // units of work are distributed among the available threads in the
+  // threadpool.
+  enum class SchedulingStrategy {
+    // The Adaptive scheduling strategy adaptively chooses the shard sizes based
+    // on the cost of each unit of work, and the cost model of the underlying
+    // threadpool device.
+    //
+    // The 'cost_per_unit' is an estimate of the number of CPU cycles (or
+    // nanoseconds if not CPU-bound) to complete a unit of work. Overestimating
+    // creates too many shards and CPU time will be dominated by per-shard
+    // overhead, such as Context creation. Underestimating may not fully make
+    // use of the specified parallelism, and may also cause inefficiencies due
+    // to load balancing issues and stragglers.
+    kAdaptive,
+    // The Fixed Block Size scheduling strategy shards the given units of work
+    // into shards of fixed size. In case the total number of units is not
+    // evenly divisible by 'block_size', at most one of the shards may be of
+    // smaller size. The exact number of shards may be found by a call to
+    // NumShardsUsedByFixedBlockSizeScheduling.
+    //
+    // Each shard may be executed on a different thread in parallel, depending
+    // on the number of threads available in the pool. Note that when there
+    // aren't enough threads in the pool to achieve full parallelism, function
+    // calls will be automatically queued.
+    kFixedBlockSize
+  };
+
+  // Contains additional parameters for either the Adaptive or the Fixed Block
+  // Size scheduling strategy.
+  class SchedulingParams {
+   public:
+    explicit SchedulingParams(SchedulingStrategy strategy,
+                              absl::optional<int64> cost_per_unit,
+                              absl::optional<int64> block_size)
+        : strategy_(strategy),
+          cost_per_unit_(cost_per_unit),
+          block_size_(block_size) {}
+
+    SchedulingStrategy strategy() const { return strategy_; }
+    absl::optional<int64> cost_per_unit() const { return cost_per_unit_; }
+    absl::optional<int64> block_size() const { return block_size_; }
+
+   private:
+    // The underlying Scheduling Strategy for which this instance contains
+    // additional parameters.
+    SchedulingStrategy strategy_;
+
+    // The estimated cost per unit of work in number of CPU cycles (or
+    // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
+    // strategy.
+    absl::optional<int64> cost_per_unit_;
+
+    // The block size of each shard. Only applicable for Fixed Block Size
+    // scheduling strategy.
+    absl::optional<int64> block_size_;
+  };
+
   // Constructs a pool that contains "num_threads" threads with specified
   // "name". env->StartThread() is used to create individual threads with the
   // given ThreadOptions. If "low_latency_hint" is true the thread pool
@@ -83,17 +142,15 @@ class ThreadPool {
       const std::vector<std::pair<unsigned, unsigned>>& partitions);
 
   void ScheduleWithHint(std::function<void()> fn, int start, int limit);
-  // Requires 0 < block_size <= total.
-  // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
-  // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
-  // is called instead. k = NumShardsUsedByTransformRangeConcurrently(...).
-  // Note that when there aren't enough threads in the pool to achieve full
-  // parallelism, function calls will be automatically queued.
-  void TransformRangeConcurrently(const int64 block_size, const int64 total,
-                                  const std::function<void(int64, int64)>& fn);
+
+  // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
+  // with these parameters.
+  int NumShardsUsedByFixedBlockSizeScheduling(const int64 total,
+                                              const int64 block_size);
 
   // Returns the number of threads spawned by calling TransformRangeConcurrently
   // with these parameters.
+  // Deprecated. Use NumShardsUsedByFixedBlockSizeScheduling.
   int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
                                                 const int64 total);
 
@@ -106,9 +163,20 @@ class ThreadPool {
   // if not CPU-bound) to complete a unit of work. Overestimating creates too
   // many shards and CPU time will be dominated by per-shard overhead, such as
   // Context creation. Underestimating may not fully make use of the specified
-  // parallelism.
+  // parallelism, and may also cause inefficiencies due to load balancing
+  // issues and stragglers.
   void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn);
+                   const std::function<void(int64, int64)>& fn);
+
+  // Similar to ParallelFor above, but takes the specified scheduling strategy
+  // into account.
+  void ParallelFor(int64 total, const SchedulingParams& scheduling_params,
+                   const std::function<void(int64, int64)>& fn);
+
+  // Same as ParallelFor with Fixed Block Size scheduling strategy.
+  // Deprecated. Prefer ParallelFor with a SchedulingStrategy argument.
+  void TransformRangeConcurrently(const int64 block_size, const int64 total,
+                                  const std::function<void(int64, int64)>& fn);
 
   // Shards the "total" units of work. For more details, see "ParallelFor".
   //
@@ -129,6 +197,12 @@ class ThreadPool {
       int64 total, int64 cost_per_unit,
       const std::function<void(int64, int64, int)>& fn);
 
+  // Similar to ParallelForWithWorkerId above, but takes the specified
+  // scheduling strategy into account.
+  void ParallelForWithWorkerId(
+      int64 total, const SchedulingParams& scheduling_params,
+      const std::function<void(int64, int64, int)>& fn);
+
   // Returns the number of threads in the pool.
   int NumThreads() const;
 
@@ -142,6 +216,17 @@ class ThreadPool {
   Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
 
  private:
+  // Divides the work represented by the range [0, total) into k shards.
+  // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
+  // Each shard may be executed on a different thread in parallel, depending on
+  // the number of threads available in the pool.
+  // When (i+1)*block_size > total, fn(i*block_size, total) is called instead.
+  // Here, k = NumShardsUsedByFixedBlockSizeScheduling(total, block_size).
+  // Requires 0 < block_size <= total.
+  void ParallelForFixedBlockSizeScheduling(
+      const int64 total, const int64 block_size,
+      const std::function<void(int64, int64)>& fn);
+
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
   Eigen::ThreadPoolInterface* underlying_threadpool_;

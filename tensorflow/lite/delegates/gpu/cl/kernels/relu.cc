@@ -16,18 +16,20 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-ReLU::ReLU(const OperationDef& definition, const ReLUAttributes& attr)
+ReLU::ReLU(const OperationDef& definition, const ReLUAttributes& attr,
+           CalculationsPrecision scalar_precision)
     : ElementwiseOperation(definition) {
   if (attr.alpha != 0.0f) {
-    alpha_ = FLT(definition.precision, attr.alpha);
+    alpha_ = FLT(scalar_precision, attr.alpha);
   }
   if (attr.clip != 0.0f) {
-    clip_ = FLT(definition.precision, attr.clip);
+    clip_ = FLT(scalar_precision, attr.clip);
   }
 }
 
@@ -57,24 +59,24 @@ std::string ReLU::GetCoreCode(const std::string& src,
   if (!alpha_.Active()) {
     min_func = "(FLT)(0.0f)";
   } else {
-    min_func =
-        absl::StrCat("min(", src, " * ", alpha_.GetName(), ", (FLT)(0.0f))");
+    min_func = absl::StrCat("min(", src, " * (FLT)(", alpha_.GetName(),
+                            "), (FLT)(0.0f))");
   }
   if (!clip_.Active()) {
     return absl::StrCat(src, " = max(", src, ", ", min_func, ");\n");
   } else {
-    return absl::StrCat(src, " = clamp(", src, ", " + min_func + ", ",
-                        clip_.GetName(), ");\n");
+    return absl::StrCat(src, " = clamp(", src, ", " + min_func + ", (FLT)(",
+                        clip_.GetName(), "));\n");
   }
 }
 
 std::string ReLU::GetArgsDeclaration() const {
   std::string args;
   if (alpha_.Active()) {
-    args = absl::StrCat(args, ",\n    ", alpha_.GetDeclaration());
+    absl::StrAppend(&args, ",\n    ", alpha_.GetDeclaration());
   }
   if (clip_.Active()) {
-    args = absl::StrCat(args, ",\n    ", clip_.GetDeclaration());
+    absl::StrAppend(&args, ",\n    ", clip_.GetDeclaration());
   }
   return args;
 }
@@ -89,8 +91,12 @@ Status ReLU::BindArguments(CLKernel* kernel) {
   return OkStatus();
 }
 
-ReLU CreateReLU(const OperationDef& definition, const ReLUAttributes& attr) {
-  ReLU operation(definition, attr);
+ReLU CreateReLU(const CreationContext& creation_context,
+                const OperationDef& definition, const ReLUAttributes& attr) {
+  const auto scalar_precision = creation_context.device->IsPowerVR()
+                                    ? CalculationsPrecision::F32
+                                    : definition.precision;
+  ReLU operation(definition, attr, scalar_precision);
   operation.SetLinkIndex(0);
   return operation;
 }

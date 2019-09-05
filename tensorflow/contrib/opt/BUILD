@@ -233,8 +233,6 @@ py_test(
 py_test(
     name = "nadam_optimizer_test",
     srcs = ["python/training/nadam_optimizer_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",

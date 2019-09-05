@@ -10,9 +10,7 @@ package_group(
     name = "friends",
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/...",
         "//tensorflow/python/...",
     ],
 )
@@ -70,7 +68,7 @@ gentbl(
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -94,7 +92,7 @@ gentbl(
     td_file = "ir/tf_device_ops.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
-        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
     ],
 )
 
@@ -124,6 +122,9 @@ cc_library(
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "ir/tf_types.cc",
+        "transforms/bridge.cc",
+        "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
         "transforms/executor_island_coarsening.cc",
@@ -133,6 +134,8 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_rewrite_pass.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
     ],
@@ -144,10 +147,12 @@ cc_library(
         "ir/tf_traits.h",
         "ir/tf_types.def",
         "ir/tf_types.h",
+        "transforms/bridge.h",
         "transforms/passes.h",
     ],
     includes = ["include"],
     deps = [
+        ":error_util",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -164,6 +169,7 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
+        "@local_config_mlir//:Transforms",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
@@ -198,6 +204,7 @@ cc_library(
         ":mangling_util",
         ":mlir_roundtrip_flags",
         ":tensorflow",
+        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -286,6 +293,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],
@@ -310,6 +319,7 @@ cc_library(
     hdrs = ["translate/mlir_roundtrip_pass.h"],
     deps = [
         ":convert_graphdef",
+        ":error_util",
         ":mlir_roundtrip_flags",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_lib",
@@ -372,6 +382,21 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_tensor_test",
+    size = "small",
+    srcs = ["utils/convert_tensor_test.cc"],
+    deps = [
+        ":convert_tensor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
         "@local_config_mlir//:IR",
     ],
 )
@@ -610,5 +635,69 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
         "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_fold_switch",
+    srcs = [
+        "transforms/fold_switch.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:QuantOps",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "compile_mlir_util",
+    srcs = ["utils/compile_mlir_util.cc"],
+    hdrs = ["utils/compile_mlir_util.h"],
+    copts = ["-std=c++14"],
+    deps = [
+        ":convert_type",
+        ":error_util",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:span",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "compile_mlir_util_test",
+    size = "small",
+    srcs = ["utils/compile_mlir_util_test.cc"],
+    deps = [
+        ":compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
     ],
 )

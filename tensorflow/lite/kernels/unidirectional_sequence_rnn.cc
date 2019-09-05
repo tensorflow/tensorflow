@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -148,7 +149,7 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
                        const TfLiteSequenceRNNParams* params,
                        TfLiteTensor* hidden_state, TfLiteTensor* output) {
   // Initialize the pointer bias.
-  const float* bias_ptr = bias->data.f;
+  const float* bias_ptr = GetTensorData<float>(bias);
 
   const bool time_major = params->time_major;
   const int batch_size =
@@ -159,18 +160,19 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   const int input_size = input->dims->data[2];
 
   // Initialize input_weights and recurrent_weights.
-  const float* input_weights_ptr = input_weights->data.f;
-  const float* recurrent_weights_ptr = recurrent_weights->data.f;
+  const float* input_weights_ptr = GetTensorData<float>(input_weights);
+  const float* recurrent_weights_ptr = GetTensorData<float>(recurrent_weights);
 
   if (time_major) {
     // Initialize the pointer to hidden state.
-    float* hidden_state_ptr_batch = hidden_state->data.f;
+    float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
     // Unroll the sequence and use batch operations for efficiency.
     for (int s = 0; s < max_time; s++) {
       // Initialize the pointer to input and output.
       const float* input_ptr_batch =
-          input->data.f + s * input_size * batch_size;
-      float* output_ptr_batch = output->data.f + s * num_units * batch_size;
+          GetTensorData<float>(input) + s * input_size * batch_size;
+      float* output_ptr_batch =
+          GetTensorData<float>(output) + s * num_units * batch_size;
 
       kernel_utils::RnnBatchStep(
           input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
@@ -181,13 +183,15 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
     // For each batch
     for (int b = 0; b < batch_size; b++) {
       // Initialize the pointer to hidden state.
-      float* hidden_state_ptr_batch = hidden_state->data.f + b * num_units;
+      float* hidden_state_ptr_batch =
+          GetTensorData<float>(hidden_state) + b * num_units;
       for (int s = 0; s < max_time; s++) {
         // Initialize the pointer to input and output.
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
-        float* output_ptr_batch =
-            output->data.f + b * num_units * max_time + s * num_units;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
+        float* output_ptr_batch = GetTensorData<float>(output) +
+                                  b * num_units * max_time + s * num_units;
 
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
@@ -214,7 +218,7 @@ TfLiteStatus EvalHybrid(
   const int input_size = input->dims->data[2];
 
   // Initialize the pointer bias.
-  const float* bias_ptr = bias->data.f;
+  const float* bias_ptr = GetTensorData<float>(bias);
 
   // Initialize input_weights, recurrent_weights, and temporary storage for
   // quantized values.
@@ -240,17 +244,18 @@ TfLiteStatus EvalHybrid(
   // Get the scale of the quantized weights.
   float input_weights_scale = input_weights->params.scale;
   float recurrent_weights_scale = recurrent_weights->params.scale;
-  float* scaling_factors_ptr = scaling_factors->data.f;
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
 
   if (time_major) {
     // Initialize the pointer to hidden state.
-    float* hidden_state_ptr_batch = hidden_state->data.f;
+    float* hidden_state_ptr_batch = GetTensorData<float>(hidden_state);
     // Unroll the sequence and use batch operations for efficiency.
     for (int s = 0; s < max_time; s++) {
       // Initialize the pointer to input and output.
       const float* input_ptr_batch =
-          input->data.f + s * input_size * batch_size;
-      float* output_ptr_batch = output->data.f + s * num_units * batch_size;
+          GetTensorData<float>(input) + s * input_size * batch_size;
+      float* output_ptr_batch =
+          GetTensorData<float>(output) + s * num_units * batch_size;
 
       kernel_utils::RnnBatchStep(
           input_ptr_batch, input_weights_ptr, input_weights_scale,
@@ -263,13 +268,15 @@ TfLiteStatus EvalHybrid(
     // For each batch
     for (int b = 0; b < batch_size; b++) {
       // Initialize the pointer to hidden state.
-      float* hidden_state_ptr_batch = hidden_state->data.f + b * num_units;
+      float* hidden_state_ptr_batch =
+          GetTensorData<float>(hidden_state) + b * num_units;
       for (int s = 0; s < max_time; s++) {
         // Initialize the pointer to input and output.
-        const float* input_ptr_batch =
-            input->data.f + b * input_size * max_time + s * input_size;
-        float* output_ptr_batch =
-            output->data.f + b * num_units * max_time + s * num_units;
+        const float* input_ptr_batch = GetTensorData<float>(input) +
+                                       b * input_size * max_time +
+                                       s * input_size;
+        float* output_ptr_batch = GetTensorData<float>(output) +
+                                  b * num_units * max_time + s * num_units;
 
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, input_weights_scale,

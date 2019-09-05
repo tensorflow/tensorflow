@@ -88,6 +88,40 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
   return module_or.ConsumeValueOrDie();
 }
 
+mlir::OwningModuleRef SavedModelToMlirImport(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags,
+    absl::string_view debug_info_file, mlir::MLIRContext* context) {
+  SessionOptions session_options;
+  RunOptions run_options;
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = LoadSavedModel(
+      session_options, run_options,
+      std::string(saved_model_dir.data(), saved_model_dir.length()), tags,
+      &bundle);
+  if (!load_status.ok()) {
+    LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
+               << "': " << load_status;
+    return nullptr;
+  }
+
+  GraphDebugInfo debug_info;
+  if (!debug_info_file.empty()) {
+    if (!LoadProtoFromFile(debug_info_file, &debug_info).ok()) {
+      LOG(ERROR) << "Failed to load debug info file: " << debug_info_file;
+      return nullptr;
+    }
+  }
+
+  auto module_or = ConvertSavedModelToMlir(bundle, debug_info, context);
+
+  if (!module_or.status().ok()) {
+    LOG(ERROR) << "SavedModel import failed: " << module_or.status();
+    return nullptr;
+  }
+  return module_or.ConsumeValueOrDie();
+}
+
 mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_filename, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,

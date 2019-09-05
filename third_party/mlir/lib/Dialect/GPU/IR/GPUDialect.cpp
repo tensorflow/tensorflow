@@ -20,13 +20,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::gpu;
@@ -45,6 +45,13 @@ GPUDialect::GPUDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
                 >();
+}
+
+template <typename T> static LogicalResult verifyIndexOp(T op) {
+  auto dimension = op.dimension();
+  if (dimension != "x" && dimension != "y" && dimension != "z")
+    return op.emitError("dimension \"") << dimension << "\" is invalid";
+  return success();
 }
 
 #define GET_OP_CLASSES

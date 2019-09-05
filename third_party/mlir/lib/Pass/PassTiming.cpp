@@ -154,19 +154,16 @@ struct PassTiming : public PassInstrumentation {
   ~PassTiming() { print(); }
 
   /// Setup the instrumentation hooks.
-  void runBeforePass(Pass *pass, const llvm::Any &) override {
-    startPassTimer(pass);
-  }
-  void runAfterPass(Pass *pass, const llvm::Any &) override;
-  void runAfterPassFailed(Pass *pass, const llvm::Any &ir) override {
-    runAfterPass(pass, ir);
+  void runBeforePass(Pass *pass, Operation *) override { startPassTimer(pass); }
+  void runAfterPass(Pass *pass, Operation *) override;
+  void runAfterPassFailed(Pass *pass, Operation *op) override {
+    runAfterPass(pass, op);
   }
   void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
-                         const llvm::Any &) override {
+                         Operation *) override {
     startAnalysisTimer(name, id);
   }
-  void runAfterAnalysis(llvm::StringRef, AnalysisID *,
-                        const llvm::Any &) override;
+  void runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) override;
 
   /// Print and clear the timing results.
   void print();
@@ -224,9 +221,9 @@ struct PassTiming : public PassInstrumentation {
 
 /// Start a new timer for the given pass.
 void PassTiming::startPassTimer(Pass *pass) {
-  Timer *timer = getTimer(pass, [pass] {
-    if (isModuleToFunctionAdaptorPass(pass))
-      return StringRef("Function Pipeline");
+  Timer *timer = getTimer(pass, [pass]() -> std::string {
+    if (auto pipelineName = getAdaptorPassOpName(pass))
+      return ("'" + *pipelineName + "' Pipeline").str();
     return pass->getName();
   });
 
@@ -243,15 +240,15 @@ void PassTiming::startAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
 }
 
 /// Stop a pass timer.
-void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
+void PassTiming::runAfterPass(Pass *pass, Operation *) {
   auto tid = llvm::get_threadid();
   auto &activeTimers = activeThreadTimers[tid];
   assert(!activeTimers.empty() && "expected active timer");
   Timer *timer = activeTimers.pop_back_val();
 
-  // If this is an ModuleToFunctionPassAdaptorParallel, then we need to merge in
-  // the timing data for the other threads.
-  if (isa<ModuleToFunctionPassAdaptorParallel>(pass)) {
+  // If this is an OpToOpPassAdaptorParallel, then we need to merge in the
+  // timing data for the other threads.
+  if (isa<OpToOpPassAdaptorParallel>(pass)) {
     // The asychronous pipeline timers should exist as children of root timers
     // for other threads.
     for (auto &rootTimer : llvm::make_early_inc_range(rootTimers)) {
@@ -277,8 +274,7 @@ void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
 }
 
 /// Stop a timer.
-void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *,
-                                  const llvm::Any &) {
+void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *, Operation *) {
   auto &activeTimers = activeThreadTimers[llvm::get_threadid()];
   assert(!activeTimers.empty() && "expected active timer");
   Timer *timer = activeTimers.pop_back_val();

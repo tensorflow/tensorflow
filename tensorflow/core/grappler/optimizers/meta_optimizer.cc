@@ -191,6 +191,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
@@ -212,9 +215,6 @@ Status MetaOptimizer::InitializeOptimizers(
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
-  }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
@@ -591,13 +591,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // 2. Optimize functions reachable from the optimized graph.
   FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
+  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;
 
-  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
   const auto find_differentiable_functions =
-      [&differentiable_functions](const NodeDefs& nodes) -> void {
+      [&](const NodeDefs& nodes) -> void {
     for (const NodeDef& node : nodes) {
       if (IsSymbolicGradient(node)) {
         const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
@@ -611,6 +611,28 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // SymbolicGradient nodes inside the function library.
   for (const FunctionDef& function : optimized_graph->library().function()) {
     find_differentiable_functions(function.node_def());
+  }
+
+  // Find functions that are formed by XLA and will be compiled later. We do it
+  // by looking for a function attribute in XlaLaunch ops. Grappler rewrites
+  // potentially can add nodes that are not supported by XLA, so we choose to
+  // skip such functions when we optimize function library.
+  absl::flat_hash_set<string> xla_compiled_functions;
+
+  const auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
+    NameAttrList function;
+    for (const NodeDef& node : nodes) {
+      if (!IsXlaLaunch(node)) continue;
+      if (!GetNodeAttr(node, "function", &function).ok()) continue;
+      xla_compiled_functions.insert(function.name());
+    }
+  };
+
+  // XlaLaunch ops inside the main graph ...
+  find_xla_compiled_functions(optimized_graph->node());
+  // ... and inside the function library.
+  for (const FunctionDef& function : optimized_graph->library().function()) {
+    find_xla_compiled_functions(function.node_def());
   }
 
   // Optimize each function only once.
@@ -629,9 +651,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Skip functions that are not reachable from the optimized graph.
       if (!flib.Contains(func_name)) continue;
-
       // Skip already optimized functions.
-      if (optimized_funcs.find(func_name) != optimized_funcs.end()) continue;
+      if (optimized_funcs.contains(func_name)) continue;
+      // Skip functions that will be compiled by XLA.
+      if (xla_compiled_functions.contains(func_name)) continue;
 
       // Skip parametrized functions (function type or body is defined only at
       // function call time by caller node attributes).

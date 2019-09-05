@@ -175,7 +175,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
 
 void ClusterFormationPass::runOnFunction() {
   OpBuilder builder(getFunction().getContext());
-  getFunction().walk<tf_executor::IslandOp>([&](tf_executor::IslandOp island) {
+  getFunction().walk([&](tf_executor::IslandOp island) {
     // Iteratively find clusters of different devices within an island.
     // Whenever we see an operation that is assigned to an accelerator device
     // (ie. device != ""), we try to merge it into the last cluster of same
@@ -220,8 +220,8 @@ void ClusterFormationPass::runOnFunction() {
 
 }  // namespace
 
-FunctionPassBase* CreateClusterFormationPass() {
-  return new ClusterFormationPass();
+std::unique_ptr<FunctionPassBase> CreateClusterFormationPass() {
+  return std::make_unique<ClusterFormationPass>();
 }
 
 static PassRegistration<ClusterFormationPass> pass(

@@ -57,13 +57,9 @@ namespace gpu {
 //   C4 - is the constant = 4.
 enum class DataLayout {
   UNKNOWN,
-
   BHWC,
-
   DHWC4,
-
   HWDC4,
-
   HDWC4,
 };
 
@@ -170,6 +166,9 @@ struct TensorObjectDef {
 
 // @return true if tensor object def is defined.
 bool IsValid(const TensorObjectDef& def);
+
+// @return the number of elements in a tensor object.
+uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory, OpenClBuffer, OpenClTexture>;

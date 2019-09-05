@@ -23,6 +23,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.keras.engine import base_layer_utils
@@ -253,3 +254,17 @@ def output_all_intermediates():
       "SINGLE_THREADED_EXECUTOR"):
     return False
   return _is_building_keras_layer()
+
+
+def get_func_graph(op, input_shapes, func_name):
+  """Generates and returns a FuncGraph for the given op and input_shapes."""
+  fdef = op.graph._get_function(func_name).definition  # pylint: disable=protected-access
+  # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
+  # in the case of nested if ops or when the gradient is being computed
+  # from inside a Defun. We build the `func_graph` with `op.graph` as its
+  # `outer_graph`. This resembles how the `FuncGraph` was built in the
+  # forward pass. We need this so that we can resolve references to tensors
+  # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
+  with op.graph.as_default():
+    func_graph = function_def_to_graph.function_def_to_graph(fdef, input_shapes)
+  return func_graph

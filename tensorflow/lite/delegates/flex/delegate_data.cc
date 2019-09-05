@@ -39,7 +39,7 @@ tensorflow::Status DelegateData::Prepare(
       session_options, "/job:localhost/replica:0/task:0", &devices));
 
   auto device_mgr =
-      absl::make_unique<tensorflow::DeviceMgr>(std::move(devices));
+      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(devices));
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
   tensorflow::Rendezvous* rendezvous =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());

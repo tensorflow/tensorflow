@@ -22,8 +22,8 @@ import os
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compiler.xla import jit
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables

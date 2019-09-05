@@ -26,12 +26,10 @@ namespace xla {
 namespace gpu {
 
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
-    GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability,
-                                 tensorflow::CudnnVersion, absl::string_view);
-
-absl::Span<const stream_executor::blas::AlgorithmType>
-GetBlacklistedBlasAlgorithms(tensorflow::ComputeCapability,
-                             absl::string_view blas_version, absl::string_view);
+GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
+                             tensorflow::CudnnVersion cudnn_version,
+                             absl::string_view blas_version,
+                             absl::string_view hlo);
 
 }  // namespace gpu
 }  // namespace xla

@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #include <algorithm>
+#include <functional>
+#include <numeric>
+#include <string>
 
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -33,8 +38,8 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -86,14 +91,8 @@ static bool AreCastCompatible(Type a, Type b) {
          getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
 }
 
-// Returns either the element type or type of the result of a single result
-// operation.
-// TODO(antiagainst): We need an overload function, which mandates function
-// name. This is temporary. Remove this post variadic operand support is
-// improved.
-static Type getElementTypeOrSelf(Operation *op) {
-  if (op->getNumResults() != 1) return {};
-  return getElementTypeOrSelf(op->getResult(0));
+static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
+  return dim_or_rank == -1;
 }
 
 namespace {
@@ -611,53 +610,105 @@ static LogicalResult Verify(ReshapeOp op) {
 
 void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
                       Value *shape) {
-  auto etype = tensor->getType().cast<ShapedType>().getElementType();
+  auto ttype = tensor->getType().cast<ShapedType>();
+  auto etype = ttype.getElementType();
+
+  auto unranked = [builder, etype, result, shape, tensor]() {
+    return ReshapeOp::build(builder, result, builder->getTensorType(etype),
+                            tensor, shape);
+  };
+
+  // If tensor is unranked then we have no info about output of shape.
+  if (!ttype.hasRank()) return unranked();
+
   DenseIntElementsAttr attr_shape;
   if (matchPattern(shape, m_Constant(&attr_shape))) {
     llvm::SmallVector<int64_t, 4> const_shape;
-    if (attr_shape.isSplat()) {
-      const_shape.assign(attr_shape.getNumElements(),
-                         (*attr_shape.begin()).getSExtValue());
-    } else {
-      const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape) const_shape.push_back(dim.getSExtValue());
+    const_shape.reserve(attr_shape.getNumElements());
+
+    // Detect if reshape output shape is folded.
+    bool flatten = false;
+    int unknown_index = -1;
+    // The product of constant shape argument excluding unknown dimension.
+    int64_t product_cshape = 1;
+    for (auto e : llvm::enumerate(attr_shape)) {
+      int64_t val = e.value().getSExtValue();
+      if (IsUnknownDimOrRank(val)) {
+        if (flatten) {
+          mlir::emitError(result->location)
+              << "only one unknown dimension allowed";
+          return;
+        }
+        flatten = true;
+        unknown_index = e.index();
+      } else {
+        product_cshape *= val;
+      }
+      const_shape.push_back(val);
+    }
+
+    // Compute the value of the uknown dimension.
+    if (flatten) {
+      // Compute number of elements in tensor shape.
+      auto tshape = ttype.getShape();
+      int64_t product_tshape = std::accumulate(tshape.begin(), tshape.end(), 1,
+                                               std::multiplies<int64_t>());
+      // Set the unknown dimension such that total number of elements remain
+      // constant.
+      // Note: The case where the ratio is not integral, and so the total size
+      // of reshape not constant, is checked in verify function.
+      const_shape[unknown_index] = product_tshape / product_cshape;
     }
     return ReshapeOp::build(builder, result,
                             builder->getTensorType(const_shape, etype), tensor,
                             shape);
   }
-  return ReshapeOp::build(builder, result, builder->getTensorType(etype),
-                          tensor, shape);
+  return unranked();
 }
 
 //===----------------------------------------------------------------------===//
 // ShapeOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ShapeOp op) {
-  auto inputType = op.input()->getType();
-  auto resultType = op.getType().dyn_cast<RankedTensorType>();
-  if (!resultType || resultType.getShape().size() != 1)
-    return op.emitOpError("requires 1D result type");
+namespace {
+// Validates Shape/ShapeN operand and associated result types.
+LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
+                                          Type result_type,
+                                          int variadic_idx = -1) {
+  std::string variadic_idx_str =
+      variadic_idx < 0 ? "" : llvm::formatv(" #{0}", variadic_idx).str();
 
-  auto rankedTensorType = inputType.dyn_cast<RankedTensorType>();
-  if (rankedTensorType) {
+  auto result_ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!result_ranked_type || result_ranked_type.getShape().size() != 1)
+    return op->emitOpError("requires 1D type for result") << variadic_idx_str;
+
+  auto operand_ranked_type = operand_type.dyn_cast<RankedTensorType>();
+  if (operand_ranked_type) {
     // The operand is a ranked tensor.
-    if (resultType.hasStaticShape()) {
-      if ((!rankedTensorType.getShape().empty() &&
-           resultType.getDimSize(0) != rankedTensorType.getShape().size()))
-        return op.emitOpError(
-            "requires dimension size of result to match rank of operand");
-    }
-  } else {
+    if (result_ranked_type.hasStaticShape() &&
+        !operand_ranked_type.getShape().empty() &&
+        result_ranked_type.getDimSize(0) !=
+            operand_ranked_type.getShape().size())
+      return op->emitOpError("requires dimension size of result")
+             << variadic_idx_str << " to match rank of operand"
+             << variadic_idx_str;
+  } else if (result_ranked_type.hasStaticShape()) {
     // The operand is an unranked tensor, verify that the result is dynamic.
-    if (resultType.hasStaticShape())
-      return op.emitOpError("requires dynamic shape result for unranked input");
+    return op->emitOpError("requires dynamic shape result")
+           << variadic_idx_str << " for unranked operand" << variadic_idx_str;
   }
 
-  Type elt = op.getType().cast<ShapedType>().getElementType();
-  if (elt.isInteger(32) || elt.isInteger(64)) return success();
-  return op.emitOpError("requires int32 or int64 return type");
+  Type element_type = result_ranked_type.getElementType();
+  if (!element_type.isInteger(32) && !element_type.isInteger(64))
+    return op->emitOpError("requires int32 or int64 return type for result")
+           << variadic_idx_str;
+
+  return success();
+}
+}  // anonymous namespace
+
+static LogicalResult Verify(ShapeOp op) {
+  return VerifyShapeOperandAndResult(op, op.input()->getType(), op.getType());
 }
 
 OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
@@ -678,6 +729,30 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 
   auto resultType = b.getTensorType({rank}, elementType);
   return b.getDenseElementsAttr(resultType, dimensions);
+}
+
+//===----------------------------------------------------------------------===//
+// ShapeNOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ShapeNOp op) {
+  const uint64_t n_attr = op.N().getZExtValue();
+
+  if (op.getNumOperands() != n_attr)
+    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+                            << op.getNumOperands() << " operand(s)";
+
+  if (op.getNumResults() != n_attr)
+    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+                            << op.getNumResults() << " result(s)";
+
+  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+    auto verification = VerifyShapeOperandAndResult(
+        op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
+    if (failed(verification)) return verification;
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1000,11 +1075,7 @@ void TensorFlowDialect::PrintVariantType(VariantType ty,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
-    return builder.create<ConstOp>(loc, type, value);
-  return nullptr;
+  return builder.create<ConstOp>(loc, type, value);
 }
 
 }  // namespace TF

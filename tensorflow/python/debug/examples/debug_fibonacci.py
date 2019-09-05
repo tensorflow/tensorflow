@@ -22,9 +22,11 @@ import sys
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 FLAGS = None
 

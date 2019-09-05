@@ -68,7 +68,8 @@ std::string GetFullyConnectedKernelCode(
   c += "  uint c2 = tid.y * 2;\n";  // it should be * 4, so as we have FLT4
   // but we keep half8 in float4 so, we have * 2 y_coord for texture
   c += "  for (int i = 0; i < src_depth_x4; ++i, c += 4, c2 += 8) {\n";
-  c += "    FLT4 v = " + src_tensor.Read3D("0", "0", "c") + ";\n";
+  c += "    FLT4 v = " +
+       src_tensor.Read3D("0", "0", "c", TextureAddressMode::DONT_CARE) + ";\n";
   if (precision != CalculationsPrecision::F32) {
     c += "   half8 m0 = as_half8(read_imagef(filters, smp_none, (int2)(gid, "
          "c2+0)));\n";

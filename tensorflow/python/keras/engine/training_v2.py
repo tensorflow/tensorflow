@@ -199,7 +199,12 @@ class Loop(training_utils.TrainingLoop):
 
     strategy = _get_distribution_strategy(model)
     batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
-        strategy, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+        strategy,
+        x,
+        batch_size,
+        steps_per_epoch,
+        ModeKeys.TRAIN,
+        validation_split=validation_split)
     dist_utils.validate_callbacks(input_callbacks=callbacks,
                                   optimizer=model.optimizer)
     # Enter tf.distribute.Strategy scope.
@@ -226,10 +231,11 @@ class Loop(training_utils.TrainingLoop):
       use_sample = total_samples is not None
       do_validation = (validation_adapter is not None)
 
-      # TODO(psv): Add step inference for when steps/val_steps is None to
-      # prevent end of sequence warning message.
-
+      recreate_training_iterator = (
+          training_data_adapter.should_recreate_iterator(steps_per_epoch))
       if not steps_per_epoch:
+        # TODO(b/139762795): Add step inference for when steps is None to
+        # prevent end of sequence warning message.
         steps_per_epoch = training_data_adapter.get_size()
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
@@ -256,26 +262,21 @@ class Loop(training_utils.TrainingLoop):
           model, ModeKeys.TRAIN)
 
       training_data_iter = None
-      recreate_training_iterator = (
-          training_data_adapter.should_recreate_iterator(steps_per_epoch))
-
       if do_validation:
+        validation_dataset = validation_adapter.get_dataset()
         if not validation_steps:
-          validation_steps = validation_adapter.get_size()
+          # Raise an error if validation_steps isn't specified but the
+          # validation dataset is infinite.
+          validation_steps = (
+              validation_adapter.get_size() or
+              training_utils.infer_steps_for_dataset(
+                  model,
+                  validation_dataset,
+                  validation_steps,
+                  steps_name='validation_steps'))
         eval_function = training_v2_utils._get_or_make_execution_function(
             model, ModeKeys.TEST)
         eval_data_iter = None
-
-        validation_dataset = validation_adapter.get_dataset()
-        # Raise an error if validation_steps isn't specified but the validation
-        # dataset is infinite.
-        # TODO(scottzhu): This check should probably happen in the adapter
-        training_utils.infer_steps_for_dataset(
-            model,
-            validation_dataset,
-            validation_steps,
-            steps_name='validation_steps',
-            epochs=0)
         validation_dataset = strategy.experimental_distribute_dataset(
             validation_dataset)
         val_total_samples = _get_total_number_of_samples(validation_adapter)
@@ -300,7 +301,6 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
-        # TODO(scottzhu): Handle TPUStrategy training loop
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -396,6 +396,7 @@ class Loop(training_utils.TrainingLoop):
     with strategy.scope():
       adapter = _process_inputs(
           model,
+          mode,
           x,
           y,
           batch_size=batch_size,
@@ -407,19 +408,16 @@ class Loop(training_utils.TrainingLoop):
           use_multiprocessing=use_multiprocessing)
       total_samples = _get_total_number_of_samples(adapter)
       use_sample = total_samples is not None
+      dataset = adapter.get_dataset()
 
       if not steps:
-        steps = adapter.get_size()
+        # Raise an error if `steps` isn't specified but the dataset
+        # is infinite.
+        steps = adapter.get_size() or training_utils.infer_steps_for_dataset(
+            model, dataset, steps, steps_name='steps')
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
-
-      dataset = adapter.get_dataset()
-      # Raise an error if `steps` isn't specified but the dataset
-      # is infinite.
-      # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
-          model, dataset, steps, steps_name='steps', epochs=0)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
       execution_function = training_v2_utils._get_or_make_execution_function(
@@ -441,7 +439,6 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(
           model, callbacks, use_sample, verbose, mode):
-        # TODO(scottzhu): Handle TPUStrategy training loop
         with training_context.on_epoch(0, mode) as epoch_logs:
           model.reset_metrics()
           result = run_one_epoch(
@@ -537,21 +534,31 @@ def _process_training_inputs(model,
      val_x, val_y,
      val_sample_weights) = training_utils.split_training_and_validation_data(
          x, y, sample_weights, validation_split)
+
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
     train_adapter = adapter_cls(
         x,
         y,
         batch_size=batch_size,
         epochs=epochs,
         sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
         shuffle=shuffle,
         distribution_strategy=distribution_strategy)
-    val_adapter = adapter_cls(val_x, val_y,
-                              sample_weights=val_sample_weights,
-                              batch_size=batch_size,
-                              distribution_strategy=distribution_strategy)
+
+    val_adapter = adapter_cls(
+        val_x,
+        val_y,
+        sample_weights=val_sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        distribution_strategy=distribution_strategy)
   else:
     train_adapter = _process_inputs(
         model,
+        ModeKeys.TRAIN,
         x,
         y,
         sample_weights=sample_weights,
@@ -574,12 +581,16 @@ def _process_training_inputs(model,
       # validation data input.
       if not batch_size:
         batch_size = train_adapter.batch_size()
-      val_adapter = _process_inputs(model, val_x, val_y,
-                                    sample_weights=val_sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    steps=validation_steps,
-                                    distribution_strategy=distribution_strategy)
+      val_adapter = _process_inputs(
+          model,
+          ModeKeys.TEST,
+          val_x,
+          val_y,
+          sample_weights=val_sample_weights,
+          batch_size=batch_size,
+          class_weights=class_weights,
+          steps=validation_steps,
+          distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '
                        '`validation_data` is None.')
@@ -587,6 +598,7 @@ def _process_training_inputs(model,
 
 
 def _process_inputs(model,
+                    mode,
                     x,
                     y,
                     batch_size=None,
@@ -610,6 +622,14 @@ def _process_inputs(model,
         batch_size=batch_size,
         check_steps=False,
         steps=steps)
+
+  if mode == ModeKeys.PREDICT:
+    sample_weight_modes = None
+  else:
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
+
   adapter = adapter_cls(
       x,
       y,
@@ -617,6 +637,7 @@ def _process_inputs(model,
       epochs=epochs,
       steps=steps,
       sample_weights=sample_weights,
+      sample_weight_modes=sample_weight_modes,
       shuffle=shuffle,
       distribution_strategy=distribution_strategy,
       max_queue_size=max_queue_size,

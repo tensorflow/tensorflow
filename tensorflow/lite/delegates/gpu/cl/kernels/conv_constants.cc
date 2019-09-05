@@ -31,7 +31,7 @@ std::string GenerateConvolutionConstantCode(
     const TensorDescriptor& src_descriptor,
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     const int2& kernel_size, const int2& dilation, int src_channels,
-    int dst_channels,
+    int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
@@ -102,6 +102,7 @@ std::string GenerateConvolutionConstantCode(
   c += "  for (int i = 0; i < " + kOutZ + "; ++i) {\n";
   c += "    r[i] = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
   c += "  }\n";
+  const auto address_mode = GetFastestZeroMode(device);
   int filters_counter = 0;
   for (int s = 0; s < src_depth; ++s) {
     const int ch_count = std::min(4, src_channels - s * 4);
@@ -125,8 +126,8 @@ std::string GenerateConvolutionConstantCode(
           c += src_tensor.Read3D(s_x, s_y, std::to_string(s)) + s_postfix +
                ";\n";
         } else {
-          c += "    " + s_type +
-               " src = " + src_tensor.Read3D(s_x, s_y, std::to_string(s)) +
+          c += "    " + s_type + " src = " +
+               src_tensor.Read3D(s_x, s_y, std::to_string(s), address_mode) +
                s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
@@ -167,9 +168,9 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
   if (info.vendor != Vendor::QUALCOMM) {
-    // In general we not expect that this kernel will be used with non Adreno
-    // so as it tuned for Adreno special memory.
-    return 256 * 16;  // 4KB
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
   } else {
     return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
   }
@@ -210,11 +211,16 @@ Status ConvConstants::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionConstantCode(
       definition_.src_tensors[0], definition_.dst_tensors[0],
       definition_.precision, kernel_size_, dilation_, src_channels_,
-      dst_channels_, linked_operations_);
+      dst_channels_, *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  }
+  if (definition_.precision != CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
   }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
@@ -254,9 +260,6 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (!device.IsAdreno()) {
-    return false;
-  }
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;

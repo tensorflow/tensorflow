@@ -159,11 +159,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
                            ")");
   }
 
-  Tensor Scalar(int v) const override {
-    Tensor t(dt_, TensorShape({}));
-    t.scalar<T>()() = v;
-    return t;
-  }
+  Tensor Scalar(int v) const override { return Tensor(static_cast<T>(v)); }
 
   Tensor Scalar(Allocator* a, const AllocationAttributes& attr) const override {
     Tensor t(a, dt_, TensorShape({}), attr);
@@ -187,6 +183,10 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                          Allocator* allocator,
                                          bool align_chunks) {
   switch (output->dtype()) {
+    case DT_HALF:
+      return new CollectiveAdapterImpl<Eigen::half>(output, num_chunks,
+                                                    allocator, align_chunks);
+      break;
     case DT_FLOAT:
       return new CollectiveAdapterImpl<float>(output, num_chunks, allocator,
                                               align_chunks);
@@ -204,7 +204,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                               align_chunks);
       break;
     default:
-      LOG(FATAL) << "Unsupported type " << output->dtype()
+      LOG(FATAL) << "Unsupported type " << DataTypeString(output->dtype())
                  << " to MakeCollectiveAdapter";
       return nullptr;
   }
@@ -290,6 +290,9 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
 Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {
+  VLOG(2) << "CreateCollective type "
+          << DataTypeString(col_params.instance.data_type) << " name "
+          << col_params.instance.impl_details.collective_name;
   *col_impl = nullptr;
   switch (col_params.instance.data_type) {
     case DT_INT32:
@@ -301,6 +304,7 @@ Status BaseCollectiveExecutor::CreateCollective(
             "DEVICE_GPU");
       }
       TF_FALLTHROUGH_INTENDED;
+    case DT_HALF:
     case DT_FLOAT:
     case DT_DOUBLE:
     case DT_INT64: {
@@ -310,7 +314,7 @@ Status BaseCollectiveExecutor::CreateCollective(
     default:
       return errors::Internal(
           "CollectiveImplementation does not support datatype ",
-          col_params.instance.data_type);
+          DataTypeString(col_params.instance.data_type));
   }
 }
 

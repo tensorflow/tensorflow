@@ -27,6 +27,8 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -180,6 +182,21 @@ def _enclosing_tpu_context_and_graph():
                    "a bug.")
 
 
+def is_tpu_strategy(strategy):
+  is_tpu_strat = lambda k: k.__name__.startswith("TPUStrategy")
+  clz = strategy.__class__
+  return is_tpu_strat(clz) or any(map(is_tpu_strat, clz.__bases__))
+
+
+def _enclosing_tpu_device_assignment():
+  if not distribution_strategy_context.has_strategy():
+    return None
+  strategy = distribution_strategy_context.get_strategy()
+  if not is_tpu_strategy(strategy):
+    return None
+  return strategy.extended._device_assignment  # pylint: disable=protected-access
+
+
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
@@ -223,7 +240,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_):
+  def get_replicated_var_handle(self, name, vars_, device_map=None):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -232,13 +249,30 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     Args:
       name: The common name of the variable.
       vars_: The replicated TPU variables.
+      device_map: The DeviceMap used to create the variables if it is a
+      TPUMirroredVariable.
 
     Returns:
       The handle of the TPU replicated input node.
     """
+    device_assignment = _enclosing_tpu_device_assignment()
+    # We don't need to put device assignment as part of the replicated_vars key
+    # because each TPUReplicateContext will only have one device assignment.
     handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
+
+    replicated_vars = []
+    if device_assignment is not None and device_map is not None:
+      job_name = pydev.DeviceSpec.from_string(device_map.all_devices[0]).job
+      for replica_id in range(device_assignment.num_replicas):
+        tpu_device = device_assignment.tpu_device(
+            replica=replica_id, logical_core=0, job=job_name)
+        tpu_device = device_util.canonicalize(tpu_device)
+        replica = device_map.replica_for_device(tpu_device)
+        replicated_vars.append(vars_[replica])
+    else:
+      replicated_vars = vars_
 
     # Builds a TPUReplicatedInput node for the variable, if one does not already
     # exist. The TPUReplicatedInput node must belong to the enclosing
@@ -252,8 +286,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # pylint: disable=protected-access
       saved_context = graph._get_control_flow_context()
       graph._set_control_flow_context(self.outer_context)
-      handle = tpu_ops.tpu_replicated_input(
-          [v.handle for v in vars_], name=name + "/handle")
+      handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
+                                            name=name + "/handle",
+                                            is_mirrored_variable=True)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -905,8 +940,13 @@ def split_compile_and_replicate(computation,
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    flat_replicated_inputs.append(
-        tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
+    if api_compat.forward_compatible(2019, 9, 19):
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i),
+                                       index=i))
+    else:
+      flat_replicated_inputs.append(
+          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph

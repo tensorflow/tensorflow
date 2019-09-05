@@ -61,19 +61,20 @@ class Placer {
   // represented by "graph". If "graph" is not representing a function body,
   // "function_name" should be empty.
   //
-  // If non-null, default_device is used where possible as a placement for nodes
-  // which do not have a device specified, ahead of other devices which would
-  // otherwise be higher priority.
+  // If non-null, default_local_device is used where possible as a placement for
+  // nodes which do not have a device specified, ahead of other devices which
+  // would otherwise be higher priority. default_local_device should be on the
+  // local host so that its FLR is directly accessible by the current process.
   //
-  // The "graph", "devices", and "default_device" pointer arguments are borrowed
-  // by this Placer, and must outlive it.
+  // The "graph", "devices", and "default_local_device" pointer arguments are
+  // borrowed by this Placer, and must outlive it.
   Placer(Graph* graph, const string& function_name,
          const FunctionLibraryDefinition* flib_def, const DeviceSet* devices,
-         const Device* default_device, bool allow_soft_placement,
+         const Device* default_local_device, bool allow_soft_placement,
          bool log_device_placement);
 
   Placer(Graph* graph, const string& function_name, const DeviceSet* devices,
-         const Device* default_device);
+         const Device* default_local_device);
 
   Placer(Graph* graph, const string& function_name, const DeviceSet* devices);
 
@@ -96,7 +97,7 @@ class Placer {
   const string function_name_;
   const FunctionLibraryDefinition* const flib_def_;  // Not owned.
   const DeviceSet* const devices_;                   // Not owned.
-  const Device* default_device_;                     // Not owned.
+  const Device* default_local_device_;               // Not owned.
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 
