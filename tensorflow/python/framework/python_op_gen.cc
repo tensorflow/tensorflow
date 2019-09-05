@@ -693,11 +693,10 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  strings::StrAppend(
-      &result_,
-      "  _ctx = _context._context or _context.context()\n"
-      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
-      "\n");
+  strings::StrAppend(&result_,
+                     "  _ctx = _context._context or _context.context()\n"
+                     "  if _ctx._thread_local_data.is_eager:",
+                     "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
