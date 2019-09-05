@@ -1109,11 +1109,6 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
   return op_def_lib
 )");
 
-  result.append("# ");
-  auto ops_text = cleaned_ops.DebugString();
-  absl::StripTrailingAsciiWhitespace(&ops_text);
-  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
-  result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
                    absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
