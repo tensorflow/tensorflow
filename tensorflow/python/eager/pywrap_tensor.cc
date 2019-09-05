@@ -1066,13 +1066,14 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
   }
 
   Py_ssize_t num_tensors = PySequence_Fast_GET_SIZE(tensors);
+  PyObject** tensors_array = PySequence_Fast_ITEMS(tensors);
   int64_t num_tensors_int = static_cast<int64_t>(num_tensors);
   auto tensor = tensorflow::make_safe(TF_AllocateTensor(
       TF_INT32, &num_tensors_int, /*num_dims=*/1, /*len=*/4 * num_tensors_int));
   int32_t* data = reinterpret_cast<int32_t*>(TF_TensorData(tensor.get()));
   auto status = tensorflow::make_safe(TF_NewStatus());
   for (Py_ssize_t i = 0; i < num_tensors; ++i) {
-    PyObject* tensor_obj = PySequence_Fast_GET_ITEM(tensors, i);
+    PyObject* tensor_obj = tensors_array[i];
     if (!EagerTensor_CheckExact(tensor_obj)) {
       PyErr_SetString(PyExc_TypeError,
                       tensorflow::strings::StrCat(
