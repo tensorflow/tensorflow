@@ -29,7 +29,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-_DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024 * 1024  # 256 MB
+_DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 
 
 def _create_or_validate_filenames_dataset(filenames):
