@@ -1454,7 +1454,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     return false;
   }
 
-  // Rewrite relu for _FusedMatMul.
+  // Rewrite rule for _FusedMatMul.
   // @return - true (no transpose attribute for input 1 and only has 1 post op);
   //           false otherwise.
   static bool FusedMatMulRewrite(const Node* n) {
@@ -1467,7 +1467,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     // Do not rewrite with more than 1 post op because MKL-DNN doesn't support.
     TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
 
-    return !trans_a && fused_ops.size() == 1;
+    return (!trans_a) && (fused_ops.size() == 1);
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we

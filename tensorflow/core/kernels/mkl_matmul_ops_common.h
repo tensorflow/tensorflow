@@ -62,7 +62,7 @@ struct MklDnnMatMulFwdParams {
 // So we use different template parameters for each type.
 // TODO(intel-tf): The template type "T" is currently used to match the
 // templatized class MklPrimitiveFactory (tensorflow/core/util/mkl_util.h).
-// In future, with the removal of "T" from MklPrimitiveFactory, this class
+// In the future, with the removal of "T" from MklPrimitiveFactory, this class
 // needs to drop "T".
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
           typename Toutput>
@@ -146,10 +146,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           bias_mem(nullptr),
           dst_mem(nullptr),
           fwd_desc(nullptr),
+          fwd_pd(nullptr),
           src_md(nullptr),
           weight_md(nullptr),
           bias_md(nullptr),
-          fwd_pd(nullptr),
+          dst_md(nullptr),
           matmul_fwd(nullptr),
           fwd_stream(nullptr) {}
   };
@@ -256,7 +257,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
           new MklDnnMatMulFwdPrimitive<T, Tinput, Tweight, Tbias, Toutput>(
               mkldnn_matmul_fwd_dims);
     } else {
-      // try to find a suitable one in pool
+      // Try to find a suitable one in pool
       matmul_fwd = dynamic_cast<
           MklDnnMatMulFwdPrimitive<T, Tinput, Tweight, Tbias, Toutput>*>(
           MklDnnMatMulFwdPrimitiveFactory<T, Tinput, Tweight, Tbias,

@@ -52,16 +52,16 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     const Tensor& weight_tensor = ctx->input(this->kInputIndexWeight);
     const Tensor& bias_tensor = MklGetInput(ctx, this->kInputIndexBias);
 
-    MklDnnShape src_dnn_shape;
-    MklDnnShape weight_dnn_shape;
-    GetMklShape(ctx, this->kInputIndexSrc, &src_dnn_shape);
-    GetMklShape(ctx, this->kInputIndexWeight, &weight_dnn_shape);
+    MklDnnShape src_mkl_shape;
+    MklDnnShape weight_mkl_shape;
+    GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape);
+    GetMklShape(ctx, this->kInputIndexWeight, &weight_mkl_shape);
 
     // Get shapes of input tensors
-    auto src_tf_shape = src_dnn_shape.IsMklTensor() ? src_dnn_shape.GetTfShape()
+    auto src_tf_shape = src_mkl_shape.IsMklTensor() ? src_mkl_shape.GetTfShape()
                                                     : src_tensor.shape();
-    auto weight_tf_shape = weight_dnn_shape.IsMklTensor()
-                               ? weight_dnn_shape.GetTfShape()
+    auto weight_tf_shape = weight_mkl_shape.IsMklTensor()
+                               ? weight_mkl_shape.GetTfShape()
                                : weight_tensor.shape();
 
     // Check the constraint of input matrix and bias
@@ -77,13 +77,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     // Get dimension size of each matrix, dim_pair[] is the location of k
     // in the inputs, we have constraint that k of the two inputs are
     // the same
-    const int dim_pair[] = {transpose_a_ ? 0 : 1, transpose_b_ ? 1 : 0};
+    const int dim_pair[] = {1, transpose_b_ ? 1 : 0};
     const int batch = src_tf_shape.dim_size(1 - dim_pair[0]);
     const int k = src_tf_shape.dim_size(dim_pair[0]);
     const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
     OP_REQUIRES(ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
+                errors::InvalidArgument("Matrix size are incompatible: In[0]: ",
                                         src_tf_shape.DebugString(), ", In[1]: ",
                                         weight_tf_shape.DebugString()));
     OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
@@ -91,14 +91,12 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel));
 
-    // Create primitive for InnerProduct, it has such desc:
-    //   s[batch, k] * w[channel, k] + b[channel] = dst[batch, channel]
-    //    [n,     c] *  [oc,     ic] +  [x]       =    [n,     c]
-    //
-    // For weights, dimensions need to be specified as [channel*k].
+    // For inputs s[batch, k], w[k, channel] and b[channel], the primitive
+    // dims should be described like this:
+    //   s[batch, k] * w^T[channel, k] + b[channel] = dst[batch, channel]
+    //    [n,    ic] *    [oc,     ic] +  [oc]      =    [n,          oc]
     memory::dims src_dims = memory::dims({batch, k});
-    // In order to satisfy the primitive, reverse the dims of weights
-    // from [k, channel] to [channel, k].
+    // Reverse the weights dims from [k, channel] to [channel, k].
     memory::dims weight_dims = memory::dims({channel, k});
     memory::dims bias_dims = memory::dims({channel});
     memory::dims dst_dims = memory::dims({batch, channel});
@@ -115,15 +113,15 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> matmul_pd =
         matmul_prim->GetPrimitiveDesc();
 
-    if (src_dnn_shape.IsMklTensor() && weight_dnn_shape.IsMklTensor()) {
+    if (src_mkl_shape.IsMklTensor() && weight_mkl_shape.IsMklTensor()) {
       this->AllocateOutputTensor(ctx, *matmul_pd, dst_dims, memory::format::nc,
                                  &dst_tensor);
     } else {
       TensorShape dst_tensor_shape({batch, channel});
-      MklDnnShape dst_dnn_shape;
-      dst_dnn_shape.SetMklTensor(false);
+      MklDnnShape dst_mkl_shape;
+      dst_mkl_shape.SetMklTensor(false);
       AllocateOutputSetMklShape(ctx, 0, &dst_tensor, dst_tensor_shape,
-                                dst_dnn_shape);
+                                dst_mkl_shape);
     }
 
     // if there's nothing to compute, just return.
@@ -139,28 +137,28 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
       T* dst_data = const_cast<T*>(dst_tensor->flat<T>().data());
 
       // Any input is MKL format, reorder it if necessary.
-      MklDnnData<T> src_dnn(&(this->cpu_engine_));
-      MklDnnData<T> weight_dnn(&(this->cpu_engine_));
+      MklDnnData<T> src_mkl(&(this->cpu_engine_));
+      MklDnnData<T> weight_mkl(&(this->cpu_engine_));
 
-      if (src_dnn_shape.IsMklTensor()) {
-        memory::desc input_md = src_dnn_shape.GetMklLayout();
+      if (src_mkl_shape.IsMklTensor()) {
+        memory::desc input_md = src_mkl_shape.GetMklLayout();
 
         if (input_md.data.format != memory::format::nc) {
-          src_dnn.SetUsrMem(input_md, src_data);
-          src_dnn.CheckReorderToOpMem(matmul_pd.get()->src_primitive_desc());
-          src_data = reinterpret_cast<T*>(src_dnn.GetOpMem().get_data_handle());
+          src_mkl.SetUsrMem(input_md, src_data);
+          src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_primitive_desc());
+          src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
         }
       }
 
-      if (weight_dnn_shape.IsMklTensor()) {
-        memory::desc input_md = weight_dnn_shape.GetMklLayout();
+      if (weight_mkl_shape.IsMklTensor()) {
+        memory::desc input_md = weight_mkl_shape.GetMklLayout();
 
         if (input_md.data.format != weight_format) {
-          weight_dnn.SetUsrMem(input_md, weight_data);
-          weight_dnn.CheckReorderToOpMem(
+          weight_mkl.SetUsrMem(input_md, weight_data);
+          weight_mkl.CheckReorderToOpMem(
               matmul_pd.get()->weights_primitive_desc());
           weight_data =
-              reinterpret_cast<T*>(weight_dnn.GetOpMem().get_data_handle());
+              reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
       }
 
@@ -179,7 +177,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
   bool transpose_b_;
 };
 
-// register dnn kernels for supported operations and supported types
+// Register mkl kernels for supported operations and types.
 #define REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES(type) \
   REGISTER_KERNEL_BUILDER(                                     \
       Name("_MklFusedMatMul")                                  \

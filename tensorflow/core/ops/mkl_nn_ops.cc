@@ -79,7 +79,7 @@ REGISTER_OP("_MklFusedMatMul")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
-MKL version of FusedMatMul operator. Uses MKL DNN APIs to implement MatMul
+MKL version of FusedMatMul operator. Uses MKL-DNN APIs to implement MatMul
 operator.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
