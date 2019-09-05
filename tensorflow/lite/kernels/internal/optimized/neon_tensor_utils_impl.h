@@ -131,6 +131,8 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
 // Compute "1.0f - elements of vector" (used in CIFG).
 void NeonSub1Vector(const float* vector, int v_size, float* result);
 
+void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
+
 // Clip elements of a vector using a abs_limit value.
 void NeonClipVector(const float* vector, int v_size, float abs_limit,
                     float* result);
