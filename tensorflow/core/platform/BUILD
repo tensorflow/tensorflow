@@ -29,6 +29,7 @@ load(
 load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
     "tf_instantiate_platform_libraries",
+    "tf_platform_helper_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -50,6 +51,7 @@ package(
 tf_instantiate_platform_libraries(names = [
     "context",
     "cord",
+    "env_time",
 ])
 
 cc_library(
@@ -135,11 +137,8 @@ cc_library(
 
 cc_library(
     name = "env_time",
-    srcs = tf_platform_srcs(["env_time.cc"]),
-    hdrs = ["env_time.h"],
-    deps = [
-        ":types",
-    ],
+    textual_hdrs = ["env_time.h"],
+    deps = tf_platform_helper_deps("env_time_impl"),
 )
 
 cc_library(
