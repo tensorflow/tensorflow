@@ -3762,6 +3762,7 @@ tf_cc_tests(
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
         "@zlib_archive//:zlib",
     ],
 )
