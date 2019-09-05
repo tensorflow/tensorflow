@@ -75,6 +75,12 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   # TODO(psv) Add warning when we save models that contain non-serializable
   # entities like metrics added using `add_metric` and losses added using
   # `add_loss.`
+  if len(model.weights) != len(model._undeduplicated_weights):
+    logging.warning('Found duplicated `Variable`s in Model\'s `weights`. '
+                    'This is usually caused by `Variable`s being shared by '
+                    'Layers in the Model. These `Variable`s will be treated '
+                    'as separate `Variable`s when the Model is restored. To '
+                    'avoid this, please save with `save_format="tf"`.')
 
   if not isinstance(filepath, h5py.File):
     # If file exists and should not be overwritten.
