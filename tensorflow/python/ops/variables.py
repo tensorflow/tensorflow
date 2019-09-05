@@ -27,6 +27,7 @@ import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,8 +35,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -1091,7 +1092,10 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __eq__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      return gen_math_ops.equal(self, other)
+      if fwd_compat.forward_compatible(2019, 9, 25):
+        return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+      else:
+        return gen_math_ops.equal(self, other)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is other
@@ -1100,7 +1104,11 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __ne__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      return gen_math_ops.not_equal(self, other)
+      if fwd_compat.forward_compatible(2019, 9, 25):
+        return gen_math_ops.not_equal(
+            self, other, incompatible_shape_error=False)
+      else:
+        return gen_math_ops.not_equal(self, other)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is not other
