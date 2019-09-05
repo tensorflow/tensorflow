@@ -59,7 +59,6 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy_py -- \
 --clip_duration_ms=1000 --detection_threshold=0.70 --average_window_ms=500 \
 --suppression_ms=500 --time_tolerance_ms=1500
 '''
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -77,7 +76,6 @@ from accuracy_utils import StreamingAccuracyStats
 
 FLAGS = None
 
-
 def load_graph(mode_file):
   ''' Read a tensorflow model, and creates a default graph object.'''
   graph = tf.Graph()
@@ -89,7 +87,6 @@ def load_graph(mode_file):
       tf.import_graph_def(od_graph_def, name='')
   return graph
 
-
 def read_label_file(file_name):
   '''Load a list of label.'''
   label_list = []
@@ -97,7 +94,6 @@ def read_label_file(file_name):
     for line in f:
       label_list.append(line.strip())
   return label_list
-
 
 def read_wav_file(filename):
   '''Load a wav file and return sample_rate and numpy data of float64 type'''
@@ -107,7 +103,6 @@ def read_wav_file(filename):
     wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
     res = sess.run(wav_decoder, feed_dict={wav_filename_placeholder: filename})
     return res.sample_rate, res.audio.flatten()
-
 
 def main(_):
   label_list = read_label_file(FLAGS.labels)
@@ -130,10 +125,12 @@ def main(_):
   clip_duration_samples = int(FLAGS.clip_duration_ms * sample_rate / 1000)
   clip_stride_samples = int(FLAGS.clip_stride_ms * sample_rate / 1000)
   audio_data_end = data_samples - clip_duration_samples
+
   # Load model and create a tf session to process audio pieces
   recognize_graph = load_graph(FLAGS.model)
   with recognize_graph.as_default():
     with tf.Session() as sess:
+
       # Get input and output tensor
       data_tensor = tf.get_default_graph().get_tensor_by_name(
         FLAGS.input_names[0])
@@ -141,6 +138,7 @@ def main(_):
         FLAGS.input_names[1])
       output_softmax_tensor = tf.get_default_graph().get_tensor_by_name(
         FLAGS.output_name)
+
       # Inference along audio stream.
       for audio_data_offset in range(0, audio_data_end, clip_stride_samples):
         input_start = audio_data_offset
