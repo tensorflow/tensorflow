@@ -1809,6 +1809,7 @@ class Function(object):
     self._function_cache = FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
+    self.tracing_count = 0
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -2011,6 +2012,8 @@ class Function(object):
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
+    self.tracing_count += 1
+
     if self.input_signature is None:
       arglen = len(args)
     else:
