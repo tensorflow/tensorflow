@@ -1153,7 +1153,7 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 3,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
     ],
