@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
 import os
 import pkgutil
 import re
@@ -48,7 +49,7 @@ def find_modules():
   for _, name, _ in pkgutil.walk_packages(
       core.__path__, prefix=core.__name__ + '.'):
     try:
-      tf_modules.append(__import__(name, fromlist=['']))
+      tf_modules.append(importlib.import_module(name))
     except (ImportError, AttributeError):
       pass
 
@@ -105,8 +106,10 @@ def load_tests(unused_loader, tests, unused_ignore):
     tf_modules = filter_on_submodules(tf_modules, FLAGS.module)
 
   if FLAGS.list:
+    print('**************************************************')
     for mod in tf_modules:
       print(mod.__name__)
+    print('**************************************************')
     return tests
 
   for module in tf_modules:
