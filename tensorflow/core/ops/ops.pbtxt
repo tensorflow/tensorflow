@@ -12758,6 +12758,13 @@ op {
       }
     }
   }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_commutative: true
 }
 op {
@@ -24091,6 +24098,13 @@ op {
         type: DT_BOOL
         type: DT_COMPLEX128
       }
+    }
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_commutative: true
