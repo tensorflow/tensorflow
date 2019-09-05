@@ -129,14 +129,15 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
 // A helper function to decide whether to enable the memory optimizer.
 bool MemoryOptimizerEnabled(RewriterConfig::MemOptType mem_opt_type,
                             OptimizerOptions::GlobalJitLevel global_jit_level) {
-  // Disable the memory optimizer when GlobalJitLevel is ON as it hurts the
-  // XLA JIT performance. The (current) XLA clustering can result in loss of
+  // Disable the default memory optimizer when GlobalJitLevel is ON as it hurts
+  // the XLA JIT performance. The (current) XLA clustering can result in loss of
   // concurrency between kernel compute and memory copies. As such, it usually
   // loses the concurrency needed to hide the latencies of the inserted swap-ins
   // and swap-outs and incurs great performance overhead. Remove this check when
   // the XLA JIT can better deal with the concurrency.
-  if (global_jit_level == OptimizerOptions::ON_1 ||
-      global_jit_level == OptimizerOptions::ON_2) {
+  if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
+      (global_jit_level == OptimizerOptions::ON_1 ||
+       global_jit_level == OptimizerOptions::ON_2)) {
     return false;
   }
 
