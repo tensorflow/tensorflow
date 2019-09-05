@@ -206,6 +206,7 @@ static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
     return false;
   }
   bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
+                 0 == op_name.compare(GetMklOpName("AddV2")) ||
                  0 == op_name.compare(GetMklOpName("Sub")) ||
                  0 == op_name.compare(GetMklOpName("Mul")) ||
                  0 == op_name.compare(GetMklOpName("Maximum")) ||

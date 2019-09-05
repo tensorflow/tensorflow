@@ -395,6 +395,7 @@ REGISTER_OP("AddV2")
     .SetIsAggregate()
     .SetIsCommutative();
 
+#ifdef INTEL_MKL
 REGISTER_OP("_MklAdd")
     .Input("x: T")
     .Input("y: T")
@@ -412,6 +413,21 @@ Returns `x` + `y` element-wise.
 *NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 )doc");
+
+REGISTER_OP("_MklAddV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_y: uint8")
+    .Output("z: T")
+    .Output("mkl_z: uint8")
+    .Attr(
+        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetIsAggregate()
+    .SetIsCommutative();
+#endif  // INTEL_MKL
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
