@@ -410,9 +410,9 @@ Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(U32, {}));
+  Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }

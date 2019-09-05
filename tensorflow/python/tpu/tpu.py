@@ -737,7 +737,7 @@ def _pad_all_input(inputs, padded_shapes):
               padding_map.padding_arg_index = real_shape_idx
               padding_maps.append(padding_map)
             real_shapes[core_idx].append(
-                math_ops.cast(input_shape_tensor[i], dtypes.uint32))
+                math_ops.cast(input_shape_tensor[i], dtypes.int32))
 
         paddings = []
         for i, s in enumerate(padded_shape.dims):

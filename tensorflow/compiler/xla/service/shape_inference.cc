@@ -652,9 +652,7 @@ Status ValidateDotDimensionNumbers(
     const int64 rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
     if (lhs.dimensions(lhs_contracting_dimension) !=
-            rhs.dimensions(rhs_contracting_dimension) ||
-        lhs.is_dynamic_dimension(lhs_contracting_dimension) !=
-            rhs.is_dynamic_dimension(rhs_contracting_dimension)) {
+        rhs.dimensions(rhs_contracting_dimension)) {
       return fail("Contracting dimension sizes do not match.");
     }
   }
@@ -668,10 +666,7 @@ Status ValidateDotDimensionNumbers(
   // Check that batch dimension numbers and sizes match.
   for (int64 i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
     if (lhs.dimensions(dimension_numbers.lhs_batch_dimensions(i)) !=
-            rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i)) ||
-        lhs.is_dynamic_dimension(dimension_numbers.lhs_batch_dimensions(i)) !=
-            rhs.is_dynamic_dimension(
-                dimension_numbers.rhs_batch_dimensions(i))) {
+        rhs.dimensions(dimension_numbers.rhs_batch_dimensions(i))) {
       return fail("Batch dimension sizes must match for lhs/rhs.");
     }
   }
@@ -726,13 +721,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   for (int64 i = 0; i < lhs.rank(); ++i) {
     if (lhs.dimensions(i) == rhs.dimensions(i)) {
       output_dimensions[i] = lhs.dimensions(i);
-      output_dimensions_is_dynamic[i] = lhs.is_dynamic_dimension(i);
     } else if (lhs.dimensions(i) == 1) {
       output_dimensions[i] = rhs.dimensions(i);
-      output_dimensions_is_dynamic[i] = rhs.is_dynamic_dimension(i);
     } else if (rhs.dimensions(i) == 1) {
       output_dimensions[i] = lhs.dimensions(i);
-      output_dimensions_is_dynamic[i] = lhs.is_dynamic_dimension(i);
     } else {
       return InvalidArgument(
           "Binary op %s with incompatible shapes: %s and %s.",
@@ -740,6 +732,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(rhs));
     }
   }
+
+  // Merge dynamic dimensions from two shapes.
+  for (int64 i = 0; i < rhs.rank(); ++i) {
+    if (rhs.is_dynamic_dimension(i) || lhs.is_dynamic_dimension(i)) {
+      output_dimensions_is_dynamic[i] = true;
+    }
+  }
+
   return ShapeUtil::MakeShape(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
                               output_dimensions, output_dimensions_is_dynamic);
 }
@@ -888,11 +888,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs)) {
     // If the shapes are the same other than layout, the output shape is the
     // same (elementwise op).
-    return ShapeUtil::ChangeElementType(
+    Shape result = ShapeUtil::ChangeElementType(
         lhs, ShapeUtil::HigherPrecisionElementType(lhs, rhs));
-  }
 
-  if (lhs.rank() == rhs.rank()) {
+    for (int64 i = 0; i < rhs.rank(); ++i) {
+      if (rhs.is_dynamic_dimension(i)) {
+        result.set_dynamic_dimension(i, true);
+      }
+    }
+
+    return result;
+
+  } else if (lhs.rank() == rhs.rank()) {
     return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
@@ -2201,14 +2208,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   // TODO(b/119580730): Remove this restriction when very large dimension size
   // is needed.
-  if (shape.dimensions(dimension) > std::numeric_limits<uint32>::max()) {
+  if (shape.dimensions(dimension) > std::numeric_limits<int32>::max()) {
     return InvalidArgument(
         "GetDimensionSize's input shape is %s, the %dth dimension exceeds the "
-        "UINT_MAX limit.",
+        "INT_MAX limit.",
         ShapeUtil::HumanString(shape), dimension);
   }
 
-  return ShapeUtil::MakeShape(U32, {});
+  return ShapeUtil::MakeShape(S32, {});
 }
 
 /* static */ StatusOr<Window> ShapeInference::InferWindowFromDimensions(
@@ -2324,7 +2331,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
-  return ShapeUtil::MakeShape(arg.element_type(), sizes);
+  std::vector<bool> is_dynamic(arg.rank());
+  for (int64 i = 0; i < arg.dimensions_size(); ++i) {
+    is_dynamic[i] = arg.is_dynamic_dimension(i);
+  }
+
+  return ShapeUtil::MakeShape(arg.element_type(), sizes, is_dynamic);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferDynamicSliceShape(

@@ -507,17 +507,23 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return Shape::Equal().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
                                                            const Shape& rhs) {
-  return Shape::Equal().IgnoreElementType().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal()
+      .IgnoreDynamicDimension()
+      .IgnoreElementType()
+      .IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
                                                            const Shape& rhs) {
-  return Shape::Equal().IgnoreFpPrecision().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal()
+      .IgnoreDynamicDimension()
+      .IgnoreFpPrecision()
+      .IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,

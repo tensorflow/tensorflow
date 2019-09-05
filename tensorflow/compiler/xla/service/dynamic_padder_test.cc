@@ -65,7 +65,7 @@ class DynamicPadderTest : public HloTestBase {
   }
 
   std::unique_ptr<HloModule> module_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(U32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
 TEST_F(DynamicPadderTest, ReduceTest) {
