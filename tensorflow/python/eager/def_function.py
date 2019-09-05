@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import threading
 import weakref
 
 from tensorflow.python.eager import context
@@ -284,15 +285,16 @@ class Function(object):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
+    self._lock = threading.Lock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self.experimental_relax_shapes = experimental_relax_shapes
-    self._created_variables = None
-    self._stateful_fn = None
-    self._stateless_fn = None
+    self._created_variables = None  # GUARDED_BY(self._lock)
+    self._stateful_fn = None  # GUARDED_BY(self._lock)
+    self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
 
@@ -409,11 +411,18 @@ class Function(object):
     context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
+    self._lock.acquire()
     if self._created_variables:
+      # Release the lock early so that multiple threads can perform the call
+      # in parallel.
+      self._lock.release()
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
       return self._stateless_fn(*args, **kwds)  # pylint: disable=not-callable
     elif self._stateful_fn is not None:
+      # Release the lock early so that multiple threads can perform the call
+      # in parallel.
+      self._lock.release()
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
       results = self._stateful_fn(*args, **kwds)
@@ -422,9 +431,15 @@ class Function(object):
                          " decorated with tf.function.")
       return results
 
-    # This is the first call of __call__, so we have to initialize.
-    initializer_map = object_identity.ObjectIdentityDictionary()
-    self._initialize(args, kwds, add_initializers_to=initializer_map)
+    try:
+      # This is the first call of __call__, so we have to initialize.
+      initializer_map = object_identity.ObjectIdentityDictionary()
+      self._initialize(args, kwds, add_initializers_to=initializer_map)
+    finally:
+      # At this point we know that the initialization is complete (or less
+      # interestingly an exception was raised) so we no longer need a lock.
+      self._lock.release()
+
     if self._created_variables:
       try:
         # Attempt to initialize variables eagerly and without conds by lifting
@@ -556,14 +571,15 @@ class Function(object):
     Raises:
       RuntimeError: if called after the variables have been initialized.
     """
-    if self._stateful_fn is not None:
-      raise RuntimeError(
-          "get_initialization_function cannot be called after the function "
-          "has been used")
-    # Here we trace the function, collect the initializers, and attempt to
-    # extract them and run them eagerly. Fail only if we cannot do so.
-    initializer_map = object_identity.ObjectIdentityDictionary()
-    self._initialize(args, kwargs, add_initializers_to=initializer_map)
+    with self._lock:
+      if self._stateful_fn is not None:
+        raise RuntimeError(
+            "get_initialization_function cannot be called after the function "
+            "has been used")
+      # Here we trace the function, collect the initializers, and attempt to
+      # extract them and run them eagerly. Fail only if we cannot do so.
+      initializer_map = object_identity.ObjectIdentityDictionary()
+      self._initialize(args, kwargs, add_initializers_to=initializer_map)
 
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
@@ -688,10 +704,11 @@ class Function(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    if self._stateful_fn is None:
-      initializer_map = object_identity.ObjectIdentityDictionary()
-      self._initialize(args, kwargs, add_initializers_to=initializer_map)
-      self._initialize_uninitialized_variables(initializer_map)
+    with self._lock:
+      if self._stateful_fn is None:
+        initializer_map = object_identity.ObjectIdentityDictionary()
+        self._initialize(args, kwargs, add_initializers_to=initializer_map)
+        self._initialize_uninitialized_variables(initializer_map)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the

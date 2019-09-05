@@ -383,6 +383,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testGetConcreteFunctionThreadSafety(self):
+
+    @def_function.function
+    def sq():
+      t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+      return math_ops.matmul(t, t)
+
+    concrete_functions = []
+
+    def thread_func(_):
+      cf = sq.get_concrete_function()
+      concrete_functions.append(cf)
+
+    num_threads = 100
+    pool = multiprocessing.pool.ThreadPool(num_threads)
+    _ = pool.map(thread_func, list(range(num_threads)))
+
+    self.assertLen(set(concrete_functions), 1)
+
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
