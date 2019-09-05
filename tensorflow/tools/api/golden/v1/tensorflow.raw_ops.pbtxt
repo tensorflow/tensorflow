@@ -1174,7 +1174,7 @@ tf_module {
   }
   member_method {
     name: "Equal"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'y\', \'incompatible_shape_error\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "Erf"
@@ -2398,7 +2398,7 @@ tf_module {
   }
   member_method {
     name: "NotEqual"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'y\', \'incompatible_shape_error\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "NthElement"
