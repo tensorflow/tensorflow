@@ -174,6 +174,47 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(network.get_losses_for(x4)), 1)
     self.assertEqual(len(network.get_losses_for(None)), 1)
 
+  def test_get_layer(self):
+    # create a simple network
+    x = input_layer_lib.Input(shape=(32,))
+    dense_a = keras.layers.Dense(4, name='dense_a')
+    dense_b = keras.layers.Dense(2, name='dense_b')
+    y = dense_b(dense_a(x))
+    network = network_lib.Network(x, y, name='dense_network')
+
+    # test various get_layer by indices
+    self.assertEqual(network.get_layer(index=1), dense_a)
+    self.assertEqual(network.get_layer(index=[1, 2]), [dense_a, dense_b])
+    self.assertEqual(network.get_layer(index=(1, 2)), [dense_a, dense_b])
+    self.assertEqual(network.get_layer(index=[2, 1]), [dense_b, dense_a])
+    self.assertEqual(network.get_layer(index=[2, 2]), [dense_b, dense_b])
+
+    # test invalid get_layer by indices
+    with self.assertRaises(ValueError):
+      network.get_layer(index=3)
+    with self.assertRaises(ValueError):
+      network.get_layer(index=[1, 2, 3])
+
+    # test priority of indices over names
+    self.assertEqual(network.get_layer(index=1, name='dense_b'), dense_a)
+
+    # test that a name or an index must be provided
+    with self.assertRaises(ValueError):
+      network.get_layer()
+
+    # test various get_layer by names
+    self.assertEqual(network.get_layer(name='dense_a'), dense_a)
+    self.assertEqual(network.get_layer(name=['dense_a', 'dense_b']), [dense_a, dense_b])
+    self.assertEqual(network.get_layer(name=('dense_a', 'dense_b')), [dense_a, dense_b])
+    self.assertEqual(network.get_layer(name=['dense_b', 'dense_a']), [dense_b, dense_a])
+    self.assertEqual(network.get_layer(name=['dense_b', 'dense_b']), [dense_b, dense_b])
+
+    # test invalid get_layer by names
+    with self.assertRaises(ValueError):
+      network.get_layer(name='dense_c')
+    with self.assertRaises(ValueError):
+      network.get_layer(name=['dense_a', 'dense_b', 'dense_c'])
+
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.

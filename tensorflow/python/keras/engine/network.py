@@ -505,31 +505,47 @@ class Network(base_layer.Layer):
     Indices are based on order of horizontal graph traversal (bottom-up).
 
     Arguments:
-        name: String, name of layer.
-        index: Integer, index of layer.
+        name: String, name of layer; list or tuple, names of layers.
+        index: Integer, index of layer; list or tuple, indices of layers.
 
     Returns:
-        A layer instance.
+        A layer instance, if a single index or name is given.
+        A list of layers, if a list or a tuple of indices or layers is given.
 
     Raises:
         ValueError: In case of invalid layer name or index.
     """
     # TODO(fchollet): We could build a dictionary based on layer names
     # since they are constant, but we have not done that yet.
+    layers = []
     if index is not None:
-      if len(self.layers) <= index:
-        raise ValueError('Was asked to retrieve layer at index ' + str(index) +
-                         ' but model only has ' + str(len(self.layers)) +
-                         ' layers.')
-      else:
-        return self.layers[index]
+      # Convert index to list.
+      if isinstance(index, tuple): index = list(index)
+      if not isinstance(index, list): index = [index]
+
+      for single_index in index:
+        if len(self.layers) <= single_index:
+          raise ValueError('Was asked to retrieve layer at index ' +
+                           str(single_index) +
+                           ' but model only has ' +
+                           str(len(self.layers)) +
+                           ' layers.')
+        layers.append(self.layers[single_index])
     else:
       if not name:
         raise ValueError('Provide either a layer name or layer index.')
-    for layer in self.layers:
-      if layer.name == name:
-        return layer
-    raise ValueError('No such layer: ' + name)
+
+      # Convert name to list.
+      if isinstance(name, tuple): name = list(name)
+      if not isinstance(name, list): name = [name]
+      for single_name in name:
+        layer = [x for x in self.layers if x.name == single_name]
+        if not layer : raise ValueError('No such layer: ' + single_name)
+        layers.append(layer[0])
+
+    # mantain previous API by returning one layer only
+    if len(layers) == 1: return layers[0]
+    return layers
 
   @property
   def trainable_weights(self):
