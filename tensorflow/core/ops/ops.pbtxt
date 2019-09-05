@@ -11486,6 +11486,13 @@ op {
       }
     }
   }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "DeserializeIterator"
@@ -26907,6 +26914,20 @@ op {
         s: "HALF_AWAY_FROM_ZERO"
         s: "HALF_TO_EVEN"
       }
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
