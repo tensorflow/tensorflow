@@ -486,7 +486,6 @@ py_library(
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
 
