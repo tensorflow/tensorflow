@@ -500,11 +500,11 @@ Status DirectSession::RunInternal(
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          return strings::StrCat("SessionRun #id=", step_id,
+          return strings::StrCat("SessionRun#id=", step_id,
                                  ",model_id=", model_metadata.name(), ":",
                                  model_metadata.version(), "#");
         } else {
-          return strings::StrCat("SessionRun #id=", step_id, "#");
+          return strings::StrCat("SessionRun#id=", step_id, "#");
         }
       },
       profiler::TraceMeLevel::kInfo);
