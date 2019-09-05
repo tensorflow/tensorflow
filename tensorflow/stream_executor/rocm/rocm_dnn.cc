@@ -2662,6 +2662,14 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
       auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
       if (allocated.ok()) {
         scratch_memory_temp = allocated.ValueOrDie();
+      } else {
+        LOG(ERROR)
+            << "Failed to allocate scratch memory - "
+            << allocated.status().error_message() << "\n"
+            << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
+               "larger number (e.g. 8192) to increase the max memory limit.\n"
+            << "\tIncreasing the max memory limit might help resolve this "
+               "error";
       }
     }
 
