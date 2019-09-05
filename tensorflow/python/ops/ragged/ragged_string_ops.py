@@ -112,11 +112,11 @@ def unicode_encode(input,
     A `N` dimensional `string` tensor with shape `[D1...DN]`.
 
   #### Example:
-    ```python
-      >>> input = [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-      >>> unicode_encode(input, 'UTF-8')
-      ['G\xc3\xb6\xc3\xb6dnight', '\xf0\x9f\x98\x8a']
-    ```
+
+  >>> input = [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
+  >>> unicode_encode(input, 'UTF-8')
+  ['G\xc3\xb6\xc3\xb6dnight', '\xf0\x9f\x98\x8a']
+
   """
   with ops.name_scope(name, "UnicodeEncode", [input]):
     input_tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(input)
@@ -269,14 +269,14 @@ def unicode_decode_with_offsets(input,
     `tf.RaggedTensor`s otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> result = tf.strings.unicode_decode_with_offsets(input, 'UTF-8')
-    >>> result[0].tolist()  # codepoints
-    [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-    >>> result[1].tolist()  # offsets
-   [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> result = tf.strings.unicode_decode_with_offsets(input, 'UTF-8')
+  >>> result[0].tolist()  # codepoints
+  [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
+  >>> result[1].tolist()  # offsets
+  [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
+
   """
   with ops.name_scope(name, "UnicodeDecodeWithOffsets", [input]):
     return _unicode_decode(input, input_encoding, errors, replacement_char,
@@ -374,15 +374,15 @@ def unicode_split_with_offsets(input,
     `tf.RaggedTensor`s otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> result = tf.strings.unicode_split_with_offsets(input, 'UTF-8')
-    >>> result[0].tolist()  # character substrings
-    [['G', '\xc3\xb6', '\xc3\xb6', 'd', 'n', 'i', 'g', 'h', 't'],
-     ['\xf0\x9f\x98\x8a']]
-    >>> result[1].tolist()  # offsets
-   [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> result = tf.strings.unicode_split_with_offsets(input, 'UTF-8')
+  >>> result[0].tolist()  # character substrings
+  [['G', '\xc3\xb6', '\xc3\xb6', 'd', 'n', 'i', 'g', 'h', 't'],
+   ['\xf0\x9f\x98\x8a']]
+  >>> result[1].tolist()  # offsets
+  [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
+
   """
   with ops.name_scope(name, "UnicodeSplitWithOffsets", [input]):
     codepoints, offsets = _unicode_decode(input, input_encoding, errors,

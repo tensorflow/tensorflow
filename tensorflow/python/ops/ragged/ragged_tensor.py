@@ -104,12 +104,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
   Example:
 
-  ```python
   >>> print(tf.RaggedTensor.from_row_splits(
-  ...     values=[3, 1, 4, 1, 5, 9, 2, 6],
-  ...     row_splits=[0, 4, 4, 7, 8, 8]))
+  ...       values=[3, 1, 4, 1, 5, 9, 2, 6],
+  ...       row_splits=[0, 4, 4, 7, 8, 8]))
   <tf.RaggedTensor [[3, 1, 4, 1], [], [5, 9, 2], [6], []]>
-  ```
 
   ### Alternative Row-Partitioning Schemes
 
@@ -139,7 +137,6 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   Example: The following ragged tensors are equivalent, and all represent the
   nested list `[[3, 1, 4, 1], [], [5, 9, 2], [6], []]`.
 
-  ```python
   >>> values = [3, 1, 4, 1, 5, 9, 2, 6]
   >>> rt1 = RaggedTensor.from_row_splits(values, row_splits=[0, 4, 4, 7, 8, 8])
   >>> rt2 = RaggedTensor.from_row_lengths(values, row_lengths=[4, 0, 3, 1, 0])
@@ -147,7 +144,6 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   ...     values, value_rowids=[0, 0, 0, 0, 2, 2, 2, 3], nrows=5)
   >>> rt4 = RaggedTensor.from_row_starts(values, row_starts=[0, 4, 4, 7, 8])
   >>> rt5 = RaggedTensor.from_row_limits(values, row_limits=[4, 4, 7, 8, 8])
-  ```
 
   ### Multiple Ragged Dimensions
 
@@ -155,7 +151,6 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   a nested `RaggedTensor` for the `values` tensor.  Each nested `RaggedTensor`
   adds a single ragged dimension.
 
-  ```python
   >>> inner_rt = RaggedTensor.from_row_splits(  # =rt1 from above
   ...     values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
   >>> outer_rt = RaggedTensor.from_row_splits(
@@ -164,25 +159,21 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   [[[3, 1, 4, 1], [], [5, 9, 2]], [], [[6], []]]
   >>> print outer_rt.ragged_rank
   2
-  ```
 
   The factory function `RaggedTensor.from_nested_row_splits` may be used to
   construct a `RaggedTensor` with multiple ragged dimensions directly, by
   providing a list of `row_splits` tensors:
 
-  ```python
   >>> RaggedTensor.from_nested_row_splits(
   ...     flat_values=[3, 1, 4, 1, 5, 9, 2, 6],
   ...     nested_row_splits=([0, 3, 3, 5], [0, 4, 4, 7, 8, 8])).to_list()
   [[[3, 1, 4, 1], [], [5, 9, 2]], [], [[6], []]]
-  ```
 
   ### Uniform Inner Dimensions
 
   `RaggedTensor`s with uniform inner dimensions can be defined
   by using a multidimensional `Tensor` for `values`.
 
-  ```python
   >>> rt = RaggedTensor.from_row_splits(values=tf.ones([5, 3]),
   ..                                    row_splits=[0, 2, 5])
   >>> print rt.to_list()
@@ -190,7 +181,6 @@ class RaggedTensor(composite_tensor.CompositeTensor):
    [[1, 1, 1], [1, 1, 1], [1, 1, 1]]]
    >>> print rt.shape
    (2, ?, 3)
-  ```
 
   ### Uniform Outer Dimensions
 
@@ -200,7 +190,6 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   constructed with this method from a `RaggedTensor` values with shape
   `[4, None]`:
 
-  ```python
   >>> values = tf.ragged.constant([[1, 2, 3], [4], [5, 6], [7, 8, 9, 10]])
   >>> print values.shape
   (4, None)
@@ -209,17 +198,14 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   <tf.RaggedTensor [[[1, 2, 3], [4]], [[5, 6], [7, 8, 9, 10]]])>
   >>> print rt1.shape
   (2, 2, None)
-  ```
 
   Note that `rt1` only contains one ragged dimension (the innermost
   dimension). In contrast, if `from_row_splits` is used to construct a similar
   `RaggedTensor`, then that `RaggedTensor` will have two ragged dimensions:
 
-  ```python
   >>> rt2 = tf.RaggedTensor.from_row_splits(values, [0, 2, 4])
   >>> print rt2.shape
   (2, None, None)
-  ```
 
   Uniform and ragged outer dimensions may be interleaved, meaning that a
   tensor with any combination of ragged and uniform dimensions may be created.
@@ -232,6 +218,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   t2 = RaggedTensor.from_uniform_row_length(t1, 8)   #         [20, 8, None, 2]
   t3 = RaggedTensor.from_uniform_row_length(t2, 4)   #       [5, 4, 8, None, 2]
   t4 = RaggedTensor.from_row_lengths(t3, [...])      # [3, None, 4, 8, None, 2]
+  ```
   """
 
   #=============================================================================
