@@ -263,9 +263,15 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
   let regions = (region SizedRegion<1>:$region);
 }
 
-def I32ElementsAttributesOp : TEST_Op<"i32ElementsAttr"> {
+def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
+
+def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
+
+def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
+                     (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
+                     [(IsNotScalar $attr)]>;
 
 //===----------------------------------------------------------------------===//
 // Test Patterns
