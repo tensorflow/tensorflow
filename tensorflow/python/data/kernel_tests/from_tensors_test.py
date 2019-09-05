@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -24,11 +25,11 @@ from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -37,9 +38,9 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FromTensorsTest(test_base.DatasetTestBase):
+class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensors(self):
     """Test a dataset that represents a single tuple of tensors."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
@@ -52,12 +53,14 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsDataset(self):
     """Test a dataset that represents a dataset."""
     dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
     dataset = dataset.flat_map(lambda x: x)
     self.assertDatasetProduces(dataset, expected_output=range(10))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsTensorArray(self):
     """Test a dataset that represents a TensorArray."""
     components = (
@@ -69,6 +72,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, expected_output=[[1.0, 2.0]], requires_initialization=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsSparse(self):
     """Test a dataset that represents a single tuple of tensors."""
     components = (sparse_tensor.SparseTensorValue(
@@ -87,6 +91,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
         [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     self.assertDatasetProduces(dataset, expected_output=[components])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixed(self):
     """Test an dataset that represents a single tuple of tensors."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0),
@@ -107,6 +112,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsRagged(self):
     components = (
         ragged_factory_ops.constant_value([[[0]], [[1]], [[2]]]),
@@ -117,6 +123,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0),
                   sparse_tensor.SparseTensorValue(
@@ -134,6 +141,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(dataset, expected_output=[components])
 
   # pylint: disable=g-long-lambda,unnecessary-lambda
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedStructure(self):
     components = (np.array([1, 2, 3], dtype=np.int64),
                   (np.array([4., 5.]), np.array([6., 7.])),
@@ -216,7 +224,8 @@ class FromTensorsTest(test_base.DatasetTestBase):
                      dataset_ops.get_legacy_output_shapes(dataset))
 
   # TODO(b/117581999): more specific shapes in eager mode.
-  @test_util.run_deprecated_v1
+  @combinations.generate(combinations.combine(tf_api_version=[1],
+                                              mode=["graph", "eager"]))
   def testSkipEagerNestedStructure(self):
     components = (np.array([1, 2, 3], dtype=np.int64), (np.array([4., 5.]),
                                                         np.array([6., 7.])),
@@ -251,6 +260,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEqual([None, 2], y.shape.as_list())
     self.assertEqual([None, 2], z.shape.as_list())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedDict(self):
     components = {"a": {"aa": 1, "ab": [2.0, 2.0]}, "b": [3, 3, 3]}
     dataset = dataset_ops.Dataset.from_tensors(components)
@@ -267,6 +277,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEqual([3],
                      dataset_ops.get_legacy_output_shapes(dataset)["b"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonSequenceNestedStructure(self):
     components = np.array([1, 2, 3], dtype=np.int64)
 
@@ -297,6 +308,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEqual([3], get_next().shape)
 
   # TODO(b/121264236): needs mechanism for multiple device in eager mode.
+  @combinations.generate(test_base.default_test_combinations())
   def testSkipEagerSplitPipeline(self):
     with session.Session(
         target="",
