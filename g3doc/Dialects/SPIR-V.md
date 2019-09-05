@@ -18,44 +18,66 @@ but not necessarily compiler transformations.
 The purpose of the SPIR-V dialect is to serve as the "proxy" of the binary
 format and to facilitate transformations. Therefore, it should
 
-* Be trivial to serialize into the SPIR-V binary format;
-* Stay as the same semantic level and try to be a mechanical 1:1 mapping;
-* But deviate representationally if possible with MLIR mechanisms.
+*   Stay as the same semantic level and try to be a mechanical 1:1 mapping;
+*   But deviate representationally if possible with MLIR mechanisms.
+*   Be straightforward to serialize into and deserialize drom the SPIR-V binary
+    format.
 
 ## Conventions
 
 The SPIR-V dialect has the following conventions:
 
-* The prefix for all SPIR-V types and operations are `spv.`.
-* Ops that directly correspond to instructions in the binary format have
-  `CamelCase` names, for example, `spv.FMul`;
-* Otherwise they have `snake_case` names. These ops are mostly for defining
-  the SPIR-V structure, inclduing module, function, and module-level ops.
-  For example, `spv.module`, `spv.constant`.
+*   The prefix for all SPIR-V types and operations are `spv.`.
+*   Ops that directly mirror instructions in the binary format have `CamelCase`
+    names that are the same as the instruction opnames (without the `Op`
+    prefix). For example, `spv.FMul` is a direct mirror of `OpFMul`. They will
+    be serialized into and deserialized from one instruction.
+*   Ops with `snake_case` names are those that have different representation
+    from corresponding instructions (or concepts) in the binary format. These
+    ops are mostly for defining the SPIR-V structure. For example, `spv.module`
+    and `spv.constant`. They may correspond to zero or more instructions during
+    (de)serialization.
+*   Ops with `_snake_case` names are those that have no corresponding
+    instructions (or concepts) in the binary format. They are introduced to
+    satisfy MLIR structural requirements. For example, `spv._module_end` and
+    `spv._merge`. They maps to no instructions during (de)serialization.
 
 ## Module
 
 A SPIR-V module is defined via the `spv.module` op, which has one region that
 contains one block. Model-level instructions, including function definitions,
-are all placed inside the block. Functions are defined using the standard `func`
+are all placed inside the block. Functions are defined using the builtin `func`
 op.
 
 Compared to the binary format, we adjust how certain module-level SPIR-V
 instructions are represented in the SPIR-V dialect. Notably,
 
-* Requirements for capabilities, extensions, extended instruction sets,
-  addressing model, and memory model is conveyed using `spv.module` attributes.
-  This is considered better because these information are for the
-  exexcution environment. It's eaiser to probe them if on the module op
-  itself.
-* Annotations/decoration instrutions are "folded" into the instructions they
-  decorate and represented as attributes on those ops. This elimiates potential
-  forward references of SSA values, improves IR readability, and makes
-  querying the annotations more direct.
-* Various constant instructions are represented by the same `spv.constant`
-  op. Those instructions are just for constants of different types; using one
-  op to represent them reduces IR verbosity and makes transformations less
-  tedious.
+*   Requirements for capabilities, extensions, extended instruction sets,
+    addressing model, and memory model is conveyed using `spv.module`
+    attributes. This is considered better because these information are for the
+    exexcution environment. It's eaiser to probe them if on the module op
+    itself.
+*   Annotations/decoration instrutions are "folded" into the instructions they
+    decorate and represented as attributes on those ops. This elimiates
+    potential forward references of SSA values, improves IR readability, and
+    makes querying the annotations more direct.
+*   Types are represented using MLIR standard types and SPIR-V dialect specific
+    types. There are no type declaration ops in the SPIR-V dialect.
+*   Various normal constant instructions are represented by the same
+    `spv.constant` op. Those instructions are just for constants of different
+    types; using one op to represent them reduces IR verbosity and makes
+    transformations less tedious.
+*   Normal constants are not placed in `spv.module`'s region; they are localized
+    into functions. This is to make functions in the SPIR-V dialect to be
+    isolated and explicit capturing.
+*   Global variables are defined with the `spv.globalVariable` op. They do not
+    generate SSA values. Instead they have symbols and should be referenced via
+    symbols. To use a global variables in a function block, `spv._address_of` is
+    needed to turn the symbol into a SSA value.
+*   Specialization constants are defined with the `spv.specConstant` op. Similar
+    to global variables, they do not generate SSA values and have symbols for
+    reference, too. `spv._reference_of` is needed to turn the symbol into a SSA
+    value for use in a function block.
 
 ## Types
 
@@ -168,6 +190,121 @@ For Example,
 !spv.struct<f32 [0]>
 !spv.struct<f32, !spv.image<f32, 1D, NoDepth, NonArrayed, SingleSampled, SamplerUnknown, Unknown>>
 !spv.struct<f32 [0], i32 [4]>
+```
+
+## Function
+
+A SPIR-V function is defined using the builtin `func` op. `spv.module` verifies
+that the functions inside it comply with SPIR-V requirements: at most one
+result, no nested functions, and so on.
+
+## Control Flow
+
+SPIR-V binary format uses merge instructions (`OpSelectionMerge` and
+`OpLoopMerge`) to declare structured control flow. They explicitly declare a
+header block before the control flow diverges and a merge block where control
+flow subsequently converges. These blocks delimit constructs that must nest, and
+can only be entered and exited in structured ways.
+
+In the SPIR-V dialect, we use regions to mark the boundary of a structured
+control flow construct. With this approach, it's easier to discover all blocks
+belonging to a structured control flow construct. It is also more idiomatic to
+MLIR system.
+
+We introduce a a `spv.loop` op for structured loops. The merge targets are the
+next ops following them. Inside their regions, a special terminator,
+`spv._merge` is introduced for branching to the merge target.
+
+### Loop
+
+`spv.loop` defines a loop construct. It contains one region. The `spv.loop`
+region should contain at least four blocks: one entry block, one loop header
+block, one loop continue block, one merge block.
+
+*   The entry block should be the first block and it should jump to the loop
+    header block, which is the second block.
+*   The merge block should be the last block. The merge block should only
+    contain a `spv._merge` op. Any block except the entry block can branch to
+    the merge block for early exit.
+*   The continue block should be the second to last block and it should have a
+    branch to the loop header block.
+*   The loop continue block should be the only block, except the entry block,
+    branching to the loop header block.
+
+```
+    +-------------+
+    | entry block |           (one outgoing branch)
+    +-------------+
+           |
+           v
+    +-------------+           (two incoming branches)
+    | loop header | <-----+   (may have one or two outgoing branches)
+    +-------------+       |
+                          |
+          ...             |
+         \ | /            |
+           v              |
+   +---------------+      |   (may have multiple incoming branches)
+   | loop continue | -----+   (may have one or two outgoing branches)
+   +---------------+
+
+          ...
+         \ | /
+           v
+    +-------------+           (may have mulitple incoming branches)
+    | merge block |
+    +-------------+
+```
+
+The reason to have another entry block instead of directly using the loop header
+block as the entry block is to satisfy region's requirement: entry block of
+region may not have predecessors. We have a merge block so that branch ops can
+reference it as successors. The loop continue block here corresponds to
+"continue construct" using SPIR-V spec's term; it does not mean the "continue
+block" as defined in the SPIR-V spec, which is "a block containing a branch to
+an OpLoopMerge instruction’s Continue Target."
+
+For example, for the given function
+
+```c++
+void loop(int count) {
+  for (int i = 0; i < count; ++i) {
+    // ...
+  }
+}
+```
+
+It will be represented as
+
+```mlir
+func @loop(%count : i32) -> () {
+  %zero = spv.constant 0: i32
+  %one = spv.constant 1: i32
+  %var = spv.Variable init(%zero) : !spv.ptr<i32, Function>
+
+  spv.loop {
+    spv.Branch ^header
+
+  ^header:
+    %val0 = spv.Load "Function" %var : i32
+    %cmp = spv.SLessThan %val0, %count : i32
+    spv.BranchConditional %cmp, ^body, ^merge
+
+  ^body:
+    // ...
+    spv.Branch ^continue
+
+  ^continue:
+    %val1 = spv.Load "Function" %var : i32
+    %add = spv.IAdd %val1, %one : i32
+    spv.Store "Function" %var, %add : i32
+    spv.Branch ^header
+
+  ^merge:
+    spv._merge
+  }
+  return
+}
 ```
 
 ## Serialization

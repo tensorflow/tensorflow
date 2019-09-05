@@ -145,6 +145,190 @@ func @weights_cannot_both_be_zero() -> () {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.loop
+//===----------------------------------------------------------------------===//
+
+// for (int i = 0; i < count; ++i) {}
+func @loop(%count : i32) -> () {
+  %zero = spv.constant 0: i32
+  %one = spv.constant 1: i32
+  %var = spv.Variable init(%zero) : !spv.ptr<i32, Function>
+
+  // CHECK: spv.loop {
+  spv.loop {
+    // CHECK-NEXT: spv.Branch ^bb1
+    spv.Branch ^header
+
+  // CHECK-NEXT: ^bb1:
+  ^header:
+    %val0 = spv.Load "Function" %var : i32
+    %cmp = spv.SLessThan %val0, %count : i32
+    // CHECK: spv.BranchConditional %{{.*}}, ^bb2, ^bb4
+    spv.BranchConditional %cmp, ^body, ^merge
+
+  // CHECK-NEXT: ^bb2:
+  ^body:
+    // Do nothing
+    // CHECK-NEXT: spv.Branch ^bb3
+    spv.Branch ^continue
+
+  // CHECK-NEXT: ^bb3:
+  ^continue:
+    %val1 = spv.Load "Function" %var : i32
+    %add = spv.IAdd %val1, %one : i32
+    spv.Store "Function" %var, %add : i32
+    // CHECK: spv.Branch ^bb1
+    spv.Branch ^header
+
+  // CHECK-NEXT: ^bb4:
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @empty_region
+func @empty_region() -> () {
+  // CHECK: spv.loop
+  spv.loop {
+  }
+  return
+}
+
+// -----
+
+func @wrong_merge_block() -> () {
+  // expected-error @+1 {{last block must be the merge block with only one 'spv._merge' op}}
+  spv.loop {
+    spv.Return
+  }
+  return
+}
+
+// -----
+
+func @missing_entry_block() -> () {
+  // expected-error @+1 {{must have an entry block branching to the loop header block}}
+  spv.loop {
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+func @missing_header_block() -> () {
+  // expected-error @+1 {{must have a loop header block branched from the entry block}}
+  spv.loop {
+  ^entry:
+    spv.Branch ^merge
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+func @entry_should_branch_to_header() -> () {
+  // expected-error @+1 {{entry block must only have one 'spv.Branch' op to the second block}}
+  spv.loop {
+  ^entry:
+    spv.Branch ^merge
+  ^header:
+    spv.Branch ^merge
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+func @missing_continue_block() -> () {
+  // expected-error @+1 {{requires a loop continue block branching to the loop header block}}
+  spv.loop {
+  ^entry:
+    spv.Branch ^header
+  ^header:
+    spv.Branch ^merge
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+func @continue_should_branch_to_header() -> () {
+  // expected-error @+1 {{second to last block must be the loop continue block that branches to the loop header block}}
+  spv.loop {
+  ^entry:
+    spv.Branch ^header
+  ^header:
+    spv.Branch ^continue
+  ^continue:
+    spv.Branch ^merge
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+func @only_entry_and_continue_branch_to_header() -> () {
+  // expected-error @+1 {{can only have the entry and loop continue block branching to the loop header block}}
+  spv.loop {
+  ^entry:
+    spv.Branch ^header
+  ^header:
+    spv.Branch ^cont1
+  ^cont1:
+    spv.Branch ^header
+  ^cont2:
+    spv.Branch ^header
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.merge
+//===----------------------------------------------------------------------===//
+
+func @merge() -> () {
+  // expected-error @+1 {{expects parent op 'spv.loop'}}
+  spv._merge
+}
+
+// -----
+
+func @only_allowed_in_last_block() -> () {
+  %true = spv.constant true
+  spv.loop {
+    spv.Branch ^header
+  ^header:
+    spv.BranchConditional %true, ^body, ^merge
+  ^body:
+    // expected-error @+1 {{can only be used in the last block of 'spv.loop'}}
+    spv._merge
+  ^continue:
+    spv.Branch ^header
+  ^merge:
+    spv._merge
+  }
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
 
