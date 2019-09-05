@@ -104,11 +104,6 @@ except NameError:
   pass
 
 try:
-  del python
-except NameError:
-  pass
-
-try:
   del compiler
 except NameError:
   pass
