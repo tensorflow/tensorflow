@@ -126,6 +126,23 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   return false;
 }
 
+// A helper function to decide whether to enable the memory optimizer.
+bool MemoryOptimizerEnabled(RewriterConfig::MemOptType mem_opt_type,
+                            OptimizerOptions::GlobalJitLevel global_jit_level) {
+  // Disable the memory optimizer when GlobalJitLevel is ON as it hurts the
+  // XLA JIT performance. The (current) XLA clustering can result in loss of
+  // concurrency between kernel compute and memory copies. As such, it usually
+  // loses the concurrency needed to hide the latencies of the inserted swap-ins
+  // and swap-outs and incurs great performance overhead. Remove this check when
+  // the XLA JIT can better deal with the concurrency.
+  if (global_jit_level == OptimizerOptions::ON_1 ||
+      global_jit_level == OptimizerOptions::ON_2) {
+    return false;
+  }
+
+  return mem_opt_type != RewriterConfig::NO_MEM_OPT;
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -216,7 +233,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
   }
-  if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+  auto global_jit_level =
+      config_proto_.graph_options().optimizer_options().global_jit_level();
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"
