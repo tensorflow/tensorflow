@@ -220,9 +220,7 @@ XLA_MAKE_BINARY(SigmoidGrad,
                 xla::Mul(xla::Mul(rhs, lhs),
                          xla::Sub(XlaHelpers::One(b, input_type(0)), lhs)));
 
-XLA_MAKE_BINARY(SoftplusGrad,
-                xla::Div(lhs, xla::Add(xla::Exp(xla::Neg(rhs)),
-                                       XlaHelpers::One(b, input_type(1)))));
+XLA_MAKE_BINARY(SoftplusGrad, xla::Mul(lhs, xla::Logistic(rhs)));
 
 // softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
 XLA_MAKE_BINARY(SoftsignGrad,
