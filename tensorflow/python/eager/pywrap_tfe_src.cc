@@ -98,8 +98,6 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
 struct FastPathOpExecInfo {
   TFE_Context* ctx;
   const char* device_name;
-  // The op def of the main op being executed.
-  const tensorflow::OpDef* op_def;
 
   bool run_callbacks;
   bool run_post_exec_callbacks;
@@ -3095,25 +3093,6 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
   return true;
 }
 
-const tensorflow::OpDef* GetOpDef(PyObject* py_op_name) {
-  const char* op_name = TFE_GetPythonString(py_op_name);
-  if (op_name == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a string for op_name, got %s instead",
-                           py_op_name->ob_type->tp_name)
-                        .c_str());
-    return nullptr;
-  }
-
-  const tensorflow::OpRegistrationData* op_reg_data = nullptr;
-  const tensorflow::Status lookup_status =
-      tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (MaybeRaiseExceptionFromStatus(lookup_status, nullptr)) {
-    return nullptr;
-  }
-  return &op_reg_data->op_def;
-}
-
 const char* GetDeviceName(PyObject* py_device_name) {
   if (py_device_name != Py_None) {
     return TFE_GetPythonString(py_device_name);
@@ -3145,6 +3124,7 @@ bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
 
 bool RunCallbacks(
     const FastPathOpExecInfo& op_exec_info, PyObject* args,
+    int num_inferred_attrs,
     const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_inputs,
     const std::vector<tensorflow::Safe_PyObjectPtr>& flattened_attrs,
     PyObject* flattened_result) {
@@ -3157,19 +3137,16 @@ bool RunCallbacks(
     PyTuple_SET_ITEM(inputs.get(), i, input);
   }
 
-  int num_non_inferred_attrs = PyTuple_GET_SIZE(args) -
-                               op_exec_info.op_def->input_arg_size() -
-                               kFastPathExecuteInputStartIndex;
+  int num_non_inferred_attrs = PyTuple_GET_SIZE(args) - num_inferred_attrs;
   int num_attrs = flattened_attrs.size() + num_non_inferred_attrs;
   tensorflow::Safe_PyObjectPtr attrs(PyTuple_New(num_attrs));
 
   for (int i = 0; i < num_non_inferred_attrs; i++) {
-    auto* attr =
-        PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex +
-                                   op_exec_info.op_def->input_arg_size() + i);
+    auto* attr = PyTuple_GET_ITEM(args, num_inferred_attrs + i);
     Py_INCREF(attr);
     PyTuple_SET_ITEM(attrs.get(), i, attr);
   }
+
   for (int i = num_non_inferred_attrs; i < num_attrs; i++) {
     PyObject* attr_or_name =
         flattened_attrs.at(i - num_non_inferred_attrs).get();
@@ -3240,12 +3217,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
   op_exec_info.device_name = GetDeviceName(PyTuple_GET_ITEM(args, 1));
   op_exec_info.op_name = PyTuple_GET_ITEM(args, 2);
-  op_exec_info.op_def = GetOpDef(op_exec_info.op_name);
-  if (op_exec_info.op_def == nullptr) return nullptr;
   op_exec_info.name = PyTuple_GET_ITEM(args, 3);
   op_exec_info.callbacks = PyTuple_GET_ITEM(args, 4);
-
-  const tensorflow::OpDef* op_def = op_exec_info.op_def;
 
   // TODO(nareshmodi): Add a benchmark for the fast-path with gradient callbacks
   // (similar to benchmark_tf_gradient_function_*). Also consider using an
@@ -3258,6 +3231,28 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       PyList_Size(op_exec_info.callbacks) > 0;
   op_exec_info.run_callbacks = op_exec_info.run_gradient_callback ||
                                op_exec_info.run_post_exec_callbacks;
+
+  TF_Status* status = TF_NewStatus();
+  const char* op_name = TFE_GetPythonString(op_exec_info.op_name);
+  if (op_name == nullptr) {
+    PyErr_SetString(PyExc_TypeError,
+                    Printf("expected a string for op_name, got %s instead",
+                           op_exec_info.op_name->ob_type->tp_name)
+                        .c_str());
+    return nullptr;
+  }
+
+  TFE_Op* op = TFE_NewOp(op_exec_info.ctx, op_name, status);
+  auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
+    TF_DeleteStatus(status);
+    TFE_DeleteOp(op);
+  });
+  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+    return nullptr;
+  }
+
+  const tensorflow::OpDef* op_def = op->inference_ctx->op_def;
+  if (op_def == nullptr) return nullptr;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
     PyErr_SetString(
@@ -3278,16 +3273,6 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
-
-  TF_Status* status = TF_NewStatus();
-  TFE_Op* op = TFE_NewOp(op_exec_info.ctx, op_def->name().c_str(), status);
-  auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
-    TF_DeleteStatus(status);
-    TFE_DeleteOp(op);
-  });
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-    return nullptr;
-  }
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3498,8 +3483,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   }
 
   if (op_exec_info.run_callbacks) {
-    if (!RunCallbacks(op_exec_info, args, *flattened_inputs, *flattened_attrs,
-                      flat_result.get())) {
+    if (!RunCallbacks(
+            op_exec_info, args,
+            kFastPathExecuteInputStartIndex + op_def->input_arg_size(),
+            *flattened_inputs, *flattened_attrs, flat_result.get())) {
       return nullptr;
     }
   }
