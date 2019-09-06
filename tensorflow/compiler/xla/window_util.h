@@ -55,8 +55,7 @@ bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);
 bool HasDilation(const Window& window);
 
-// Return true if the window overlap (e.g., the window size is smaller
-// than the stride in any dimensions).
+// Returns true if the window overlaps.
 bool HasOverlappingWindow(const Window& window);
 
 bool HasWindowReversal(const Window& window);
