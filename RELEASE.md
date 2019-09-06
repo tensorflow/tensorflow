@@ -4,7 +4,6 @@ This is the last 1.x release for TensorFlow. We do not expect to update the 1.x 
 ## Major Features and Improvements
 * TensorFlow 1.15 contains a complete implementation of the 2.0 API in its compat.v2 module. It contains a copy of the 1.15 main module (without contrib) in the compat.v1 module. TensorFlow 1.15 is able to emulate 2.0 behavior using the enable_v2_behavior() function.
 This enables writing forward compatible code: by explicitly importing either tensorflow.compat.v1 or tensorflow.compat.v2, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
-
 * EagerTensor now supports buffer interface for tensors.
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
