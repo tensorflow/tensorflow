@@ -731,6 +731,16 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   return b.getDenseElementsAttr(resultType, dimensions);
 }
 
+void ShapeOp::build(Builder *builder, OperationState *result, Value *input,
+                    BoolAttr use32Bit) {
+  auto rankedTensorType = input->getType().dyn_cast<RankedTensorType>();
+  int64_t rank = rankedTensorType ? rankedTensorType.getRank() : -1;
+  auto out_type = use32Bit.getValue() ? builder->getIntegerType(32)
+                                      : builder->getIntegerType(64);
+  return ShapeOp::build(builder, result,
+                        builder->getTensorType({rank}, out_type), input);
+}
+
 //===----------------------------------------------------------------------===//
 // ShapeNOp
 //===----------------------------------------------------------------------===//
