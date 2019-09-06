@@ -261,6 +261,7 @@ tensorflow/third_party/googleapis.BUILD
 tensorflow/third_party/mpi_collectives/BUILD
 tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/gif.BUILD
+tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/double_conversion.BUILD
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/tflite_mobilenet_float.BUILD
