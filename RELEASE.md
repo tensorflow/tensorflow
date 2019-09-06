@@ -37,7 +37,7 @@ This enables writing forward compatible code: by explicitly importing either `te
 * `tf.lite`
   * Add `GATHER` support to NN API delegate.
   * tflite object detection script has a debug mode.
-  * Add delegate support for QUANTIZE.
+  * Add delegate support for `QUANTIZE`.
   * Added evaluation script for COCO minival.
   * Add delegate support for `QUANTIZED_16BIT_LSTM`.
   * Converts hardswish subgraphs into atomic ops.
