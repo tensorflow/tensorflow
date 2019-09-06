@@ -62,8 +62,8 @@ REQUIRED_PACKAGES = [
     'opt_einsum >= 2.3.2',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.14.0, < 1.15.0',
-    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
+    'tensorboard >= 1.15.0a20190821, < 1.15.0a20190822',
+    'tensorflow_estimator >= 1.14.0.dev2019090401, < 1.14.0.dev2019090402',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
