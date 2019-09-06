@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -49,6 +50,12 @@ class ParseExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx, op_version_));
   }
 
+  ~ParseExampleOp() override {
+    metrics::RecordParseDenseFeature(dense_keys_.size());
+    metrics::RecordParseSparseFeature(sparse_keys_.size());
+    metrics::RecordParseRaggedFeature(ragged_keys_.size());
+  }
+
   void Compute(OpKernelContext* ctx) override {
     const Tensor* names;
     const Tensor* serialized;
@@ -67,6 +74,15 @@ class ParseExampleOp : public OpKernel {
     } else {
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "dense_keys", &dense_keys_t));
       OP_REQUIRES_OK(ctx, GetInputListKeys(ctx, "sparse_keys", &sparse_keys_t));
+    }
+    for (const auto key : dense_keys_t) {
+      dense_keys_.insert(key);
+    }
+    for (const auto key : sparse_keys_t) {
+      sparse_keys_.insert(key);
+    }
+    for (const auto key : ragged_keys_t) {
+      ragged_keys_.insert(key);
     }
     OP_REQUIRES_OK(ctx, ctx->input_list("dense_defaults", &dense_defaults));
 
@@ -271,6 +287,9 @@ class ParseExampleOp : public OpKernel {
     return Status::OK();
   }
 
+  std::set<string> dense_keys_;
+  std::set<string> sparse_keys_;
+  std::set<string> ragged_keys_;
   ParseExampleAttrs attrs_;
   int op_version_;
 };
@@ -284,6 +303,11 @@ class ParseSingleExampleOp : public OpKernel {
  public:
   explicit ParseSingleExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
+  }
+
+  ~ParseSingleExampleOp() override {
+    metrics::RecordParseDenseFeature(attrs_.dense_keys.size());
+    metrics::RecordParseSparseFeature(attrs_.sparse_keys.size());
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -380,6 +404,13 @@ class ParseSequenceExampleOp : public OpKernel {
  public:
   explicit ParseSequenceExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
+  }
+
+  ~ParseSequenceExampleOp() override {
+    metrics::RecordParseDenseFeature(attrs_.context_dense_keys.size() +
+                                     attrs_.feature_list_dense_keys.size());
+    metrics::RecordParseSparseFeature(attrs_.context_sparse_keys.size() +
+                                      attrs_.feature_list_sparse_keys.size());
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -542,6 +573,13 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
 
+  ~ParseSingleSequenceExampleOp() override {
+    metrics::RecordParseDenseFeature(context_dense_keys_.size() +
+                                     feature_list_dense_keys_.size());
+    metrics::RecordParseSparseFeature(context_sparse_keys_.size() +
+                                      feature_list_sparse_keys_.size());
+  }
+
   void Compute(OpKernelContext* ctx) override {
     const Tensor* debug_name;
     const Tensor* serialized;
@@ -573,6 +611,18 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         attrs_.num_feature_list_dense);
     std::vector<string> feature_list_sparse_keys_t(
         attrs_.num_feature_list_sparse);
+    for (const auto key : context_dense_keys_t) {
+      context_dense_keys_.insert(key);
+    }
+    for (const auto key : context_sparse_keys_t) {
+      context_sparse_keys_.insert(key);
+    }
+    for (const auto key : feature_list_dense_keys_t) {
+      feature_list_dense_keys_.insert(key);
+    }
+    for (const auto key : feature_list_sparse_keys_t) {
+      feature_list_sparse_keys_.insert(key);
+    }
     std::unordered_set<string> feature_list_dense_missing_assumed_empty_set;
     CHECK_EQ(context_dense_keys.size(), attrs_.num_context_dense);
     CHECK_EQ(context_sparse_keys.size(), attrs_.num_context_sparse);
@@ -941,6 +991,10 @@ class ParseSingleSequenceExampleOp : public OpKernel {
 
  protected:
   ParseSingleSequenceExampleAttrs attrs_;
+  std::set<string> context_dense_keys_;
+  std::set<string> context_sparse_keys_;
+  std::set<string> feature_list_dense_keys_;
+  std::set<string> feature_list_sparse_keys_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
