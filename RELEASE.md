@@ -14,7 +14,7 @@ This enables writing forward compatible code: by explicitly importing either ten
 
 ## Breaking Changes
 * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
-* TensorFlow 1.15 is built using devtoolset7 on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
+* TensorFlow 1.15 is built using devtoolset7(GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
 * `tf.keras`:
   * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
