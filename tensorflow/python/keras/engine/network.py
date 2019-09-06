@@ -1122,7 +1122,8 @@ class Network(base_layer.Layer):
            overwrite=True,
            include_optimizer=True,
            save_format=None,
-           signatures=None):
+           signatures=None,
+           options=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1151,6 +1152,8 @@ class Network(base_layer.Layer):
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
+      options: Optional `tf.saved_model.SaveOptions` object that specifies
+        options for saving to SavedModel.
 
     Example:
 
@@ -1166,7 +1169,7 @@ class Network(base_layer.Layer):
     ```
     """
     saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures)
+                      signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.

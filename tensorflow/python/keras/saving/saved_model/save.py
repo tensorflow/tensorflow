@@ -58,7 +58,8 @@ training_lib = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-def save(model, filepath, overwrite, include_optimizer, signatures=None):
+def save(model, filepath, overwrite, include_optimizer, signatures=None,
+         options=None):
   """Saves a model as a SavedModel to the filepath.
 
   Args:
@@ -69,6 +70,8 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None):
     signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
       format only. Please see the `signatures` argument in `tf.saved_model.save`
       for details.
+    options: Optional`tf.saved_model.SaveOptions` object that specifies
+      options for saving to SavedModel.
 
   Raises:
     ValueError: if the model's inputs have not been defined.
@@ -89,7 +92,7 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None):
   # Trace all functions and signatures with `training=0` instead of using the
   # default learning phase placeholder.
   with K.learning_phase_scope(0):
-    save_lib.save(model, filepath, signatures)
+    save_lib.save(model, filepath, signatures, options)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer
