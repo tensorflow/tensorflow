@@ -131,12 +131,12 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
 
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+  NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
 void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+  NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
