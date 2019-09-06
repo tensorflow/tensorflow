@@ -198,6 +198,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
       NoSideEffect,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceOp {
+  // TODO(hinsu): Split operands and init into two separate variadic operands
+  // by using SameVariadicOperandSize trait.
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands_and_init,
     ElementsAttr:$dimensions
@@ -773,6 +775,40 @@ def HLO_TransposeOp: HLO_Op<"transpose",
 
     return success();
   }];
+}
+
+def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
+      NoSideEffect,
+      SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_ReduceWindowOp {
+
+  // TODO(hinsu): Verify that padding attribute is 2-d and the remaining
+  // attributes are 1-d. Attributes' leading dimension should match rank of the
+  // inputs.
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_TensorOrTuple>:$init_values,
+    I64ElementsAttr:$window_dimensions,
+    // If strides or dilations attributes are missing then the default value is
+    // one for each of the input dimensions. Similarly, padding values are zero
+    // for both low and high in each of the dimensions, if not specified.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$base_dilations,
+    OptionalAttr<I64ElementsAttr>:$window_dilations,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let results = (outs Variadic<HLO_Tensor>);
+
+  // TODO(hinsu): Verify that the attached body arguments and results are
+  // compatible with reduce op's operands.
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO(b/129422361): ReduceWindowOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+
+  // TODO(hinsu): Implement custom printer and parser.
 }
 
 def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
