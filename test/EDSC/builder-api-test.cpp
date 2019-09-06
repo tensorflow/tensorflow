@@ -23,6 +23,7 @@
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
@@ -742,6 +743,41 @@ TEST_FUNC(empty_map_load_store) {
   // CHECK:  [[A:%.*]] = affine.load %{{.*}}[]
   // CHECK:  affine.store [[A]], %{{.*}}[]
   // clang-format on
+  f.print(llvm::outs());
+  f.erase();
+}
+
+// CHECK-LABEL: func @affine_if_op
+// CHECK:       affine.if ([[d0:.*]], [[d1:.*]]){{\[}}[[s0:.*]], [[s1:.*]]{{\]}}
+// CHECK-NOT:   else
+// CHECK:       affine.if ([[d0:.*]], [[d1:.*]]){{\[}}[[s0:.*]], [[s1:.*]]{{\]}}
+// CHECK-NEXT:  } else {
+TEST_FUNC(affine_if_op) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto f32Type = FloatType::getF32(&globalContext());
+  auto memrefType = MemRefType::get({-1, -1}, f32Type, {}, 0);
+  auto f = makeFunction("affine_if_op", {}, {memrefType});
+
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
+
+  ValueHandle zero = constant_index(0), ten = constant_index(10);
+
+  SmallVector<bool, 4> isEq = {false, false, false, false};
+  SmallVector<AffineExpr, 4> affineExprs = {
+      builder.getAffineDimExpr(0),    // d0 >= 0
+      builder.getAffineDimExpr(1),    // d1 >= 0
+      builder.getAffineSymbolExpr(0), // s0 >= 0
+      builder.getAffineSymbolExpr(1)  // s1 >= 0
+  };
+  auto intSet = builder.getIntegerSet(2, 2, affineExprs, isEq);
+
+  SmallVector<Value *, 4> affineIfArgs = {zero, zero, ten, ten};
+  intrinsics::affine_if(intSet, affineIfArgs, /*withElseRegion=*/false);
+  intrinsics::affine_if(intSet, affineIfArgs, /*withElseRegion=*/true);
+
   f.print(llvm::outs());
   f.erase();
 }
