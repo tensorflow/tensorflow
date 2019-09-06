@@ -263,16 +263,18 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     CloseRemoteContexts();
   }
 
-  mutex_lock l(remote_state_mu_);
-
-  default_executor_.ShutDown().IgnoreError();
-  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
   {
-    mutex_lock l(executor_map_mu_);
-    executors_copy = thread_local_executor_;
-  }
-  for (const auto& it : executors_copy) {
-    it.second->ShutDown().IgnoreError();
+    mutex_lock l(remote_state_mu_);
+
+    default_executor_.ShutDown().IgnoreError();
+    std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+    {
+      mutex_lock l(executor_map_mu_);
+      executors_copy = thread_local_executor_;
+    }
+    for (const auto& it : executors_copy) {
+      it.second->ShutDown().IgnoreError();
+    }
   }
 
   // This shuts down the completion queue and joins the thread polling it.
