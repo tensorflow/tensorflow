@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_ZLIB_INPUTSTREAM_H_
-#define TENSORFLOW_LIB_IO_ZLIB_INPUTSTREAM_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_ZLIB_INPUTSTREAM_H_
+#define TENSORFLOW_CORE_LIB_IO_ZLIB_INPUTSTREAM_H_
 
 #include <string>
 
@@ -80,6 +80,7 @@ class ZlibInputStream : public InputStreamInterface {
   size_t input_buffer_capacity_;   // Size of z_stream_input_
   size_t output_buffer_capacity_;  // Size of z_stream_output_
   char* next_unread_byte_;         // Next unread byte in z_stream_output_
+  bool init_error_ = false;        // Whether we encountered an error in init.
 
   ZlibCompressionOptions const zlib_options_;
 
@@ -133,4 +134,4 @@ class ZlibInputStream : public InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_ZLIB_INPUTSTREAM_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_ZLIB_INPUTSTREAM_H_
