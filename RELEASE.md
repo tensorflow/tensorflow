@@ -2,6 +2,7 @@
 This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year. 
 
 ## Major Features and Improvements
+* As [announced](https://groups.google.com/a/tensorflow.org/forum/#!topic/developers/iRCt5m4qUz0), `tensorflow` pip package will by default include GPU support (same as `tensorflow-gpu` now) for the platforms we currently have GPU support (Linux and Windows). It will work on machines with and without Nvidia GPUs. `tensorflow-gpu` will still be available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
 * TensorFlow 1.15 contains a complete implementation of the 2.0 API in its `compat.v2 module`. It contains a copy of the 1.15 main module (without `contrib`) in the `compat.v1 module`. TensorFlow 1.15 is able to emulate 2.0 behavior using the `enable_v2_behavior()` function.
 This enables writing forward compatible code: by explicitly importing either `tensorflow.compat.v1` or `tensorflow.compat.v2`, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
 * EagerTensor now supports numpy buffer interface for tensors.
