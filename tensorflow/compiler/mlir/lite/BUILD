@@ -198,9 +198,11 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/trim_functions_tf.cc",
+        "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
         "transforms/passes.h",
+        "transforms/unroll_batch_matmul.h",
     ],
     deps = [
         ":common",
