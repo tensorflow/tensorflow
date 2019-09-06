@@ -861,7 +861,6 @@ cuda_py_test(
     ],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
