@@ -38,6 +38,14 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "dynamic_annotations": {
+        "name": "dynamic_annotations_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:default/dynamic_annotations.h",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {

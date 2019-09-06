@@ -51,6 +51,7 @@ package(
 tf_instantiate_platform_libraries(names = [
     "context",
     "cord",
+    "dynamic_annotations",
     "env_time",
 ])
 
@@ -123,6 +124,15 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda",
+    hdrs = ["cuda.h"],
+    deps = [
+        ":platform",
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -131,6 +141,15 @@ cc_library(
         ":cpu_info",
         ":logging",
         ":macros",
+        ":platform",
+    ],
+)
+
+cc_library(
+    name = "dynamic_annotations",
+    hdrs = ["dynamic_annotations.h"],
+    deps = [
+        ":dynamic_annotations_impl",
         ":platform",
     ],
 )
