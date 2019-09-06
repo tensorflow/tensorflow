@@ -1139,9 +1139,10 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      // Use the catenation of function and node names as the lookup key. This
-      // is to match the utility of generating the GraphDebugInfo.
-      node_call_sites.push_back(node_name_to_call_site(func_name + node_name));
+      // Use the catenation of function and node names as the lookup key.
+      // This matches the way that the key is formed on the python side.
+      std::string key = node_name + "@" + func_name;
+      node_call_sites.push_back(node_name_to_call_site(key));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }

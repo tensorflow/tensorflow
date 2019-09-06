@@ -29,6 +29,14 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "DEBUG_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_INFO_FILENAME_PB"
+    mtype: "<type \'str\'>"
+  }
+  member {
     name: "DEFAULT_SERVING_SIGNATURE_DEF_KEY"
     mtype: "<type \'str\'>"
   }
