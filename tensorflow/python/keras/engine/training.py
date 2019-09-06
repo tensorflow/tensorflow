@@ -52,6 +52,8 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -248,13 +250,9 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-      is_any_optimizer_v1 = any(
-          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
-    else:
-      self.optimizer = optimizers.get(optimizer)
-      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
+    self._set_optimizer(optimizer)
+    is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
+                              for opt in nest.flatten(self.optimizer))
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
@@ -1442,6 +1440,47 @@ class Model(network.Network):
           'Models passed to `' + method_name + '` can only have `training` '
           'and the first argument in `call` as positional arguments, '
           'found: ' + str(extra_args) + '.')
+
+  def _set_optimizer(self, optimizer):
+    """Sets self.optimizer.
+
+    Sets self.optimizer to `optimizer`, potentially wrapping it with a
+    LossScaleOptimizer.
+
+    Args:
+      optimizer: The optimizer(s) to assign to self.optimizer.
+    """
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+    else:
+      self.optimizer = optimizers.get(optimizer)
+
+    if (self._dtype_policy.loss_scale is not None and
+        not isinstance(self.optimizer,
+                       loss_scale_optimizer.LossScaleOptimizer)):
+      if isinstance(self.optimizer, list):
+        raise ValueError('When a dtype policy with a loss scale is used, you '
+                         'can only pass a single optimizer. Using policy %s '
+                         'and got optimizers: %s' %
+                         self._dtype_policy, self.optimizer)
+      if not isinstance(self.optimizer, optimizer_v2.OptimizerV2):
+        raise ValueError('"optimizer" must be an instance of '
+                         'tf.keras.optimizers.Optimizer when a dype policy '
+                         'with a loss scale  used, but got: %s. Using policy: '
+                         '%s' %
+                         (self.optimizer, self._dtype_policy))
+      self.optimizer = loss_scale_optimizer.LossScaleOptimizer(
+          self.optimizer, self._dtype_policy.loss_scale)
+    if (isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer) and
+        self._dtype_policy.loss_scale and
+        self.optimizer.loss_scale != self._dtype_policy.loss_scale):
+      logging.warning('LossScale of LossScaleOptimizer passed to compile (%s) '
+                      'is not the same as the dtype policy\'s loss scale (%s). '
+                      'Because the dtype policy has a loss scale, you should '
+                      'pass an optimizer that is not wrapped with a '
+                      'LossScaleOptimizer,'
+                      % (self.optimizer.loss_scale,
+                         self._dtype_policy.loss_scale))
 
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):

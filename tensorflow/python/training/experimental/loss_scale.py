@@ -227,6 +227,9 @@ class FixedLossScale(LossScale):
     del grads
     return control_flow_ops.no_op(), True
 
+  def __repr__(self):
+    return 'FixedLossScale(%s)' % self._loss_scale_value
+
   def get_config(self):
     return {'loss_scale_value': self._loss_scale_value}
 
@@ -375,6 +378,17 @@ class DynamicLossScale(LossScale):
                                       update_if_not_finite_grads)
     should_apply_gradients = is_finite
     return update_op, should_apply_gradients
+
+  def __repr__(self):
+    if context.executing_eagerly():
+      return ('DynamicLossScale(current_loss_scale=%s, num_good_steps=%s, '
+              'initial_loss_scale=%s, increment_period=%s, multiplier=%s)' %
+              (self._current_loss_scale.numpy(), self._num_good_steps.numpy(),
+               self.initial_loss_scale, self.increment_period, self.multiplier))
+    else:
+      return ('DynamicLossScale(initial_loss_scale=%s, increment_period=%s, '
+              'multiplier=%s)' %
+              (self.initial_loss_scale, self.increment_period, self.multiplier))
 
   def get_config(self):
     return {
