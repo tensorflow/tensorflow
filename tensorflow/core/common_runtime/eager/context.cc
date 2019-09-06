@@ -640,7 +640,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    std::unique_ptr<DeviceMgr> remote_device_manager,
+    std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
@@ -765,7 +765,7 @@ Status EagerContext::InitializeRemoteMaster(
 
 Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    const DeviceMgr* remote_device_mgr,
+    const DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
