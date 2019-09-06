@@ -110,11 +110,11 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // the given primitive type.
 HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type);
 
-// Create a BitcastConvert HLO instruction.
+// Creates a BitcastConvert HLO instruction.
 HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type);
 
-// Creates an Iota HLO instruction
+// Creates an Iota HLO instruction.
 HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
                             int64 iota_dimension);
 
