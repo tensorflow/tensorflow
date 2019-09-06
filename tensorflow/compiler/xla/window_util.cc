@@ -206,7 +206,7 @@ bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
          window_dimension.base_dilation() == 1;
 }
 
-bool HasOverlappinWindow(const Window& window) {
+bool HasOverlappingWindow(const Window& window) {
   for (const auto& dim : window.dimensions()) {
     if (dim.size() > dim.stride()) {
       return true;

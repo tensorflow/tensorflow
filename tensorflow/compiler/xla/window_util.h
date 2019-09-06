@@ -54,7 +54,10 @@ bool HasSymmetricPadding(const PaddingConfig& padding_config);
 bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);
 bool HasDilation(const Window& window);
-bool HasOverlappinWindow(const Window& window);
+
+// Return true if the window overlap (e.g., the window size is smaller
+// than the stride in any dimensions).
+bool HasOverlappingWindow(const Window& window);
 
 bool HasWindowReversal(const Window& window);
 bool AllOrNoneReversed(const Window& window);

@@ -22,10 +22,10 @@ namespace {
 
 using ::testing::ElementsAre;
 
-TEST(WindowUtilTest, HasOverlappinWindowTest) {
+TEST(WindowUtilTest, HasOverlappingWindowTest) {
   // MakeWindow() set a stride of 1 by default.
-  EXPECT_FALSE(window_util::HasOverlappinWindow(window_util::MakeWindow({1,1})));
-  EXPECT_TRUE(window_util::HasOverlappinWindow(window_util::MakeWindow({2,2,2,2})));
+  EXPECT_FALSE(window_util::HasOverlappingWindow(window_util::MakeWindow({1,1})));
+  EXPECT_TRUE(window_util::HasOverlappingWindow(window_util::MakeWindow({2,2,2,2})));
 }
 
 
