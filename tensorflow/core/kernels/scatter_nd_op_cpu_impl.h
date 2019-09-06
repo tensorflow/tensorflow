@@ -47,55 +47,55 @@ class OpKernelContext;
 // Specialization of UpdateExecutor to CPU
 namespace update_executor {
 
-template <typename DeviceType, typename Input, typename Update, typename Output,
+template <typename T, typename Input, typename Update, typename Output,
           scatter_nd_op::UpdateOp OP>
 class UpdateExecutor {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input value, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input value, 
                                           Update update, Output output);
   
 };
 
-template <typename DeviceType, typename Input, typename Update, typename Output>
-class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::ASSIGN> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::ASSIGN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */, 
                                           Update update, Output output) {
     output.device(device) = update;
   }
 };
 
-template <typename DeviceType, typename Input, typename Update, typename Output>
-class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */, 
                                           Update update, Output output) {
     output.device(device) += update;
   }
 };
 
-template <typename DeviceType, typename Input, typename Update, typename Output>
-class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */, 
                                           Update update, Output output) {
     output.device(device) -= update;
   }
 };
 
-template <typename DeviceType, typename Input, typename Update, typename Output>
-class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */, 
                                           Update update, Output output) {
     output.device(device) = output.cwiseMax(update);
   }
 };
 
-template <typename DeviceType, typename Input, typename Update, typename Output>
-class UpdateExecutor<DeviceType, Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(const DeviceType& device, Input /* input */, 
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */, 
                                           Update update, Output output) {
     output.device(device) = output.cwiseMin(update);
   }
@@ -147,7 +147,7 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
         auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<
-            DeviceType, decltype(input_chip), decltype(update_chip), decltype(output_chip),
+            CPUDevice, decltype(input_chip), decltype(update_chip), decltype(output_chip),
             OP>::Execute(d, input_chip, update_chip, output_chip);
       }
     }
@@ -237,7 +237,7 @@ struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
         auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<
-            DeviceType, decltype(input_chip), decltype(update_chip), decltype(output_chip),
+            SYCLDevice, decltype(input_chip), decltype(update_chip), decltype(output_chip),
             OP>::Execute(d, input_chip, update_chip, output_chip);
       }
     }
