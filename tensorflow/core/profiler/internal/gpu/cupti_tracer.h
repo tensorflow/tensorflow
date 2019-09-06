@@ -121,6 +121,12 @@ struct CuptiTracerEvent {
 
 struct CuptiTracerOptions {
   bool enable_activity_api = true;
+
+  // Use cuda events to enclose the kernel/memcpy to measure device activity.
+  // enable_event_based_activity, if true, will override the enable_activity_api
+  // setting.
+  bool enable_event_based_activity = false;
+
   bool required_callback_api_events = true;
   // Maximum number of annotation strings that we can accommodate.
   uint64 max_annotation_strings = 1024 * 1024;
@@ -186,6 +192,26 @@ class AnnotationMap {
   TF_DISALLOW_COPY_AND_ASSIGN(AnnotationMap);
 };
 
+class CuptiDriverApiHook {
+ public:
+  virtual ~CuptiDriverApiHook() {}
+
+  virtual Status OnDriverApiEnter(int device_id, CUpti_CallbackDomain domain,
+                                  CUpti_CallbackId cbid,
+                                  const CUpti_CallbackData* callback_info) = 0;
+  virtual Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
+                                 CUpti_CallbackId cbid,
+                                 const CUpti_CallbackData* callback_info) = 0;
+  virtual Status Flush() = 0;
+
+ protected:
+  static Status AddDriverApiCallbackEvent(
+      CuptiTraceCollector* collector, CuptiInterface* cupti_interface,
+      int device_id, uint64 start_tsc, uint64 end_tsc,
+      CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
+      const CUpti_CallbackData* callback_info);
+};
+
 // The class use to enable cupti callback/activity API and forward the collected
 // trace events to CuptiTraceCollector. There should be only one CuptiTracer
 // per process.
@@ -212,7 +238,7 @@ class CuptiTracer {
   static int NumGpus();
 
  private:
-  CuptiTracer() {}
+  CuptiTracer() : num_gpus_(NumGpus()) {}
 
   Status EnableApiTracing();
   Status EnableActivityTracing();
@@ -221,6 +247,7 @@ class CuptiTracer {
   Status Finalize();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
 
+  int num_gpus_;
   absl::optional<CuptiTracerOptions> option_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
@@ -233,6 +260,8 @@ class CuptiTracer {
   CUpti_SubscriberHandle subscriber_;  // valid when api_tracing_enabled_.
 
   bool activity_tracing_enabled_ = false;
+
+  std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiTracer);
 };
