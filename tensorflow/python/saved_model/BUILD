@@ -323,12 +323,9 @@ tf_py_test(
     additional_deps = [
         ":loader",
         ":save",
-        ":save_options",
         ":signature_constants",
         ":tag_constants",
         "@absl_py//absl/testing:parameterized",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:error_interpolation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
