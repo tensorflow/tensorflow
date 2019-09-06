@@ -25,11 +25,9 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import control_flow_v2_toggles
-from tensorflow.python.ops import random_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -37,15 +35,17 @@ from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
-
 
 def random_gamma(shape):  # pylint: disable=invalid-name
   return random_ops.random_gamma(shape, 1.0)
@@ -859,9 +859,41 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         Body, [m, sum_of_powers],
         return_same_structure=False)[1]
     grad = gradients_impl.gradients(result, [n])
-    with self.cached_session() as sess:
-      self.assertEqual(self.evaluate(result), 364.)
-      self.assertSequenceEqual(self.evaluate(grad), [547.])
+    self.assertEqual(self.evaluate(result), 364.)
+    self.assertSequenceEqual(self.evaluate(grad), [547.])
+
+  @test_util.run_deprecated_v1
+  def testNestedWhileWithLegacyDefun(self):
+    n = constant_op.constant(3.)
+    m = constant_op.constant(5.)
+    sum_of_powers = constant_op.constant(0.)
+
+    def Body(i, previous_sum):
+      prod = constant_op.constant(1.)
+
+      def InnerBodyWrapper(c, v):
+
+        @function.Defun(dtypes.float32, dtypes.float32)
+        def InnerBody(c, v):
+          return c - 1., v * n
+
+        results = InnerBody(c, v)
+        results[0].set_shape([])
+        results[1].set_shape([])
+        return results
+
+      return i - 1., previous_sum + while_loop_v2(
+          lambda c, _: c > 0,
+          InnerBodyWrapper, [i, prod],
+          return_same_structure=False)[1]
+
+    result = while_loop_v2(
+        lambda i, _: i >= 0,
+        Body, [m, sum_of_powers],
+        return_same_structure=False)[1]
+    grad = gradients_impl.gradients(result, [n])
+    self.assertEqual(self.evaluate(result), 364.)
+    self.assertSequenceEqual(self.evaluate(grad), [547.])
 
   @test_util.run_deprecated_v1
   def testIdentityNodeInBody(self):
@@ -875,9 +907,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(
         lambda v: v < 8., Body, [x], return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
-    with self.cached_session() as sess:
-      self.assertEqual(self.evaluate(ret), 16.)
-      self.assertSequenceEqual(self.evaluate(grad), [32.])
+    self.assertEqual(self.evaluate(ret), 16.)
+    self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
