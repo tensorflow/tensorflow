@@ -789,7 +789,7 @@ void GenPythonOp::AddOutputGlobals() {
                        "\n");
 
     strings::StrAppend(&prelude_, "_", op_def_.name(),
-                       "Output = _collections.namedtuple(\n");
+                       "Output = collections.namedtuple(\n");
     const string tuple_type_prefix = "    ";
     const string tuple_type_suffix = strings::StrCat(
         "\"", op_def_.name(), "\", ", lower_op_name_outputs, ")");

@@ -967,32 +967,14 @@ void GenEagerPythonOp::AddDispatch(const string& prefix) {
 }
 
 void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
-  string arguments;
-  for (const auto& param_names : param_names_) {
-    const string renamed = param_names.GetRenameTo();
-    strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", renamed, "=",
-                       renamed);
-  }
-  strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", "name=name");
-
+  // Example:
+  //
+  // Identity = tf_export("raw_ops.Identity")(_ops._to_raw_op(identity))
   const string raw_function_name =
       python_op_gen_internal::AvoidPythonReserved(op_def_.name());
-
-  strings::StrAppend(&result_, "def ", raw_function_name, "(", parameters,
-                     "):\n");
-  strings::StrAppend(&result_, "  return ", function_name_, "(", arguments,
-                     ")\n");
-
-  // Copy the __doc__ from the original op and apply the decorators.
-  strings::StrAppend(&result_, raw_function_name, ".__doc__", " = ",
-                     function_name_, ".__doc__\n");
-  strings::StrAppend(&result_, raw_function_name, " = ",
-                     "_doc_controls.do_not_generate_docs(_kwarg_only(",
-                     raw_function_name, "))\n");
-
-  // Export.
-  strings::StrAppend(&result_, "tf_export(\"raw_ops.", raw_function_name,
-                     "\")(", raw_function_name, ")\n");
+  strings::StrAppend(&result_, raw_function_name, " = tf_export(\"raw_ops.",
+                     raw_function_name, "\")", "(_ops.to_raw_op(",
+                     function_name_, "))\n");
 }
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
@@ -1016,7 +998,7 @@ This file is MACHINE GENERATED! Do not edit.
 
   strings::StrAppend(&result, R"("""
 
-import collections as _collections
+import collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
@@ -1034,8 +1016,7 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.tf_export import kwarg_only as _kwarg_only
-from tensorflow.tools.docs import doc_controls as _doc_controls
+
 
 )");
 
