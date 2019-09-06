@@ -357,6 +357,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                     math_ops.matmul(b, a).numpy())
     self.assertAllClose(out, expected)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testNestedFunctionGraphNotOutOfDate(self, function_decorator):
+    @function_decorator
+    def f():
+      return constant_op.constant(1.)
+
+    class _Model(object):
+
+      @function_decorator
+      def g(self):
+        self.f = f.get_concrete_function()
+
+    model = _Model()
+    model.g()
+    concrete = model.f
+    weak_g_graph = weakref.ref(model.g.get_concrete_function().graph)
+    self.assertIs(weak_g_graph(), concrete.graph.outer_graph)
+    weak_g = weakref.ref(model.g)
+    del model
+    self.assertIsNone(weak_g())
+    self.assertIsNone(weak_g_graph())
+    self.assertIsNotNone(concrete.graph.outer_graph)
+    self.assertIs(ops.get_default_graph(), concrete.graph.outer_graph)
+
   def testGraphEagerIsolation(self):
 
     @function.defun
