@@ -35,6 +35,19 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "init_tensorflow",
+    srcs = [
+        "init_tensorflow_jni.cc",
+    ],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/java/jni",
+        "//tensorflow/lite/testing:init_tensorflow",
+    ],
+    alwayslink = 1,
+)
+
 # This includes all ops. If you want a smaller binary, you should copy and
 # modify builtin_ops_jni.cc.  You should then link your binary against both
 # ":native_framework_only" and your own version of ":native_builtin_ops".

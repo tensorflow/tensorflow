@@ -83,6 +83,8 @@ enum class CuptiTracerEventType {
   Generic = 100,
 };
 
+const char* GetTraceEventTypeName(const CuptiTracerEventType& type);
+
 enum class CuptiTracerEventSource {
   DriverCallback = 0,
   Activity = 1,
@@ -206,7 +208,7 @@ class CuptiTracer {
   Status ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                uint8_t* buffer, size_t size);
 
-  uint64 GetTimestamp();
+  static uint64 GetTimestamp();
   static int NumGpus();
 
  private:

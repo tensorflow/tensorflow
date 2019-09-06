@@ -34,6 +34,7 @@ tensorflow/core/protobuf/eager_service.pb.h
 tensorflow/core/protobuf/meta_graph.pb.h
 tensorflow/core/protobuf/named_tensor.pb.h
 tensorflow/core/protobuf/queue_runner.pb.h
+tensorflow/core/protobuf/remote_tensor_handle.pb.h
 tensorflow/core/protobuf/rewriter_config.pb.h
 tensorflow/core/protobuf/saved_object_graph.pb.h
 tensorflow/core/protobuf/saver.pb.h

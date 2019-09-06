@@ -218,6 +218,7 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
@@ -885,7 +886,6 @@ distribute_py_test(
     deps = [
         ":mirrored_strategy",
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_ops",
@@ -938,7 +938,6 @@ distribute_py_test(
     ],
     deps = [
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
@@ -1154,7 +1153,7 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 3,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
     ],

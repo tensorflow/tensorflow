@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_constants",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:work_group_picking",
@@ -82,7 +83,7 @@ cc_library(
     hdrs = ["dw_convolution_selector.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv_3x3_texture",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",

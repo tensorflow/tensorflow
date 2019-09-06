@@ -402,6 +402,72 @@ TEST_F(QuantizeConcatModelTest, AddRequantBeforeConcat) {
   EXPECT_EQ(model_.operator_codes[1]->version, 2);
 }
 
+class QuantizeSplitModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeSplitModelTest() {
+    input_model_ = ReadModel(internal::kModelSplit);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+// There are two outputs for split with different scales, the resulting model
+// should have the scales be hardcodes to the input scale value.
+TEST_F(QuantizeSplitModelTest, QuantizeSplit) {
+  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
+                              TensorType_INT8, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be two ops: the split and add in the original model.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 2);
+  EXPECT_EQ(subgraph->operators.size(), 2);
+  const auto& split = subgraph->operators[0];
+  const auto& add = subgraph->operators[1];
+  EXPECT_EQ(model_.operator_codes[split->opcode_index]->builtin_code,
+            BuiltinOperator_SPLIT);
+  EXPECT_EQ(model_.operator_codes[add->opcode_index]->builtin_code,
+            BuiltinOperator_ADD);
+
+  // There should be 5 tensors: input, output, split, split/split_dim, split:1.
+  EXPECT_EQ(subgraph->tensors.size(), 5);
+
+  EXPECT_EQ(subgraph->tensors[0]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[0]->name, "input");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0], 1.0);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[1]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[1]->name, "output");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->scale[0], 1.0);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[2]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[2]->name, "split");
+  EXPECT_EQ(subgraph->tensors[2]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[2]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->scale[0], 1.0);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->zero_point[0], -128);
+  EXPECT_EQ(subgraph->tensors[4]->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[4]->name, "split:1");
+  EXPECT_EQ(subgraph->tensors[4]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[4]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[4]->quantization->scale[0], 1.0);
+  EXPECT_FLOAT_EQ(subgraph->tensors[4]->quantization->zero_point[0], -128);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 2);
+  EXPECT_EQ(model_.operator_codes[1]->builtin_code, BuiltinOperator_SPLIT);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+}
+
 class QuantizeConvModel1Test : public QuantizeModelTest {
  protected:
   QuantizeConvModel1Test() {

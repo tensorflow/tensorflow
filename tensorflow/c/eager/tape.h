@@ -334,8 +334,9 @@ class ForwardAccumulator {
     // executions not forwarded to backward_tape should be ignored.
     bool accumulating;
   };
-  std::stack<AccumulatorCallState, std::vector<AccumulatorCallState>>
-      call_state_;
+  // A deque-backed stack, whose element references are not invalidated by
+  // pushes and pops at the back.
+  std::stack<AccumulatorCallState> call_state_;
 };
 
 // Template instantiations here
@@ -666,16 +667,15 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   Status s = InitialGradients(vspace, target_tensor_ids,
                               sources_that_are_targets, output_gradients,
                               tensor_tape_, state.op_tape, &gradients);
-  auto cleanup = [this, &state]() {
+  auto cleanup = gtl::MakeCleanup([this, &state]() {
     if (!persistent_) {
       // Release all backprop functions
       for (const auto& pair : state.op_tape) {
         pair.second.backward_function_deleter(pair.second.backward_function);
       }
     }
-  };
+  });
   if (!s.ok()) {
-    cleanup();
     return s;
   }
 
@@ -753,11 +753,17 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       s = vspace.CallBackwardFunction(trace.backward_function,
                                       unneeded_gradients, out_gradients,
                                       &in_gradients);
+      if (in_gradients.size() != trace.input_tensor_id.size()) {
+        return tensorflow::errors::Internal(
+            "Recorded operation '", trace.op_type,
+            "' returned too few gradients. Expected ",
+            trace.input_tensor_id.size(), " but received ",
+            in_gradients.size());
+      }
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
       if (!s.ok()) {
-        cleanup();
         return s;
       }
     } else {
@@ -916,6 +922,11 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   for (const TapeTensor& output_tensor : output_tensors) {
     // Ownership of `aid` transferred to CallBackwardFunction below.
     Gradient* aid = vspace_.Ones(output_tensor);
+    if (TF_PREDICT_FALSE(aid == nullptr)) {
+      return tensorflow::errors::Internal(
+          "Failed to create ones tensor for tensor ", output_tensor.GetID(),
+          " with dtype ", output_tensor.GetDType());
+    }
     forwardprop_aids.push_back(aid);
     int64 aid_id = vspace_.TensorId(aid);
     sources.push_back(aid_id);

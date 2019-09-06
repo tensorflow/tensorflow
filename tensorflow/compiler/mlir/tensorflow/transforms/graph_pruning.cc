@@ -69,15 +69,14 @@ namespace {
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 struct GraphPruning : public FunctionPass<GraphPruning> {
   void runOnFunction() override {
-    getFunction().walk<tf_executor::GraphOp>(
-        [](tf_executor::GraphOp graph) { prune_graph(graph); });
+    getFunction().walk([](tf_executor::GraphOp graph) { prune_graph(graph); });
   }
 };
 
 }  // namespace
 
-FunctionPassBase *CreateTFExecutorGraphPruningPass() {
-  return new GraphPruning();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass() {
+  return std::make_unique<GraphPruning>();
 }
 
 static PassRegistration<GraphPruning> pass(

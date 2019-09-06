@@ -145,11 +145,17 @@ def replicate(dataset, devices):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
   # pylint: disable=protected-access
+  dataset_device = dataset._variant_tensor.device
+
+  datasets = {}
+  if len(devices) == 1 and devices[0] == dataset_device:
+    datasets[devices[0]] = dataset
+    return datasets
+
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
     allow_stateful = dataset.options().experimental_allow_stateful
     graph_def = dataset._as_serialized_graph(allow_stateful=allow_stateful)
-  datasets = {}
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

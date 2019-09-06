@@ -20,10 +20,19 @@
 #include <memory>
 
 namespace mlir {
-struct FunctionPassBase;
+class LLVMTypeConverter;
+class OwningRewritePatternList;
+
+class ModuleOp;
+template <typename OpT> class OpPassBase;
+using ModulePassBase = OpPassBase<ModuleOp>;
+
+/// Collect a set of patterns to convert from the GPU dialect to NVVM.
+void populateGpuToNVVMConversionPatterns(LLVMTypeConverter &converter,
+                                         OwningRewritePatternList &patterns);
 
 /// Creates a pass that lowers GPU dialect operations to NVVM counterparts.
-std::unique_ptr<FunctionPassBase> createLowerGpuOpsToNVVMOpsPass();
+std::unique_ptr<ModulePassBase> createLowerGpuOpsToNVVMOpsPass();
 
 } // namespace mlir
 

@@ -110,6 +110,20 @@ def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
            "ArrayRef<NamedAttribute>":$attributes), [{
         return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
                                           attributes);
+      }]>,
+
+    /// Clone an operation with the given location and operands. This is used to
+    /// abstract away the optional underlying region creation.
+    InterfaceMethod<"Operation *", "clone",
+      (ins "OpBuilder &":$b, "Location":$loc, "ArrayRef<Value *>":$operands), [{
+        BlockAndValueMapping map;
+        unsigned numRegions = op.getOperation()->getNumRegions();
+        Operation *res = create(b, loc, operands, op.getAttrs());
+        assert(res->getNumRegions() == numRegions && "inconsistent # regions");
+        for (unsigned ridx = 0; ridx < numRegions; ++ridx)
+          op.getOperation()->getRegion(ridx).cloneInto(
+            &res->getRegion(ridx), map);
+        return res;
       }]>
   ];
 }

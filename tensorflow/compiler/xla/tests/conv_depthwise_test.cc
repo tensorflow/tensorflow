@@ -60,6 +60,7 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
     config.output_layout = {3, 0, 2, 1};
 
     if (activation_size == 1 && kernel_size == 2) {
+      config.stride = config.pad = config.lhs_dilate = -1;
       // Test for outer dim.
       config.output_dims = {batch, activation_size + kernel_size - 1,
                             activation_size + kernel_size, feature};

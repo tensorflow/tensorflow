@@ -1088,6 +1088,7 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
+          max_wait_secs=self._config.session_creation_timeout_secs,
           config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():

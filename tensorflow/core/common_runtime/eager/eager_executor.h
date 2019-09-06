@@ -32,9 +32,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class AsyncEagerNode;
 
 // A unit of execution for the EagerExecutor class below. Example subclasses
 // encapsulate execution of a TFE_Op, or copying a TFE_TensorHandle from one
@@ -42,10 +45,7 @@ namespace tensorflow {
 class EagerNode {
  public:
   EagerNode() {}
-  // Nodes should not do any work in their destructor. This is because if the
-  // node is being destructed by the EagerExecutor, then the node queue lock may
-  // be held. Instead opt for calling clean-up code as part of Run() or Abort(),
-  // since one of those are guaranteed to be run.
+
   virtual ~EagerNode() {}
 
   // Runs the computation corresponding to this node and blocks till the
@@ -57,13 +57,35 @@ class EagerNode {
   // For example, if the node would have computed some tensors in the Run(),
   // it should poison the corresponding tensor handles in this method.
   virtual void Abort(Status status) = 0;
+
+  // Returns nullptr iff this Eager node is synchronous.
+  virtual AsyncEagerNode* AsAsync() { return nullptr; }
+
+  virtual string DebugString() const = 0;
+};
+
+class AsyncEagerNode : public EagerNode {
+ public:
+  using EagerNode::EagerNode;  // Lift EagerNode constructors.
+
+  // This node will be cleaned up once the done callback is called.
+  virtual void RunAsync(StatusCallback done) = 0;
+
+  AsyncEagerNode* AsAsync() final { return this; }
+
+  // This is non-blocking. It returns the scheduling status.
+  // TODO(fishx): avoid calling this AsyncEagerNode::Run.
+  Status Run() final {
+    std::shared_ptr<Status> status(new Status);
+    RunAsync([status](const Status& s) { status->Update(s); });
+    return *status;
+  }
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
 // Note that this class is thread-safe.
 // TODO(agarwal): TFE_OpAddInput may currently block if it tries to access the
 // device of the input handle. Fix that.
-// TODO(agarwal): On error, mark all affected handles as corrupted.
 // TODO(agarwal): Implement support for control dependencies.
 // TODO(agarwal): Support out-of-order execution and dispatching multiple
 // EagerNode in parallel.
@@ -117,7 +139,16 @@ class EagerExecutor {
     kShutDown,
   };
 
+  struct NodeItem {
+    // Unique id generated in EagerExecutor::Add(). If item1.id < item2.id, it
+    // means item1.node is added before item2.node.
+    uint64 id;
+    std::unique_ptr<EagerNode> node;
+  };
+
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+
+  void NodeDone(NodeItem* item, const Status& status);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
@@ -131,23 +162,29 @@ class EagerExecutor {
       EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // If async has been enabled on this executor, just calls
-  // WaitForAllPendingNodes. Else:
-  //  - Aborts and destroys all pending nodes
-  //  - sets the status_ to an error if it does not already contain one
-  // `lock` is the lock that holds node_queue_mutex_.
+  // WaitForAllPendingNodes. Else sets the status_ to an error if it does not
+  // already contain one `lock` is the lock that holds node_queue_mutex_.
   // Precondition: state_ != kActive.
-  void WaitForOrDestroyAllPendingNodes(mutex_lock* lock)
+  void WaitForOrDestroyAllPendingNodes(
+      mutex_lock* lock,
+      std::vector<std::unique_ptr<NodeItem>>* nodes_to_destroy)
       EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
+
+  std::atomic<uint64> next_node_id_;
 
   mutable mutex node_queue_mutex_;
 
   // Used to signal that some EagerNodes are pending execution.
   condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
 
-  // Queue of pending EagerNodes.
-  std::queue<std::unique_ptr<EagerNode>> node_queue_
+  // Queue of pending NodeItems. Ordered by NodeItem::id.
+  std::queue<std::unique_ptr<NodeItem>> node_queue_
+      GUARDED_BY(node_queue_mutex_);
+
+  // Owned the NodeItem in it. Ordered by NodeItem::id.
+  std::map<uint64, NodeItem*, std::less<uint64>> unfinished_nodes_
       GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
@@ -157,8 +194,9 @@ class EagerExecutor {
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
   // done executing, or if an error is found in execution of any EagerNode.
-  std::multimap<EagerNode*, condition_variable*> node_done_notifications_
-      GUARDED_BY(node_queue_mutex_);
+  // The map is ordered by id.
+  std::multimap<uint64, condition_variable*, std::less<uint64>>
+      node_done_notifications_ GUARDED_BY(node_queue_mutex_);
 
   // thread_exited_notification_ is notified by the `thread_` right before it
   // exits.

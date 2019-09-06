@@ -43,6 +43,7 @@ multiclass BinaryOpPattern<Op src, SPV_Op tgt> {
   }
 }
 
+defm : BinaryOpPattern<AddFOp, SPV_FAddOp>;
 defm : BinaryOpPattern<MulFOp, SPV_FMulOp>;
 
 #endif // MLIR_CONVERSION_STANDARDTOSPIRV_TD

@@ -34,7 +34,7 @@ public:
   void runOnFunction() override {
     FuncOp func = getFunction();
 
-    func.walk<loop::ForOp>([](loop::ForOp op) {
+    func.walk([](loop::ForOp op) {
       // Ignore nested loops.
       if (op.getParentOfType<loop::ForOp>())
         return;

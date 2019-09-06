@@ -159,6 +159,10 @@ class ShapeInference {
       const Shape& operand_shape, const Shape& init_value, const Window& window,
       const ProgramShape& to_apply_shape);
 
+  static StatusOr<Shape> InferReduceWindowShape(const Shape& operand_shape,
+                                                const Shape& init_value,
+                                                const Window& window);
+
   // Infers the shape produced by scattering the given source shape to the
   // selected indices of each window on the operand shape.
   static StatusOr<Shape> InferSelectAndScatterShape(
@@ -294,6 +298,15 @@ class ShapeInference {
 
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
                                                     int64 dimension);
+
+  // Helper function for creating a Window proto from user-supplied data.
+  // Returns error if the user-supplied data was invalid.
+  static StatusOr<Window> InferWindowFromDimensions(
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary

@@ -29,6 +29,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -66,6 +67,54 @@ struct StdOpAsmInterface : public OpAsmDialectInterface {
     } else {
       os << "cst";
     }
+  }
+};
+
+/// This class defines the interface for handling inlining with standard
+/// operations.
+struct StdInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// All operations within standard ops can be inlined.
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op, Block *newDest) const final {
+    // Only "std.return" needs to be handled here.
+    auto returnOp = dyn_cast<ReturnOp>(op);
+    if (!returnOp)
+      return;
+
+    // Replace the return with a branch to the dest.
+    OpBuilder builder(op);
+    builder.create<BranchOp>(op->getLoc(), newDest,
+                             llvm::to_vector<4>(returnOp.getOperands()));
+    op->erase();
+  }
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value *> valuesToRepl) const final {
+    // Only "std.return" needs to be handled here.
+    auto returnOp = cast<ReturnOp>(op);
+
+    // Replace the values directly with the return operands.
+    assert(returnOp.getNumOperands() == valuesToRepl.size());
+    for (const auto &it : llvm::enumerate(returnOp.getOperands()))
+      valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
   }
 };
 } // end anonymous namespace
@@ -122,7 +171,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
-  addInterfaces<StdOpAsmInterface>();
+  addInterfaces<StdInlinerInterface, StdOpAsmInterface>();
 }
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
@@ -2129,6 +2178,63 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
 
 OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
   return impl::foldCastOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// Helpers for Tensor[Load|Store]Op
+//===----------------------------------------------------------------------===//
+
+static Type getTensorTypeFromMemRefType(Builder &b, Type type) {
+  if (auto memref = type.dyn_cast<MemRefType>())
+    return b.getTensorType(memref.getShape(), memref.getElementType());
+  return b.getNoneType();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorLoadOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, TensorLoadOp op) {
+  *p << "tensor_load " << *op.getOperand();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getOperand()->getType();
+}
+
+static ParseResult parseTensorLoadOp(OpAsmParser *parser,
+                                     OperationState *result) {
+  OpAsmParser::OperandType op;
+  Type type;
+  return failure(parser->parseOperand(op) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(op, type, result->operands) ||
+                 parser->addTypeToList(
+                     getTensorTypeFromMemRefType(parser->getBuilder(), type),
+                     result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// TensorStoreOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, TensorStoreOp op) {
+  *p << "tensor_store " << *op.tensor() << ", " << *op.memref();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.memref()->getType();
+}
+
+static ParseResult parseTensorStoreOp(OpAsmParser *parser,
+                                      OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(
+      parser->parseOperandList(ops, /*requiredOperandCount=*/2) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(
+          ops, {getTensorTypeFromMemRefType(parser->getBuilder(), type), type},
+          loc, result->operands));
 }
 
 //===----------------------------------------------------------------------===//

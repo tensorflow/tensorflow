@@ -460,6 +460,78 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
         rt,
         [[b'a', b'b'], [], [b'c', b'd', b'e'], [b'f'], [b'g']])
 
+  def testFromUniformRowLength(self):
+    values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    a1 = RaggedTensor.from_uniform_row_length(values, 2)
+    a2 = RaggedTensor.from_uniform_row_length(values, 2, 8)
+    self.assertAllEqual(a1, [[1, 2], [3, 4], [5, 6], [7, 8],
+                             [9, 10], [11, 12], [13, 14], [15, 16]])
+    self.assertAllEqual(a1, a2)
+    self.assertEqual(a1.shape.as_list(), [8, 2])
+    self.assertEqual(a2.shape.as_list(), [8, 2])
+
+    b1 = RaggedTensor.from_uniform_row_length(a1, 2)
+    b2 = RaggedTensor.from_uniform_row_length(a1, 2, 4)
+    self.assertAllEqual(b1, [[[1, 2], [3, 4]], [[5, 6], [7, 8]],
+                             [[9, 10], [11, 12]], [[13, 14], [15, 16]]])
+    self.assertAllEqual(b1, b2)
+    self.assertEqual(b1.shape.as_list(), [4, 2, 2])
+    self.assertEqual(b2.shape.as_list(), [4, 2, 2])
+
+    c1 = RaggedTensor.from_uniform_row_length(b1, 2)
+    c2 = RaggedTensor.from_uniform_row_length(b1, 2, 2)
+    self.assertAllEqual(c1, [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                             [[[9, 10], [11, 12]], [[13, 14], [15, 16]]]])
+    self.assertAllEqual(c1, c2)
+    self.assertEqual(c1.shape.as_list(), [2, 2, 2, 2])
+    self.assertEqual(c2.shape.as_list(), [2, 2, 2, 2])
+
+  def testFromUniformRowLengthWithEmptyValues(self):
+    empty_values = []
+    a = RaggedTensor.from_uniform_row_length(empty_values, 0, nrows=10)
+    self.assertEqual(a.shape.as_list(), [10, 0])
+
+    b = RaggedTensor.from_uniform_row_length(a, 2)
+    self.assertEqual(b.shape.as_list(), [5, 2, 0])
+
+    # Make sure we avoid divide-by-zero when finding nrows for nvals=rowlen=0.
+    c = RaggedTensor.from_uniform_row_length(empty_values, 0)
+    self.assertEqual(c.shape.as_list(), [0, 0])
+    d = RaggedTensor.from_uniform_row_length(empty_values, 0, nrows=0)
+    self.assertEqual(d.shape.as_list(), [0, 0])
+
+  def testFromUniformRowLengthWithPlaceholders(self):
+    ph_values = array_ops.placeholder_with_default([1, 2, 3, 4, 5, 6], [None])
+    ph_rowlen = array_ops.placeholder_with_default(3, None)
+    rt1 = RaggedTensor.from_uniform_row_length(ph_values, 3)
+    rt2 = RaggedTensor.from_uniform_row_length(ph_values, ph_rowlen)
+    rt3 = RaggedTensor.from_uniform_row_length([1, 2, 3, 4, 5, 6], ph_rowlen)
+    self.assertAllEqual(rt1, [[1, 2, 3], [4, 5, 6]])
+    self.assertAllEqual(rt2, [[1, 2, 3], [4, 5, 6]])
+    self.assertAllEqual(rt3, [[1, 2, 3], [4, 5, 6]])
+    if context.executing_eagerly():
+      self.assertEqual(rt1.shape.as_list(), [2, 3])
+      self.assertEqual(rt2.shape.as_list(), [2, 3])
+      self.assertEqual(rt3.shape.as_list(), [2, 3])
+    else:
+      self.assertEqual(rt1.shape.as_list(), [None, 3])
+      self.assertEqual(rt2.shape.as_list(), [None, None])
+      self.assertEqual(rt3.shape.as_list(), [None, None])
+
+    b = RaggedTensor.from_uniform_row_length(rt1, 2)
+    self.assertAllEqual(b, [[[1, 2, 3], [4, 5, 6]]])
+
+    # Make sure we avoid divide-by-zero when finding nrows for nvals=rowlen=0.
+    ph_empty_values = array_ops.placeholder_with_default(
+        array_ops.zeros([0], dtypes.int64), [None])
+    ph_zero = array_ops.placeholder_with_default(0, [])
+    c = RaggedTensor.from_uniform_row_length(ph_empty_values, ph_zero)
+    if context.executing_eagerly():
+      self.assertEqual(c.shape.as_list(), [0, 0])
+    else:
+      self.assertEqual(c.shape.as_list(), [None, None])
+
   def testFromNestedValueRowIdsWithDerivedNRows(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     nested_value_rowids = [
@@ -1371,6 +1443,30 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
        'factory': RaggedTensor.from_row_limits,
        'values': 10,
        'row_limits': [0, 1]},
+
+      # from_uniform_row_length
+      {'descr': 'rowlen * nrows != nvals (1)',
+       'factory': RaggedTensor.from_uniform_row_length,
+       'values': [1, 2, 3, 4, 5],
+       'uniform_row_length': 3},
+      {'descr': 'rowlen * nrows != nvals (2)',
+       'factory': RaggedTensor.from_uniform_row_length,
+       'values': [1, 2, 3, 4, 5],
+       'uniform_row_length': 6},
+      {'descr': 'rowlen * nrows != nvals (3)',
+       'factory': RaggedTensor.from_uniform_row_length,
+       'values': [1, 2, 3, 4, 5, 6],
+       'uniform_row_length': 3,
+       'nrows': 3},
+      {'descr': 'rowlen must be a scalar',
+       'factory': RaggedTensor.from_uniform_row_length,
+       'values': [1, 2, 3, 4],
+       'uniform_row_length': [2]},
+      {'descr': 'rowlen must be nonnegative',
+       'factory': RaggedTensor.from_uniform_row_length,
+       'values': [1, 2, 3, 4],
+       'uniform_row_length': -1},
+
   ])
   def testFactoryValidation(self, descr, factory, **kwargs):
     # When input tensors have shape information, some of these errors will be

@@ -544,6 +544,13 @@ static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
     case '{':
       nestedPunctuation.push_back(c);
       continue;
+    case '-':
+      // Treat `->` as a special token.
+      if (!symName.empty() && symName.front() == '>') {
+        symName = symName.drop_front();
+        continue;
+      }
+      break;
     // Reject types with mismatched brackets.
     case '>':
       if (nestedPunctuation.pop_back_val() != '<')
@@ -1504,6 +1511,11 @@ void OperationPrinter::print(Operation *op) {
 
 void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
                                         raw_ostream &stream) const {
+  if (!value) {
+    stream << "<<NULL>>";
+    return;
+  }
+
   int resultNo = -1;
   auto lookupValue = value;
 

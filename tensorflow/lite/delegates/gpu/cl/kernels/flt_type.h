@@ -45,6 +45,26 @@ class FLT {
   std::string name_;
 };
 
+class FLT2 {
+ public:
+  FLT2() = default;
+  FLT2(CalculationsPrecision precision, const float2& value);
+
+  const void* GetData() const;
+  size_t GetSize() const { return f32_ ? 8 : 4; }
+  bool Active() const { return active_; }
+  std::string GetDeclaration() const;
+  std::string GetName() const { return name_; }
+  void SetName(const std::string& name) { name_ = name; }
+
+ private:
+  float2 f_value_;
+  half2 h_value_;
+  bool f32_;
+  bool active_ = false;
+  std::string name_;
+};
+
 class FLT4 {
  public:
   FLT4() {}

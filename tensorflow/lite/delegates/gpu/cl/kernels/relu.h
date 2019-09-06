@@ -40,17 +40,20 @@ class ReLU : public ElementwiseOperation {
   std::string GetArgsDeclaration() const override;
   Status BindArguments(CLKernel* kernel) override;
 
-  friend ReLU CreateReLU(const OperationDef& definition,
+  friend ReLU CreateReLU(const CreationContext& creation_context,
+                         const OperationDef& definition,
                          const ReLUAttributes& attr);
 
  private:
-  ReLU(const OperationDef& definition, const ReLUAttributes& attr);
+  ReLU(const OperationDef& definition, const ReLUAttributes& attr,
+       CalculationsPrecision scalar_precision);
 
   FLT alpha_;
   FLT clip_;
 };
 
-ReLU CreateReLU(const OperationDef& definition, const ReLUAttributes& attr);
+ReLU CreateReLU(const CreationContext& creation_context,
+                const OperationDef& definition, const ReLUAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

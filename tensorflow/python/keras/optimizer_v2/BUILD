@@ -212,6 +212,7 @@ py_test(
         "no_windows",
         # TODO(b/127092862): Re-enable this test in Kokoro.
         "no_oss",
+        "notap",  # b/140242244
     ],
     deps = [
         ":optimizer_v2",

@@ -268,7 +268,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
 
   // Reshape batch_dim G*N -> [G,N]
-  std::vector<int64> reshape_dims = lhs->shape().dimensions();
+  std::vector<int64> reshape_dims = SpanToVector(lhs->shape().dimensions());
   auto num_groups = conv->feature_group_count();
   CHECK_EQ(input_batch % num_groups, 0)
       << "Input batch should be an exact multiple of feature group count";
@@ -290,7 +290,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);
   std::vector<int64> transpose_reshape_dims =
-      lhs_reshape_1->shape().dimensions();
+      SpanToVector(lhs_reshape_1->shape().dimensions());
   transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
                                input_batch_dimension);
   transpose_reshape_dims.insert(
@@ -539,7 +539,7 @@ MatchBackwardInput(HloInstruction* conv) {
     reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
         reverse_filter->shape(), reverse_filter,
         AsInt64Slice(dnums.kernel_spatial_dimensions())));
-    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
+    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
   // Calculate the 'rhs' that goes into the backward input convolution.
@@ -572,7 +572,7 @@ MatchBackwardInput(HloInstruction* conv) {
 
   // Reshape [H, W, ..., in_depth, out_depth / G] -> [H, W, ..., G, in_depth/G,
   // out_depth / G]
-  std::vector<int64> reshape_dims = rhs->shape().dimensions();
+  std::vector<int64> reshape_dims = SpanToVector(rhs->shape().dimensions());
   auto num_groups = conv->feature_group_count();
   CHECK_EQ(input_features % num_groups, 0)
       << "Input feature count should be an exact multiple of feature group "
@@ -593,7 +593,8 @@ MatchBackwardInput(HloInstruction* conv) {
   transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
   transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
                         input_feature_dimension);
-  std::vector<int64> transpose_reshape_dims = rhs->shape().dimensions();
+  std::vector<int64> transpose_reshape_dims =
+      SpanToVector(rhs->shape().dimensions());
   transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
                                input_feature_dimension);
   transpose_reshape_dims.insert(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,11 +33,13 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -533,9 +536,8 @@ LogicalResult Verify(MergeOp merge) {
   if (data_type.isa<ControlType>())
     return merge.emitOpError() << "expects a non-control input";
 
-  // Check that all operands can be broadcasted to a common type compatible with
-  // the result type.
-  Type broadcasted_type = merge.output()->getType();
+  // Check that each operand can be individually broadcasted to the output type.
+  Type output_type = merge.output()->getType();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
@@ -546,22 +548,13 @@ LogicalResult Verify(MergeOp merge) {
 
     // Variant types may have opaque subtypes information that need not match
     // between the two types so drop them before computing the broadcasted type.
-    Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
-                                          DropVariantSubTypes(operand_type));
-    if (!new_broadcasted_type)
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropVariantSubTypes(output_type), DropVariantSubTypes(operand_type));
+    if (!broadcasted_type)
       return merge.emitOpError()
-             << "expects all operands to be broadcastable"
-             << " but got " << broadcasted_type << " vs " << operand_type;
-    // Use the broadcasted type unless we're losing the rank information here.
-    // This is because for example starting with a result of tensor<4xf32>, if
-    // the first operand is unranked, the broadcasted type will be unranked.
-    // Then any tensor operand will be broadcastable to this unranked type.
-    if (!broadcasted_type.cast<TensorType>().hasRank() ||
-        new_broadcasted_type.cast<TensorType>().hasRank())
-      broadcasted_type = new_broadcasted_type;
+             << "expects all operands to be broadcastable with output type"
+             << " but got " << operand_type << " vs " << output_type;
   }
-
   return success();
 }
 
@@ -1024,6 +1017,87 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.island
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes IslandOps with no inner ops, no control
+// operands and no data results. Control result users will have their relevant
+// operands removed.
+struct DropEmptyIslandNoOperandNoDataResult
+    : public OpRewritePattern<IslandOp> {
+  using OpRewritePattern<IslandOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(IslandOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
+        !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
+      return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+
+// This pattern matches and removes IslandOps with no inner ops, no control
+// operands, one data result and no control result user. The single data result
+// (from YieldOps first operand) is forwarded to the IslandOp single data result
+// users.
+struct DropEmptyIslandNoOperandOneDataResult
+    : public OpRewritePattern<IslandOp> {
+  using OpRewritePattern<IslandOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(IslandOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
+        !op.control()->use_empty() ||
+        !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
+      return matchFailure();
+
+    rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
+
+    return matchSuccess();
+  }
+};
+
+// TODO(lyandy): Add canonicalization for empty IslandOps with more than one
+// control operand and no data results.
+
+}  // anonymous namespace
+
+void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<DropEmptyIslandNoOperandNoDataResult,
+                 DropEmptyIslandNoOperandOneDataResult>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// Folders
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// tf_executor.island
+//===----------------------------------------------------------------------===//
+
+LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
+                             llvm::SmallVectorImpl<OpFoldResult> &results) {
+  // This folds IslandOps with no inner ops, one control operand and no data
+  // results. The single control operand is forwarded to the IslandOp control
+  // result users.
+  if (getNumOperands() != 1 || getNumResults() != 1 ||
+      !HasSingleOpInBlock<YieldOp>(&GetBody()))
+    return failure();
+
+  results.emplace_back(getOperand(0));
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

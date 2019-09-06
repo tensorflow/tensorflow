@@ -476,7 +476,7 @@ class FuncGraph(ops.Graph):
     captured_value = self.capture(value)
     return captured_value.op
 
-  def create_op(
+  def _create_op_internal(
       self,
       op_type,
       inputs,
@@ -485,7 +485,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     """Like Graph.create_op, except handles external input tensors.
 
@@ -511,15 +510,12 @@ class FuncGraph(ops.Graph):
         proto).
       op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
         the operation will have.
-      compute_shapes: (Optional.) Deprecated. Has no effect (shapes are always
-        computed).
       compute_device: (Optional.) If True, device functions will be executed
         to compute the device property of the Operation.
 
     Returns:
       An `Operation` object.
     """
-    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
       return self._capture_by_value(op_type, inputs, dtypes, input_types, name,

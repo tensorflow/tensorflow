@@ -242,9 +242,20 @@ PyLocalClient::PyLocalClient(
     allocator_ = client_->backend().memory_allocator();
   }
 
+  local_devices_.resize(device_states_.size());
   for (const std::shared_ptr<Device>& device : devices_) {
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
+
+    if (device->local_device_ordinal() != -1) {
+      int idx = device->local_device_ordinal();
+      CHECK(local_devices_[idx] == nullptr) << idx;
+      CHECK_LT(idx, local_devices_.size());
+      local_devices_[idx] = device;
+    }
+  }
+  for (int idx = 0; idx < local_devices_.size(); ++idx) {
+    CHECK(local_devices_[idx] != nullptr) << idx;
   }
 }
 

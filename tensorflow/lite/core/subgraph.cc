@@ -640,7 +640,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
             "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you apply/link the Flex delegate before inference.");
+            "Make sure you invoke the Flex delegate before inference.");
       } else {
         ReportError("Encountered unresolved custom op: %s.",
                     op_reg.custom_name);

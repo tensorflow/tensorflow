@@ -69,7 +69,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
-from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -929,6 +929,7 @@ def constant(value, dtype=None, shape=None, name=None):
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
+@keras_export('keras.backend.is_keras_tensor')
 def is_keras_tensor(x):
   """Returns whether `x` is a Keras tensor.
 
@@ -1037,16 +1038,13 @@ def placeholder(shape=None,
       ragged_rank = 0
       for i in range(1, len(shape)):
         if shape[i] is None:
-          ragged_rank += 1
-        else:
-          break
-      value_shape = shape[(ragged_rank + 1):]
-
-      x = ragged_factory_ops.placeholder(
-          dtype=dtype,
-          ragged_rank=ragged_rank,
-          value_shape=value_shape,
-          name=name)
+          ragged_rank = i
+      type_spec = ragged_tensor.RaggedTensorSpec(
+          shape=shape, dtype=dtype, ragged_rank=ragged_rank)
+      def tensor_spec_to_placeholder(tensorspec):
+        return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
+      x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
+                             expand_composites=True)
     else:
       x = array_ops.placeholder(dtype, shape=shape, name=name)
   return x
@@ -3149,7 +3147,7 @@ def get_value(x):
   """
   if not tensor_util.is_tensor(x):
     return x
-  if context.executing_eagerly():
+  if context.executing_eagerly() or isinstance(x, ops.EagerTensor):
     return x.numpy()
   if not getattr(x, '_in_graph_mode', True):
     # This is a variable which was created in an eager context, but is being
@@ -3161,7 +3159,8 @@ def get_value(x):
     # This method of evaluating works inside the Keras FuncGraph.
     return function([], x)(x)
 
-  return x.eval(session=get_session((x,)))
+  with x.graph.as_default():
+    return x.eval(session=get_session((x,)))
 
 
 @keras_export('keras.backend.batch_get_value')

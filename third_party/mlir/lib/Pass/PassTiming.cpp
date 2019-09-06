@@ -221,9 +221,9 @@ struct PassTiming : public PassInstrumentation {
 
 /// Start a new timer for the given pass.
 void PassTiming::startPassTimer(Pass *pass) {
-  Timer *timer = getTimer(pass, [pass] {
-    if (isModuleToFunctionAdaptorPass(pass))
-      return StringRef("Function Pipeline");
+  Timer *timer = getTimer(pass, [pass]() -> std::string {
+    if (auto pipelineName = getAdaptorPassOpName(pass))
+      return ("'" + *pipelineName + "' Pipeline").str();
     return pass->getName();
   });
 
@@ -246,9 +246,9 @@ void PassTiming::runAfterPass(Pass *pass, Operation *) {
   assert(!activeTimers.empty() && "expected active timer");
   Timer *timer = activeTimers.pop_back_val();
 
-  // If this is an ModuleToFunctionPassAdaptorParallel, then we need to merge in
-  // the timing data for the other threads.
-  if (isa<ModuleToFunctionPassAdaptorParallel>(pass)) {
+  // If this is an OpToOpPassAdaptorParallel, then we need to merge in the
+  // timing data for the other threads.
+  if (isa<OpToOpPassAdaptorParallel>(pass)) {
     // The asychronous pipeline timers should exist as children of root timers
     // for other threads.
     for (auto &rootTimer : llvm::make_early_inc_range(rootTimers)) {

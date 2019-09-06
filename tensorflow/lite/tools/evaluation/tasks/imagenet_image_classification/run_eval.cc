@@ -70,8 +70,13 @@ bool EvaluateModel(const std::string& model_file_path,
   eval.SetAllLabels(model_labels);
   if (eval.Init() != kTfLiteOk) return false;
 
-  for (const auto& image_label : image_labels) {
-    eval.SetInputs(image_label.image, image_label.label);
+  const int step = image_labels.size() / 100;
+  for (int i = 0; i < image_labels.size(); ++i) {
+    if (step > 1 && i % step == 0) {
+      LOG(INFO) << "Evaluated: " << i / step << "%";
+    }
+
+    eval.SetInputs(image_labels[i].image, image_labels[i].label);
     if (eval.Run() != kTfLiteOk) return false;
   }
 

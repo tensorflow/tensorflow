@@ -162,12 +162,28 @@ string MemorySpaceString(MemorySpace memory_space) {
 
 namespace {
 
+bool IsPointerCheckDisabled() {
+  // We want to check pointers for validity normally, but the
+  // cudaPointerGetAttributes call actually returns an error if it is given a
+  // host pointer.  This confuses tools like cuda-memcheck and cuda-gdb.
+  //
+  // TF_DISABLE_GPU_POINTER_CHECKS gives us an escape hatch for reducing logspam
+  // when using cuda-memcheck and cuda-gdb.
+  return std::getenv("TF_DISABLE_GPU_POINTER_CHECKS") != nullptr;
+}
+
 // Checks that the pointer is to a location on the device it purports to be.
 // PtrT is one of CUdeviceptr or void*.  If it's a CUdeviceptr, then
 // cudaPointerGetAttributes should not fail, and return a memoryType of
 // cudaMemoryTypeDevice.
 template <typename PtrT>
 void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
+  static bool pointer_check_disabled = IsPointerCheckDisabled();
+
+  if (pointer_check_disabled) {
+    return;
+  }
+
   bool is_host_ptr = !std::is_same<PtrT, CUdeviceptr>::value;
   cudaPointerAttributes attributes;
   cudaError_t err =

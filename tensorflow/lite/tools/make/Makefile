@@ -99,20 +99,7 @@ $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
-tensorflow/lite/experimental/ruy/allocator.cc \
-tensorflow/lite/experimental/ruy/block_map.cc \
-tensorflow/lite/experimental/ruy/blocking_counter.cc \
-tensorflow/lite/experimental/ruy/context.cc \
-tensorflow/lite/experimental/ruy/detect_arm.cc \
-tensorflow/lite/experimental/ruy/kernel_arm32.cc \
-tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack_arm.cc \
-tensorflow/lite/experimental/ruy/pmu.cc \
-tensorflow/lite/experimental/ruy/thread_pool.cc \
-tensorflow/lite/experimental/ruy/trace.cc \
-tensorflow/lite/experimental/ruy/trmul.cc \
-tensorflow/lite/experimental/ruy/tune.cc \
-tensorflow/lite/experimental/ruy/wait.cc
+$(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -123,16 +110,22 @@ $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
+CORE_CC_ALL_SRCS += \
+	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -168,6 +161,7 @@ ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
   CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
+	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_util.cc
 	LIBS += -lrt
 else
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc

@@ -140,7 +140,7 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
 void LegalizeControlFlow::runOnFunction() {
   auto func = getFunction();
   llvm::SmallVector<WhileOp, 4> control_flow_ops;
-  func.walk<WhileOp>([&](WhileOp op) { control_flow_ops.push_back(op); });
+  func.walk([&](WhileOp op) { control_flow_ops.push_back(op); });
 
   for (auto& op : control_flow_ops) {
     if (LowerWhileOp(op)) return signalPassFailure();

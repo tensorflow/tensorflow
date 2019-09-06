@@ -30,17 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
-namespace mlir {
-
+namespace mlir_gpu {
 namespace {
 
-using gpu::Thunk;
-using gpu::ThunkEmitter;
-using gpu::ThunkSequence;
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
 using ::mlir::Builder;
@@ -53,10 +50,14 @@ using ::mlir::OpBuilder;
 using ::mlir::Type;
 using ::mlir::Value;
 using ::mlir::LLVM::LLVMDialect;
+using ::xla::gpu::Thunk;
+using ::xla::gpu::ThunkEmitter;
+using ::xla::gpu::ThunkSequence;
 
+// TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
                     ArrayRef<Type> rets, ArrayRef<Value*> args,
-                    mlir::ArrayRef<std::pair<Identifier, Attribute>> attrs) {
+                    ArrayRef<std::pair<Identifier, Attribute>> attrs) {
   switch (opcode) {
     case HloOpcode::kAdd:
       func_builder.create<::mlir::xla_lhlo::AddOp>(loc, rets, args, attrs);
@@ -80,8 +81,8 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
       break;
     default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Opcode: ", opcode, " is not supported."));
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Opcode ", HloOpcodeString(opcode), " is not supported."));
   }
   return Status::OK();
 }
@@ -116,10 +117,10 @@ StatusOr<::mlir::MemRefType> ConvertTensorType(const Shape& shape,
   }
 }
 
-StatusOr<mlir::Type> ConvertType(const Shape& shape, mlir::Builder builder) {
+StatusOr<Type> ConvertType(const Shape& shape, Builder builder) {
   if (shape.IsTuple()) {
-    mlir::Type mlir_type;
-    llvm::SmallVector<mlir::Type, 4> contents;
+    Type mlir_type;
+    llvm::SmallVector<Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
     for (const auto& subtype : shape.tuple_shapes()) {
       TF_ASSIGN_OR_RETURN(auto mlir_subtype, ConvertType(subtype, builder));
@@ -130,9 +131,9 @@ StatusOr<mlir::Type> ConvertType(const Shape& shape, mlir::Builder builder) {
   return ConvertTensorType(shape, builder);
 }
 
-StatusOr<llvm::SmallVector<mlir::Type, 4>> GetInstructionArgTypes(
-    const HloInstruction& instruction, mlir::Builder builder) {
-  llvm::SmallVector<mlir::Type, 4> arg_types;
+StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
+    const HloInstruction& instruction, Builder builder) {
+  llvm::SmallVector<Type, 4> arg_types;
   for (auto operand : instruction.operands()) {
     TF_ASSIGN_OR_RETURN(auto operand_type,
                         ConvertType(operand->shape(), builder));
@@ -188,33 +189,51 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
   mlir_module_.push_back(function);
   function.addEntryBlock();
   instruction_to_mlir_func_[&instr] = function;
-  return Status::OK();
+  return function;
 }
 
 Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
-  mlir::OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<mlir::Value*, 4> arg_values{function.args_begin(),
-                                                function.args_end()};
-  llvm::SmallVector<mlir::NamedAttribute, 10> attributes{
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values{function.args_begin(),
+                                          function.args_end()};
+  llvm::SmallVector<NamedAttribute, 10> attributes{
       builder_.getNamedAttr("name", builder_.getStringAttr(instr->name()))};
-  TF_RETURN_IF_ERROR(
-      InsertMlirOp(instr->opcode(), func_builder, builder_.getUnknownLoc(),
-                   mlir::ArrayRef<mlir::Type>{}, arg_values, attributes));
+  TF_RETURN_IF_ERROR(InsertMlirOp(instr->opcode(), func_builder,
+                                  builder_.getUnknownLoc(), ArrayRef<Type>{},
+                                  arg_values, attributes));
   return Status::OK();
 }
 
 Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
-  LOG(FATAL) << "Not implemented yet.";
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*fusion));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value*, 4> arg_values(function.getArguments());
+  auto attribute =
+      builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
+
+  auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
+      builder_.getUnknownLoc(), attribute);
+
+  HloDialectEmitter hlo_emitter(&fusion_op.region(), arg_values);
+
+  TF_RETURN_IF_ERROR(
+      hlo_emitter.EmitComputation(*fusion->fused_instructions_computation()));
+
+  return Status::OK();
 }
 
 Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {
   return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
-Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {
-  LOG(FATAL) << "Not implemented yet.";
+Status LhloDialectEmitter::HandleParameter(HloInstruction* parameter) {
+  return Status::OK();
 }
 
-}  // namespace mlir
+Status LhloDialectEmitter::FinishVisit(HloInstruction* root) {
+  return Status::OK();
+}
+
+}  // namespace mlir_gpu
 }  // namespace xla

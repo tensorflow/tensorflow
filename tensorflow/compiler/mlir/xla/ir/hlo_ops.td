@@ -119,7 +119,13 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
 
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 
+def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
+
+def HLO_LogOp: HLO_UnaryElementwiseOp<"log", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
+
 def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
+
+def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_SignOp;
 
@@ -188,15 +194,22 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_ReduceOp: HLO_Op<"reduce", [NoSideEffect]>, BASE_HLO_ReduceOp {
-
+def HLO_ReduceOp: HLO_Op<"reduce", [
+      NoSideEffect,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands_and_init,
-    SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );
 
   let results = (outs Variadic<HLO_Tensor>);
+
+  // TODO(hinsu): Verify that the attached body arguments and results are
+  // compatible with reduce op's operands.
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO(hinsu): Implement custom printer and parser.
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -758,6 +771,22 @@ def HLO_TransposeOp: HLO_Op<"transpose",
 
     return success();
   }];
+}
+
+def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
+  let summary = [{
+    The `hlo.return` operation terminates a region and returns values.
+  }];
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$results
+  );
+
+  // Disable conversion operator for return op as the op is not an actual XLA
+  // instruction and is only used as a terminator for regions.
+  let hasCustomHLOConverter = 1;
+
+  // TODO(hinsu): Implement custom printer and parser.
 }
 
 #endif // HLO_OPS

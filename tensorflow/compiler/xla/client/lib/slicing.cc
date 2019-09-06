@@ -223,7 +223,7 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
       index = ConvertElementType(index, U32);
       index_shape.set_element_type(U32);
     }
-    std::vector<int64> slice_sizes = input_shape.dimensions();
+    std::vector<int64> slice_sizes = SpanToVector(input_shape.dimensions());
     GatherDimensionNumbers gather_dnums;
     gather_dnums.set_index_vector_dim(index_shape.rank());
     if (batch_dims > 0) {
@@ -238,10 +238,8 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
     }
     for (int64 i = 0; i < input_shape.rank(); ++i) {
       if (i < batch_dims || i == dim) {
-        if (slice_sizes[i] != 0) {
-          slice_sizes[i] = 1;
-          gather_dnums.add_collapsed_slice_dims(i);
-        }
+        slice_sizes[i] = std::min<int64>(slice_sizes[i], 1);
+        gather_dnums.add_collapsed_slice_dims(i);
         gather_dnums.add_start_index_map(i);
       } else {
         if (i < dim) {

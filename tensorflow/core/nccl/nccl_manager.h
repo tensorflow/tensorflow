@@ -32,8 +32,10 @@ limitations under the License.
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/rccl/rccl.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -53,6 +55,10 @@ class NcclManager {
 
   static NcclManager* instance();
 
+#if TENSORFLOW_USE_ROCM
+  static int instance_count;
+#endif
+
   // Calls `ncclGetUniqueId` and returns the id as a string.  The returned value
   // may be shared with other participants on different nodes and passed in to
   // multi-node collective invocations.
@@ -61,12 +67,15 @@ class NcclManager {
   // A participant in a Collective.
   struct Participant {
     Participant(se::StreamExecutor* executor, se::Stream* tensor_stream,
-                EventMgr* event_mgr, int gpu_device_id, const Tensor* input,
+                const DeviceBase::GpuDeviceInfo* info, const Tensor* input,
                 Tensor* output, int global_rank, DoneCallback done_callback)
         : executor(executor),
           tensor_stream(tensor_stream),
-          event_mgr(event_mgr),
-          gpu_device_id(gpu_device_id),
+          event_mgr(info->event_mgr),
+          gpu_device_id(info->gpu_id),
+#if TENSORFLOW_USE_ROCM
+          context(static_cast<GPUDeviceContext*>(info->default_context)),
+#endif
           input(input),
           input_event(nullptr),
           output(output),
@@ -100,6 +109,10 @@ class NcclManager {
     EventMgr* const event_mgr;
 
     const int gpu_device_id;
+
+#if TENSORFLOW_USE_ROCM
+    GPUDeviceContext* const context;
+#endif
 
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only receive data.

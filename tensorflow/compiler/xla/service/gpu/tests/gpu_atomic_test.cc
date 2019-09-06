@@ -53,6 +53,33 @@ CHECK: store atomic{{.*}}unordered, align 4
 )");
 }
 
+TEST_F(GpuAtomicTest, TestStoreNoAtomic) {
+  const char* hlo_string = R"(
+    HloModule TensorFlowScatterV1
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = s32[2,3] parameter(2)
+      ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1, unique_indices=true
+    }
+)";
+
+  CompileAndVerifyIr(hlo_string, R"(
+CHECK-NOT: store atomic{{.*}}unordered, align 4
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

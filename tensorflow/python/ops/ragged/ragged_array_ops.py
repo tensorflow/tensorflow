@@ -70,25 +70,24 @@ def boolean_mask(data, mask, name=None):
       not a prefix of `data.shape`.
 
   #### Examples:
-    ```python
-    >>> # Aliases for True & False so data and mask line up.
-    >>> T, F = (True, False)
 
-    >>> tf.ragged.boolean_mask(  # Mask a 2D Tensor.
-    ...     data=[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-    ...     mask=[[T, F, T], [F, F, F], [T, F, F]]).tolist()
-    [[1, 3], [], [7]]
+  >>> # Aliases for True & False so data and mask line up.
+  >>> T, F = (True, False)
 
-    >>> tf.ragged.boolean_mask(  # Mask a 2D RaggedTensor.
-    ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
-    ...     tf.ragged.constant([[F, F, T], [F], [T, T]])).tolist()
-    [[3], [], [5, 6]]
+  >>> tf.ragged.boolean_mask(  # Mask a 2D Tensor.
+  ...     data=[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+  ...     mask=[[T, F, T], [F, F, F], [T, F, F]]).to_list()
+  [[1, 3], [], [7]]
 
-    >>> tf.ragged.boolean_mask(  # Mask rows of a 2D RaggedTensor.
-    ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
-    ...     tf.ragged.constant([True, False, True])).tolist()
-    [[1, 2, 3], [5, 6]]
-    ```
+  >>> tf.ragged.boolean_mask(  # Mask a 2D RaggedTensor.
+  ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
+  ...     tf.ragged.constant([[F, F, T], [F], [T, T]])).to_list()
+  [[3], [], [5, 6]]
+
+  >>> tf.ragged.boolean_mask(  # Mask rows of a 2D RaggedTensor.
+  ...     tf.ragged.constant([[1, 2, 3], [4], [5, 6]]),
+  ...     tf.ragged.constant([True, False, True])).to_list()
+  [[1, 2, 3], [5, 6]]
   """
   with ops.name_scope(name, 'RaggedMask', [data, mask]):
     # Convert inputs to tensors.
@@ -223,11 +222,10 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
     A `RaggedTensor` with the same type, rank, and ragged_rank as `input`.
 
   #### Example:
-    ```python
-    >>> rt = tf.ragged.constant([[1, 2], [3]])
-    >>> ragged.tile(rt, [3, 2])
-    [[1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3]]
-    ```
+
+  >>> rt = tf.ragged.constant([[1, 2], [3]])
+  >>> tf.tile(rt, [3, 2]).to_list()
+  [[1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3]]
   """
   with ops.name_scope(name, 'RaggedTile', [input, multiples]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
@@ -267,11 +265,10 @@ def _tile_ragged_values(rt_input, multiples, const_multiples=None):
     A `Tensor` with the same type and rank as `rt_input.flat_values`.
 
   #### Example:
-    ```python
-    >>> rt = tf.ragged.constant([[1, 2], [3]])
-    >>> _tile_ragged_values(rt, [3, 2])
-    [1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3]
-    ```
+
+  >>> rt = tf.ragged.constant([[1, 2], [3]])
+  >>> _tile_ragged_values(rt, tf.constant([3, 2])).numpy()
+  array([1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3], dtype=int32)
   """
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
@@ -326,11 +323,10 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
     `rt_input`).
 
   #### Example:
-    ```python
-    >>> rt = tf.ragged.constant([[1, 2], [3]])
-    >>> _tile_ragged_splits(rt, [3, 2])
-    [0, 4, 6, 10, 12, 16, 18]
-    ```
+
+  >>> rt = tf.ragged.constant([[1, 2], [3]])
+  >>> _tile_ragged_splits(rt, [3, 2])
+  [<tf.Tensor: ..., numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
   """
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
@@ -423,23 +419,22 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
     size 1 at `axis`.
 
   #### Examples:
-    ```python
-    >>> rt = tf.ragged.constant([[1, 2], [3]])
-    >>> print rt.shape
-    TensorShape([2, None])
 
-    >>> expanded = ragged.expand_dims(rt, axis=0)
-    >>> print(expanded.shape, expanded)
-    TensorShape([1, None, None]) [[[1, 2], [3]]]
+  >>> rt = tf.ragged.constant([[1, 2], [3]])
+  >>> print(rt.shape)
+  (2, None)
 
-    >>> expanded = ragged.expand_dims(rt, axis=1)
-    >>> print(expanded.shape, expanded)
-    TensorShape([2, None, None]) [[[1, 2]], [[3]]]
+  >>> expanded = tf.expand_dims(rt, axis=0)
+  >>> print(expanded.shape, expanded)
+  (1, None, None) <tf.RaggedTensor [[[1, 2], [3]]]>
 
-    >>> expanded = ragged.expand_dims(rt, axis=2)
-    >>> print(expanded.shape, expanded)
-    TensorShape([2, None, 1]) [[[1], [2]], [[3]]]
-    ```
+  >>> expanded = tf.expand_dims(rt, axis=1)
+  >>> print(expanded.shape, expanded)
+  (2, None, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
+
+  >>> expanded = tf.expand_dims(rt, axis=2)
+  >>> print(expanded.shape, expanded)
+  (2, None, 1) <tf.RaggedTensor [[[1], [2]], [[3]]]>
   """
   with ops.name_scope(name, 'RaggedExpandDims', [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
@@ -474,6 +469,11 @@ def size(input, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-
 
   The size of a ragged tensor is the size of its inner values.
 
+  #### Example:
+
+  >>> tf.size(tf.ragged.constant([[1, 2], [3]])).numpy()
+  3
+
   Args:
     input: A potentially ragged `Tensor`.
     out_type: The numeric output type for the operation.
@@ -481,12 +481,6 @@ def size(input, out_type=dtypes.int32, name=None):  # pylint: disable=redefined-
 
   Returns:
     A Tensor of type `out_type`.
-
-  #### Example:
-    ```python
-    >>> tf.size(tf.ragged.constant([[1, 2], [3]]))
-    3
-    ```
   """
   if ragged_tensor.is_ragged(input):
     return array_ops.size(input.flat_values, out_type=out_type, name=name)
@@ -502,13 +496,12 @@ def rank(input, name=None):  # pylint: disable=redefined-builtin
 
   Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
-  For example:
+  #### Example:
 
-  ```python
-  # shape of tensor 't' is [2, None, None]
-  t = tf.ragged.constant([[[1], [2, 2]], [[3, 3, 3], [4, 4, 4, 4]]])
-  tf.rank(t)  # 3
-  ```
+  >>> # shape of tensor 't' is [2, None, None]
+  >>> t = tf.ragged.constant([[[1], [2, 2]], [[3, 3, 3], [4, 4, 4, 4]]])
+  >>> tf.rank(t).numpy()
+  3
 
   Args:
     input: A `RaggedTensor`
@@ -562,14 +555,13 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
   If `num_partitions` is an `int` (not a `Tensor`), then this is equivalent to
   `tf.ragged.stack(tf.dynamic_partition(data, partitions, num_partitions))`.
 
-  ####Example:
-    ```python
-    >>> data           = ['a', 'b', 'c', 'd', 'e']
-    >>> partitions     = [  3,   0,   2,   2,   3]
-    >>> num_partitions = 5
-    >>> tf.ragged.stack_dynamic_partitions(data, partitions, num_partitions)
-    <RaggedTensor [['b'], [], ['c', 'd'], ['a', 'e'], []]>
-    ```
+  #### Example:
+
+  >>> data           = ['a', 'b', 'c', 'd', 'e']
+  >>> partitions     = [  3,   0,   2,   2,   3]
+  >>> num_partitions = 5
+  >>> tf.ragged.stack_dynamic_partitions(data, partitions, num_partitions)
+  <tf.RaggedTensor [[b'b'], [], [b'c', b'd'], [b'a', b'e'], []]>
 
   Args:
     data: A `Tensor` or `RaggedTensor` containing the values to stack.

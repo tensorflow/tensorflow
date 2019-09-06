@@ -26,7 +26,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -155,13 +154,16 @@ class CollectiveOpTest(test.TestCase):
           with ops.device(device):
             device_collectives = []
             for j in range(num_vars):
-              # NOTE(ayushd): we need the `identity` here to ensure that the
-              # input to `all_reduce` has an explicit device string.
-              input_tensor = array_ops.identity(device_tensors[j])
+              # NOTE(ayushd): we need the `cast` here to ensure that the input
+              # to `all_reduce` has an explicit device string.  We don't use
+              # `identity` because `cast` is more resilient to getting optimized
+              # away by various optimization passes.
+              input_tensor = math_ops.cast(device_tensors[j], dtypes.float64)
               collective_op = collective_ops.all_reduce(
                   input_tensor, group_size, group_key, instances[j],
                   'Add', 'Id')
-              device_collectives.append(collective_op)
+              output_tensor = math_ops.cast(collective_op, dtypes.float32)
+              device_collectives.append(output_tensor)
             return_ops.append(device_collectives)
         return_ops.append(math_ops.add(loop_tensor, 1.))
         return return_ops
@@ -180,7 +182,6 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileMultipleAllReduce(self):
-    self.skipTest('Temporarily disabled')  # TODO(b/135686041): re-enable
     self._testWhile(num_vars=2, num_iterations=4, key_base=20)
 
   @test_util.run_deprecated_v1

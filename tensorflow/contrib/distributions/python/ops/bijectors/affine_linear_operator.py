@@ -141,7 +141,6 @@ class AffineLinearOperator(bijector.Bijector):
           raise TypeError("scale is not an instance of tf.LinearOperator")
         if validate_args and not scale.is_non_singular:
           raise ValueError("Scale matrix must be non-singular.")
-        graph_parents += scale.graph_parents
         if scale.tensor_rank is not None:
           batch_ndims = scale.tensor_rank - 2
         else:

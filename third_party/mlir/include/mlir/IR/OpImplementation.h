@@ -116,8 +116,12 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os,
-                    [&](Value *operand) { printType(operand->getType()); });
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+      if (operand)
+        printType(operand->getType());
+      else
+        os << "<<NULL>";
+    });
     os << ") -> ";
     if (op->getNumResults() == 1 &&
         !op->getResult(0)->getType().isa<FunctionType>()) {

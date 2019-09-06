@@ -30,7 +30,6 @@ import re
 import six
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
-from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
@@ -199,7 +198,7 @@ def _find_index_of_defining_frame_for_op(op):
   # Index 0 of tf_traceback is the outermost frame.
   tf_traceback = op.traceback
   size = len(tf_traceback)
-  filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
+  filenames = [frame.filename for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
     contains_bad_substrings = [ss in filename for ss in _BAD_FILE_SUBSTRINGS]
@@ -262,7 +261,7 @@ def create_graph_debug_info_def(operations):
     node_name = func + op.name
     node_to_trace[node_name] = _compute_useful_frames(op, 10)
     for frame in node_to_trace[node_name]:
-      all_file_names.add(frame[tf_stack.TB_FILENAME])
+      all_file_names.add(frame.filename)
 
   # Sets the `files` field in the GraphDebugInfo proto
   graph_debug_info_def.files.extend(all_file_names)
@@ -279,8 +278,8 @@ def create_graph_debug_info_def(operations):
     trace_def = graph_debug_info_def.traces[node_name]
     for frame in reversed(frames):
       trace_def.file_line_cols.add(
-          file_index=file_to_index[frame[tf_stack.TB_FILENAME]],
-          line=frame[tf_stack.TB_LINENO])
+          file_index=file_to_index[frame.filename],
+          line=frame.lineno)
 
   return graph_debug_info_def
 
@@ -318,10 +317,10 @@ def compute_field_dict(op, strip_file_prefix=""):
     }
   """
   frame = _get_defining_frame_from_op(op)
-  filename = frame[tf_stack.TB_FILENAME]
+  filename = frame.filename
   if filename.startswith(strip_file_prefix):
     filename = filename[len(strip_file_prefix):]
-  lineno = frame[tf_stack.TB_LINENO]
+  lineno = frame.lineno
   defined_at = " (defined at %s:%d)" % (filename, lineno)
   colocation_summary = _compute_colocation_summary_from_op(op)
   device_summary = _compute_device_assignment_summary_from_op(op)
@@ -355,8 +354,8 @@ def traceback_files_common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      for frame in op.traceback:
-        filename = frame[tf_stack.TB_FILENAME]
+      # TODO(slebedev): switch to .filename once 2.X support is dropped.
+      for filename, _, _, _ in op.traceback:
         if "<embedded" not in filename:
           files.add(filename)
   return os.path.split(os.path.commonprefix(list(files)))[0]

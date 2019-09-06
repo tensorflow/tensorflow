@@ -28,6 +28,14 @@ For more information on MLIR, please see:
 
 Join the [MLIR mailing list](https://groups.google.com/a/tensorflow.org/forum/#!forum/mlir)
 to hear about announcements and discussions.
+
+We also have an [MLIR SIG](https://github.com/tensorflow/community/blob/master/sigs/mlir/CHARTER.md)
+which was created to enable collaboration and form a strong
+engineering-driven open community. We have weekly 'Open Design Meetings'. If you’d like
+to discuss a particular topic or have questions, please add it to the [agenda doc](https://docs.google.com/document/d/1y_9f1AbfgcoVdJh4_aM6-BaSHvrHl8zuA5G4jv_94K8/edit#).
+Details on how to join the meeting are in the agenda doc. You
+should also get an invite when you join the mailing list.
+
 Please be mindful of the [TensorFlow Code of Conduct](https://github.com/tensorflow/tensorflow/blob/master/CODE_OF_CONDUCT.md),
 which pledges to foster an open and welcoming environment.
 

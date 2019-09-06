@@ -30,7 +30,23 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
+#if !(RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Pack8bitAvx2(const std::int8_t* src_ptr, std::int8_t input_xor,
+                  const std::int8_t* zerobuf, int src_stride,
+                  int remaining_src_cols, int src_rows, std::int8_t* packed_ptr,
+                  std::int32_t* sums_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void PackFloatAvx2(const float* src_ptr, const float* zerobuf, int src_stride,
+                   int remaining_src_cols, int src_rows, float* packed_ptr) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 static constexpr int kAvxFloatBlockSize = 8;
 static constexpr int kAvx8bitBlockSize = 8;

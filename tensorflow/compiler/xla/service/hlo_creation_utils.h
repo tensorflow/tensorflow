@@ -166,6 +166,22 @@ HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)));
 }
 
+// Makes a scalar that is elementwise compatible with the shape of the base
+// instruction.
+template <class NativeT>
+HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
+  auto scalar = base->parent()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
+                                         .Convert(base->shape().element_type())
+                                         .ValueOrDie()));
+  if (base->shape().rank() == 0) {
+    *scalar->mutable_shape() = base->shape();
+    return scalar;
+  }
+  return base->parent()->AddInstruction(
+      HloInstruction::CreateBroadcast(base->shape(), scalar, {}));
+}
+
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of
 // these add all the instructions they generate into the computation containing

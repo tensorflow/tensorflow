@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
@@ -62,6 +63,16 @@ class ExecuteNode : public EagerNode {
     }
   }
 
+  ~ExecuteNode() override {
+    for (auto handle : retvals_) {
+      handle->Unref();
+    }
+
+    for (auto handle : inputs_) {
+      handle->Unref();
+    }
+  }
+
   Status Run() override {
     const Status status = EagerKernelExecute(
         ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
@@ -70,30 +81,21 @@ class ExecuteNode : public EagerNode {
       Abort(status);
       return status;
     }
-
     // If status is ok, EagerKernelExecute would have called SetTensor on
     // all the output handles.
-
-    for (auto handle : retvals_) {
-      handle->Unref();
-    }
-
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
-
-    return status;
+    return Status::OK();
   }
 
   void Abort(Status status) override {
     for (auto handle : retvals_) {
       handle->Poison(status);
-      handle->Unref();
     }
+  }
 
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
+  string DebugString() const override {
+    string out = "[ExecuteNode]";
+    strings::StrAppend(&out, " kernel: ", kernel_->name());
+    return out;
   }
 
  private:

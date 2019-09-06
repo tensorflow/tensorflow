@@ -1,5 +1,5 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_ios_per_kernel_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -509,3 +509,5 @@ objc_library(
 )
 
 tflite_portable_test_suite()
+
+tflite_ios_per_kernel_test()

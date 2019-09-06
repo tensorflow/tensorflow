@@ -18,8 +18,68 @@
 #include "TestDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// TestDialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants.
+  virtual bool shouldMaterializeInto(Region *region) const {
+    // If this is a one region operation, then insert into it.
+    return isa<OneRegionOp>(region->getParentOp());
+  }
+};
+
+/// This class defines the interface for handling inlining with standard
+/// operations.
+struct TestInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+
+  bool shouldAnalyzeRecursively(Operation *op) const {
+    // Analyze recursively if this is not a functional region operation, it
+    // froms a separate functional scope.
+    return !isa<FunctionalRegionOp>(op);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value *> valuesToRepl) const final {
+    // Only handle "test.return" here.
+    auto returnOp = dyn_cast<TestReturnOp>(op);
+    if (!returnOp)
+      return;
+
+    // Replace the values directly with the return operands.
+    assert(returnOp.getNumOperands() == valuesToRepl.size());
+    for (const auto &it : llvm::enumerate(returnOp.getOperands()))
+      valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
+  }
+};
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // TestDialect
@@ -31,6 +91,7 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
+  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
   allowUnknownOperations();
 }
 
@@ -82,10 +143,11 @@ static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
-  using OpRewritePattern<TestOpWithRegion>::OpRewritePattern;
+struct TestRemoveOpWithInnerOps
+    : public OpRewritePattern<TestOpWithRegionPattern> {
+  using OpRewritePattern<TestOpWithRegionPattern>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TestOpWithRegion op,
+  PatternMatchResult matchAndRewrite(TestOpWithRegionPattern op,
                                      PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
@@ -93,9 +155,13 @@ struct TestRemoveOpWithInnerOps : public OpRewritePattern<TestOpWithRegion> {
 };
 } // end anonymous namespace
 
-void TestOpWithRegion::getCanonicalizationPatterns(
+void TestOpWithRegionPattern::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<TestRemoveOpWithInnerOps>(context);
+}
+
+OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
+  return operand();
 }
 
 // Static initialization for Test dialect registration.

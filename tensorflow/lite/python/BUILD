@@ -282,17 +282,3 @@ py_test(
         "//tensorflow/python/saved_model",
     ],
 )
-
-py_binary(
-    name = "create_custom_op",
-    srcs = ["create_custom_op.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/flags",
-    ],
-)

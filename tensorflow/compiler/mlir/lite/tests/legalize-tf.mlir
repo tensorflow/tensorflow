@@ -153,6 +153,14 @@ func @placeholder(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
 }
 
+func @placeholder_int(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Placeholder.input"(%arg0) {name = "Input"} : (tensor<i32>) -> tensor<i32>
+  return %0: tensor<i32>
+
+// CHECK-LABEL: @placeholder_int
+// CHECK-NEXT:  "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
+}
+
 func @placeholder_min(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Placeholder.input"(%arg0) {name = "Input", min = -0.1 : f32} : (tensor<f32>) -> tensor<f32>
   return %0: tensor<f32>
@@ -660,6 +668,15 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK:  return %0 : tensor<?xf32>
 }
 
+func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf32> {
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+
+  // CHECK-LABEL: pow
+  // CHECK:  %[[pow:.*]] = "tfl.pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  // CHECK:  return %[[pow]] : tensor<2x1x3xf32>
+}
+
 func @tile(tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32> {
 ^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>):
   %cst = constant dense<[1, 2]> : tensor<2xi32>
@@ -832,12 +849,12 @@ func @split(%arg0: tensor<i32>, %arg1: tensor<1x4x3x3xf32>) -> tensor<1x4x3xf32>
   // CHECK: %0:3 = "tfl.split"(%arg0, %arg1) {num_splits = 3 : i32} : (tensor<i32>, tensor<1x4x3x3xf32>) -> (tensor<1x4x3xf32>, tensor<1x4x3xf32>, tensor<1x4x3xf32>)
 }
 
-func @splitv(%arg0: tensor<1x4x3x3xf32>, %arg1: tensor<2xi32>, %arg2: tensor<1xi32>) -> tensor<1x4x2x3xf32> {
-  %0:2 = "tf.SplitV"(%arg0, %arg1, %arg2) {num_split = 2 : i64} : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<1xi32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
+func @splitv(%arg0: tensor<1x4x3x3xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) -> tensor<1x4x2x3xf32> {
+  %0:2 = "tf.SplitV"(%arg0, %arg1, %arg2) {num_split = 2 : i64} : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
   return %0#0 : tensor<1x4x2x3xf32>
 
   // CHECK-LABEL: splitv
-  // CHECK: %0:2 = "tfl.split_v"(%arg0, %arg1, %arg2) {num_splits = 2 : i32} : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<1xi32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
+  // CHECK: %0:2 = "tfl.split_v"(%arg0, %arg1, %arg2) {num_splits = 2 : i32} : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
 }
 
 func @matmul_transposed(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {

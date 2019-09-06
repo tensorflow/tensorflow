@@ -32,6 +32,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -380,7 +381,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def test_numpyFailsForResource(self):
     v = variables.Variable(42)
-    with self.assertRaisesRegex(ValueError, "Cannot convert .+ resource"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Cannot convert .+ resource"):
       v._handle._numpy()
 
   def testMemoryviewFailsForResource(self):

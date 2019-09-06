@@ -72,6 +72,13 @@ package_group(
     ],
 )
 
+package_group(
+    name = "optimizer_helper_friends",
+    packages = [
+        "//learning/brain/research/lather/...",
+    ],
+)
+
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
     # sparse matrix multiplications. You will also need appropriate -mavx*
@@ -704,7 +711,10 @@ cc_library(
     name = "training_op_helpers",
     srcs = ["training_op_helpers.cc"],
     hdrs = ["training_op_helpers.h"],
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        ":optimizer_helper_friends",
+    ],
     deps = [
         ":dense_update_functor",
         ":variable_ops",
@@ -3359,8 +3369,9 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cuda_solvers",
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 LINALG_DEPS = [
@@ -6215,6 +6226,7 @@ filegroup(
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
+        "segment_reduction_ops_impl.h",
         "softplus_op.h",
         "softsign_op.h",
         "spacetobatch_functor.h",
@@ -6322,7 +6334,15 @@ filegroup(
         "encode_wav_op.cc",
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
-        "einsum_op.cc",
+        "einsum_op_impl_half.cc",
+        "einsum_op_impl_bfloat16.cc",
+        "einsum_op_impl_int32.cc",
+        "einsum_op_impl_int64.cc",
+        "einsum_op_impl_float.cc",
+        "einsum_op_impl_double.cc",
+        "einsum_op_impl_complex64.cc",
+        "einsum_op_impl_complex128.cc",
+        "einsum_op_impl.h",
         "einsum_op.h",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
@@ -6411,7 +6431,11 @@ filegroup(
         "scatter_nd_op_cpu_impl_5.cc",
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
-        "segment_reduction_ops.cc",
+        "segment_reduction_ops_impl_1.cc",
+        "segment_reduction_ops_impl_2.cc",
+        "segment_reduction_ops_impl_3.cc",
+        "segment_reduction_ops_impl_4.cc",
+        "segment_reduction_ops_impl_5.cc",
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
@@ -6767,7 +6791,6 @@ tf_cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -6827,7 +6850,6 @@ cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -6913,7 +6935,6 @@ cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -7987,6 +8008,7 @@ cc_library(
         "cwise_ops_gpu_common.cu.h",
         "cwise_ops_gpu_gradients.cu.h",
         "cwise_ops_gradients.h",
+        "fill_functor.h",
         "meta_support.h",
     ],
     deps = [

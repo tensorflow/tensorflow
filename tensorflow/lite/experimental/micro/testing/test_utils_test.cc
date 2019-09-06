@@ -72,6 +72,21 @@ TF_LITE_MICRO_TEST(ZeroPointTest) {
       64, tflite::testing::ZeroPointFromMinMax<uint8_t>(-32, 95.5));
 }
 
+TF_LITE_MICRO_TEST(ZeroPointRoundingTest) {
+  TF_LITE_MICRO_EXPECT_EQ(
+      -1, tflite::testing::ZeroPointFromMinMax<int8_t>(-126.51, 128.49));
+  TF_LITE_MICRO_EXPECT_EQ(
+      -1, tflite::testing::ZeroPointFromMinMax<int8_t>(-127.49, 127.51));
+  TF_LITE_MICRO_EXPECT_EQ(
+      0, tflite::testing::ZeroPointFromMinMax<int8_t>(-127.51, 127.49));
+  TF_LITE_MICRO_EXPECT_EQ(
+      0, tflite::testing::ZeroPointFromMinMax<int8_t>(-128.49, 126.51));
+  TF_LITE_MICRO_EXPECT_EQ(
+      1, tflite::testing::ZeroPointFromMinMax<int8_t>(-128.51, 126.49));
+  TF_LITE_MICRO_EXPECT_EQ(
+      1, tflite::testing::ZeroPointFromMinMax<int8_t>(-129.49, 125.51));
+}
+
 TF_LITE_MICRO_TEST(ScaleTest) {
   int min_int = std::numeric_limits<int32_t>::min();
   int max_int = std::numeric_limits<int32_t>::max();

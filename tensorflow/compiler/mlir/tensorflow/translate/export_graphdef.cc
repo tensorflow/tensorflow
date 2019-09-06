@@ -145,22 +145,6 @@ class Exporter {
   // Returns a unique name starting with a given prefix.
   std::string UniqueName(llvm::StringRef prefix);
 
-  static StatusOr<std::string> getTFOpName(llvm::StringRef op_name) {
-    // When being converted to MLIR, some prefixes and suffixes are added to the
-    // operation types, and we have to remove them when converting the
-    // operations back to a graph:
-    // - "_tf.": every operation type has this prefix.
-    // - ".sink": only the NextIteration operation has this suffix. We don't
-    // need to consider ".source" because the nodes with this suffix are skipped
-    // by the caller and will not be added to the graph.
-    if (!op_name.consume_front("_tf.")) {
-      return errors::FailedPrecondition("op node '", op_name.str(),
-                                        "' was not a TF op!");
-    }
-    op_name.consume_back(".sink");
-    return op_name.str();
-  }
-
   Graph* graph_;
   absl::flat_hash_map<mlir::Operation*, string> op_to_name_;
   absl::flat_hash_map<string, int64> name_to_count_;
@@ -296,22 +280,10 @@ Status Exporter::AddInstructionNode(mlir::Operation* inst) {
     auto name = UniqueName(inst);
     // Convert registered TF ops to NodeDef. Only registered ops are handled to
     // ensure that PopulateDerivedAttrs adds the correct attributes.
-    // TODO(jpienaar): It should be possible to handle every TF op here, the
-    // check is too conservative given we could use a OpDef.
-    if (auto abstract_op = inst->getAbstractOperation()) {
-      if (&abstract_op->dialect == tf_dialect_) {
-        TF_ASSIGN_OR_RETURN(
-            node_def, ConvertTFDialectOpToNodeDef(
-                          inst, name, /*ignore_unregistered_attrs=*/false));
-      }
-    }
-    // Convert TF control flow dialect ops.
-    if (!node_def) {
-      absl::flat_hash_set<absl::string_view> attrs_to_ignore;
-      TF_ASSIGN_OR_RETURN(
-          node_def, GetOperationNodeDef(attrs_to_ignore, inst, name.c_str(),
-                                        getTFOpName));
-    }
+    TF_ASSIGN_OR_RETURN(node_def,
+                        ConvertTFDialectOpToNodeDef(
+                            inst, name, /*ignore_unregistered_attrs=*/false));
+
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
     nodes_[inst] = node;
@@ -476,7 +448,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
   }
   // Adds nodes for operations.
   for (mlir::Operation& inst : block) {
-    auto op_name = getTFOpName(inst.getName().getStringRef());
+    auto op_name = GetTensorFlowOpName(inst.getName().getStringRef());
     if (op_name.ok()) {
       // If it is TF Control dialect specific op, look up custom operation
       // in the module and first convert that, then add it to function
@@ -615,7 +587,7 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& confs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
-  mlir::PassManager pass_manager;
+  mlir::PassManager pass_manager(module.getContext());
   pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
   if (mlir::failed(pass_manager.run(module))) {
     return errors::FailedPrecondition(

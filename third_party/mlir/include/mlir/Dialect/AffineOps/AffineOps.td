@@ -223,6 +223,11 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
     IntegerSet getIntegerSet();
     void setIntegerSet(IntegerSet newSet);
 
+    /// Sets the integer set with its operands. The size of 'operands' must not
+    /// exceed the current number of operands for this instance, as the operands
+    /// list of AffineIf is not resizable.
+    void setConditional(IntegerSet set, ArrayRef<Value *> operands);
+
     OpBuilder getThenBodyBuilder() {
       assert(!thenRegion().empty() && "Unexpected empty 'then' region.");
       Block &body = thenRegion().front();
@@ -234,6 +239,8 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
       return OpBuilder(&body, std::prev(body.end()));
     }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def AffineTerminatorOp :
