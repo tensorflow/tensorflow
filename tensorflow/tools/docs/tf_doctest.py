@@ -83,6 +83,9 @@ class TfTestCase(tf.test.TestCase):
   def tear_down(self, test):
     self.tearDown()
 
+  def test_dummy(self):
+    return True
+
 
 class CustomOutputChecker(doctest.OutputChecker):
 
