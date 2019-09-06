@@ -2,25 +2,25 @@
 This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year. 
 
 ## Major Features and Improvements
-* TensorFlow 1.15 contains a complete implementation of the 2.0 API in its compat.v2 module. It contains a copy of the 1.15 main module (without contrib) in the compat.v1 module. TensorFlow 1.15 is able to emulate 2.0 behavior using the enable_v2_behavior() function.
-This enables writing forward compatible code: by explicitly importing either tensorflow.compat.v1 or tensorflow.compat.v2, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
+* TensorFlow 1.15 contains a complete implementation of the 2.0 API in its `compat.v2 module`. It contains a copy of the 1.15 main module (without `contrib`) in the `compat.v1 module`. TensorFlow 1.15 is able to emulate 2.0 behavior using the `enable_v2_behavior()` function.
+This enables writing forward compatible code: by explicitly importing either `tensorflow.compat.v1` or `tensorflow.compat.v2`, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
 * EagerTensor now supports buffer interface for tensors.
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
-* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIs.
+* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIS.
 * Adds enable_tensor_equality(), which switches the behavior such that: 
-  Tensors are no longer hashable
-  Tensors can be compared with == and !=, yielding a Boolean Tensor with element-wise comparison results. This will be the default behavior in 2.0
+  * Tensors are no longer hashable.
+  * Tensors can be compared with == and !=, yielding a Boolean Tensor with element-wise comparison results. This will be the default behavior in 2.0.
 
 ## Breaking Changes
 * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
-* TensorFlow 1.15 is built using devtoolset7(GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
+* TensorFlow 1.15 is built using devtoolset7 (GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
 * `tf.keras`:
   * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
   * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel.
   * `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
-  * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
+  * Layers now default to `float32`, and automatically cast their inputs to the layer's dtype. If you had a model that used `float64`, it will probably silently use `float32` in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
   * Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the session.run(). When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to session.run(), an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
 
 ## Bug Fixes and Other Changes
@@ -47,9 +47,9 @@ This enables writing forward compatible code: by explicitly importing either ten
 * Added new op: `tf.strings.unsorted_segment_join`.
 * Add HW acceleration support for `topK_v2`.
 * Add new `TypeSpec` classes.
-* CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0
+* CloudBigtable version updated to v0.10.0.
 * Expose `Head` as public API.
-* Update docstring for gather to properly describe the non-empty batch_dims case.
+* Update docstring for gather to properly describe the non-empty `batch_dims` case.
 * Added `tf.sparse.from_dense` utility function.
 * Improved ragged tensor support in `TensorFlowTestCase`.
 * Makes the a-normal form transformation in Pyct configurable as to which nodes are converted to variables and which are not.
@@ -60,10 +60,8 @@ This enables writing forward compatible code: by explicitly importing either ten
 * `tf.while_loop` emits a StatelessWhile op if the cond and body functions are stateless and do not touch any resources.
 * Refactors code in Quant8 LSTM support to reduce TFLite binary size.
 * Add support of local soft device placement for eager op.
-* Pass partial_pivoting to the `_TridiagonalSolveGrad`.
 * Add HW acceleration support for `LogSoftMax`.
-* Added a function nested_value_rowids for ragged tensors.
-* fixed a bug in histogram_op.cc.
+* Added a function `nested_value_rowids` for ragged tensors.
 * Add guard to avoid acceleration of L2 Normalization with input rank != 4
 * Add `tf.math.cumulative_logsumexp operation`.
 * Add `tf.ragged.stack`.
