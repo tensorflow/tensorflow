@@ -485,41 +485,43 @@ def HLO_ClampOp : HLO_Op<"clamp",
 }
 
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
 
-   let arguments = (
-     ins Variadic<HLO_Tensor>:$val,
-         I64Attr: $dimension
-   );
+  let arguments = (
+    ins Variadic<HLO_Tensor>:$val,
+        I64Attr: $dimension
+  );
 
-   let verifier = [{
-     auto firstType = getOperand(0)->getType().cast<RankedTensorType>();
+  let verifier = [{
+    auto firstType = getOperand(0)->getType().cast<RankedTensorType>();
 
-     auto firstShape = firstType.getShape();
-     int numOperands = getNumOperands();
-     for (int i = 1; i < numOperands; i++) {
-       auto secondType = getOperand(i)->getType().cast<RankedTensorType>();
+    auto firstShape = firstType.getShape();
+    int numOperands = getNumOperands();
+    for (int i = 1; i < numOperands; i++) {
+      auto secondType = getOperand(i)->getType().cast<RankedTensorType>();
 
-       if (firstType.getRank() != secondType.getRank()) {
-         return emitOpError(
-             llvm::formatv("operands (0) and ({0}) do not match rank.", i));
-       }
+      if (firstType.getRank() != secondType.getRank()) {
+        return emitOpError(
+            llvm::formatv("operands (0) and ({0}) do not match rank.", i));
+      }
 
-       auto secondShape = secondType.getShape();
-       for (int d = 0; d < firstType.getRank(); ++d) {
-         if (firstShape[d] != secondShape[d] && d != dimension()) {
-           return emitOpError(llvm::formatv(
-               "operands (0) and ({0}) non-concat dimensions do not match "
-               "({1}) != ({2}).",
-               i, llvm::make_range(firstShape.begin(), firstShape.end()),
-               llvm::make_range(secondShape.begin(), secondShape.end())));
-         }
-       }
-     }
-     return success();
-   }];
+      auto secondShape = secondType.getShape();
+      for (int d = 0; d < firstType.getRank(); ++d) {
+        if (firstShape[d] != secondShape[d] && d != dimension()) {
+          return emitOpError(llvm::formatv(
+              "operands (0) and ({0}) non-concat dimensions do not match "
+              "({1}) != ({2}).",
+              i, llvm::make_range(firstShape.begin(), firstShape.end()),
+              llvm::make_range(secondShape.begin(), secondShape.end())));
+        }
+      }
+    }
+    return success();
+  }];
 
-   let results = (outs HLO_Tensor);
+  let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 
   // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
