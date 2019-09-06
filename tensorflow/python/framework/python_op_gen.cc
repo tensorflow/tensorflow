@@ -819,14 +819,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   // _NotOkStatusException.
   strings::StrAppend(&result_, "    ",
                      "except _core._NotOkStatusException as e:\n");
-  strings::StrAppend(&result_, "      ", "if name is not None:\n");
-  strings::StrAppend(&result_, "        ",
-                     "message = e.message + \" name: \" + name\n");
-  strings::StrAppend(&result_, "      ", "else:\n");
-  strings::StrAppend(&result_, "        ", "message = e.message\n");
-  strings::StrAppend(
-      &result_, "      ",
-      "_six.raise_from(_core._status_to_exception(e.code, message), None)\n");
+  strings::StrAppend(&result_, "      ",
+                     "_ops.raise_from_not_ok_status(e, name)\n");
 }
 
 void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
@@ -1000,7 +994,6 @@ This file is MACHINE GENERATED! Do not edit.
   strings::StrAppend(&result, R"("""
 
 import collections
-import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.eager import context as _context
@@ -1017,7 +1010,6 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
-
 
 )");
 

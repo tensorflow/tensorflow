@@ -6675,3 +6675,10 @@ def to_raw_op(f):
   f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
                          f.__closure__)
   return kwarg_only(do_not_generate_docs(f))
+
+
+def raise_from_not_ok_status(e, name):
+  message = e.message + (" name: " + name if name is not None else "")
+  # pylint: disable=protected-access
+  six.raise_from(core._status_to_exception(e.code, message), None)
+  # pylint: enable=protected-access
