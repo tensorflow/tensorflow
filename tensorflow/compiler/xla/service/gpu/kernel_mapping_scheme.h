@@ -165,31 +165,31 @@ class KernelMappingScheme {
 
  private:
   // The number of elements in each dimension.
-  std::array<int64, 3> dims_in_elems_;
+  const std::array<int64, 3> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  std::array<int64, 3> tile_sizes_;
+  const std::array<int64, 3> tile_sizes_;
   // The number of tiles in each dimension. It is computed from dims_in_elem_
   // and tile_sizes_.
-  std::array<int64, 3> dims_in_tiles_;
+  const std::array<int64, 3> dims_in_tiles_;
 
   // The number of tiles for each dimension of a tile block.
-  std::array<int64, 3> block_sizes_;
+  const std::array<int64, 3> block_sizes_;
   // The number of blocks in each dimension of a tile block. It is computed from
   // dims_in_tile_ and block_sizes_.
-  std::array<int64, 3> dims_in_blocks_;
+  const std::array<int64, 3> dims_in_blocks_;
 
   // Number of threads used to process elements in the X direction of a tile.
-  int64 num_threads_x_;
+  const int64 num_threads_x_;
   // Number of threads used to process elements in the Y direction of a tile.
-  int64 num_threads_y_;
+  const int64 num_threads_y_;
 
   // When num_threads_x threads process a total of tile_size_x elements in the
   // X dimension of a tile, each threads process n=tile_size_x/num_threads_x
   // elements. When dilated_x=false, the n elements processed by a thread are
   // contiguous. On the other hand, when dilated_x=true the n elements are
   // dilated by a factor of num_threads_x.
-  bool dilated_x_;
+  const bool dilated_x_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
