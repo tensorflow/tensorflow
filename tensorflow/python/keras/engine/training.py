@@ -51,8 +51,6 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
-from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
