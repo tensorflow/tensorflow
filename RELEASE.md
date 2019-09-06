@@ -1,28 +1,29 @@
 # Release 1.15.0
-
-## Major Features and Improvements
-
-## Breaking Changes
+This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year.
 
 ## Bug Fixes and Other Changes
-
+* `tf.keras`:
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
+  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. A SavedModel code is only applicable to `tf.keras`.
+  * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
+  * `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
+  * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
+  * Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
+  * Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
+  * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
+  
 * Promoting `unbatch` from experimental to core API.
-* Adds `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()`.
+* Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * EagerTensor now support buffer interface for tensors.
 * This change bumps the version number of the FullyConnected Op to 5.
-* tensorflow : crash when pointer become nullptr.
-* `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
 * Add support for defaulting the value of `cycle_length` argument of `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
 * parallel_for: Add converter for `MatrixDiag`.
-* Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
 * Add `narrow_range` attribute to `QuantizeAndDequantizeV2` and V3.
-* `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
 * Added new op: `tf.strings.unsorted_segment_join`.
-* `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. A SavedModel code is only applicable to `tf.keras`.
 * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow)
 * Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
-* Add HW acceleration support for topK_v2
-* Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
+* Add HW acceleration support for `topK_v2`.
 * Add new `TypeSpec` classes
 * CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
@@ -34,7 +35,6 @@
 * AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIs.
 * Improved ragged tensor support in `TensorFlowTestCase`.
 * Makes the a-normal form transformation in Pyct configurable as to which nodes are converted to variables and which are not.
-* `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
 * `ResizeInputTensor` now works for all delegates
 * Start of open development of TF, TFLite, XLA MLIR dialects.
 * Add `EXPAND_DIMS` support to NN API delegate TEST:  expand_dims_test
@@ -51,13 +51,10 @@
 * Add `tf.math.cumulative_logsumexp operation`.
 * Add `tf.ragged.stack`.
 * Add delegate support for `QUANTIZED_16BIT_LSTM`.
-* Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
 * `tf.while_loop` emits a StatelessWhile op if the cond and body functions are stateless and do not touch any resources.
 * Refactors code in Quant8 LSTM support to reduce TFLite binary size.
-* Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
 * Fix memory allocation problem when calling `AddNewInputConstantTensor`.
 * Delegate application failure leaves interpreter in valid state.
-* Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
 * `tf.cond`, `tf.while` and if and while in AutoGraph now accept a nonscalar predicate if has a single element. This does not affec non-V2 control flow.
 * Enables v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * Add check for correct memory alignment to `MemoryAllocation::MemoryAllocation()`.
