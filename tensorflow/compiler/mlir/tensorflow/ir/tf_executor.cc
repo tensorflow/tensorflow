@@ -1079,6 +1079,35 @@ void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// tf_executor.ControlTrigger
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes ControlTriggerOps with no control operands.
+// Control result users will have their relevant operands removed.
+struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
+  using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void ControlTriggerOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<DropEmptyControlTrigger>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // Folders
 //===----------------------------------------------------------------------===//
 
