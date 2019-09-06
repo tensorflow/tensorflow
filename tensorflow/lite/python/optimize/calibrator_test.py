@@ -113,8 +113,7 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ('DisableMlirQuantizer', False))  # disable mlir quantizer
   def test_invalid_model_buffer(self, enable_mlir):
     float_model = b'\0' * 100
-    with self.assertRaisesRegex(ValueError,
-                                          'Failed to parse the model'):
+    with self.assertRaisesRegex(ValueError, 'Failed to parse the model'):
       _calibrator.Calibrator(float_model)
 
   # TODO(fengliuai): enable mlir quantizer
