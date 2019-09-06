@@ -1662,6 +1662,17 @@ void AffineIfOp::setConditional(IntegerSet set, ArrayRef<Value *> operands) {
   getOperation()->setOperands(operands);
 }
 
+void AffineIfOp::build(Builder *builder, OperationState *result, IntegerSet set,
+                       ArrayRef<Value *> args, bool withElseRegion) {
+  result->addOperands(args);
+  result->addAttribute(getConditionAttrName(), IntegerSetAttr::get(set));
+  Region *thenRegion = result->addRegion();
+  Region *elseRegion = result->addRegion();
+  AffineIfOp::ensureTerminator(*thenRegion, *builder, result->location);
+  if (withElseRegion)
+    AffineIfOp::ensureTerminator(*elseRegion, *builder, result->location);
+}
+
 namespace {
 // This is a pattern to canonicalize an affine if op's conditional (integer
 // set + operands).
