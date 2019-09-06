@@ -1,37 +1,52 @@
 # Release 1.15.0
-This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year.
+This is the last 1.x release for TensorFlow. We do not expect to update the 1.x branch with features, although we will issue patch releases to fix vulnerabilities for at least one year. 
+
+## Major Features and Improvements
+* TensorFlow 1.15 contains a complete implementation of the 2.0 API in its compat.v2 module. It contains a copy of the 1.15 main module (without contrib) in the compat.v1 module. TensorFlow 1.15 is able to emulate 2.0 behavior using the enable_v2_behavior() function.
+This enables writing forward compatible code: by explicitly importing either tensorflow.compat.v1 or tensorflow.compat.v2, you can ensure that your code works without modifications against an installation of 1.15 or 2.0.
+
+* EagerTensor now supports buffer interface for tensors.
+* Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
+* Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
+
+## Breaking Changes
+* Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
+* `tf.keras`:
+  * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
+  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel.
 
 ## Bug Fixes and Other Changes
+* `tf.data`:
+  * Promoting `unbatch` from experimental to core API.
+  * Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
 * `tf.keras`:
   * `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
   * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
-  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. A SavedModel code is only applicable to `tf.keras`.
   * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
   * `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
   * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow2, and a warning will be issued that starts with Layer "layer-name" is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
   * Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
   * Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
-  * `OMP_NUM_THREADS` is no longer used by the default Keras config. To configure the number of threads, use `tf.config.threading` APIs.
-  
-* Promoting `unbatch` from experimental to core API.
-* Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
-* EagerTensor now support buffer interface for tensors.
-* This change bumps the version number of the FullyConnected Op to 5.
+  * Raise error if `batch_size` argument is used when input is dataset/generator/keras sequence.
+* `tf.lite`
+  * Add `GATHER` support to NN API delegate.
+  * tflite object detection script has a debug mode.
+  * Add delegate support for QUANTIZE.
+  * Added evaluation script for COCO minival.
+  * Add delegate support for `QUANTIZED_16BIT_LSTM`.
+  * Converts hardswish subgraphs into atomic ops.
 * Add support for defaulting the value of `cycle_length` argument of `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
-* parallel_for: Add converter for `MatrixDiag`.
+* `parallel_for`: Add converter for `MatrixDiag`.
 * Add `narrow_range` attribute to `QuantizeAndDequantizeV2` and V3.
 * Added new op: `tf.strings.unsorted_segment_join`.
-* Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow)
-* Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
 * Add HW acceleration support for `topK_v2`.
-* Add new `TypeSpec` classes
+* Add new `TypeSpec` classes.
 * CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
 * Expose Head as public API.
 * AutoGraph is now applied automatically to user functions passed to APIs of `tf.data` and `tf.distribute`. If AutoGraph is disabled in the the calling code, it will also be disabled in the user functions.
 * Update docstring for gather to properly describe the non-empty batch_dims case.
 * Added `tf.sparse.from_dense` utility function.
-* Add `GATHER` support to NN API delegate
 * AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIs.
 * Improved ragged tensor support in `TensorFlowTestCase`.
 * Makes the a-normal form transformation in Pyct configurable as to which nodes are converted to variables and which are not.
@@ -45,28 +60,19 @@ This is the last 1.x release for TensorFlow. We do not expect to update the 1.x 
 * Added a function nested_value_rowids for ragged tensors.
 * fixed a bug in histogram_op.cc.
 * Add guard to avoid acceleration of L2 Normalization with input rank != 4
-* Added evaluation script for COCO minival
-* Add delegate support for QUANTIZE
-* tflite object detection script has a debug mode
 * Add `tf.math.cumulative_logsumexp operation`.
 * Add `tf.ragged.stack`.
-* Add delegate support for `QUANTIZED_16BIT_LSTM`.
 * `tf.while_loop` emits a StatelessWhile op if the cond and body functions are stateless and do not touch any resources.
 * Refactors code in Quant8 LSTM support to reduce TFLite binary size.
 * Fix memory allocation problem when calling `AddNewInputConstantTensor`.
 * Delegate application failure leaves interpreter in valid state.
 * `tf.cond`, `tf.while` and if and while in AutoGraph now accept a nonscalar predicate if has a single element. This does not affec non-V2 control flow.
-* Enables v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * Add check for correct memory alignment to `MemoryAllocation::MemoryAllocation()`.
 * Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
 * Added support for `FusedBatchNormV3` in converter.
 * A ragged to dense op for directly calculating tensors.
-* Converts hardswish subgraphs into atomic ops.
-* The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
-* Raise error if `batch_size` argument is used when input is dataset/generator/keras sequence.
 * The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
 * Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the session.run(). When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to session.run(), an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
-* The equality operation on Tensors & Variables now compares on value instead of id(). As a result, both Tensors & Variables are no longer hashable types.
 * Fix accidental quadratic graph construction cost in graph-mode `tf.gradients()`.
 
 ## Thanks to our Contributors
