@@ -38,17 +38,16 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
-To install the current release for CPU-only:
+To install the current release:
 
 ```
 $ pip install tensorflow
 ```
+The `tensorflow` package also includes GPU support on Linux and Windows.
 
-Use the GPU package for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu):
-
+If package size is a concern, CPU-only packages can be installed with:
 ```
-$ pip install tensorflow-gpu
+$ pip install tensorflow-cpu
 ```
 
 *Nightly binaries are available for testing using the
