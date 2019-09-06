@@ -1795,7 +1795,7 @@ def _assert_scalar(value, name):
         name="%sIsScalar" % name.capitalize())
     return control_flow_ops.with_dependencies([check],
                                               value,
-                                              name="%sDependencies")
+                                              name="%sDependencies" % name)
   elif value_rank == 0:
     return value
   else:
