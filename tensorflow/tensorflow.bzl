@@ -2099,6 +2099,7 @@ def tf_py_test(
         additional_deps = additional_deps + tf_additional_grpc_deps_py()
 
     # Python version placeholder
+    kwargs.setdefault("srcs_version", "PY2AND3")
     py_test(
         name = name,
         size = size,
@@ -2109,7 +2110,6 @@ def tf_py_test(
         kernels = kernels,
         main = main,
         shard_count = shard_count,
-        srcs_version = "PY2AND3",
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
