@@ -137,6 +137,12 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
+  def serialize(self, executable):
+    return self.client.SerializeExecutable(executable)
+
+  def deserialize(self, serialized_executable):
+    return self.client.DeserializeExecutable(serialized_executable, self.client)
+
 
 xla_platform_names = {
     'cpu': 'Host',
