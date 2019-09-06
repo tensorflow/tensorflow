@@ -243,22 +243,25 @@ __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
 ''' % underscore_names_str
 
-    for dest_module, _ in self._module_imports.items():
-      deprecation = 'False'
-      has_lite = 'False'
-      if self._api_version == 1:  # Add 1.* deprecations.
-        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
-          deprecation = 'True'
-      # Workaround to make sure not load lite from lite/__init__.py
-      if (not dest_module and 'lite' in self._module_imports
-          and self._lazy_loading):
-        has_lite = 'True'
-      if self._lazy_loading:
-        public_apis_name = '_PUBLIC_APIS'
-      else:
-        public_apis_name = 'None'
-      footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-          dest_module, public_apis_name, deprecation, has_lite)
+    # Add module wrapper if we need to print deprecation messages
+    # or if we use lazy loading.
+    if self._api_version == 1 or self._lazy_loading:
+      for dest_module, _ in self._module_imports.items():
+        deprecation = 'False'
+        has_lite = 'False'
+        if self._api_version == 1:  # Add 1.* deprecations.
+          if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+            deprecation = 'True'
+        # Workaround to make sure not load lite from lite/__init__.py
+        if (not dest_module and 'lite' in self._module_imports
+            and self._lazy_loading):
+          has_lite = 'True'
+        if self._lazy_loading:
+          public_apis_name = '_PUBLIC_APIS'
+        else:
+          public_apis_name = 'None'
+        footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+            dest_module, public_apis_name, deprecation, has_lite)
 
     return module_text_map, footer_text_map
 
