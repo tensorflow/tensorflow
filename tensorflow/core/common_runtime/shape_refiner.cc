@@ -561,6 +561,13 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
   } else if (src_op == "StridedSlice") {
     TF_RETURN_IF_ERROR(
         PartialStridedSliceShape(input_edge->src(), src_context, result));
+  } else if (src_op == "VariableShape") {
+    auto* handle_data = src_context->input_handle_shapes_and_types(0);
+    if (handle_data != nullptr && !handle_data->empty()) {
+      *result = handle_data->at(0).shape;
+    } else {
+      *result = target_context->UnknownShape();
+    }
   } else {
     Tensor t;
     bool evaluated = false;
