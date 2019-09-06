@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -496,6 +497,35 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     // Adds the node to the shape refiner.
     TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
                                     GetLocationStr(*node));
+
+    // We currently have no other way to get shapes from ReadVariableOp's.
+    // Some graphs seem to have _output_shapes attributes on them, so use that
+    // if possible.
+    // TODO(silvasean): Ideally, we would do this in a separate shape inference
+    // pass to avoid adding complexity to the importer. But right now, we don't
+    // have an MLIR-native shape inference pass, so we need to do this while we
+    // still have the Graph around, i.e. here, in the importer.
+    if (node->op_def().name() == "ReadVariableOp") {
+      // TODO(silvasean): In some graphs, this seems to be annotated on every
+      // node. Why and by whom?
+      // TODO(b/140588338): We should ideally incorporate that information for
+      // all nodes, but right now, this can result in e.g. an Identity node with
+      // signature such as
+      // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
+      // (which checks for exact type equality; _output_shapes results in
+      // us shoehorning in the more-precise type on the output).
+      if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+        auto& list = attr->list();
+        for (auto shape : llvm::enumerate(list.shape())) {
+          auto* node_context = shape_refiner_->GetContext(node);
+          shape_inference::ShapeHandle handle;
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              node_context->MakeShapeFromShapeProto(shape.value(), &handle),
+              GetLocationStr(*node));
+          node_context->set_output(shape.index(), handle);
+        }
+      }
+    }
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
