@@ -920,7 +920,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
