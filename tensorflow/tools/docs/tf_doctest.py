@@ -123,7 +123,8 @@ def load_tests(unused_loader, tests, unused_ignore):
             setUp=testcase.set_up,
             tearDown=testcase.tear_down,
             checker=CustomOutputChecker(),
-            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE),
+            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE |
+                         doctest.IGNORE_EXCEPTION_DETAIL),
         ))
   return tests
 

@@ -3240,12 +3240,10 @@ def print_tensor(x, message=''):
   Example:
 
   >>> x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-  >>> x = tf.keras.backend.print_tensor(x, message="x is: ")
-  >>> print(x)
-  tf.Tensor(
-    [[1. 2.]
-     [3. 4.]], shape=(2, 2), dtype=float32)
-
+  >>> tf.keras.backend.print_tensor(x)
+  <tf.Tensor: id=6064, shape=(2, 2), dtype=float32, numpy=
+    array([[1., 2.],
+           [3., 4.]], dtype=float32)>
 
   Arguments:
       x: Tensor to print.
