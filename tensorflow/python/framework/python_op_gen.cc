@@ -316,12 +316,20 @@ string GenEagerPythonOp::Code() {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
     strings::StrAppend(&parameters, param.GetRenameTo());
   }
+  string parameters_with_defaults = parameters;
   for (const auto& param_and_default : params_with_default_) {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo(), "=",
+    if (!parameters_with_defaults.empty())
+      strings::StrAppend(&parameters_with_defaults, ", ");
+    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo());
+    strings::StrAppend(&parameters_with_defaults,
+                       param_and_default.first.GetRenameTo(), "=",
                        param_and_default.second);
   }
-  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name=None");
+
+  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name");
+  strings::StrAppend(&parameters_with_defaults,
+                     parameters_with_defaults.empty() ? "" : ", ", "name=None");
 
   // Add attr_expressions_ for attrs that are params.
   for (int i = 0; i < attrs_.size(); ++i) {
@@ -347,7 +355,7 @@ string GenEagerPythonOp::Code() {
 
   string eager_not_allowed_error = GetEagerNotAllowedError();
 
-  if (!AddEagerFastPathAndGraphCode(parameters, output_sizes,
+  if (!AddEagerFastPathAndGraphCode(parameters_with_defaults, output_sizes,
                                     eager_not_allowed_error)) {
     return result_;
   }
@@ -721,19 +729,12 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     const string& num_outputs_expr, const string& eager_not_allowed_error) {
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
-      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx=None"));
+      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
 
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
   }
-
-  strings::StrAppend(
-      &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
-  strings::StrAppend(&result_, "  This is for function ", function_name_,
-                     "\n  \"\"\"\n");
-
-  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -840,7 +841,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
         const string flattened =
             FlattenInputs(&arg_list->second, &output_sizes);
         string conversion = strings::StrCat("_execute.args_to_matching_eager(",
-                                            flattened, ", _ctx");
+                                            flattened, ", ctx");
         if (attr.has_default_value()) {
           strings::StrAppend(
               &conversion, ", ",
@@ -900,7 +901,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
           conversion = "_execute.convert_to_mixed_eager_tensors";
         }
         strings::StrAppend(&result_, indentation, var_name, ", ", inputs_var,
-                           " = ", conversion, "(", inputs_var, ", _ctx)\n");
+                           " = ", conversion, "(", inputs_var, ", ctx)\n");
       }
     }
   }
@@ -947,7 +948,7 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
       strings::StrCat(indentation, "_result = _execute.execute(");
   const string return_args = strings::StrCat(
       "b\"", op_def_.name(), "\", ", num_outputs_expr,
-      ", inputs=_inputs_flat, attrs=_attrs, ctx=_ctx, name=name)");
+      ", inputs=_inputs_flat, attrs=_attrs, ctx=ctx, name=name)");
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
