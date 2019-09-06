@@ -25,6 +25,7 @@ import six
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -194,6 +195,8 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
+  if isinstance(input, composite_tensor.CompositeTensor):
+    return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
     # variables. Variables have correct handle data when graph building.
