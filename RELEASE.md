@@ -8,7 +8,7 @@ This enables writing forward compatible code: by explicitly importing either `te
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with `tf.data`, `tf.distribute` and `tf.keras` APIS.
-* Adds enable_tensor_equality(), which switches the behavior such that: 
+* Adds `enable_tensor_equality()`, which switches the behavior such that: 
   * Tensors are no longer hashable.
   * Tensors can be compared with == and !=, yielding a Boolean Tensor with element-wise comparison results. This will be the default behavior in 2.0.
 
