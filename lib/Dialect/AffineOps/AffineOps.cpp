@@ -59,10 +59,12 @@ struct AffineInlinerInterface : public DialectInlinerInterface {
   /// dialect, can be inlined into the given region, false otherwise.
   bool isLegalToInline(Operation *op, Region *region,
                        BlockAndValueMapping &valueMapping) const final {
-    // Always allow inlining affine operations. There are some edge cases when
-    // inlining *into* affine structures, but that is handled in the other
-    // 'isLegalToInline' hook above.
-    return true;
+    // Always allow inlining affine operations into the top-level region of a
+    // function. There are some edge cases when inlining *into* affine
+    // structures, but that is handled in the other 'isLegalToInline' hook
+    // above.
+    // TODO: We should be able to inline into other regions than functions.
+    return isa<FuncOp>(region->getParentOp());
   }
 
   /// Affine regions should be analyzed recursively.
