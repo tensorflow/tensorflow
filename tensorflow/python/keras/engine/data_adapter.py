@@ -152,6 +152,19 @@ class DataAdapter(object):
     """
     raise NotImplementedError
 
+  def representative_batch_size(self):
+    """Return a representative size for batches in the dataset.
+
+    This is not guaranteed to be the batch size for all batches in the
+    dataset. It just needs to be a rough approximation for batch sizes in
+    the dataset.
+
+    Returns:
+      int, a representative size for batches found in the dataset,
+      or None if it is unknown.
+    """
+    return self.batch_size()
+
   @abc.abstractmethod
   def has_partial_batch(self):
     """Whether the dataset has partial batch at the end."""
@@ -537,15 +550,18 @@ class GeneratorDataAdapter(DataAdapter):
     # dataset, we have to take a peek for the python generator first. Since the
     # peeked data cannot be push back to generator, we create a new generator by
     # adding the peeked data at head.
+    def dynamic_shape_like(t):
+      return tuple(None for _ in t.shape)
+
     peek = next(x)
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
-    nested_shape = nest.map_structure(lambda t: t.shape, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
     # Note that dataset API takes a callable that creates a generator object,
     # rather than generator itself, which is why we define a function here.
     def reassemble():
       return itertools.chain([peek], x)
 
-    self._batch_size = int(nest.flatten(peek)[0].shape[0])
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
     self._dataset = dataset_ops.DatasetV2.from_generator(
         reassemble, nested_dtypes, output_shapes=nested_shape)
 
@@ -556,7 +572,10 @@ class GeneratorDataAdapter(DataAdapter):
     return None
 
   def batch_size(self):
-    return self._batch_size
+    return None
+
+  def representative_batch_size(self):
+    return self._first_batch_size
 
   def has_partial_batch(self):
     return False
@@ -580,9 +599,12 @@ class KerasSequenceAdapter(DataAdapter):
     if not is_none_or_empty(sample_weights):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "`keras.utils.Sequence` as input.")
+    def dynamic_shape_like(t):
+      return tuple(None for _ in t.shape)
+
     peek = x[0]
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
-    nested_shape = nest.map_structure(lambda t: t.shape, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
 
     def generator():
       for i in range(len(x)):
@@ -593,7 +615,7 @@ class KerasSequenceAdapter(DataAdapter):
       dataset = dataset.shuffle(len(x))
     self._dataset = dataset
     self._size = len(x)
-    self._batch_size = int(nest.flatten(peek)[0].shape[0])
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
 
   def get_dataset(self):
     return self._dataset
@@ -602,7 +624,10 @@ class KerasSequenceAdapter(DataAdapter):
     return self._size
 
   def batch_size(self):
-    return self._batch_size
+    return None
+
+  def representative_batch_size(self):
+    return self._first_batch_size
 
   def has_partial_batch(self):
     return False
