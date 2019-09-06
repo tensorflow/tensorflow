@@ -62,16 +62,6 @@ END
   attr {
     name: "output_shapes"
   }
-  attr {
-    name: "sloppy"
-    description: <<END
-If `True`, return elements as they become available, even if that means returning
-these elements in a non-deterministic order. Sloppy operation may result in better
-performance in the presence of stragglers, but the dataset will still block if
-all of its open streams are blocked.
-If `False`, always return elements in a deterministic order.
-END
-  }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: <<END
 The resulting dataset is similar to the `InterleaveDataset`, except that the
@@ -81,13 +71,8 @@ The `tf.data` Python API creates instances of this op from
 `Dataset.interleave()` when the `num_parallel_calls` parameter of that method
 is set to any value other than `None`.
 
-!! WARNING !! If the `sloppy` parameter is set to `True`, the operation of this
-dataset will not be deterministic!
-
-The `sloppy` parameter of this op always starts out set to `False` when the
-Python API creates instances of this op. If the `make_sloppy` static
-optimization pass runs, that optimization will set the `sloppy` parameter to
-`True`. Whether this optimization is performed is determined by the
-`experimental_deterministic` parameter of `tf.data.Options`.
+If the `experimental_deterministic` parameter of `tf.data.Options` is set to
+`True`, then the output of this op will be deterministic. Otherwise the output
+may be nondeterministic.
 END
 }
