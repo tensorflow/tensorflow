@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "Asset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CLASSIFY_INPUTS"
     mtype: "<type \'str\'>"
   }

@@ -270,7 +270,7 @@ class _SaveableView(object):
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
@@ -498,7 +498,7 @@ _AssetInfo = collections.namedtuple(
         "asset_initializers_by_resource",
         # Map from base asset filenames to full paths
         "asset_filename_map",
-        # Map from TrackableAsset to index of corresponding AssetFileDef
+        # Map from Asset to index of corresponding AssetFileDef
         "asset_index"])
 
 
@@ -662,7 +662,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
 def _write_object_proto(obj, proto, asset_file_def_index):
   """Saves an object into SavedObject proto."""
-  if isinstance(obj, tracking.TrackableAsset):
+  if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):

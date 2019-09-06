@@ -204,8 +204,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file2 = self._make_asset("contents 2")
 
     root = tracking.AutoTrackable()
-    root.asset1 = tracking.TrackableAsset(file1)
-    root.asset2 = tracking.TrackableAsset(file2)
+    root.asset1 = tracking.Asset(file1)
+    root.asset2 = tracking.Asset(file2)
 
     save_dir = os.path.join(self.get_temp_dir(), "save_dir")
     save.save(root, save_dir)
@@ -253,7 +253,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_capture_assets(self, cycles):
     root = tracking.AutoTrackable()
-    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.vocab = tracking.Asset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
@@ -266,7 +266,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_capture_assets_in_graph(self, cycles):
     root = tracking.AutoTrackable()
-    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.vocab = tracking.Asset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
@@ -290,8 +290,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")
     root = tracking.AutoTrackable()
-    root.asset1 = tracking.TrackableAsset(vocab)
-    root.asset2 = tracking.TrackableAsset(vocab)
+    root.asset1 = tracking.Asset(vocab)
+    root.asset2 = tracking.Asset(vocab)
     imported = cycle(root, cycles)
     self.assertEqual(imported.asset1.asset_path.numpy(),
                      imported.asset2.asset_path.numpy())
