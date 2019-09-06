@@ -369,7 +369,7 @@ bool SetOpAttrList(
     }
     TFE_OpSetAttrShapeList(op, key, dims.get(), num_dims.get(), num_values,
                            status);
-    if (TF_GetCode(status) != TF_OK) return false;
+    if (!status->status.ok()) return false;
   } else if (type == TF_ATTR_FUNC) {
     std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
     for (int i = 0; i < num_values; ++i) {
@@ -400,10 +400,10 @@ bool SetOpAttrList(
         }
       }
       funcs[i] = TFE_NewOp(ctx, func_name.data(), status);
-      if (TF_GetCode(status) != TF_OK) return false;
+      if (!status->status.ok()) return false;
     }
     TFE_OpSetAttrFunctionList(op, key, funcs.get(), num_values);
-    if (TF_GetCode(status) != TF_OK) return false;
+    if (!status->status.ok()) return false;
   } else {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
                  tensorflow::strings::StrCat("Attr ", key,
@@ -419,9 +419,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
     SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
   }
   return func_op;
 }
@@ -580,7 +580,7 @@ bool SetOpAttrScalar(
       }
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }
-    if (TF_GetCode(status) != TF_OK) return false;
+    if (!status->status.ok()) return false;
   } else if (type == TF_ATTR_FUNC) {
     // Allow:
     // (1) String function name, OR
@@ -652,7 +652,7 @@ void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs, int start_index,
 #endif
     unsigned char is_list = 0;
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
-    if (TF_GetCode(out_status) != TF_OK) return;
+    if (!out_status->status.ok()) return;
     if (is_list != 0) {
       if (!SetOpAttrList(ctx, op, key, py_value, type, nullptr, out_status))
         return;
@@ -674,7 +674,7 @@ void SetOpAttrWithDefaults(
     TF_Status* status) {
   unsigned char is_list = 0;
   const TF_AttrType type = TFE_OpGetAttrType(op, attr_name, &is_list, status);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (!status->status.ok()) return;
   if (attr_value == Py_None) {
     if (is_list != 0) {
       SetOpAttrListDefault(ctx, op, attr, attr_name, type, attr_list_sizes,
@@ -736,27 +736,26 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
-  if (TF_GetCode(out_status) != TF_OK) return;
+  if (!out_status->status.ok()) return;
   TFE_OpSetDevice(op, device_name, out_status);
-  if (TF_GetCode(out_status) == TF_OK) {
-    for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK;
-         ++i) {
+  if (out_status->status.ok()) {
+    for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
       TFE_OpAddInput(op, inputs->at(i), out_status);
     }
   }
-  if (cancellation_manager && TF_GetCode(out_status) == TF_OK) {
+  if (cancellation_manager && out_status->status.ok()) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
   }
-  if (TF_GetCode(out_status) == TF_OK) {
+  if (out_status->status.ok()) {
     SetOpAttrs(ctx, op, attrs, 0, out_status);
   }
   Py_BEGIN_ALLOW_THREADS;
-  if (TF_GetCode(out_status) == TF_OK) {
+  if (out_status->status.ok()) {
     int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
     outputs->resize(num_outputs);
   }
-  if (TF_GetCode(out_status) != TF_OK) {
+  if (!out_status->status.ok()) {
     TF_SetStatus(out_status, TF_GetCode(out_status),
                  tensorflow::strings::StrCat(TF_Message(out_status),
                                              " [Op:", op_name, "]")
@@ -850,7 +849,7 @@ void RaiseFallbackException(const char* message) {
 }
 
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
-  if (TF_GetCode(status) == TF_OK) return 0;
+  if (status->status.ok()) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
@@ -3307,7 +3306,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         SetOpAttrWithDefaults(op_exec_info.ctx, op, attr, attr_name.data(),
                               py_attr_value, &attr_list_sizes, status);
 
-        if (TF_GetCode(status) != TF_OK) {
+        if (!status->status.ok()) {
           VLOG(1) << "Falling back to slow path for Op \"" << op_def->name()
                   << "\" since we are unable to set the value for attr \""
                   << attr.name() << "\" due to: " << TF_Message(status);
@@ -3476,7 +3475,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   TFE_Execute(op, retvals.data(), &num_retvals, status);
   Py_END_ALLOW_THREADS;
 
-  if (TF_GetCode(status) != TF_OK) {
+  if (!status->status.ok()) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
     TF_SetStatus(status, TF_GetCode(status),

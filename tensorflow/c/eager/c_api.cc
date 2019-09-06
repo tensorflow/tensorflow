@@ -979,9 +979,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
     SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
   }
   return func_op;
 }
@@ -1029,7 +1029,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
     } break;
     case tensorflow::AttrValue::kFunc: {
       const auto func_op = GetFunc(ctx, default_value.func(), status);
-      if (TF_GetCode(status) != TF_OK) return;
+      if (!status->status.ok()) return;
       // TODO(nareshmodi): TFE_OpSetAttrFunction and TFE_OpSetAttrFunctionList
       // require TFE_Op* and just convert it internally a NameAttrValue, so
       // consider adding an overload to the C API to make this case easier.

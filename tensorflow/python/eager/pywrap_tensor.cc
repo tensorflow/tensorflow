@@ -104,7 +104,7 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   Py_BEGIN_ALLOW_THREADS;
   tensor = tensorflow::make_safe(TFE_TensorHandleResolve(handle, status));
   Py_END_ALLOW_THREADS;
-  if (TF_GetCode(status) != TF_OK) {
+  if (!status->status.ok()) {
     return nullptr;
   }
 
@@ -112,7 +112,7 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   auto cppstatus =
       tensorflow::TF_TensorToMaybeAliasedPyArray(std::move(tensor), &ret);
   tensorflow::Set_TF_Status_from_Status(status, cppstatus);
-  if (TF_GetCode(status) != TF_OK) {
+  if (!status->status.ok()) {
     Py_XDECREF(ret);
     return nullptr;
   }
@@ -227,19 +227,18 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
     TFE_DeleteOp(op); \
     return nullptr;   \
   }
-  if (TF_GetCode(out_status) != TF_OK) RETURN_ERROR
+  if (!out_status->status.ok()) RETURN_ERROR
   TFE_OpSetDevice(op, device_name, out_status);
-  if (TF_GetCode(out_status) != TF_OK) RETURN_ERROR
+  if (!out_status->status.ok()) RETURN_ERROR
   TFE_OpAddInput(op, handle, out_status);
-  if (TF_GetCode(out_status) != TF_OK) RETURN_ERROR
+  if (!out_status->status.ok()) RETURN_ERROR
   TFE_OpSetAttrType(op, "SrcT", src_type_enum);
   TFE_OpSetAttrType(op, "DstT", dst_type_enum);
   TFE_OpSetAttrBool(op, "Truncate", false);
   TFE_TensorHandle* output = nullptr;
   int num_outputs = 1;
   TFE_Execute(op, &output, &num_outputs, out_status);
-  if (TF_GetCode(out_status) != TF_OK || num_outputs != 1 ||
-      output == nullptr) {
+  if (!out_status->status.ok() || num_outputs != 1 || output == nullptr) {
     if (output != nullptr) {
       TFE_DeleteTensorHandle(output);
     }
@@ -326,7 +325,7 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       handle = tensorflow::make_safe(
           tensorflow::EagerCast(ctx, handle.get(), handle_dtype,
                                 static_cast<TF_DataType>(dtype), status.get()));
-      if (TF_GetCode(status.get()) != TF_OK) {
+      if (!status->status.ok()) {
         PyErr_SetString(PyExc_TypeError,
                         absl::StrCat("Error while casting from dtype ",
                                      tensorflow::DataTypeString(
@@ -1108,7 +1107,7 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim) {
   }
 
   TFE_TensorHandle* handle = TFE_NewTensorHandle(tensor.get(), status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
+  if (!status->status.ok()) {
     PyErr_SetString(
         PyExc_RuntimeError,
         tensorflow::strings::StrCat("Failed to construct new tensor handle: ",
@@ -1134,7 +1133,7 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
   auto status = tensorflow::make_safe(TF_NewStatus());
   TFE_TensorDebugInfo* debug_info =
       TFE_TensorHandleTensorDebugInfo(handle, status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
+  if (!status->status.ok()) {
     PyErr_SetString(
         PyExc_RuntimeError,
         tensorflow::strings::StrCat("Error retrieving tensor's device shape: ",
