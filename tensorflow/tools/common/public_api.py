@@ -40,6 +40,11 @@ class PublicAPIVisitor(object):
 
     # Modules/classes we want to suppress entirely.
     self._private_map = {
+        'tf': [
+            'compiler',
+            'core',
+            'python',
+        ],
         # Some implementations have this internal module that we shouldn't
         # expose.
         'tf.flags': ['cpp_flags'],
