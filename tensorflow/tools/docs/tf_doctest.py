@@ -18,17 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import importlib
 import os
-import pkgutil
 import re
+import sys
 import numpy as np
 
 from absl import flags
 from absl.testing import absltest
 
 import tensorflow.compat.v2 as tf
-import tensorflow.python as core
 tf.compat.v1.enable_v2_behavior()
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
@@ -41,17 +39,16 @@ flags.DEFINE_string('module', '', 'A specific module to run doctest on.')
 flags.DEFINE_boolean('list', False,
                      'List all the modules in the core package imported.')
 
+PACKAGE = 'tensorflow.python.'
+
 
 def find_modules():
   """Finds all the modules in the core package imported."""
 
   tf_modules = []
-  for _, name, _ in pkgutil.walk_packages(
-      core.__path__, prefix=core.__name__ + '.'):
-    try:
-      tf_modules.append(importlib.import_module(name))
-    except (ImportError, AttributeError):
-      pass
+  for name, module in sys.modules.items():
+    if name.startswith(PACKAGE):
+      tf_modules.append(module)
 
   return tf_modules
 
@@ -73,7 +70,7 @@ def filter_on_submodules(all_modules, submodule):
 
   filtered_modules = [
       mod for mod in all_modules
-      if core.__name__ + '.' + submodule in mod.__name__
+      if PACKAGE + submodule in mod.__name__
   ]
   return filtered_modules
 
