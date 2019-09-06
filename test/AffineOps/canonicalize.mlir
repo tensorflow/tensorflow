@@ -424,3 +424,25 @@ func @fold_empty_loop() {
   }
   return
 }
+
+// -----
+
+// CHECK-DAG: [[SET:#set[0-9]+]] = (d0, d1)[s0] : (d0 >= 0, -d0 + 1022 >= 0, d1 >= 0, -d1 + s0 - 2 >= 0)
+
+// CHECK-LABEL: func @canonicalize_affine_if
+// CHECK-SAME: [[M:%.*]]: index,
+// CHECK-SAME: [[N:%.*]]: index)
+func @canonicalize_affine_if(%M : index, %N : index) {
+  %c1022 = constant 1022 : index
+  // Drop unused operand %M, propagate %c1022, and promote %N to symbolic.
+  affine.for %i = 0 to 1024 {
+    affine.for %j = 0 to %N {
+      // CHECK: affine.if [[SET]](%{{.*}}, %{{.*}}){{\[}}[[N]]{{\]}}
+      affine.if (d0, d1, d2, d3)[s0] : (d1 >= 0, d0 - d1 >= 0, d2 >= 0, d3 - d2 - 2 >= 0) (%c1022, %i, %j, %N)[%M] {
+        "foo"() : () -> ()
+      }
+      "bar"() : () -> ()
+    }
+  }
+  return
+}

@@ -308,7 +308,7 @@ std::unique_ptr<FlatAffineConstraints> FlatAffineConstraints::clone() const {
 
 // Construct from an IntegerSet.
 FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
-    : numReservedCols(set.getNumOperands() + 1),
+    : numReservedCols(set.getNumInputs() + 1),
       numIds(set.getNumDims() + set.getNumSymbols()), numDims(set.getNumDims()),
       numSymbols(set.getNumSymbols()) {
   equalities.reserve(set.getNumEqualities() * numReservedCols);
