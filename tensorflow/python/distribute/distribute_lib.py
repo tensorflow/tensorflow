@@ -1354,16 +1354,21 @@ class StrategyExtendedV2(object):
 
     Variables created inside the strategy scope are "owned" by it:
 
-    >>> with strategy.scope():
-    ...   v = tf.Variable(1.)
-    >>> strategy.variable_created_in_scope(v)
+    ```python
+    strategy = tf.distribute.StrategyExtended()
+    with strategy.scope():
+      v = tf.Variable(1.)
+    strategy.variable_created_in_scope(v)
     True
+    ```
 
     Variables created outside the strategy are not owned by it:
 
-    >>> v = tf.Variable(1.)
-    >>> strategy.variable_created_in_scope(v)
+    ```python
+    v = tf.Variable(1.)
+    strategy.variable_created_in_scope(v)
     False
+    ```
 
     Args:
       v: A `tf.Variable` instance.
