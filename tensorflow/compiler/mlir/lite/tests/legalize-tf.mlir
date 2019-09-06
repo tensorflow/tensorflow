@@ -153,6 +153,14 @@ func @placeholder(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
 }
 
+func @placeholder_int(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Placeholder.input"(%arg0) {name = "Input"} : (tensor<i32>) -> tensor<i32>
+  return %0: tensor<i32>
+
+// CHECK-LABEL: @placeholder_int
+// CHECK-NEXT:  "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
+}
+
 func @placeholder_min(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Placeholder.input"(%arg0) {name = "Input", min = -0.1 : f32} : (tensor<f32>) -> tensor<f32>
   return %0: tensor<f32>
@@ -658,6 +666,15 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK-LABEL: pad
   // CHECK:  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return %0 : tensor<?xf32>
+}
+
+func @pow(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x1x1xf32>) -> tensor<2x1x3xf32> {
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+
+  // CHECK-LABEL: pow
+  // CHECK:  %[[pow:.*]] = "tfl.pow"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<2x1x1xf32>) -> tensor<2x1x3xf32>
+  // CHECK:  return %[[pow]] : tensor<2x1x3xf32>
 }
 
 func @tile(tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32> {

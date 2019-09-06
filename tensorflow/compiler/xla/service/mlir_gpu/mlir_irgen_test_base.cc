@@ -31,7 +31,7 @@ namespace mlir_gpu {
 
 void MlirIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const string& pattern,
-    bool match_lowered_ir) {
+    LoweringStage stage) {
   MlirCompiler* compiler = GetMLIRCompiler();
   string ir;
   compiler->SetModuleHook({[&ir](mlir::ModuleOp module) -> Status {
@@ -42,7 +42,7 @@ void MlirIrGenTestBase::CompileAndVerifyIr(
                              ir = buffer_string;
                              return Status::OK();
                            },
-                           match_lowered_ir});
+                           stage});
   Status status = CompileToExecutable(std::move(hlo_module)).status();
   compiler->RemoveModuleHook();
   TF_ASSERT_OK(status);
@@ -54,12 +54,12 @@ void MlirIrGenTestBase::CompileAndVerifyIr(
 
 void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            const string& expected_llvm_ir,
-                                           bool match_lowered_ir) {
+                                           LoweringStage stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_lowered_ir);
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, stage);
 }
 
 MlirCompiler* MlirIrGenTestBase::GetMLIRCompiler() {

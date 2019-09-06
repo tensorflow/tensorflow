@@ -101,6 +101,28 @@ class EagerOperation {
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
   EagerExecutor& executor_;                              // Not owned.
 };
+
+inline void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
+  h->Ref();
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
+inline void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
+  tensorflow::TensorHandle** slot = &inputs_[i];
+  tensorflow::TensorHandle* existing = *slot;
+  if (existing != h) {
+    h->Ref();
+    existing->Unref();
+    *slot = h;  // Update inputs_[i] to h
+  }
+}
+
+inline void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_

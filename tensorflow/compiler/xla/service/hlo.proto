@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 69
+// Next ID: 70
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -237,6 +237,10 @@ message HloInstructionProto {
 
   // Frontend attributes to pass to the XLA backend.
   xla.FrontendAttributes frontend_attributes = 68;
+
+  // Specifies if all elements updated are guaranteed to be unique by
+  // the caller.
+  bool unique_indices = 69;
 }
 
 // Serialization of HloComputation.

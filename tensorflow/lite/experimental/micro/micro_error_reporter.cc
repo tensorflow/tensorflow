@@ -56,7 +56,7 @@ void DebugLogPrintf(const char* format, va_list args) {
     DebugLog(output_cache);
     output_cache_index = 0;
   }
-  DebugLog("\n");
+  DebugLog("\r\n");
 }
 }  // namespace
 

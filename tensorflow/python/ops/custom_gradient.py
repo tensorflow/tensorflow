@@ -320,7 +320,7 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
     inputs = args
   else:
     primals = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
-    inputs = primals
+    inputs = primals + args
   variables_in_tape = frozenset([
       v.experimental_ref() for v in tape.watched_variables()
   ]) - frozenset(v.experimental_ref() for v in inputs)

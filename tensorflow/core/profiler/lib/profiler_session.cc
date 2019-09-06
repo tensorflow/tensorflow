@@ -100,6 +100,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Create device
     auto* device_stats =
         run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
+    // Don't generate trace events for "derived or aggregated" devices, the
+    // events in these devices are duplicated from other streams.
+    if (absl::EndsWith(device_stats->device(), "stream:all") ||
+        absl::EndsWith(device_stats->device(), "sync") ||
+        absl::EndsWith(device_stats->device(), "memcpy"))
+      continue;
     profiler::Device device;
     device.set_name(device_stats->device());
     device.set_device_id(device_id);
@@ -116,8 +122,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     (*trace_devices)[device_id] = device;
 
     // Emit events.
-    for (auto node :
-         run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+    for (auto node : device_stats->node_stats()) {
       if (node.all_start_micros() < profile_start_time_micros ||
           node.all_start_micros() + node.all_end_rel_micros() >
               profile_end_time_micros) {

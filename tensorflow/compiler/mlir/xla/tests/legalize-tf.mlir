@@ -166,6 +166,18 @@ func @const() -> tensor<2xi32> {
 }
 
 //===----------------------------------------------------------------------===//
+// Matmul op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: matmul_notranspose
+func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> tensor<5x11xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Relu op legalizations.
 //===----------------------------------------------------------------------===//
 

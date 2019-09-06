@@ -678,6 +678,10 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       if (edge->IsControlEdge()) {
         inputs.push_back(edge);
       } else {
+        DCHECK(edge->dst_input() < inputs.size())
+            << "Edge " << edge->DebugString()
+            << " is overflowing the expected number of inputs ("
+            << node->num_inputs() << ") for node " << node->DebugString();
         CHECK(inputs[edge->dst_input()] == nullptr)
             << "Edge " << edge->src()->DebugString() << ":"
             << edge->dst()->DebugString() << " with dst_input "

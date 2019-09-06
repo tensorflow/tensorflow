@@ -127,14 +127,17 @@ class PyLocalClient {
       int num_replicas) const;
 
   int device_count() const { return devices_.size(); }
+  int local_device_count() const { return local_devices_.size(); }
   const std::vector<std::shared_ptr<Device>>& devices() { return devices_; }
+  const std::vector<std::shared_ptr<Device>>& local_devices() {
+    return local_devices_;
+  }
   const std::map<int, std::shared_ptr<Device>>& id_to_device() const {
     return id_to_device_;
   }
   int host_id() const { return host_id_; }
   const std::string& platform_name() const { return platform_name_; }
 
-  int local_device_count() const { return device_states_.size(); }
   DeviceState& device_state(int device_ordinal) const {
     return *device_states_.at(device_ordinal);
   }
@@ -155,8 +158,10 @@ class PyLocalClient {
 
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::shared_ptr<Device>> devices_;
-  // Maps Device::id() to the corresponding Device.
+  // Maps Device::id() to the corresponding Device. Includes all devices.
   std::map<int, std::shared_ptr<Device>> id_to_device_;
+  // Local devices indexed by local device ordinal.
+  std::vector<std::shared_ptr<Device>> local_devices_;
   int host_id_;
 
   // Device states local to this host. Indexed by local device ordinal.
@@ -203,6 +208,7 @@ class PyLocalBuffer {
   const Shape& on_host_shape() const { return on_host_shape_; }
   int device_ordinal() const { return device_ordinal_; }
   const std::string& platform_name() const { return client_->platform_name(); }
+  std::shared_ptr<PyLocalClient> client() const { return client_; }
 
   // Returns the buffer's value as a tuple DAG of Python arrays. If the value
   // has previously been prefetched to the host, then returns the prefetched

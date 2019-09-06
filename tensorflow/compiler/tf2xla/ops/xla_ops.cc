@@ -624,7 +624,7 @@ REGISTER_OP("XlaEinsum")
     .Input("b: T")
     .Output("product: T")
     .Attr("equation: string")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {complex64, bfloat16, float}")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       shape_inference::ShapeHandle input_a = context->input(0);
       shape_inference::ShapeHandle input_b = context->input(1);

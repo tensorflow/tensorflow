@@ -285,6 +285,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     return;
   }
 
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validating acceleration");
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
       nnapi->android_sdk_version >=

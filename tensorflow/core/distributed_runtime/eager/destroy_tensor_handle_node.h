@@ -28,17 +28,23 @@ namespace eager {
 class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
-                          EagerClient* eager_client)
+                          EagerClient* eager_client, bool ready)
       : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
-        eager_client_(eager_client) {}
+        eager_client_(eager_client),
+        ready_(ready) {}
 
   void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;
-    eager_client_->StreamingEnqueueAsync(
+    bool ready = ready_;
+    // NOTE(fishx): Don't use StreamingEnqueueAsync here. When a
+    // StreamingEnqueueAsync request fails all following requests will fail as
+    // well. We don't want this request poison following requests since it is
+    // safe to ignore a failing destroy tensor handle request.
+    eager_client_->EnqueueAsync(
         request_.get(), response,
-        [response, done](const tensorflow::Status& s) {
-          if (!s.ok()) {
+        [response, ready, done](const tensorflow::Status& s) {
+          if (!s.ok() && ready) {
             LOG(WARNING) << "Ignoring an error encountered when deleting "
                             "remote tensors handles: "
                          << s.ToString();
@@ -59,6 +65,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  private:
   std::unique_ptr<EnqueueRequest> request_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  bool ready_;
 };
 
 }  // namespace eager

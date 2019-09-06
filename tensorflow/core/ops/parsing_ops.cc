@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/example_proto_helper.h"
 
 namespace tensorflow {
@@ -23,6 +24,75 @@ namespace tensorflow {
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+
+namespace {
+
+// Adds output shapes for dense tensors in Parse*Example ops.
+template <typename TensorShapeType>  // TensorShape or PartialTensorShape
+Status AddDenseOutputShapes(const std::vector<TensorShapeType>& dense_shapes,
+                            const ShapeHandle& prefix, InferenceContext* c,
+                            int* output_idx) {
+  for (const auto& dense_shape : dense_shapes) {
+    ShapeHandle s;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(dense_shape, &s));
+    TF_RETURN_IF_ERROR(c->Concatenate(prefix, s, &s));
+    c->set_output((*output_idx)++, s);
+  }
+  return Status::OK();
+}
+
+// Adds output shapes for sparse tensors in Parse*Example ops.
+void AddSparseOutputShapes(int num_sparse, const ShapeHandle input_shape,
+                           int64 rank_delta, InferenceContext* c,
+                           int* output_idx) {
+  // Rank of SparseTensor is rank of input tensor plus rank_delta.
+  shape_inference::DimensionOrConstant rank(c->UnknownDim());
+  if (c->RankKnown(input_shape)) {
+    rank = c->Rank(input_shape) + rank_delta;
+  }
+  for (int i = 0; i < num_sparse; ++i) {  // sparse_indices
+    c->set_output((*output_idx)++, c->Matrix(c->UnknownDim(), rank));
+  }
+  for (int i = 0; i < num_sparse; ++i) {  // sparse_values
+    c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
+  }
+  for (int i = 0; i < num_sparse; ++i) {  // sparse_dense_shapes
+    c->set_output((*output_idx)++, c->Vector(rank));
+  }
+}
+
+// Adds output shapes for ragged tensors in Parse*Examle ops.
+Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
+                             const DimensionHandle& num_examples,
+                             InferenceContext* c, int* output_idx) {
+  DimensionHandle num_splits;
+  TF_RETURN_IF_ERROR(c->Add(num_examples, 1, &num_splits));
+  // Values
+  for (int i = 0; i < num_ragged; ++i) {
+    c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
+  }
+  // Inner row_splits
+  if (ragged_rank_2) {
+    for (int i = 0; i < num_ragged; ++i) {
+      c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
+    }
+  }
+  // Outer row_splits.
+  for (int i = 0; i < num_ragged; ++i) {
+    c->set_output((*output_idx)++, c->Vector(num_splits));
+  }
+  return Status::OK();
+}
+
+// Adds output shapes for dense_lengths tensors in Parse*Example ops.
+void AddDenseLengthsShapes(int num_dense, const ShapeHandle& shape,
+                           InferenceContext* c, int* output_idx) {
+  for (int i = 0; i < num_dense; ++i) {
+    c->set_output((*output_idx)++, shape);
+  }
+}
+
+}  // namespace
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
@@ -89,33 +159,68 @@ REGISTER_OP("ParseExample")
     .Attr("dense_shapes: list(shape) >= 0")
     .SetShapeFn([](InferenceContext* c) {
       ParseExampleAttrs attrs;
-      TF_RETURN_IF_ERROR(attrs.Init(c));
+      TF_RETURN_IF_ERROR(attrs.Init(c, /*op_version=*/1));
 
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // names
+      ShapeHandle names;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &names));
 
-      // Output sparse_indices, sparse_values, and sparse_shapes.
       int output_idx = 0;
-      for (int i = 0; i < attrs.num_sparse; ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
-      }
-      for (int i = 0; i < attrs.num_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.num_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(2));
+      AddSparseOutputShapes(attrs.num_sparse, input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(
+          AddDenseOutputShapes(attrs.dense_shapes, input, c, &output_idx));
+      return Status::OK();
+    });
+
+// Differences between ParseExample and ParseExampleV2:
+//   * Supports ragged features.
+//   * `serialized` may be a vector or a scalar.  (With v1, `serialized` could
+//      only be a vector).
+//   * Each set of keys is passed with a vector instead of a list of scalars.
+//   * No Ndense attribute (not needed).
+//   * num_sparse (formerly Nsparse) is no longer inferred; you must specify it
+//     explicitly.
+REGISTER_OP("ParseExampleV2")
+    .Input("serialized: string")
+    .Input("names: string")
+    .Input("sparse_keys: string")
+    .Input("dense_keys: string")
+    .Input("ragged_keys: string")
+    .Input("dense_defaults: Tdense")
+    .Output("sparse_indices: num_sparse * int64")
+    .Output("sparse_values: sparse_types")
+    .Output("sparse_shapes: num_sparse * int64")
+    .Output("dense_values: Tdense")
+    .Output("ragged_values: ragged_value_types")
+    .Output("ragged_row_splits: ragged_split_types")
+    .Attr("Tdense: list({float,int64,string}) >= 0")  // Inferred
+    .Attr("num_sparse: int >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
+
+    .SetShapeFn([](InferenceContext* c) {
+      ParseExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c, /*op_version=*/2));
+
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &input));
+      ShapeHandle names;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &names));
+      DimensionHandle num_examples = c->UnknownDim();
+      if (c->RankKnown(input) && c->Rank(input) == 1) {
+        num_examples = c->Dim(input, 0);
       }
 
-      // Output dense_shapes.
-      for (int i = 0; i < attrs.num_dense; ++i) {
-        ShapeHandle dense;
-        TF_RETURN_IF_ERROR(
-            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
-        TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
-        c->set_output(output_idx++, dense);
-      }
+      int output_idx = 0;
+      AddSparseOutputShapes(attrs.num_sparse, input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(
+          AddDenseOutputShapes(attrs.dense_shapes, input, c, &output_idx));
+      TF_RETURN_IF_ERROR(AddRaggedOutputShapes(attrs.num_ragged, false,
+                                               num_examples, c, &output_idx));
+
       return Status::OK();
     });
 
@@ -139,25 +244,10 @@ REGISTER_OP("ParseSingleExample")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
 
-      // Output sparse_indices, sparse_values, and sparse_shapes.
       int output_idx = 0;
-      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 1));
-      }
-      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.sparse_keys.size(); ++i) {
-        c->set_output(output_idx++, c->Vector(1));
-      }
-
-      // Output dense_shapes.
-      for (int i = 0; i < attrs.dense_keys.size(); ++i) {
-        ShapeHandle dense;
-        TF_RETURN_IF_ERROR(
-            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
-        c->set_output(output_idx++, dense);
-      }
+      AddSparseOutputShapes(attrs.sparse_keys.size(), input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(
+          AddDenseOutputShapes(attrs.dense_shapes, input, c, &output_idx));
       return Status::OK();
     });
 
@@ -196,60 +286,23 @@ REGISTER_OP("ParseSequenceExample")
       // Verify that the input is a vector, and carry the shape if known.
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
-      shape_inference::DimensionHandle num_examples = c->Dim(input, 0);
-
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // debug_name
+      ShapeHandle names;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &names));
+      DimensionHandle num_examples = c->Dim(input, 0);
+      ShapeHandle feature_list_dense_prefix =
+          c->Matrix(num_examples, c->UnknownDim());
 
       int output_idx = 0;
-
-      // Output context_sparse_indices, context_sparse_values, and
-      // context_sparse_shapes.
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
-      }
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(2));
-      }
-
-      // Output context_dense_values.
-      for (int i = 0; i < attrs.num_context_dense; ++i) {
-        ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-            attrs.context_dense_shapes[i], &s));
-        TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(num_examples), s, &s));
-        c->set_output(output_idx++, s);
-      }
-
-      // Output feature_list_sparse_indices, feature_list_sparse_values,
-      // feature_list_sparse_shapes.
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 3));
-      }
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(3));
-      }
-
-      // Output feature_list_dense_shapes.
-      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-            attrs.feature_list_dense_shapes[i], &s));
-        TF_RETURN_IF_ERROR(
-            c->Concatenate(c->Matrix(num_examples, c->UnknownDim()), s, &s));
-        c->set_output(output_idx++, s);
-      }
-
-      // Output feature_list_dense_lengths.
-      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        c->set_output(output_idx++, c->Vector(num_examples));
-      }
+      AddSparseOutputShapes(attrs.num_context_sparse, input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.context_dense_shapes, input,
+                                              c, &output_idx));
+      AddSparseOutputShapes(attrs.num_feature_list_sparse, input, 2, c,
+                            &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.feature_list_dense_shapes,
+                                              feature_list_dense_prefix, c,
+                                              &output_idx));
+      AddDenseLengthsShapes(attrs.num_feature_list_dense, input, c,
+                            &output_idx);
 
       return Status::OK();
     });
@@ -297,48 +350,14 @@ REGISTER_OP("ParseSingleSequenceExample")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
 
       int output_idx = 0;
-
-      // Output context_sparse_indices, context_sparse_values, and
-      // context_sparse_shapes.
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 1));
-      }
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.num_context_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(1));
-      }
-
-      // Output context_dense_shapes.
-      for (int i = 0; i < attrs.num_context_dense; ++i) {
-        ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-            attrs.context_dense_shapes[i], &s));
-        c->set_output(output_idx++, s);
-      }
-
-      // Output feature_list_sparse_indices, feature_list_sparse_values,
-      // feature_list_sparse_shapes.
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
-      }
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
-      }
-      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
-        c->set_output(output_idx++, c->Vector(2));
-      }
-
-      // Output feature_list_dense_shapes.
-      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-            attrs.feature_list_dense_shapes[i], &s));
-        TF_RETURN_IF_ERROR(
-            c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
-        c->set_output(output_idx++, s);
-      }
+      AddSparseOutputShapes(attrs.num_context_sparse, input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.context_dense_shapes, input,
+                                              c, &output_idx));
+      AddSparseOutputShapes(attrs.num_feature_list_sparse, input, 2, c,
+                            &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.feature_list_dense_shapes,
+                                              c->UnknownShapeOfRank(1), c,
+                                              &output_idx));
       return Status::OK();
     });
 

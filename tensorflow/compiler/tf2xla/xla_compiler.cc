@@ -173,6 +173,7 @@ Status BuildComputation(
   xla::OpMetadata retval_metadata;
   retval_metadata.set_op_name("XLA_Retvals");
   builder->SetOpMetadata(retval_metadata);
+  VLOG(1) << "Building new computation";
   auto cleanup = gtl::MakeCleanup([builder]() { builder->ClearOpMetadata(); });
 
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
@@ -915,6 +916,9 @@ Status XlaCompiler::BuildArguments(
       const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
       for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
         int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        VLOG(1) << "Setting dynamic binding " << i << " -> "
+                << dynamic_size_param_index;
+
         TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
             /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
             /*target_param_num=*/0, /*target_param_index=*/{i},
@@ -1170,7 +1174,7 @@ Status XlaCompiler::CompileGraph(
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
     CompilationResult* result) {
-  VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
+  VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));

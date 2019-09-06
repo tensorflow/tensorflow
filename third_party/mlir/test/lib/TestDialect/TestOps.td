@@ -162,12 +162,21 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
 // Test Regions
 //===----------------------------------------------------------------------===//
 
+def OneRegionOp : TEST_Op<"one_region_op", []> {
+  let regions = (region AnyRegion);
+}
+
 def TwoRegionOp : TEST_Op<"two_region_op", []> {
   let regions = (region AnyRegion, AnyRegion);
 }
 
 def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
+}
+
+def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+  let regions = (region AnyRegion:$body);
+  let results = (outs FunctionType);
 }
 
 //===----------------------------------------------------------------------===//
@@ -259,9 +268,15 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
   let regions = (region SizedRegion<1>:$region);
 }
 
-def I32ElementsAttributesOp : TEST_Op<"i32ElementsAttr"> {
+def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
+
+def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
+
+def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
+                     (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
+                     [(IsNotScalar $attr)]>;
 
 //===----------------------------------------------------------------------===//
 // Test Patterns

@@ -23,8 +23,12 @@ limitations under the License.
 
 namespace mlir {
 
-// Converts a MLIR module in HLO dialect into a HloModuleProto.
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto);
+// Converts a MLIR module in HLO dialect into a HloModuleProto. If
+// use_tuple_args is set, then functions will have a single tuple as input. If
+// always_return_tuple is set, then functions will return tuple whether or not
+// there is only one result.
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool always_return_tuple);
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.

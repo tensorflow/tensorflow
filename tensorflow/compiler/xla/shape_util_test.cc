@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <numeric>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -195,7 +196,7 @@ TEST(ShapeUtilTest, CompatibleDynamicShapes) {
 
   EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_a));
   EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_b));
-  EXPECT_FALSE(ShapeUtil::Compatible(shape_a, shape_c));
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_c));
 }
 
 TEST(ShapeUtilTest, CompatibleTuples) {

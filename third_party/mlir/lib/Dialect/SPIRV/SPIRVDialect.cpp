@@ -13,6 +13,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
@@ -104,9 +105,10 @@ static bool isValidSPIRVVectorType(VectorType type) {
          type.getNumElements() >= 2 && type.getNumElements() <= 4;
 }
 
-bool SPIRVDialect::isValidSPIRVType(Type type) const {
+bool SPIRVDialect::isValidType(Type type) {
   // Allow SPIR-V dialect types
-  if (&type.getDialect() == this) {
+  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
+      type.getKind() <= TypeKind::LAST_SPIRV_TYPE) {
     return true;
   }
   if (isValidSPIRVScalarType(type)) {
@@ -632,4 +634,17 @@ void SPIRVDialect::printType(Type type, llvm::raw_ostream &os) const {
   default:
     llvm_unreachable("unhandled SPIR-V type");
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Constant
+//===----------------------------------------------------------------------===//
+
+Operation *SPIRVDialect::materializeConstant(OpBuilder &builder,
+                                             Attribute value, Type type,
+                                             Location loc) {
+  if (!ConstantOp::isBuildableWith(type))
+    return nullptr;
+
+  return builder.create<spirv::ConstantOp>(loc, type, value);
 }

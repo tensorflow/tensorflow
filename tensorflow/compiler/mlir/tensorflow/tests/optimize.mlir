@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-optimize %s | FileCheck %s
+// RUN: tf-opt -tf-optimize %s -o %t && FileCheck %s < %t
 
 // CHECK-LABEL: convbiasaddmul
 func @convbiasaddmul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {

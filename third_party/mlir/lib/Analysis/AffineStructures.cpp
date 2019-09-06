@@ -308,7 +308,7 @@ std::unique_ptr<FlatAffineConstraints> FlatAffineConstraints::clone() const {
 
 // Construct from an IntegerSet.
 FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
-    : numReservedCols(set.getNumOperands() + 1),
+    : numReservedCols(set.getNumInputs() + 1),
       numIds(set.getNumDims() + set.getNumSymbols()), numDims(set.getNumDims()),
       numSymbols(set.getNumSymbols()) {
   equalities.reserve(set.getNumEqualities() * numReservedCols);
@@ -614,7 +614,7 @@ void FlatAffineConstraints::mergeAndAlignIdsWithOther(
 // This routine may add additional local variables if the flattened expression
 // corresponding to the map has such variables due to mod's, ceildiv's, and
 // floordiv's in it.
-LogicalResult FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
+LogicalResult FlatAffineConstraints::composeMap(const AffineValueMap *vMap) {
   std::vector<SmallVector<int64_t, 8>> flatExprs;
   FlatAffineConstraints localCst;
   if (failed(getFlattenedAffineExprs(vMap->getAffineMap(), &flatExprs,
@@ -670,6 +670,75 @@ LogicalResult FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
     unsigned j = getNumDimIds() + getNumSymbolIds();
     unsigned end = flatExpr.size() - 1;
     for (unsigned i = vMap->getNumOperands(); i < end; i++, j++) {
+      eqToAdd[j] = -flatExpr[i];
+    }
+
+    // Constant term.
+    eqToAdd[getNumCols() - 1] = -flatExpr[flatExpr.size() - 1];
+
+    // Add the equality connecting the result of the map to this constraint set.
+    addEquality(eqToAdd);
+  }
+
+  return success();
+}
+
+// Similar to composeMap except that no Value's need be associated with the
+// constraint system nor are they looked at -- since the dimensions and
+// symbols of 'other' are expected to correspond 1:1 to 'this' system. It
+// is thus not convenient to share code with composeMap.
+LogicalResult FlatAffineConstraints::composeMatchingMap(AffineMap other) {
+  assert(other.getNumDims() == getNumDimIds() && "dim mismatch");
+  assert(other.getNumSymbols() == getNumSymbolIds() && "symbol mismatch");
+
+  std::vector<SmallVector<int64_t, 8>> flatExprs;
+  FlatAffineConstraints localCst;
+  if (failed(getFlattenedAffineExprs(other, &flatExprs, &localCst))) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "composition unimplemented for semi-affine maps\n");
+    return failure();
+  }
+  assert(flatExprs.size() == other.getNumResults());
+
+  // Add localCst information.
+  if (localCst.getNumLocalIds() > 0) {
+    // Place local id's of A after local id's of B.
+    for (unsigned l = 0, e = localCst.getNumLocalIds(); l < e; l++) {
+      addLocalId(0);
+    }
+    // Finally, append localCst to this constraint set.
+    append(localCst);
+  }
+
+  // Add dimensions corresponding to the map's results.
+  for (unsigned t = 0, e = other.getNumResults(); t < e; t++) {
+    addDimId(0);
+  }
+
+  // We add one equality for each result connecting the result dim of the map to
+  // the other identifiers.
+  // For eg: if the expression is 16*i0 + i1, and this is the r^th
+  // iteration/result of the value map, we are adding the equality:
+  //  d_r - 16*i0 - i1 = 0. Hence, when flattening say (i0 + 1, i0 + 8*i2), we
+  //  add two equalities overall: d_0 - i0 - 1 == 0, d1 - i0 - 8*i2 == 0.
+  for (unsigned r = 0, e = flatExprs.size(); r < e; r++) {
+    const auto &flatExpr = flatExprs[r];
+    assert(flatExpr.size() >= other.getNumInputs() + 1);
+
+    // eqToAdd is the equality corresponding to the flattened affine expression.
+    SmallVector<int64_t, 8> eqToAdd(getNumCols(), 0);
+    // Set the coefficient for this result to one.
+    eqToAdd[r] = 1;
+
+    // Dims and symbols.
+    for (unsigned i = 0, f = other.getNumInputs(); i < f; i++) {
+      // Negate 'eq[r]' since the newly added dimension will be set to this one.
+      eqToAdd[e + i] = -flatExpr[i];
+    }
+    // Local vars common to eq and localCst are at the beginning.
+    unsigned j = getNumDimIds() + getNumSymbolIds();
+    unsigned end = flatExpr.size() - 1;
+    for (unsigned i = other.getNumInputs(); i < end; i++, j++) {
       eqToAdd[j] = -flatExpr[i];
     }
 

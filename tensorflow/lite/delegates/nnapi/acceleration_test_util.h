@@ -24,7 +24,8 @@ namespace tflite {
 // NNAPI specific configuration for the validation whitelist.
 class NnapiAccelerationTestParams {
  public:
-  static constexpr const char* const kAccelerationTestConfig = "";
+  // Content in nnapi_acceleration_test_list.cc.
+  static const char* const kAccelerationTestConfig;
 
   static NnapiAccelerationTestParams ParseConfigurationLine(
       const std::string& conf_line);

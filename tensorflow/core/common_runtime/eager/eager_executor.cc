@@ -21,7 +21,8 @@ limitations under the License.
 namespace tensorflow {
 
 EagerExecutor::EagerExecutor(bool async)
-    : thread_(async ? tensorflow::Env::Default()->StartThread(
+    : next_node_id_(0),
+      thread_(async ? tensorflow::Env::Default()->StartThread(
                           tensorflow::ThreadOptions(), "eager_async_executor",
                           std::bind(&EagerExecutor::Run, this))
                     : nullptr) {}
@@ -34,7 +35,7 @@ EagerExecutor::~EagerExecutor() {
 
 Status EagerExecutor::ShutDown() {
   {
-    std::vector<std::unique_ptr<EagerNode>> nodes_to_destroy;
+    std::vector<std::unique_ptr<NodeItem>> items_to_destroy;
     bool has_thread;
     Status status;
     {
@@ -46,7 +47,7 @@ Status EagerExecutor::ShutDown() {
         // thread_exited_notification_.WaitForNotification() below.
         state_ = ExecutorState::kShuttingDown;
       }
-      WaitForOrDestroyAllPendingNodes(&l, &nodes_to_destroy);
+      WaitForOrDestroyAllPendingNodes(&l, &items_to_destroy);
       state_ = ExecutorState::kShutDown;
       has_thread = thread_ != nullptr;
       status = status_;
@@ -54,8 +55,8 @@ Status EagerExecutor::ShutDown() {
         nodes_pending_.notify_all();
       }
     }
-    for (auto& node : nodes_to_destroy) {
-      node->Abort(status);
+    for (auto& item : items_to_destroy) {
+      item->node->Abort(status);
     }
     if (!has_thread) {
       return status;
@@ -69,7 +70,7 @@ Status EagerExecutor::ShutDown() {
 
 void EagerExecutor::WaitForOrDestroyAllPendingNodes(
     mutex_lock* lock,
-    std::vector<std::unique_ptr<EagerNode>>* nodes_to_destroy) {
+    std::vector<std::unique_ptr<NodeItem>>* nodes_to_destroy) {
   if (state_ == ExecutorState::kShutDown) {
     return;
   }
@@ -86,7 +87,7 @@ void EagerExecutor::WaitForOrDestroyAllPendingNodes(
       node_queue_.pop();
     }
     for (auto& it : unfinished_nodes_) {
-      nodes_to_destroy->push_back(absl::WrapUnique(it));
+      nodes_to_destroy->push_back(absl::WrapUnique(it.second));
     }
     unfinished_nodes_.clear();
     return;
@@ -129,7 +130,10 @@ Status EagerExecutor::Add(std::unique_ptr<EagerNode> node) {
       DCHECK(thread_) << "EnableAsync should have been called before Add";
       status = status_;
       if (status.ok()) {
-        node_queue_.push(std::move(node));
+        auto item = absl::make_unique<NodeItem>();
+        item->id = next_node_id_++;
+        item->node = std::move(node);
+        node_queue_.push(std::move(item));
 
         // If there were no previous nodes pending, wake the run thread to start
         // processing requests again.
@@ -157,9 +161,11 @@ tensorflow::Status EagerExecutor::WaitForAllPendingNodesLocked(
   tensorflow::condition_variable cond;
   // Don't wait if an error is already set.
   if (!status_.ok()) return status_;
-  if (node_queue_.empty()) return tensorflow::Status::OK();
-  EagerNode* last_node = node_queue_.back().get();
-  node_done_notifications_.insert(std::make_pair(last_node, &cond));
+  if (node_queue_.empty() && unfinished_nodes_.empty())
+    return tensorflow::Status::OK();
+  auto last_id = next_node_id_ - 1;
+  VLOG(3) << "Wait for Node: [id " << last_id << "] ";
+  node_done_notifications_.insert(std::make_pair(last_id, &cond));
   cond.wait(*lock);
   // Note that we could be woken up if an error occurs, even though the node has
   // not actually executed.
@@ -183,21 +189,27 @@ tensorflow::Status EagerExecutor::status() const {
   return status_;
 }
 
-void EagerExecutor::NodeDone(EagerNode* node, const Status& status) {
-  VLOG(3) << "Node Done: " << node->DebugString();
-  std::unique_ptr<EagerNode> current_node;
-  std::vector<std::unique_ptr<EagerNode>> nodes_to_destroy;
+void EagerExecutor::NodeDone(NodeItem* item, const Status& status) {
+  VLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString();
+  std::unique_ptr<NodeItem> current_item;
+  std::vector<std::unique_ptr<NodeItem>> items_to_destroy;
   {
     mutex_lock l(node_queue_mutex_);
     if (!status_.ok()) return;
-    if (node == node_queue_.front().get()) {
-      current_node = std::move(node_queue_.front());
+    bool need_notification = false;
+    if (item == node_queue_.front().get()) {
+      need_notification = unfinished_nodes_.empty();
+      current_item = std::move(node_queue_.front());
       node_queue_.pop();
     } else {
-      DCHECK_GT(unfinished_nodes_.erase(node), 0);
-      current_node = absl::WrapUnique(node);
+      DCHECK(!unfinished_nodes_.empty());
+      need_notification = item->id == unfinished_nodes_.begin()->first;
+      auto erase_result = unfinished_nodes_.erase(item->id);
+      DCHECK_GT(erase_result, 0);
+      current_item = absl::WrapUnique(item);
     }
     if (!status.ok()) {
+      need_notification = true;
       status_ = status;
       // We remove any pending ops so that we don't try to execute them if
       // ClearError is called.
@@ -206,30 +218,40 @@ void EagerExecutor::NodeDone(EagerNode* node, const Status& status) {
                               "EagerExecutor. This error cancels all future "
                               "operations and poisons their output tensors.");
       while (!node_queue_.empty()) {
-        nodes_to_destroy.push_back(std::move(node_queue_.front()));
+        items_to_destroy.push_back(std::move(node_queue_.front()));
         node_queue_.pop();
       }
       for (auto& it : unfinished_nodes_) {
-        nodes_to_destroy.push_back(absl::WrapUnique(it));
+        items_to_destroy.push_back(absl::WrapUnique(it.second));
       }
       unfinished_nodes_.clear();
     }
-    if (!node_done_notifications_.empty()) {
+    if (!node_done_notifications_.empty() && need_notification) {
+      uint64 upperbound_id = 0;
+      if (!unfinished_nodes_.empty()) {
+        upperbound_id = unfinished_nodes_.begin()->first - 1;
+      } else if (!node_queue_.empty()) {
+        upperbound_id = node_queue_.front()->id - 1;
+      } else {
+        upperbound_id = next_node_id_ - 1;
+      }
       // Note that we notify all waiting threads in case an error has
       // occurred. These calling threads are responsible for checking status_
       // before proceeding.
-      const auto range = status_.ok()
-                             ? node_done_notifications_.equal_range(node)
-                             : make_pair(node_done_notifications_.begin(),
-                                         node_done_notifications_.end());
+      const auto range =
+          status_.ok()
+              ? make_pair(node_done_notifications_.lower_bound(item->id),
+                          node_done_notifications_.upper_bound(upperbound_id))
+              : make_pair(node_done_notifications_.begin(),
+                          node_done_notifications_.end());
       for (auto it = range.first; it != range.second; ++it) {
         it->second->notify_all();
       }
       node_done_notifications_.erase(range.first, range.second);
     }
   }
-  for (auto& node : nodes_to_destroy) {
-    node->Abort(status);
+  for (auto& item : items_to_destroy) {
+    item->node->Abort(status);
   }
   // nodes_to_destroy will be destructed here, while not holding
   // node_queue_mutex_. This is important because, unfortunately, some nodes'
@@ -241,7 +263,7 @@ void EagerExecutor::Run() {
   auto thread_exited_notifier =
       gtl::MakeCleanup([this] { thread_exited_notification_.Notify(); });
   while (true) {
-    EagerNode* curr_node_raw;
+    NodeItem* curr_item_raw;
     {
       tensorflow::mutex_lock l(node_queue_mutex_);
       while (node_queue_.empty() || !status_.ok()) {
@@ -255,25 +277,27 @@ void EagerExecutor::Run() {
       // will then contain a nullptr. This can be a problem in
       // WaitForAllPendingNodes where we get the top EagerNode pointer
       // and register a notification for its completion.
-      curr_node_raw = node_queue_.front().get();
+      curr_item_raw = node_queue_.front().get();
     }
-    VLOG(3) << "Running Node: " << curr_node_raw->DebugString();
-    AsyncEagerNode* async_node_raw = curr_node_raw->AsAsync();
+    VLOG(3) << "Running Node: [id " << curr_item_raw->id << "] "
+            << curr_item_raw->node->DebugString();
+    AsyncEagerNode* async_node_raw = curr_item_raw->node->AsAsync();
     if (async_node_raw == nullptr) {
-      tensorflow::Status status = curr_node_raw->Run();
-      NodeDone(curr_node_raw, status);
+      tensorflow::Status status = curr_item_raw->node->Run();
+      NodeDone(curr_item_raw, status);
     } else {
-      async_node_raw->RunAsync([this, curr_node_raw](const Status& status) {
-        NodeDone(curr_node_raw, status);
+      async_node_raw->RunAsync([this, curr_item_raw](const Status& status) {
+        NodeDone(curr_item_raw, status);
       });
       {
         tensorflow::mutex_lock l(node_queue_mutex_);
         // If false, NodeDone has been called.
         if (!node_queue_.empty() &&
-            curr_node_raw == node_queue_.front().get()) {
+            curr_item_raw == node_queue_.front().get()) {
           node_queue_.front().release();
           node_queue_.pop();
-          unfinished_nodes_.emplace(curr_node_raw);
+          unfinished_nodes_.emplace_hint(unfinished_nodes_.end(),
+                                         curr_item_raw->id, curr_item_raw);
         }
       }
     }
