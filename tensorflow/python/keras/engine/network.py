@@ -31,6 +31,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -701,7 +702,9 @@ class Network(base_layer.Layer):
       raise NotImplementedError('When subclassing the `Model` class, you should'
                                 ' implement a `call` method.')
 
-    return self._run_internal_graph(inputs, training=training, mask=mask)
+    return self._run_internal_graph(
+        inputs, training=training, mask=mask,
+        convert_kwargs_to_constants=base_layer_utils.call_context().saving)
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
@@ -775,7 +778,8 @@ class Network(base_layer.Layer):
     # Return shapes as TensorShapes.
     return output_shapes
 
-  def _run_internal_graph(self, inputs, training=None, mask=None):
+  def _run_internal_graph(self, inputs, training=None, mask=None,
+                          convert_kwargs_to_constants=False):
     """Computes output tensors for new inputs.
 
     # Note:
@@ -785,6 +789,9 @@ class Network(base_layer.Layer):
         inputs: Tensor or nested structure of Tensors.
         training: Boolean learning phase.
         mask: (Optional) Tensor or nested structure of Tensors.
+        convert_kwargs_to_constants: Whether to convert Tensor kwargs to
+          constants. This is used when tracing the model call function during
+          saving to ensure that external tensors aren't captured.
 
     Returns:
         Two lists: output_tensors, output_masks
@@ -832,6 +839,9 @@ class Network(base_layer.Layer):
 
           # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
+          if convert_kwargs_to_constants:
+            kwargs = _map_tensors_to_constants(kwargs)
+
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
@@ -1882,6 +1892,15 @@ def _serialize_tensors(kwargs):
     return t
 
   return nest.map_structure(_serialize_keras_tensor, kwargs)
+
+def _map_tensors_to_constants(kwargs):
+
+  def _map_to_constants(t):
+    if not hasattr(t, '_keras_history') and isinstance(t, ops.Tensor):
+      return constant_op.constant(backend.get_value(t))
+    return t
+
+  return nest.map_structure(_map_to_constants, kwargs)
 
 
 def _deserialize_keras_tensors(kwargs, layer_map):

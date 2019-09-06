@@ -186,7 +186,8 @@ def wrap_layer_functions(layer, serialization_cache):
   # Manually trigger traces before restoring the overwritten functions. The
   # functions are traced within the layer call context to ensure that layer
   # functions (e.g. add_loss) behave as though running in graph mode.
-  with base_layer_utils.call_context().enter(layer, None, True, None):
+  with base_layer_utils.call_context().enter(
+      layer, inputs=None, build_graph=True, training=None, saving=True):
     for fn in fns.values():
       if fn is not None and fn.input_signature is not None:
         fn.get_concrete_function()
@@ -504,7 +505,8 @@ def layer_call_wrapper(call_collection, method):
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)
     with base_layer_utils.call_context().enter(
-        layer, inputs=inputs, build_graph=False, training=training):
+        layer, inputs=inputs, build_graph=False, training=training,
+        saving=True):
       ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
