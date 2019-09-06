@@ -1719,6 +1719,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       /*output_shape=*/shape);
 
   const Shape& operand_shape = operand.shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    evaluated_[gather] = std::move(result);
+    return Status::OK();
+  }
 
   auto gather_inner_loop_body =
       [&](absl::Span<const int64> output_window_index,

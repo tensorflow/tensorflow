@@ -3073,10 +3073,10 @@ static Status ValidateGatherDimensionNumbers(
   }
 
   for (int i = 0; i < gather_dim_numbers.collapsed_slice_dims_size(); i++) {
-    if (slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)] != 1) {
+    if (slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)] > 1) {
       return InvalidArgument(
-          "Gather op can only collapse slice dims with bound 1, but bound is "
-          "%d for index %d at position %d.",
+          "Gather op can only collapse slice dims with bound 1 or 0, but bound "
+          "is %d for index %d at position %d.",
           slice_sizes[gather_dim_numbers.collapsed_slice_dims(i)],
           gather_dim_numbers.collapsed_slice_dims(i), i);
     }
