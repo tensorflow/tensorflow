@@ -71,7 +71,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
     rocm-dev rocm-libs hipcub rocm-utils \
-    rocm-profiler cxlactivitylogger && \
+    rocm-profiler && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -214,7 +214,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
     rocm-dev rocm-libs hipcub rocm-utils \
-    rocm-profiler cxlactivitylogger && \
+    rocm-profiler && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
