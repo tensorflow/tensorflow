@@ -20,15 +20,14 @@ transformations/analyses.
 ### Dialect Interfaces
 
 Dialect interfaces are generally useful for transformation passes, or analyses,
-that want to opaquely operate on operations, even across *across* dialects.
-These interfaces generally involve wide coverage over the entire dialect, and
-are only used for a handful of transformations/analyses. In these cases,
-registering the interface directly on each operation is overly complex and
-cumbersome. The interface is not core to the operation, just to the specific
-transformation. An example of where this type of interface would be used is
-inlining. Inlining generally queries high level information about the operations
-within a dialect, like legality and cost modeling, that often is not specific to
-one operation.
+that want to opaquely operate on operations, even *across* dialects. These
+interfaces generally involve wide coverage over the entire dialect, and are only
+used for a handful of transformations/analyses. In these cases, registering the
+interface directly on each operation is overly complex and cumbersome. The
+interface is not core to the operation, just to the specific transformation. An
+example of where this type of interface would be used is inlining. Inlining
+generally queries high level information about the operations within a dialect,
+like legality and cost modeling, that often is not specific to one operation.
 
 A dialect interface can be defined by inheriting from the CRTP base class
 `DialectInterfaceBase::Base`. This class provides the necessary utilities for
@@ -53,7 +52,8 @@ public:
   }
 };
 
-/// Override the inliner interface to add support for inlining std operations.
+/// Override the inliner interface to add support for inlining affine
+/// operations.
 struct AffineInlinerInterface : public DialectInlinerInterface {
   /// Affine structures have specific inlining constraints.
   bool isLegalToInline(Region *dest, Region *src,
