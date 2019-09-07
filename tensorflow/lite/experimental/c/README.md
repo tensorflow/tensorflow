@@ -34,4 +34,4 @@ this will output the C shared library located at `<TENSORFLOW_DIRECTORY>/tensorf
 
 - [Rust tflite](https://crates.io/crates/tflite): Rust binding for TensorFlow Lite
 
-- [Tensorflow Lite for Alpine Linux](): Tiny `musl` build TensorFlow Lite for Alpine Linux.
+- [Tensorflow Lite for Alpine Linux](https://github.com/Jonarod/tensorflow_lite_alpine): Tiny `musl`-built TensorFlow Lite for Alpine Linux.
