@@ -1,6 +1,6 @@
 """BUILD extensions for MLIR table generation."""
 
-def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = []):
+def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], strip_include_prefix = None):
     """gentbl() generates tabular code from a table definition file.
 
     Args:
@@ -11,6 +11,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = []):
         options passed to tblgen, and the out is the corresponding output file
         produced.
       td_srcs: A list of table definition files included transitively.
+      strip_include_prefix: attribute to pass through to cc_library.
     """
     srcs = []
     srcs += td_srcs
@@ -37,7 +38,13 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = []):
             )),
         )
 
+    # List of opts that do not generate cc files.
+    skip_opts = ["-gen-op-doc"]
+    hdrs = [f for (opts, f) in tbl_outs if opts not in skip_opts]
     native.cc_library(
         name = name,
-        textual_hdrs = [f for (_, f) in tbl_outs],
+        # include_prefix does not apply to textual_hdrs.
+        hdrs = hdrs if strip_include_prefix else [],
+        strip_include_prefix = strip_include_prefix,
+        textual_hdrs = hdrs,
     )
