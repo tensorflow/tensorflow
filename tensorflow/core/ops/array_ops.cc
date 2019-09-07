@@ -3045,8 +3045,11 @@ REGISTER_OP("QuantizeV2")
     .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      int axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      int axis = -1;
+      Status s = c->GetAttr("axis", &axis);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
       const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle minmax;
@@ -3073,8 +3076,11 @@ REGISTER_OP("Dequantize")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      int axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      int axis = -1;
+      Status s = c->GetAttr("axis", &axis);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
       const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle minmax;
