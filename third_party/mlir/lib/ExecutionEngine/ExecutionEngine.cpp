@@ -198,6 +198,7 @@ ExecutionEngine::ExecutionEngine(bool enableObjectCache)
 
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     ModuleOp m, std::function<Error(llvm::Module *)> transformer,
+    Optional<llvm::CodeGenOpt::Level> jitCodeGenOptLevel,
     ArrayRef<StringRef> sharedLibPaths, bool enableObjectCache) {
   auto engine = std::make_unique<ExecutionEngine>(enableObjectCache);
 
@@ -264,6 +265,8 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   // LLJITWithObjectCache example.
   auto compileFunctionCreator = [&](JITTargetMachineBuilder JTMB)
       -> Expected<IRCompileLayer::CompileFunction> {
+    if (jitCodeGenOptLevel)
+      JTMB.setCodeGenOptLevel(jitCodeGenOptLevel.getValue());
     auto TM = JTMB.createTargetMachine();
     if (!TM)
       return TM.takeError();
