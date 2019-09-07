@@ -36,9 +36,12 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/ToolOutputFile.h"
+
+#define DEBUG_TYPE "execution-engine"
 
 using namespace mlir;
 using llvm::dbgs;
@@ -77,12 +80,12 @@ void SimpleObjectCache::notifyObjectCompiled(const Module *M,
 std::unique_ptr<MemoryBuffer> SimpleObjectCache::getObject(const Module *M) {
   auto I = cachedObjects.find(M->getModuleIdentifier());
   if (I == cachedObjects.end()) {
-    dbgs() << "No object for " << M->getModuleIdentifier()
-           << " in cache. Compiling.\n";
+    LLVM_DEBUG(dbgs() << "No object for " << M->getModuleIdentifier()
+                      << " in cache. Compiling.\n");
     return nullptr;
   }
-  dbgs() << "Object for " << M->getModuleIdentifier()
-         << " loaded from cache.\n";
+  LLVM_DEBUG(dbgs() << "Object for " << M->getModuleIdentifier()
+                    << " loaded from cache.\n");
   return MemoryBuffer::getMemBuffer(I->second->getMemBufferRef());
 }
 
