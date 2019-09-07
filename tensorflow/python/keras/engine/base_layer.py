@@ -2389,7 +2389,6 @@ class Layer(module.Module):
   def _eager_losses(self, losses):
     self._thread_local._eager_losses = losses
 
-  @property
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
     output, seen_weights = [], object_identity.ObjectIdentitySet()
