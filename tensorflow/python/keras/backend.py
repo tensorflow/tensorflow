@@ -3150,7 +3150,7 @@ def get_value(x):
   """
   if not tensor_util.is_tensor(x):
     return x
-  if context.executing_eagerly():
+  if context.executing_eagerly() or isinstance(x, ops.EagerTensor):
     return x.numpy()
   if not getattr(x, '_in_graph_mode', True):
     # This is a variable which was created in an eager context, but is being
@@ -3162,7 +3162,8 @@ def get_value(x):
     # This method of evaluating works inside the Keras FuncGraph.
     return function([], x)(x)
 
-  return x.eval(session=get_session((x,)))
+  with x.graph.as_default():
+    return x.eval(session=get_session((x,)))
 
 
 @keras_export('keras.backend.batch_get_value')
