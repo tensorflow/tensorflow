@@ -279,5 +279,5 @@ def get_func_graph(op, input_shapes, func_name):
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
     func_graph = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes, copy_functions=False)
+        fdef, input_shapes)
   return func_graph
