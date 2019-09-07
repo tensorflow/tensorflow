@@ -141,6 +141,13 @@ class TFL_OperandHasRank<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
+class TFL_OperandDimEquals<int n, int dim, int size> : And<[
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
+  # dim>,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
+      ".getShape()[" # dim # " ] == " # size>]>;
+
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
@@ -678,6 +685,117 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 
   let hasOptions = 0;
+}
+
+// These ops are named NonMaxSuppressionV4 & NonMaxSuppressionV5 to be
+// consistent with TensorFlow's naming. They are NOT 'versions' of NMS in the
+// sense that one is an incremental change over the other.
+// In reality NonMaxSuppressionV5 implements Soft Non Max Suppression and
+// NonMaxSuppressionV4 performs hard NMS.
+
+def TFL_NonMaxSuppressionV4Op : TFL_Op<"non_max_suppression_v4", [
+  NoSideEffect,
+  // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
+  TFL_OperandHasRank<0, 2>,
+  PredOpTrait<"boxes should have dim[1] == 4",
+      TFL_OperandDimEquals<0, 1, 4>>,
+  // Operand 1 (scores) should be a 1-dim tensor
+  TFL_OperandHasRank<1, 1>,
+  // Other operands are scalar params.
+  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$boxes,
+    TFL_FpTensor:$scores,
+    I32Tensor:$max_output_size,
+    TFL_FpTensor:$iou_threshold,
+    TFL_FpTensor:$score_threshold
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    I32Tensor:$valid_outputs
+  );
+}
+
+def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
+  NoSideEffect,
+  // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
+  TFL_OperandHasRank<0, 2>,
+  PredOpTrait<"boxes should have dim[1] == 4",
+      TFL_OperandDimEquals<0, 1, 4>>,
+  // Operand 1 (scores) should be a 1-dim tensor
+  TFL_OperandHasRank<1, 1>,
+  // Other operands are scalar params.
+  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
+Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+of other overlapping boxes instead of directly causing them to be pruned.
+To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+larger than 0.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$boxes,
+    TFL_FpTensor:$scores,
+    I32Tensor:$max_output_size,
+    TFL_FpTensor:$iou_threshold,
+    TFL_FpTensor:$score_threshold,
+    TFL_FpTensor:$soft_nms_sigma
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    TFL_FpTensor:$selected_scores,
+    I32Tensor:$valid_outputs
+  );
 }
 
 def TFL_NotEqualOp : TFL_Op<"not_equal", [
