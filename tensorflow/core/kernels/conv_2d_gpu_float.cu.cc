@@ -29,6 +29,8 @@ namespace tensorflow {
 
 namespace functor {
 
+template struct TransformDepth<Eigen::GpuDevice, float, int>;
+
 template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, float4>;
 template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, float2,
                                             /*conjugate=*/true>;
