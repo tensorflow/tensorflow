@@ -283,6 +283,8 @@ cc_library(
         "utils/export_utils.cc",
     ],
     hdrs = [
+        "ir/tf_types.def",
+        "ir/tf_types.h",
         "utils/export_utils.h",
     ],
     deps = [
