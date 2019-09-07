@@ -347,6 +347,7 @@ tf_native_cc_binary(
     deps = [
         "@llvm//:support",
         "@llvm//:tablegen",
+        "@local_config_mlir//:Support",
         "@local_config_mlir//:TableGen",
     ],
 )

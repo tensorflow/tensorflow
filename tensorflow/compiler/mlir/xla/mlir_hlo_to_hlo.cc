@@ -218,7 +218,7 @@ class ConvertToHloModule {
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
-  if (auto xla_op = CreateXlaOperator(inst, value_lowering)) return success();
+  if (succeeded(ExportXlaOperator(inst, value_lowering))) return success();
 
   auto& value_map = *value_lowering;
   ElementsAttr const_attr;
