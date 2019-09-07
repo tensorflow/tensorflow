@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -45,6 +46,43 @@ static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 static size_t getFeatureDimension(StringAttr format,
                                   RankedTensorType inputType) {
   return isDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+}
+
+// Returns minimum value for the given int or float element type.
+static ConstantOp GetMinValueForType(Type ty, Location loc,
+                                     PatternRewriter *rewriter) {
+  RankedTensorType scalar_ty = rewriter->getTensorType({}, ty);
+
+  DenseElementsAttr attr;
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    APFloat neg_inf =
+        APFloat::getInf(float_ty.getFloatSemantics(), /*negative=*/true);
+    attr = DenseElementsAttr::get(scalar_ty, neg_inf);
+  } else {
+    auto int_ty = ty.cast<IntegerType>();
+    APInt min_val = APInt::getSignedMinValue(int_ty.getWidth());
+    attr = DenseElementsAttr::get(scalar_ty, min_val);
+  }
+  return rewriter->create<ConstantOp>(loc, attr);
+}
+
+// Builds body for reduce op by using the using the template binary op as the
+// reducer op.
+template <typename Op>
+static void BuildReduceBody(Type element_type, Region *body,
+                            OpBuilder *builder) {
+  OpBuilder::InsertionGuard guard(*builder);
+  Block *block = builder->createBlock(body);
+
+  // Block arguments are scalars of the given element type.
+  Type type = builder->getTensorType(/*shape=*/{}, element_type);
+  block->addArguments({type, type});
+
+  Location loc = body->getLoc();
+  auto reducer = builder->create<Op>(loc, type, block->getArgument(0),
+                                     block->getArgument(1),
+                                     /*broadcast_dimensions=*/nullptr);
+  builder->create<xla_hlo::ReturnOp>(loc, reducer.getResult());
 }
 
 //===----------------------------------------------------------------------===//
@@ -133,15 +171,62 @@ static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
 namespace mlir {
 namespace xla {
 namespace {
+
+// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
+// dimensions with max as the reduction function.
+//
+// Sample result for VALID padding mode:
+//
+//   %init = constant dense<...> : tensor<i32>
+//   %max_pool = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
+//               {window_dimensions = ..., window_strides = ... }
+//
+class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
+ public:
+  explicit ConvertMaxPoolOp(MLIRContext *context)
+      : OpRewritePattern<TF::MaxPoolOp>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(TF::MaxPoolOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(hinsu): Support 'SAME' padding mode.
+    if (op.padding() != "VALID") return matchFailure();
+
+    Type element_type =
+        op.input()->getType().cast<TensorType>().getElementType();
+    if (!element_type.isIntOrFloat()) return matchFailure();
+    Location loc = op.getLoc();
+    ConstantOp init = GetMinValueForType(element_type, loc, &rewriter);
+
+    auto get_elements_attr = [&](ArrayAttr attr) {
+      RankedTensorType ty = rewriter.getTensorType(
+          static_cast<int64_t>(attr.size()), rewriter.getIntegerType(64));
+      return DenseElementsAttr::get(ty, attr.getValue())
+          .cast<DenseIntElementsAttr>();
+    };
+
+    auto reduce = rewriter.create<xla_hlo::ReduceWindowOp>(
+        loc, op.getType(), op.input(), init.getResult(),
+        get_elements_attr(op.ksize()), get_elements_attr(op.strides()),
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(),
+        /*paddings=*/DenseIntElementsAttr());
+    BuildReduceBody<xla_hlo::MaxOp>(element_type, &reduce.body(), &rewriter);
+
+    rewriter.replaceOp(op.getOperation(), reduce.getResult(0));
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
 }  // end namespace mlir
 
 void mlir::xla_hlo::legalizeTF(Operation *op) {
-  // Add the generated patterns to the list.
+  // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
   xla::populateWithGenerated(op->getContext(), &patterns);
+  patterns.insert<mlir::xla::ConvertMaxPoolOp>(op->getContext());
 
   // Recursively applies rewrite patterns to nested operations.
   applyPatternsGreedily(op, patterns);

@@ -178,6 +178,23 @@ func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> ten
 }
 
 //===----------------------------------------------------------------------===//
+// MaxPool op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: maxpool_valid_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_valid_padding(%arg0: tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32> {
+  // CHECK: %[[INIT:.*]] = constant dense<-2147483648> : tensor<i32>
+  // CHECK: "xla_hlo.reduce_window"(%[[ARG]], %[[INIT]])
+  // CHECK: xla_hlo.max
+  // CHECK: xla_hlo.return
+  // CHECK: {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>}
+
+  %0 = "tf.MaxPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 4, 4, 1]} : (tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32>
+  return %0 : tensor<2x3x5x7xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // Relu op legalizations.
 //===----------------------------------------------------------------------===//
 
