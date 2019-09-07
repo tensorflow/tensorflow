@@ -4749,7 +4749,6 @@ cc_library(
 )
 
 PARSING_DEPS = [
-    "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:protos_all_cc",

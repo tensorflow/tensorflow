@@ -15,7 +15,6 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
@@ -67,11 +66,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       }
       elements_per_stride_.push_back(dense_shape.num_elements());
     }
-  }
-
-  ~ParseExampleDatasetOp() override {
-    metrics::RecordParseDenseFeature(dense_keys_.size());
-    metrics::RecordParseSparseFeature(sparse_keys_.size());
   }
 
  protected:
@@ -343,6 +337,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   << ", got " << serialized_sparse.shape().DebugString()
                   << ").";
             }
+            // TODO(b/123360128): Add component name to streamz metrics without
+            // breaking TFX metrics.
             if (stats_aggregator) {
               stats_aggregator->IncrementCounter(
                   stats_utils::kExamplesCount, "trainer",
