@@ -24,7 +24,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg import linear_operator_circulant
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -58,8 +57,7 @@ class LinearOperatorCirculantBaseTest(object):
     """We overwrite the FFT operation mapping for testing."""
     with test.TestCase._constrain_devices_and_set_default(
         self, sess, use_gpu, force_gpu) as sess:
-      with spectral_ops_test_util.fft_kernel_label_map():
-        yield sess
+      yield sess
 
   def _shape_to_spectrum_shape(self, shape):
     # If spectrum.shape = batch_shape + [N],
@@ -392,8 +390,7 @@ class LinearOperatorCirculant2DBaseTest(object):
     """We overwrite the FFT operation mapping for testing."""
     with test.TestCase._constrain_devices_and_set_default(
         self, sess, use_gpu, force_gpu) as sess:
-      with spectral_ops_test_util.fft_kernel_label_map():
-        yield sess
+      yield sess
 
   @staticmethod
   def operator_shapes_infos():
@@ -645,8 +642,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
     """We overwrite the FFT operation mapping for testing."""
     with test.TestCase._constrain_devices_and_set_default(
         self, sess, use_gpu, force_gpu) as sess:
-      with spectral_ops_test_util.fft_kernel_label_map():
-        yield sess
+      yield sess
 
   @test_util.run_deprecated_v1
   def test_real_spectrum_gives_self_adjoint_operator(self):

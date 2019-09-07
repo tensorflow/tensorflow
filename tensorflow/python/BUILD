@@ -146,7 +146,6 @@ py_library(
         ":session_ops",
         ":sets",
         ":sparse_ops",
-        ":spectral_ops_test_util",
         ":standard_ops",
         ":state_ops",
         ":string_ops",
@@ -3710,16 +3709,6 @@ tf_py_test(
         ":random_ops",
         ":sort_ops",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "spectral_ops_test_util",
-    srcs = ["ops/spectral_ops_test_util.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":framework_ops",
     ],
 )
 

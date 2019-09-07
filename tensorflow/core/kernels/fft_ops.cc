@@ -251,41 +251,29 @@ class FFTCPU : public FFTBase {
   }
 };
 
-// Use labels to distinguish between internal and open source versions
-// of these kernels.
-#ifdef PLATFORM_GOOGLE
-#define FFT_LABEL "eigen"
-#else
-#define FFT_LABEL ""
-#endif
-
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU).Label(FFT_LABEL),
-                        FFTCPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU), FFTCPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU),
                         FFTCPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU),
                         FFTCPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU),
                         FFTCPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, false, 3>);
 
-REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
-                        FFTCPU<true, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU), FFTCPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU),
                         FFTCPU<false, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 3>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 3>);
-
-#undef FFT_LABEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -503,49 +491,53 @@ class FFTGPU : public FFTGPUBase {
   bool IsReal() const override { return _Real; }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU), FFTGPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU),
+// Register GPU kernels with priority 1 so that if a custom FFT CPU kernel is
+// registered with priority 1 (to override the default Eigen CPU kernel), the
+// CPU kernel does not outrank the GPU kernel.
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU).Priority(1),
+                        FFTGPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
 
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 1>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 1>);
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT2D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT2D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 2>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT2D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT2D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 2>);
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT3D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT3D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 3>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT3D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT3D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 3>);
 
 // Deprecated kernels.
-REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

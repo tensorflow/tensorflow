@@ -25,7 +25,6 @@ import scipy.linalg
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_toeplitz
@@ -45,8 +44,7 @@ class LinearOperatorToeplitzTest(
     """We overwrite the FFT operation mapping for testing."""
     with test.TestCase._constrain_devices_and_set_default(
         self, sess, use_gpu, force_gpu) as sess:
-      with spectral_ops_test_util.fft_kernel_label_map():
-        yield sess
+      yield sess
 
   def setUp(self):
     # TODO(srvasude): Lower these tolerances once specialized solve and
