@@ -930,57 +930,6 @@ the shape function. The reference implementation is general and can support the
 arbitrary computations needed to specify output shapes.
 
 
-
-# Rewrite pattern description
-
-TODO: Move this section to a dedicated doc for graph rewrites
-
-MLIR aims to support many graph transformations across multiple levels of
-representation using declarative patterns. These patterns can be expressed using
-TableGen as well as dynamically (TBD).
-
-## Op DAG pattern rewrites
-
-The most direct pattern supported in MLIR is rewrites of the form `(dag of
-operations) -> (dag of operations)` along with constraints (on operands and
-operations). The matchers require both dialects being matched between to be
-included in the same TableGen file. Hence pattern matching is normally defined
-in either a separate file that imports both. Matchers are defined in terms of
-the TableGen instances rather than mnemonics to allow for better error checking
-and verification generation.
-
-```tablegen
-def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>;
-def : Pat<(TF_ReluOp (TF_AddOp $lhs, $rhs)), (TFL_AddOp $lhs, $rhs, TFL_AF_Relu)>;
-def : Pat<(TF_BiasAddOp F32Tensor:$l, F32Tensor:$r),
-          (TFL_AddOp $l, $r, TFL_AF_None)>;
-```
-
-In the above examples it was shown how to construct matching rules between two
-dialects (TensorFlow and TensorFlowLite), showing matching arguments (attributes
-and operands) as well as matching a DAG pattern of multiple input operations to
-single output.
-
-1.  Matchers can be partially specified on the input (e.g., not all arguments
-    constrained) and so multiple matchers can match the same set of nodes. The
-    most discriminative matcher (as determined by the number of
-    constrained/matching terms) will be selected, if two patterns are equally
-    discriminative then an error will be reported.
-
-1.  Matchers between dialects have to be completely specified on the output
-    (i.e., there can be no unspecified attributes of the op generated).
-
-1.  Operands and attributes can be further constrained from the op definition
-    (e.g., bias add rule only matches the case where both Tensors have F32
-    elements).
-
-    1.  Attributes can be transformed by transform rules to produce an attribute
-        of a type different than the type matched.
-
-TODO: Add constraints on the matching rules.
-
-TODO: Describe the generation of benefit metric given pattern.
-
 [TableGen]: https://llvm.org/docs/TableGen/index.html
 [TableGenIntro]: https://llvm.org/docs/TableGen/LangIntro.html
 [TableGenRef]: https://llvm.org/docs/TableGen/LangRef.html
