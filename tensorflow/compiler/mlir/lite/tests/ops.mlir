@@ -652,10 +652,27 @@ func @testSelect(%cond : tensor<?xi1>, %arg0 : tensor<?xi32>, %arg1 : tensor<?xi
 
 // -----
 
+// test select with multi-dim inputs
+// CHECK-LABEL: testSelectMultiDim
+func @testSelectMultiDim(%cond : tensor<?xi1>, %arg0 : tensor<?x4xi32>, %arg1 : tensor<?x4xi32>) -> tensor<?x4xi32> {
+  %0 = "tfl.select"(%cond, %arg0, %arg1): (tensor<?xi1>,tensor<?x4xi32>,tensor<?x4xi32>) -> tensor<?x4xi32>
+  return %0 : tensor<?x4xi32>
+}
+
+// -----
+
 func @testSelectWithUnsupportedType(%cond : tensor<?xi32>, %arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> tensor<?xi32> {
   // expected-error @+1 {{op operand #0 must be tensor of 1-bit integer values}}
   %0 = "tfl.select"(%cond, %arg0, %arg1): (tensor<?xi32>,tensor<?xi32>,tensor<?xi32>) -> tensor<?xi32>
   return %0 : tensor<?xi32>
+}
+
+// -----
+
+func @testSelectWithUnsupportedShapes(%cond : tensor<2xi1>, %arg0 : tensor<3xi32>, %arg1 : tensor<3xi32>) -> tensor<3xi32> {
+  // expected-error @+1 {{failed to verify that Select operands meet shape criteria}}
+  %0 = "tfl.select"(%cond, %arg0, %arg1): (tensor<2xi1>,tensor<3xi32>,tensor<3xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
 }
 
 // -----

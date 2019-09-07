@@ -132,6 +132,9 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
+class TFL_OperandIsUnranked<int n> :
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
+
 // TODO: Some of these could be generalized and/or moved to more general
 // location.
 // Returns true if the n-th operand has unknown rank or has rank m.
@@ -141,10 +144,14 @@ class TFL_OperandHasRank<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
-class TFL_OperandDimEquals<int n, int dim, int size> : And<[
+// True if operand n is ranked and has a rank > dim.
+class TFL_OperandIsRankedAndHasDim<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
-  # dim>,
+  # dim>]>;
+
+class TFL_OperandDimEquals<int n, int dim, int size> : And<[
+  TFL_OperandIsRankedAndHasDim<n, dim>,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
 
@@ -161,6 +168,32 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       ")->getType().cast<ShapedType>().getRank() == "
       "$_op.getOperand(" # y #
       ")->getType().cast<ShapedType>().getShape()[0]">>;
+
+// True if x_shape[dim] == y_shape[dim].
+class TFL_DimOfOperandEqualsDimOfOperand<int x, int y, int dim> : And<[
+  TFL_OperandIsRankedAndHasDim<x, dim>,
+  TFL_OperandIsRankedAndHasDim<y, dim>,
+  CPred<"$_op.getOperand(" # x #
+    ")->getType().cast<ShapedType>().getShape()[" # dim # "] == "
+    "$_op.getOperand(" # y #
+    ")->getType().cast<ShapedType>().getShape()[" # dim # "]">]>;
+
+// Select operands must satisfy one of the following constraints:
+// All inputs are unranked
+// OR
+// All inputs are ranked AND have equal dim[0] AND X & Y have same rank.
+def SelectShapeConstraints :
+  PredOpTrait<"Select operands meet shape criteria",
+    Or<[
+      And<[
+        TFL_OperandIsUnranked<0>,
+        TFL_OperandIsUnranked<1>,
+        TFL_OperandIsUnranked<2>]>,
+      And<[
+        TFL_DimOfOperandEqualsDimOfOperand<0, 1, 0>,
+        TFL_DimOfOperandEqualsDimOfOperand<0, 2, 0>,
+        CPred<"$_op.getOperand(1)->getType().cast<ShapedType>().getRank() == "
+        "$_op.getOperand(2)->getType().cast<ShapedType>().getRank()">]>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -1895,8 +1928,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 }
 
 def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
-  // TODO(jpienaar): This is too retrictive, rank 1 input is also allowed.
-  SameOperandsAndResultShape,
+  SelectShapeConstraints,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TCresVTEtIsSameAsOp<0, 1>>]> {

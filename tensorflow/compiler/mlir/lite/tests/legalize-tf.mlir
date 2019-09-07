@@ -517,6 +517,15 @@ func @select(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) ->
 // CHECK:  return %0 : tensor<8xf32>
 }
 
+func @select_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
+  return %0: tensor<8x3xf32>
+
+// CHECK-LABEL: select_multidim
+// CHECK:  %0 = "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  return %0 : tensor<8x3xf32>
+}
+
 func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
   return %0: tensor<8xf32>
@@ -524,6 +533,15 @@ func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>)
 // CHECK-LABEL: select_v2
 // CHECK:  %0 = "tfl.select"(%arg0, %arg1, %arg2)
 // CHECK:  return %0 : tensor<8xf32>
+}
+
+func @select_v2_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
+  return %0: tensor<8x3xf32>
+
+// CHECK-LABEL: select_v2_multidim
+// CHECK:  %0 = "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  return %0 : tensor<8x3xf32>
 }
 
 func @sin(%arg0: tensor<f32>) -> tensor<f32> {
