@@ -27,12 +27,14 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -132,6 +134,36 @@ static double ConvertAPFloat(llvm::APFloat value) {
 namespace mlir {
 namespace {
 
+StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
+  xla::Shape shape = xla::TypeToShape(type);
+
+#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
+  case xla_type: {                                         \
+    xla::Array<cpp_type> source_data(shape.dimensions());  \
+    source_data.SetValues(attr.getValues<cpp_type>());     \
+    return xla::LiteralUtil::CreateFromArray(source_data); \
+  }
+
+  switch (shape.element_type()) {
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::PRED, bool)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F32, float)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F64, double)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S8, int8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64)
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    default:
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
+  }
+#undef ELEMENTS_ATTR_TO_LITERAL
+}
+
 class ConvertToHloModule {
  public:
   using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
@@ -188,13 +220,18 @@ LogicalResult ConvertToHloModule::Lower(
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   if (auto xla_op = CreateXlaOperator(inst, value_lowering)) return success();
 
-  // TODO(riverriddle) We currently don't support lowering constant operations.
-  if (isa<mlir::xla_hlo::ConstOp>(inst)) {
-    inst->emitError("unable to lower 'xla_hlo.constant' operation");
-    return failure();
+  auto& value_map = *value_lowering;
+  ElementsAttr const_attr;
+  // TODO(jpienaar): This doesn't support layouts yet.
+  if (matchPattern(inst, m_Constant(&const_attr))) {
+    auto literal_or =
+        CreateLiteralFromAttr(*inst->result_type_begin(), const_attr);
+    if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
+    value_map[inst->getResult(0)] =
+        xla::ConstantLiteral(builder, literal_or.ValueOrDie());
+    return success();
   }
 
-  auto& value_map = *value_lowering;
   if (auto ret = dyn_cast<mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.
