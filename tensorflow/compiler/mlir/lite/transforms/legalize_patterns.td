@@ -20,6 +20,10 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+def NonOpaqueElementsAttr : ElementsAttrBase<
+  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+  "non-opaque constant tensor">;
+
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 
@@ -56,7 +60,12 @@ def ExtractSingleElementAsInteger : NativeCodeCall<
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
+
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Convert to std constant for statically shaped, non-opaque constants.
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+          [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.

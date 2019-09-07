@@ -63,7 +63,7 @@ func @fusedBatchNorm(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8
   return %2, %2#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
 
 // CHECK-LABEL: fusedBatchNorm
-// CHECK:  %[[CONSTANT:.*]] = "tf.Const"{{.*}} dense<1.000000e-03>
+// CHECK:  %[[CONSTANT:.*]] = constant dense<1.000000e-03>
 //              variance + epsilon
 // CHECK:  %[[ADD1:.*]] = "tf.Add"(%[[ARG4:.*]], %[[CONSTANT]])
 //              rsqrt(variance + epsilon)
@@ -96,7 +96,7 @@ func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor
   return %2, %2#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
 
 // CHECK-LABEL: fusedBatchNormV3
-// CHECK:  %[[CONSTANT:.*]] = "tf.Const"{{.*}} dense<1.000000e-03>
+// CHECK:  %[[CONSTANT:.*]] = constant dense<1.000000e-03>
 //              variance + epsilon
 // CHECK:  %[[ADD1:.*]] = "tf.Add"(%[[ARG4:.*]], %[[CONSTANT]])
 //              rsqrt(variance + epsilon)
@@ -155,7 +155,7 @@ func @fakeQuantFolded() -> (tensor<8xf32>) {
   %rst = "tf.FakeQuantWithMinMaxVars"(%in, %mini, %maxi) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
   return %rst : tensor<8xf32>
 
-// CHECK: %[[CONSTANT:.*]] = "tf.Const"{{.*}} dense<0.000000e+00> : tensor<8xf32>
+// CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<8xf32>
 // CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT]]) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
@@ -262,7 +262,7 @@ func @fakeQuantWithConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30x16xf32>)
   return %rst : tensor<256x30x30x16xf32>
 
 // CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<16xf32>
-// CHECK: %[[CONSTANT0:.*]] = "tf.Const"{{.*}} dense<0.000000e+00> : tensor<16x3x3x3xf32>
+// CHECK: %[[CONSTANT0:.*]] = constant dense<0.000000e+00> : tensor<16x3x3x3xf32>
 // CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT0]]) {qtype = tensor<16x3x3x3x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
 // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
@@ -282,7 +282,7 @@ func @fakeQuantWithDepthwiseConv2D(tensor<256x32x32x3xf32>) -> (tensor<256x30x30
   return %rst : tensor<256x30x30x16xf32>
 
 // CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<48xf32>
-// CHECK: %[[CONSTANT0:.*]] = "tf.Const"{{.*}} dense<0.000000e+00> : tensor<1x3x3x48xf32>
+// CHECK: %[[CONSTANT0:.*]] = constant dense<0.000000e+00> : tensor<1x3x3x48xf32>
 // CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT0]]) {qtype = tensor<1x3x3x48x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
 // CHECK: %[[CONV:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[DEQUANTIZE]], %[[CONSTANT]])
