@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_REDZONE_ALLOCATOR_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_REDZONE_ALLOCATOR_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_
 
 #include <vector>
 
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
 namespace stream_executor {
-namespace cuda {
 
 // An allocator that allocates a bit of extra memory around the beginning/end of
 // every allocation and can check that this memory is unmodified.
@@ -44,7 +43,7 @@ class RedzoneAllocator : public ScratchAllocator {
       1LL << 23;  // 8MiB per side, 16MiB total.
   static const uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-                   cuda::PtxCompilationOptions ptx_compilation_opts,
+                   GpuAsmOpts gpu_compilation_opts_,
                    int64 memory_limit = kDefaultMemoryLimit,
                    int64 redzone_size = kDefaultRedzoneSize,
                    uint8 redzone_pattern = kDefaultRedzonePattern);
@@ -112,7 +111,7 @@ class RedzoneAllocator : public ScratchAllocator {
 
   const uint8 redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
-  cuda::PtxCompilationOptions ptx_compilation_opts_;
+  GpuAsmOpts gpu_compilation_opts_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
@@ -123,7 +122,6 @@ class RedzoneAllocator : public ScratchAllocator {
   int64 allocated_bytes_excluding_redzones_ = 0;
 };
 
-}  // namespace cuda
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_REDZONE_ALLOCATOR_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_

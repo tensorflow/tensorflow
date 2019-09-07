@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_PTXAS_UTILS_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_PTXAS_UTILS_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
+#define TENSORFLOW_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
 
 #include <string>
 
@@ -23,24 +23,23 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
-namespace cuda {
-
 // Compilation options for compiling ptxas.
-struct PtxCompilationOptions {
-  bool disable_ptxas_optimizations;
+struct GpuAsmOpts {
+  // Disable Cuda ptxas optimizations.
+  bool disable_gpuasm_optimizations;
 
-  // CUDA directory which would be searched first.
+  // Cuda directory which would be searched first.
   std::string preferred_cuda_dir;
 
-  explicit PtxCompilationOptions(bool disable_ptxas_optimizations = false,
-                                 absl::string_view preferred_cuda_dir = "")
-      : disable_ptxas_optimizations(disable_ptxas_optimizations),
+  explicit GpuAsmOpts(bool disable_gpuasm_optimizations = false,
+                      absl::string_view preferred_cuda_dir = "")
+      : disable_gpuasm_optimizations(disable_gpuasm_optimizations),
         preferred_cuda_dir(preferred_cuda_dir) {}
 
   using PtxOptionsTuple = std::tuple<bool, std::string>;
 
   PtxOptionsTuple ToTuple() {
-    return std::make_tuple(disable_ptxas_optimizations, preferred_cuda_dir);
+    return std::make_tuple(disable_gpuasm_optimizations, preferred_cuda_dir);
   }
 };
 
@@ -49,19 +48,17 @@ struct PtxCompilationOptions {
 //
 // compile_ptx_options is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
-port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
-                                              const char* ptx_contents,
-                                              PtxCompilationOptions options);
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options);
 
-// Same as CompilePtx, but caches the result, and returns unowned view of
+// Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.
 //
 // A copy of the string provided in ptx will be made.
-port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
-    int device_ordinal, const char* ptx,
-    PtxCompilationOptions compilation_options);
+port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
+    int device_ordinal, const char* ptx, GpuAsmOpts compilation_options);
 
-}  // namespace cuda
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_PTXAS_UTILS_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_GPU_ASM_COMPILER_H_
