@@ -26,6 +26,14 @@ import tensorflow as tf
 from tensorflow.python import tf2
 from tensorflow.python.platform import test
 
+# pylint: disable=g-import-not-at-top,unused-import
+_TENSORBOARD_AVAILABLE = True
+try:
+  import tensorboard as _tb
+except ImportError:
+  _TENSORBOARD_AVAILABLE = False
+# pylint: enable=g-import-not-at-top,unused-import
+
 
 class ModuleTest(test.TestCase):
 
@@ -69,6 +77,10 @@ class ModuleTest(test.TestCase):
     # pylint: enable=pointless-statement
 
   def testSummaryMerged(self):
+    # TODO(annarev): Make sure all our builds have tensorboard pip package
+    # installed and remove this condition.
+    if not _TENSORBOARD_AVAILABLE:
+      return
     # pylint: disable=pointless-statement
     tf.summary.image
     # If we use v2 API, check for create_file_writer,
