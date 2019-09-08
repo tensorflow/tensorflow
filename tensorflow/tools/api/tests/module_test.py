@@ -23,7 +23,16 @@ import pkgutil
 
 import tensorflow as tf
 
+from tensorflow.python import tf2
 from tensorflow.python.platform import test
+
+# pylint: disable=g-import-not-at-top,unused-import
+_TENSORBOARD_AVAILABLE = True
+try:
+  import tensorboard as _tb
+except ImportError:
+  _TENSORBOARD_AVAILABLE = False
+# pylint: enable=g-import-not-at-top,unused-import
 
 
 class ModuleTest(test.TestCase):
@@ -49,6 +58,38 @@ class ModuleTest(test.TestCase):
 
   def testName(self):
     self.assertEqual('tensorflow', tf.__name__)
+
+  def testBuiltInName(self):
+    # range is a built-in name in Python. Just checking that
+    # tf.range works fine.
+    if tf2.enabled():
+      self.assertEqual(
+          'tf.Tensor([1 2 3 4 5 6 7 8 9], shape=(9,), dtype=int32)',
+          str(tf.range(1, 10)))
+    else:
+      self.assertEqual(
+          'Tensor("range:0", shape=(9,), dtype=int32)',
+          str(tf.range(1, 10)))
+
+  def testCompatV2HasCompatV1(self):
+    # pylint: disable=pointless-statement
+    tf.compat.v2.compat.v1.keras
+    # pylint: enable=pointless-statement
+
+  def testSummaryMerged(self):
+    # TODO(annarev): Make sure all our builds have tensorboard pip package
+    # installed and remove this condition.
+    if not _TENSORBOARD_AVAILABLE:
+      return
+    # pylint: disable=pointless-statement
+    tf.summary.image
+    # If we use v2 API, check for create_file_writer,
+    # otherwise check for FileWriter.
+    if '._api.v2' in tf.bitwise.__name__:
+      tf.summary.create_file_writer
+    else:
+      tf.summary.FileWriter
+    # pylint: enable=pointless-statement
 
 
 if __name__ == '__main__':
