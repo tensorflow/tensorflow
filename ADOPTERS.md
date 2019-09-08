@@ -7,4 +7,4 @@ We intend to use this list to contact you for surveys, and to find good candidat
 We will also point to this list if we are asked who uses TensorFlow.
 
 We will not use any of the information here for promotions or to send other regular communications. You 
-should subscribe to discuss@tensorflow.org for such announcements.
+should subscribe to discuss@tensorflow.org for such announcements.   
