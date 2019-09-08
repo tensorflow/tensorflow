@@ -32,8 +32,6 @@ inline void Abs(const AbsParams& params, const RuntimeShape& input_shape,
 
   const int32_t q_min_val = static_cast<int32_t>(std::numeric_limits<T>::min());
   const int32_t q_max_val = static_cast<int32_t>(std::numeric_limits<T>::max());
-  TFLITE_DCHECK_GE(params.input_offset, q_min_val);
-  TFLITE_DCHECK_LE(params.input_offset, q_max_val);
 
   for (int i = 0; i < flat_size; ++i) {
     const int32 input_val = std::abs(params.input_offset + input_data[i]);
