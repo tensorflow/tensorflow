@@ -46,6 +46,17 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "fingerprint": {
+        "name": "fingerprint_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/fingerprint.h",
+        ],
+        "deps": [
+            "@farmhash_archive//:farmhash",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {
