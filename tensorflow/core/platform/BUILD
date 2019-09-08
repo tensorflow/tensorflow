@@ -179,6 +179,16 @@ cc_library(
 )
 
 cc_library(
+    name = "grpc_services",
+    hdrs = ["grpc_services.h"],
+    deps = [
+        ":platform",
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+    ],
+)
+
+cc_library(
     name = "host_info",
     hdrs = ["host_info.h"],
     deps = [":types"],
