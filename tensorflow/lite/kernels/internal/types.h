@@ -778,7 +778,7 @@ struct ArithmeticParams {
 };
 
 struct AbsParams {
-  // uint8 inference params.
+  // int8/uint8 inference params.
   int32 input_offset;
   int32 output_offset;
   int32 output_multiplier;

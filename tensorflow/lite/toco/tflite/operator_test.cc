@@ -167,25 +167,33 @@ TEST_F(OperatorTest, BuiltinAbs) {
   Model float_model;
   Array& input_float_array = float_model.GetOrCreateArray(abs_op.inputs[0]);
   input_float_array.data_type = ArrayDataType::kFloat;
-  OperatorSignature float_signature = {.op = &abs_op, .model = &float_model};
+  OperatorSignature float_signature;
+  float_signature.op = &abs_op;
+  float_signature.model = &float_model;
   EXPECT_EQ(op->GetVersion(float_signature), 1);
 
   Model int32_model;
   Array& input_int32_array = int32_model.GetOrCreateArray(abs_op.inputs[0]);
   input_int32_array.data_type = ArrayDataType::kInt32;
-  OperatorSignature int32_signature = {.op = &abs_op, .model = &int32_model};
+  OperatorSignature int32_signature;
+  int32_signature.op = &abs_op;
+  int32_signature.model = &int32_model;
   EXPECT_EQ(op->GetVersion(int32_signature), 2);
 
   Model int8_model;
   Array& input_int8_array = int8_model.GetOrCreateArray(abs_op.inputs[0]);
   input_int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.op = &abs_op, .model = &int8_model};
+  OperatorSignature int8_signature;
+  int8_signature.op = &abs_op;
+  int8_signature.model = &int8_model;
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 
   Model uint8_model;
   Array& input_uint8_array = uint8_model.GetOrCreateArray(abs_op.inputs[0]);
   input_uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.op = &abs_op, .model = &uint8_model};
+  OperatorSignature int8_signature;
+  uint8_signature.op = &abs_op;
+  uint8_signature.model = &uint8_model;
   EXPECT_EQ(op->GetVersion(uint8_signature), 2);
 }
 

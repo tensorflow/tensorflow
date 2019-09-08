@@ -68,9 +68,9 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 }
 
 float GetQuantizeTolerance(int min, int max) {
-  float QuantizedStep = (max - min) / 255.0;
-  float QuantizedTolerance = 2.0 * QuantizedStep;
-  return QuantizedTolerance;
+  float quantize_step = (max - min) / 255.0;
+  float quantize_tolerance = 2.0 * quantize_step;
+  return quantize_tolerance;
 }
 
 // A test model that contains a single operator. All operator inputs and
