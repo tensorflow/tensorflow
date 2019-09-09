@@ -2606,6 +2606,11 @@ public:
   /// Parse an operation instance that is in the generic form.
   Operation *parseGenericOperation();
 
+  /// Parse an operation instance that is in the generic form and insert it at
+  /// the provided insertion point.
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt);
+
   /// Parse an operation instance that is in the op-defined custom form.
   Operation *parseCustomOperation();
 
@@ -3255,6 +3260,13 @@ Operation *OperationParser::parseGenericOperation() {
   return opBuilder.createOperation(result);
 }
 
+Operation *OperationParser::parseGenericOperation(Block *insertBlock,
+                                                  Block::iterator insertPt) {
+  OpBuilder::InsertionGuard restoreInsertionPoint(opBuilder);
+  opBuilder.setInsertionPoint(insertBlock, insertPt);
+  return parseGenericOperation();
+}
+
 namespace {
 class CustomOpAsmParser : public OpAsmParser {
 public:
@@ -3268,6 +3280,11 @@ public:
     if (opDefinition->parseAssembly(this, opState))
       return failure();
     return success();
+  }
+
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt) final {
+    return parser.parseGenericOperation(insertBlock, insertPt);
   }
 
   //===--------------------------------------------------------------------===//

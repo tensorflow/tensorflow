@@ -123,6 +123,42 @@ static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Test WrapRegionOp - wrapping op exercising `parseGenericOperation()`.
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseWrappingRegionOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  if (parser->parseOptionalKeyword("wraps"))
+    return failure();
+
+  // Parse the wrapped op in a region
+  Region &body = *result->addRegion();
+  body.push_back(new Block);
+  Block &block = body.back();
+  Operation *wrapped_op = parser->parseGenericOperation(&block, block.begin());
+  if (!wrapped_op)
+    return failure();
+
+  // Create a return terminator in the inner region, pass as operand to the
+  // terminator the returned values from the wrapped operation.
+  SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
+  OpBuilder builder(parser->getBuilder().getContext());
+  builder.setInsertionPointToEnd(&block);
+  builder.create<TestReturnOp>(result->location, return_operands);
+
+  // Get the results type for the wrapping op from the terminator operands.
+  Operation &return_op = body.back().back();
+  result->types.append(return_op.operand_type_begin(),
+                       return_op.operand_type_end());
+  return success();
+}
+
+static void print(OpAsmPrinter *p, WrappingRegionOp op) {
+  *p << op.getOperationName() << " wraps ";
+  p->printGenericOp(&op.region().front().front());
+}
+
+//===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
 static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {

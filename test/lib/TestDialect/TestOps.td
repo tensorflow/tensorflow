@@ -757,6 +757,20 @@ def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   let printer = [{ return ::print(p, *this); }];
 }
 
+def WrappingRegionOp : TEST_Op<"wrapping_region",
+    [SingleBlockImplicitTerminator<"TestReturnOp">]> {
+  let summary =  "wrapping region operation";
+  let description = [{
+    Test op wrapping another op in a region, to test calling
+    parseGenericOperation from the custom parser.
+  }];
+
+  let results = (outs Variadic<AnyType>:$outputs);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
 def PolyForOp : TEST_Op<"polyfor">
 {
   let summary =  "polyfor operation";
