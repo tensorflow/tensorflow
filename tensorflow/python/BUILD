@@ -5029,6 +5029,7 @@ tf_py_wrap_cc(
         "util/scoped_annotation.i",
         "util/traceme.i",
         "util/transform_graph.i",
+        "//tensorflow/compiler/mlir/python:mlir.i",
         "//tensorflow/lite/toco/python:toco.i",
     ],
     # add win_def_file for pywrap_tensorflow
