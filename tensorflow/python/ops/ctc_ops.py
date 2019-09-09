@@ -236,7 +236,7 @@ def _CTCLossGrad(op, grad_loss, _):
   
 # pylint: disable=unused-argument
 @ops.RegisterGradient("CTCLossV2")
-def _CTCLossGrad(op, grad_loss, _):
+def _CTCLossV2Grad(op, grad_loss, _):
   """The derivative provided by CTC Loss V2.
 
   Args:
@@ -698,9 +698,9 @@ def ctc_loss_v2(labels,
 
     _ctc_use_cudnn = os.environ.get("TF_CUDNN_CTC_LOSS", "0")
     if _ctc_use_cudnn == "1":
-        use_cudnn = True
+      use_cudnn = True
     else:
-        use_cudnn = False
+      use_cudnn = False
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)

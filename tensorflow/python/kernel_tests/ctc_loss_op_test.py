@@ -841,5 +841,6 @@ class CTCLossTestV2(test.TestCase):
           [[1.0, 2.0], [5.0, 8.0], [14.0, 20.0]], out)
 
 if __name__ == "__main__":
-  os.environ['TF_CUDNN_CTC_LOSS'] = '1'
+  if test.is_gpu_available():
+    os.environ['TF_CUDNN_CTC_LOSS'] = '1'
   test.main()
