@@ -183,6 +183,7 @@ OpPassManager::OpPassManager(OperationName name, bool disableThreads,
          "OpPassManager only supports operating on operations marked as "
          "'IsolatedFromAbove'");
 }
+OpPassManager::OpPassManager(OpPassManager &&rhs) : impl(std::move(rhs.impl)) {}
 OpPassManager::OpPassManager(const OpPassManager &rhs) { *this = rhs; }
 OpPassManager &OpPassManager::operator=(const OpPassManager &rhs) {
   impl.reset(new OpPassManagerImpl(rhs.impl->name, rhs.impl->disableThreads,
