@@ -22,7 +22,7 @@ OptimizerOptions::GlobalJitLevel XlaConfigProxy::GetGlobalJitLevel(
     OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
   OptimizerOptions::GlobalJitLevel global_jit_level = jit_level_in_session_opts;
   ConfigSetterRegistry<OptimizerOptions::GlobalJitLevel>::Global()->Update(
-      jit_level_in_session_opts);
+      global_jit_level);
   return global_jit_level;
 }
 
