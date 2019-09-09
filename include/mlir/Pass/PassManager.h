@@ -51,6 +51,7 @@ public:
   OpPassManager(OpPassManager &&) = default;
   OpPassManager(const OpPassManager &rhs);
   ~OpPassManager();
+  OpPassManager &operator=(const OpPassManager &rhs);
 
   /// Run the held passes over the given operation.
   LogicalResult run(Operation *op, AnalysisManager am);
@@ -77,11 +78,11 @@ public:
   /// Return the operation name that this pass manager operates on.
   const OperationName &getOpName() const;
 
-private:
-  OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
-
   /// Returns the internal implementation instance.
   detail::OpPassManagerImpl &getImpl();
+
+private:
+  OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
 
   /// A pointer to an internal implementation instance.
   std::unique_ptr<detail::OpPassManagerImpl> impl;

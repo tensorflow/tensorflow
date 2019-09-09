@@ -55,12 +55,13 @@
 // NESTED_MT_PIPELINE: Pass execution timing report
 // NESTED_MT_PIPELINE: Total Execution Time:
 // NESTED_MT_PIPELINE: Name
-// NESTED_MT_PIPELINE-NEXT: 'module' Pipeline
-// NESTED_MT_PIPELINE-NEXT:   TestModulePass
+// NESTED_MT_PIPELINE-NEXT: Pipeline Collection : ['func', 'module']
 // NESTED_MT_PIPELINE-NEXT:   'func' Pipeline
 // NESTED_MT_PIPELINE-NEXT:     TestFunctionPass
-// NESTED_MT_PIPELINE-NEXT: 'func' Pipeline
-// NESTED_MT_PIPELINE-NEXT:   TestFunctionPass
+// NESTED_MT_PIPELINE-NEXT:   'module' Pipeline
+// NESTED_MT_PIPELINE-NEXT:     TestModulePass
+// NESTED_MT_PIPELINE-NEXT:     'func' Pipeline
+// NESTED_MT_PIPELINE-NEXT:       TestFunctionPass
 // NESTED_MT_PIPELINE-NEXT: Total
 
 func @foo() {
