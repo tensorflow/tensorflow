@@ -163,13 +163,8 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
       func_attr.getValue());
 
   std::string txt_module = EncapsulateFuncAndSerialize(func);
-  compile_op_state.addAttribute("module", builder->getStringAttr(txt_module));
-
-  // Copy all launch_func attributes other than `func`.
-  for (auto attr : launch_func.getAttrs()) {
-    if (attr.first == "func") continue;
-    compile_op_state.attributes.emplace_back(attr);
-  }
+  compile_op_state.addAttribute("mlir_module",
+                                builder->getStringAttr(txt_module));
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(
