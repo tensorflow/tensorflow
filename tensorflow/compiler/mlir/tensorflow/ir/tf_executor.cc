@@ -48,17 +48,30 @@ namespace {
 
 // If the given tensor has elements of type variant, then returns a new type
 // after dropping subtypes info. Otherwise, returns the original type as is.
-Type DropVariantSubTypes(Type ty) {
-  ShapedType shaped_ty = ty.cast<ShapedType>();
-  Type element_ty = shaped_ty.getElementType();
+ShapedType DropVariantSubTypes(ShapedType ty) {
+  Type element_ty = ty.getElementType();
   if (!element_ty.isa<TF::VariantType>()) return ty;
 
   Type variant_ty = TF::VariantType::get(ty.getContext());
-  if (shaped_ty.hasRank()) {
-    return RankedTensorType::get(shaped_ty.getShape(), variant_ty);
+  if (ty.hasRank()) {
+    return RankedTensorType::get(ty.getShape(), variant_ty);
   }
 
   return UnrankedTensorType::get(variant_ty);
+}
+
+// If the given tensor has elements of type ref, then returns a new type
+// of the shape, but corresponding non-ref type as element type. Otherwise,
+// returns the original type as is.
+ShapedType DropRefType(ShapedType type) {
+  Type element_ty = type.getElementType();
+  TF::TensorFlowRefType ref_type = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_type) return type;
+
+  if (type.hasRank()) {
+    return RankedTensorType::get(type.getShape(), ref_type.RemoveRef());
+  }
+  return UnrankedTensorType::get(ref_type.RemoveRef());
 }
 
 }  // namespace
@@ -560,22 +573,40 @@ LogicalResult Verify(MergeOp merge) {
 
   // Check that each operand can be individually broadcasted to the output type.
   Type output_type = merge.output()->getType();
+  TensorType output_tensor_ty = output_type.dyn_cast<TensorType>();
+  if (!output_tensor_ty) {
+    return merge.emitOpError()
+           << "expects output to have tensor type but got " << output_type;
+  }
+  bool is_output_ref =
+      output_tensor_ty.getElementType().isa<TF::TensorFlowRefType>();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
     // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
     // constraint.
-    if (!operand_type.isa<TensorType>())
-      return merge.emitOpError("expects data operands to have tensor type");
+    TensorType operand_tensor_ty = operand_type.dyn_cast<TensorType>();
+    if (!operand_tensor_ty)
+      return merge.emitOpError()
+             << "expects data operands to have tensor type but got "
+             << operand_type;
 
-    // Variant types may have opaque subtypes information that need not match
-    // between the two types so drop them before computing the broadcasted type.
+    // If output type is a ref type then all operand types should also be of the
+    // same ref type. However, if the output type is a non-ref type T, operands
+    // can be tensor of type T or T_REF.
+    if (is_output_ref &&
+        !operand_tensor_ty.getElementType().isa<TF::TensorFlowRefType>()) {
+      return merge.emitOpError()
+             << "expects same operand and output element type but got "
+             << operand_tensor_ty << " vs " << output_tensor_ty;
+    }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropVariantSubTypes(output_type), DropVariantSubTypes(operand_type));
+        DropRefType(DropVariantSubTypes(output_tensor_ty)),
+        DropRefType(DropVariantSubTypes(operand_tensor_ty)));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"
-             << " but got " << operand_type << " vs " << output_type;
+             << " but got " << operand_tensor_ty << " vs " << output_tensor_ty;
   }
   return success();
 }

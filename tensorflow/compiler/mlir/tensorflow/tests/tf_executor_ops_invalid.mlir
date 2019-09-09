@@ -522,6 +522,18 @@ func @invalid_merge(%arg0: tensor<*x!tf.variant>, %arg1: tensor<4x!tf.variant>) 
 
 // -----
 
+// Check that if result is a ref type, all operands need to be ref too.
+func @inavlid_merge(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4xf32>) -> tensor<4x!tf.f32ref> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf.f32ref>, tensor<4xf32>) -> (tensor<4x!tf.f32ref>, tensor<i32>, !tf_executor.control)
+    // expected-error@-1 {{'tf_executor.Merge' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
+    tf_executor.fetch %value : tensor<4x!tf.f32ref>
+  }
+  return %result : tensor<4x!tf.f32ref>
+}
+
+// -----
+
 // Check that merge data inputs can't appear after control input.
 func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
