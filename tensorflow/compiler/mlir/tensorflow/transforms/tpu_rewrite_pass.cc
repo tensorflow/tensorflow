@@ -153,6 +153,9 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
     compile_op_operands.emplace_back(shape_op.getResult());
   }
   compile_op_state.addOperands(compile_op_operands);
+  compile_op_state.addAttribute(
+      "NumDynamicShapes",
+      builder->getI64IntegerAttr(compile_op_operands.size()));
 
   SymbolRefAttr func_attr = launch_func.getAttrOfType<SymbolRefAttr>("func");
   if (!func_attr) {

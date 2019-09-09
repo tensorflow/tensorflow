@@ -12,6 +12,7 @@ module {
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
     // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
