@@ -62,7 +62,7 @@ public:
     auto fqOp = cast<ConstFakeQuant>(op);
 
     auto converter =
-        ExpressedToUniformQuantizedConverter::forInputType(fqOp.getType());
+        ExpressedToQuantizedConverter::forInputType(fqOp.getType());
     if (!converter) {
       return (op->emitError("unsupported quantized type conversion"), true);
     }
