@@ -63,9 +63,9 @@ std::string GetApplyMaskKernelCode(
   c += "    result *= " +
        mask.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ".x;\n";
   c += "  }\n";
-  c += "  " + dst.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst.Write3D("result", "dst_adr");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst.Write3D("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }

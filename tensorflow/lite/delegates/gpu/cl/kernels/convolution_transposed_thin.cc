@@ -127,12 +127,13 @@ std::string GenerateConvolutionTransposedCode(
         c += "    result" + channel[d] + " += r[" + std::to_string(y) + "][" +
              std::to_string(x) + "]" + postfix[d] + ";\n";
       }
+      const LinkingContext context{"result", "X + " + std::to_string(x),
+                                   "Y + " + std::to_string(y), "0"};
+      c += PostProcess(linked_operations, context);
       c += "    " +
-           dst_tensor.GetAddress("address", "X + " + std::to_string(x),
-                                 "Y + " + std::to_string(y), "0") +
+           dst_tensor.Write3D("result", context.x_coord, context.y_coord,
+                              context.z_coord) +
            "\n";
-      c += PostProcess(linked_operations, "result", "0", "address");
-      c += "    " + dst_tensor.Write3D("result", "address") + "\n";
       c += "  }\n";
     }
   }

@@ -90,10 +90,12 @@ std::string GetConcatKernelCode(
             ";\n";
         code += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
         code += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
-        code += PostProcess(linked_operations, "result0", "Z", "dst_adr0");
-        code += PostProcess(linked_operations, "result1", "Z + 1", "dst_adr1");
-        code += "    " + dst.Write3D("result0", "dst_adr0");
-        code += "    " + dst.Write3D("result1", "dst_adr1");
+        const LinkingContext context_0{"result0", "X", "Y", "Z"};
+        const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
+        code += PostProcess(linked_operations, context_0);
+        code += PostProcess(linked_operations, context_1);
+        code += "    " + dst.Write3D("result0", "X", "Y", "Z");
+        code += "    " + dst.Write3D("result1", "X", "Y", "Z + 1");
         code += "    Z += 2;\n";
         code += "  }\n";
       } else {
@@ -101,9 +103,9 @@ std::string GetConcatKernelCode(
         code += "    FLT4 result = " +
                 srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
                 ";\n";
-        code += "    " + dst.GetAddress("dst_adr", "X", "Y", "Z") + "\n";
-        code += PostProcess(linked_operations, "result", "Z", "dst_adr");
-        code += "    " + dst.Write3D("result", "dst_adr");
+        const LinkingContext context{"result", "X", "Y", "Z"};
+        code += PostProcess(linked_operations, context);
+        code += "    " + dst.Write3D("result", "X", "Y", "Z");
         code += "    Z++;\n";
         code += "  }\n";
       }
@@ -129,12 +131,9 @@ std::string GetConcatKernelCode(
           if (out_channel == 4) {
             out_channel = 0;
             code += "  {\n";
-            code += "  " +
-                    dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) +
-                    "\n";
-            code += PostProcess(linked_operations, "result", std::to_string(z),
-                                "dst_adr");
-            code += "  " + dst.Write3D("result", "dst_adr");
+            const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+            code += PostProcess(linked_operations, context);
+            code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
             code += "  }\n";
             z++;
           }
@@ -144,11 +143,9 @@ std::string GetConcatKernelCode(
     }
     if (out_channel != 0) {
       code += "  {\n";
-      code +=
-          "  " + dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) + "\n";
-      code += PostProcess(linked_operations, "result", std::to_string(z),
-                          "dst_adr");
-      code += "  " + dst.Write3D("result", "dst_adr");
+      const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+      code += PostProcess(linked_operations, context);
+      code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
       code += "  }\n";
     }
   }

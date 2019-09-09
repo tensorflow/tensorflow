@@ -349,9 +349,9 @@ std::string GenerateConvPowerVR1x1(
         }
         c += "    FLT4 res = TO_FLT4(r" + r_id + " + data[" +
              std::to_string(z) + "]);\n";
-        c += "    " + dst_tensor.GetAddress("address", xs, ys, zs) + "\n";
-        c += PostProcess(linked_operations, "res", zs, "address");
-        c += "    " + dst_tensor.Write3D("res", "address") + "\n";
+        const LinkingContext context{"res", xs, ys, zs};
+        c += PostProcess(linked_operations, context);
+        c += "    " + dst_tensor.Write3D("res", xs, ys, zs) + "\n";
         c += "  }\n";
       }
     }
