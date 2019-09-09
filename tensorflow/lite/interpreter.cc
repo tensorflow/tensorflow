@@ -128,6 +128,7 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
+  TFLITE_LOG(TFLITE_LOG_INFO, "Interpreter::SetInputsNum=%d", inputs.size());
   return primary_subgraph().SetInputs(inputs);
 }
 
