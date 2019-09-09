@@ -71,8 +71,10 @@ The `tf.data` Python API creates instances of this op from
 `Dataset.interleave()` when the `num_parallel_calls` parameter of that method
 is set to any value other than `None`.
 
-If the `experimental_deterministic` parameter of `tf.data.Options` is set to
-`True`, then the output of this op will be deterministic. Otherwise the output
-may be nondeterministic.
+By default, the output of this dataset will be deterministic, which may result
+in the dataset blocking if the next data item to be returned isn't available.
+In order to avoid head-of-line blocking, one can set the 
+`experimental_deterministic` parameter of `tf.data.Options` to `False`,
+which can improve performance at the expense of non-determinism.
 END
 }
