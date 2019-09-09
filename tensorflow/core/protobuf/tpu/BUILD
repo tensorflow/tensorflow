@@ -73,6 +73,19 @@ tf_proto_library_py(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library_py(
+    name = "compile_metadata_proto",
+    srcs = [
+        "compile_metadata.proto",
+    ],
+    protodeps = tf_additional_all_protos() + [
+        ":dynamic_padding_proto",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 tf_pyclif_proto_library(
     name = "topology_pyclif",
     proto_lib = ":topology_proto",
