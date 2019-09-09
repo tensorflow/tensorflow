@@ -409,8 +409,11 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         inp2=ops.convert_to_tensor(np_input2))
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
-    output_with_trt = output_with_trt.values()[0]
-    self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
+    self.assertAllClose(
+        expected_output,
+        list(output_with_trt.values())[0],
+        atol=1e-6,
+        rtol=1e-6)
 
     del root_with_trt
     gc.collect()  # Force GC to destroy the TRT engine cache.
