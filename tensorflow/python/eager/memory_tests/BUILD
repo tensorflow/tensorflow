@@ -30,6 +30,8 @@ cuda_py_test(
         "@six_archive//:six",
     ],
     tags = [
+        "manual",
+        "no_oss",
         "notap",  #TODO(b/140640597): this test is flaky at the moment
         "optonly",  # The test is too slow in non-opt mode
     ],
