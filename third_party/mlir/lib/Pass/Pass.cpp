@@ -235,12 +235,22 @@ OpToOpPassAdaptor::OpToOpPassAdaptor(const OpToOpPassAdaptor &rhs)
 /// Run the held pipeline over all nested operations.
 void OpToOpPassAdaptor::runOnOperation() {
   auto am = getAnalysisManager();
+  auto currentThreadID = llvm::get_threadid();
+  auto *instrumentor = am.getPassInstrumentor();
   for (auto &region : getOperation()->getRegions()) {
     for (auto &block : region) {
       for (auto &op : block) {
+        if (op.getName() != mgr->getOpName())
+          continue;
+
         // Run the held pipeline over the current operation.
-        if (op.getName() == mgr->getOpName() &&
-            failed(runPipeline(*mgr, &op, am.slice(&op))))
+        if (instrumentor)
+          instrumentor->runBeforePipeline(mgr->getOpName(), currentThreadID);
+        auto result = runPipeline(*mgr, &op, am.slice(&op));
+        if (instrumentor)
+          instrumentor->runAfterPipeline(mgr->getOpName(), currentThreadID);
+
+        if (failed(result))
           return signalPassFailure();
       }
     }
@@ -284,6 +294,10 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
   // An index for the current operation/analysis manager pair.
   std::atomic<unsigned> opIt(0);
 
+  // Get the current thread for this adaptor.
+  auto parentThreadID = llvm::get_threadid();
+  auto *instrumentor = am.getPassInstrumentor();
+
   // An atomic failure variable for the async executors.
   std::atomic<bool> passFailed(false);
   llvm::parallel::for_each(
@@ -300,9 +314,17 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
           // Set the order id for this thread in the diagnostic handler.
           diagHandler.setOrderIDForThread(nextID);
 
-          // Run the executor over the current operation.
           auto &it = opAMPairs[nextID];
-          if (failed(runPipeline(pm, it.first, it.second))) {
+
+          // Run the executor over the current operation.
+          if (instrumentor)
+            instrumentor->runBeforePipeline(pm.getOpName(), parentThreadID);
+          auto pipelineResult = runPipeline(pm, it.first, it.second);
+          if (instrumentor)
+            instrumentor->runAfterPipeline(pm.getOpName(), parentThreadID);
+
+          // Handle a failed pipeline result.
+          if (failed(pipelineResult)) {
             passFailed = true;
             break;
           }
@@ -438,6 +460,22 @@ struct PassInstrumentorImpl {
 
 PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
 PassInstrumentor::~PassInstrumentor() {}
+
+/// See PassInstrumentation::runBeforePipeline for details.
+void PassInstrumentor::runBeforePipeline(const OperationName &name,
+                                         uint64_t parentThreadID) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : impl->instrumentations)
+    instr->runBeforePipeline(name, parentThreadID);
+}
+
+/// See PassInstrumentation::runAfterPipeline for details.
+void PassInstrumentor::runAfterPipeline(const OperationName &name,
+                                        uint64_t parentThreadID) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : impl->instrumentations)
+    instr->runAfterPipeline(name, parentThreadID);
+}
 
 /// See PassInstrumentation::runBeforePass for details.
 void PassInstrumentor::runBeforePass(Pass *pass, Operation *op) {
