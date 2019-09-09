@@ -13,11 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD:tensorflow/stream_executor/cuda/redzone_allocator.cc
-#include "tensorflow/stream_executor/redzone_allocator.h"
-=======
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
->>>>>>> google_upstream/master:tensorflow/stream_executor/gpu/redzone_allocator.cc
 
 #include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
@@ -306,13 +302,8 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
 
   absl::Span<const uint8> compiled_ptx = {};
   port::StatusOr<absl::Span<const uint8>> compiled_ptx_or =
-<<<<<<< HEAD:tensorflow/stream_executor/cuda/redzone_allocator.cc
-      cuda::CompilePtxOrGetCached(executor->device_ordinal(),
-                                  redzone_checker_ptx, gpu_compilation_opts_);
-=======
       CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
                                gpu_compilation_opts_);
->>>>>>> google_upstream/master:tensorflow/stream_executor/gpu/redzone_allocator.cc
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {

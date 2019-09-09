@@ -96,30 +96,6 @@ cc_library(
     ]),
 )
 
-<<<<<<< HEAD
-cc_library(
-    name = "ptxas_utils",
-    srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
-    hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
-    deps = if_cuda_is_configured([
-        ":cuda_driver",
-        ":ptxas_wrapper",
-        "@com_google_absl//absl/types:span",
-        "//tensorflow/stream_executor:gpu_asm_opts",
-        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "//tensorflow/core:cuda_libdevice_path",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ]),
-)
-
-=======
->>>>>>> google_upstream/master
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
 cc_library(name = "ptxas_wrapper")
@@ -611,10 +587,6 @@ tf_cuda_cc_test(
     deps = [
         ":cuda_activation",
         ":cuda_gpu_executor",
-<<<<<<< HEAD
-        ":ptxas_utils",
-=======
->>>>>>> google_upstream/master
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -622,11 +594,7 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor:redzone_allocator",
-=======
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
->>>>>>> google_upstream/master
     ],
 )

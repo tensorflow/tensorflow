@@ -19,16 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
-<<<<<<< HEAD:tensorflow/stream_executor/cuda/ptxas_utils.h
-namespace cuda {
-
-using PtxCompilationOptions = GpuAsmOpts;
-=======
 // Compilation options for compiling ptxas.
 struct GpuAsmOpts {
   // Disable Cuda ptxas optimizations.
@@ -49,7 +43,6 @@ struct GpuAsmOpts {
   }
 };
 
->>>>>>> google_upstream/master:tensorflow/stream_executor/gpu/asm_compiler.h
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
 //

@@ -401,15 +401,9 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-<<<<<<< HEAD
-        StatusOr<std::vector<uint8>> maybe_cubin = se::cuda::CompilePtx(
-            stream_exec->device_ordinal(), cache_ptx->c_str(),
-            GpuAsmOptsFromConfig(hlo_module_config));
-=======
         StatusOr<std::vector<uint8>> maybe_cubin =
             se::CompileGpuAsm(stream_exec->device_ordinal(), cache_ptx->c_str(),
                               PtxOptsFromConfig(hlo_module_config));
->>>>>>> google_upstream/master
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

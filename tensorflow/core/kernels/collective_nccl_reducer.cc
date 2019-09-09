@@ -99,9 +99,6 @@ void NcclReducer::Run(StatusCallback done) {
   Notification nccl_done;
   Status nccl_status;
   auto* compute_stream = col_ctx_->op_ctx->op_device_context()->stream();
-  auto* nccl_stream = 
-          static_cast<GPUDeviceContext*>(col_ctx_->op_ctx->op_device_context())
-                  ->nccl_stream();
   auto* gpu_info = col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
   // `AddToAllReduce` performs consistency checks for the NCCL call and enqueues
   // the `Participant` struct locally.  When all local participants with this
@@ -122,12 +119,7 @@ void NcclReducer::Run(StatusCallback done) {
     nccl_done.Notify();
   };
   auto participant = absl::make_unique<NcclManager::Participant>(
-<<<<<<< HEAD
-      compute_stream->parent(), compute_stream, nccl_stream,
-      gpu_info->event_mgr, gpu_info->gpu_id,col_ctx_->input,
-=======
       compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
->>>>>>> google_upstream/master
       col_ctx_->output, col_params_->default_rank, std::move(done_callback));
   VLOG(1) << "NcclReducer calling NcclManager::AddToAllReduce num_tasks "
           << col_params_->group.num_tasks << " current task "

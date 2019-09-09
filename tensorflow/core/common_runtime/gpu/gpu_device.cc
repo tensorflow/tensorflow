@@ -249,25 +249,15 @@ class BaseGPUDevice::StreamGroupFactory {
       VLOG(2) << "Created stream[" << stream_group_within_gpu
               << "] = " << group->compute;
 
-<<<<<<< HEAD
-=======
 #if TENSORFLOW_USE_ROCM
       // ROCm streams are lightweight and will not necessarily trigger device
       // queue init until they are first used. For optimal performance,
       // compute and nccl streams must be immediate siblings.
->>>>>>> google_upstream/master
       group->nccl = new se::Stream(executor);
       group->nccl->Init();
       VLOG(2) << "Created nccl_stream[" << stream_group_within_gpu
               << "] = " << group->nccl;
 
-<<<<<<< HEAD
-#if TENSORFLOW_USE_ROCM
-      // ROCm streams are lightweight and will not necessarily trigger device
-      // queue init until they are first used. For optimal performance,
-      // compute and nccl streams must be immediate siblings.
-=======
->>>>>>> google_upstream/master
       // Force underlying resource creation now.
       group->compute->ThenWaitFor(group->nccl);
       group->nccl->ThenWaitFor(group->compute);
@@ -395,14 +385,10 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
         tf_gpu_id_, i, executor_, options.config.gpu_options()));
     device_contexts_.push_back(new GPUDeviceContext(
-<<<<<<< HEAD
-        i, streams_.back()->compute, streams_.back()->nccl,
-=======
         i, streams_.back()->compute,
 #if TENSORFLOW_USE_ROCM
         streams_.back()->nccl,
 #endif
->>>>>>> google_upstream/master
         streams_.back()->host_to_device, streams_.back()->device_to_host,
         streams_.back()->device_to_device));
   }

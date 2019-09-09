@@ -37,11 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-#include "tensorflow/stream_executor/redzone_allocator.h"
-=======
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
->>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
 
 namespace xla {
 namespace gpu {
@@ -195,10 +191,6 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
   using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-
-=======
->>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
 
@@ -344,11 +336,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
-=======
       stream, allocator, PtxOptsFromConfig(hlo_module_config));
->>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -407,11 +395,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
 
     se::RedzoneAllocator scratch_allocator(
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-        stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
-=======
         stream, allocator, PtxOptsFromConfig(hlo_module_config));
->>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();

@@ -530,18 +530,11 @@ tf_cuda_library(
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor:redzone_allocator",
-    ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-    ]),
-=======
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
->>>>>>> google_upstream/master
 )
 
 tf_cc_test(
@@ -4271,12 +4264,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor:redzone_allocator",
-=======
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
->>>>>>> google_upstream/master
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4286,10 +4275,6 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-<<<<<<< HEAD
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-=======
->>>>>>> google_upstream/master
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
     ]) + if_rocm([

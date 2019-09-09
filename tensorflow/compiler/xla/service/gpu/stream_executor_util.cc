@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 namespace xla {
@@ -221,15 +220,9 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                                   *kernel_args);
 }
 
-<<<<<<< HEAD
-se::GpuAsmOpts GpuAsmOptsFromConfig(const HloModuleConfig& hlo_module_config) {
-  return se::GpuAsmOpts(
-      hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations(),
-=======
 se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
   return se::GpuAsmOpts(
       hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
->>>>>>> google_upstream/master
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
 }
 
