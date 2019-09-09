@@ -1256,7 +1256,7 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        saving.save_weights_to_hdf5_group(f, self.layers)
+        saving.save_weights_to_hdf5_group(f, self._get_all_layers(self))
     else:
       if context.executing_eagerly():
         session = None
