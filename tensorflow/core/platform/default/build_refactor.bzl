@@ -57,6 +57,28 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "mutex": {
+        "name": "mutex_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:mutex.h",
+        ],
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/mutex.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/mutex.cc",
+            "//tensorflow/core/platform:default/mutex_data.h",
+        ],
+        "deps": [
+            "@nsync//:nsync_cpp",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:thread_annotations",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {

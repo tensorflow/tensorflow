@@ -54,6 +54,7 @@ tf_instantiate_platform_libraries(names = [
     "dynamic_annotations",
     "env_time",
     "fingerprint",
+    "mutex",
 ])
 
 cc_library(
@@ -210,6 +211,14 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["macros.h"],
+)
+
+cc_library(
+    name = "mutex",
+    textual_hdrs = ["mutex.h"],
+    deps = [
+        ":mutex_impl",
+    ],
 )
 
 cc_library(
