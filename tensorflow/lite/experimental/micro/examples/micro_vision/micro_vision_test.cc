@@ -125,7 +125,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[2]);
-  TF_LITE_MICRO_EXPECT_EQ(3, output->dims->data[3]);
+  TF_LITE_MICRO_EXPECT_EQ(kCategoryCount, output->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, output->type);
 
   // Make sure that the expected "No Person" score is higher.
