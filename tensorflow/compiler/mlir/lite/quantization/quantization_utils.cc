@@ -32,7 +32,7 @@ static Type GetQuantizedType(Builder builder, Type input_type, double min,
                              double max, int storage_type_width,
                              bool narrow_range, bool is_signed) {
   auto converter =
-      quant::ExpressedToUniformQuantizedConverter::forInputType(input_type);
+      quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
   quant::UniformQuantizedType quantizedEleType = quant::fakeQuantAttrsToType(
       builder.getUnknownLoc(), storage_type_width, min, max, narrow_range,
