@@ -2200,6 +2200,23 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+tf_py_test(
+    name = "mkl_ops_test",
+    size = "small",
+    srcs = ["mkl_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 cuda_py_test(
     name = "morphological_ops_test",
     size = "small",
