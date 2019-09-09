@@ -34,9 +34,7 @@ class ProfilerSession {
   // Creates and ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(
       const profiler::ProfilerOptions& options);
-  static std::unique_ptr<ProfilerSession> Create() {
-    return Create(profiler::ProfilerOptions());
-  }
+  static std::unique_ptr<ProfilerSession> Create();
 
   // Deletes an exsiting Profiler and enables starting a new one.
   ~ProfilerSession();
