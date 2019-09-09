@@ -296,6 +296,23 @@ void Print(IslandOp op, OpAsmPrinter *p) {
     p->printOperands(op.getOperands());
     *p << ')';
   }
+
+  // Check if we can print the short "wraps" form: that is if the island
+  // contains a single operation and the result of this operation are perfectly
+  // forwarded to the yield.
+  if (op.getAttrs().empty() &&
+      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+    Operation &wrapped_op = op.GetBody().front();
+    Operation &yield_op = op.GetBody().back();
+    if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
+        std::equal(wrapped_op.getResults().begin(),
+                   wrapped_op.getResults().end(),
+                   yield_op.getOperands().begin())) {
+      *p << " wraps ";
+      p->printGenericOp(&op.GetBody().front());
+      return;
+    }
+  }
   p->printRegion(op.getOperation()->getRegion(0));
   p->printOptionalAttrDict(op.getAttrs());
 }
@@ -316,17 +333,22 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   // Parse the body region.
   Region &body = *result->addRegion();
 
-  // TODO(b/134773778): the custom parser is missing support to implement to
-  // short syntax right now.
-  // if (!parser->parseOptionalKeyword("wraps")) {
-  //   body.push_back(new Block);
-  //   Block &block = body.back();
-  //   parser->getBuilder().setInsertionPointToEnd(&block);
-  //   if (parser->parseOperation())
-  //     return failure();
-  // }
-
-  if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
+  if (succeeded(parser->parseOptionalKeyword("wraps"))) {
+    // If we parse the short version of the island, we have an operation in the
+    // generic form that follows the "wraps" keyword. Parse it inside the region
+    // and forward all of its results as-is to the yield operation.
+    body.push_back(new Block);
+    Block &block = body.back();
+    Operation *wrapped_op =
+        parser->parseGenericOperation(&block, block.begin());
+    if (!wrapped_op) return failure();
+    OpBuilder builder(parser->getBuilder().getContext());
+    builder.setInsertionPointToEnd(&block);
+    builder.create<YieldOp>(result->location,
+                            llvm::to_vector<8>(wrapped_op->getResults()));
+  } else if (parser->parseRegion(body, llvm::None, llvm::None)) {
+    return failure();
+  }
 
   IslandOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
