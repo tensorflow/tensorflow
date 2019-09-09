@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load(
     "@local_config_mlir//:tblgen.bzl",
     "gentbl",
@@ -183,6 +183,41 @@ cc_library(
         "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "lstm_utils",
+    srcs = [
+        "utils/lstm_utils.cc",
+    ],
+    hdrs = [
+        "utils/lstm_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "lstm_utils_test",
+    size = "small",
+    srcs = ["utils/lstm_utils_test.cc"],
+    deps = [
+        ":lstm_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
 )
 
 cc_library(
