@@ -79,6 +79,18 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "notification": {
+        "name": "notification_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:default/notification.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {

@@ -55,6 +55,7 @@ tf_instantiate_platform_libraries(names = [
     "env_time",
     "fingerprint",
     "mutex",
+    "notification",
 ])
 
 cc_library(
@@ -218,6 +219,15 @@ cc_library(
     textual_hdrs = ["mutex.h"],
     deps = [
         ":mutex_impl",
+    ],
+)
+
+cc_library(
+    name = "notification",
+    hdrs = ["notification.h"],
+    deps = [
+        ":notification_impl",
+        ":platform",
     ],
 )
 
