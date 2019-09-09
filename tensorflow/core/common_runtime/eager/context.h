@@ -183,7 +183,7 @@ class EagerContext : public core::RefCounted {
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  EagerExecutor* Executor();
+  EagerExecutor& Executor();
 
   Status AddFunctionDef(const FunctionDef& fdef);
 

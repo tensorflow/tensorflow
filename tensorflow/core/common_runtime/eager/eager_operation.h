@@ -34,7 +34,7 @@ class EagerOperation {
         attr_types_(t),
         device_(nullptr),
         is_function_(is_function),
-        executor_(executor ? *executor : *ctx->Executor()) {}
+        executor_(executor ? *executor : ctx->Executor()) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -84,7 +84,7 @@ class EagerOperation {
     cancellation_manager_ = cancellation_manager;
   }
 
-  EagerExecutor* Executor() { return &executor_; }
+  EagerExecutor& Executor() { return executor_; }
 
   string DebugString() const;
 

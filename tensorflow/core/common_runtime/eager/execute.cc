@@ -177,7 +177,7 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   TensorHandle* result_handle = nullptr;
   profiler::TraceMe activity("_Send", profiler::TraceMeLevel::kInfo);
   Status status =
-      EagerCopyToDevice(handle, ctx, op->Executor(), expected_input_device,
+      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
                         ctx->MirrorTensors(), &result_handle);
   activity.Stop();
   if (!status.ok()) {
@@ -463,8 +463,8 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
   EagerContext* ctx = op->EagerContext();
-  auto* executor = op->Executor();
-  TF_RETURN_IF_ERROR(executor->status());
+  auto& executor = op->Executor();
+  TF_RETURN_IF_ERROR(executor.status());
   Device* device = op->Device();
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(
@@ -493,7 +493,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       if (input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
-            input, ctx, executor, device == nullptr ? ctx->HostCPU() : device,
+            input, ctx, &executor, device == nullptr ? ctx->HostCPU() : device,
             ctx->MirrorTensors(), &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
@@ -638,7 +638,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
   // performance.
-  Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
+  Status s = executor.Async() ? executor.Add(std::move(node)) : node->Run();
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -763,15 +763,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     }
   }
 
-  auto* executor = op->Executor();
-  bool is_async = executor->Async();
+  auto& executor = op->Executor();
+  bool is_async = executor.Async();
   VLOG(4) << "Execute remote eager op: " << op->Name()
           << " (is async?: " << is_async << ").";
 
   std::unique_ptr<EagerNode> node(
       new eager::RemoteExecuteNode(std::move(request), op_device, eager_client,
                                    op->Inputs(), {retvals, num_outputs}));
-  Status s = is_async ? executor->Add(std::move(node)) : node->Run();
+  Status s = is_async ? executor.Add(std::move(node)) : node->Run();
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {

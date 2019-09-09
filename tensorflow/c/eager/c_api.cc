@@ -246,7 +246,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   LOG_AND_RETURN_IF_ERROR(
       CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
                            server_def, remote_eager_workers.get(),
-                           ctx->context->Executor()->Async(), base_request));
+                           ctx->context->Executor().Async(), base_request));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
@@ -563,7 +563,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->Executor(),
+        handle, handle->Context(), &handle->Context()->Executor(),
         handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
@@ -915,7 +915,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
-                                                 ctx->context->Executor(),
+                                                 &ctx->context->Executor(),
                                                  device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
@@ -966,7 +966,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
+  status->status = ctx->context->Executor().WaitForAllPendingNodes();
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
   status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);

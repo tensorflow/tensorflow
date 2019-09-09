@@ -280,7 +280,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
-  EagerExecutor* executor =
+  EagerExecutor& executor =
       stream_id == kInvalidStreamId
           ? context->Context()->Executor()
           : context->Context()->RemoteMgr()->GetOrCreateExecutorForStream(
@@ -289,16 +289,15 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      s = ExecuteOp(item.operation(), context->Context(), executor,
+      s = ExecuteOp(item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
           item.handle_to_decref());
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
-      s = executor->Async()
-              ? context->Context()->Executor()->Add(std::move(node))
-              : node->Run();
+      s = executor.Async() ? context->Context()->Executor().Add(std::move(node))
+                           : node->Run();
     } else {
       s = SendTensor(item.send_tensor(), context->Context());
     }
@@ -326,7 +325,7 @@ Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
         "EagerServiceImpl::WaitQueueDone is not "
         "implemented for particular op IDs.");
   }
-  return context->Context()->Executor()->WaitForAllPendingNodes();
+  return context->Context()->Executor().WaitForAllPendingNodes();
 }
 
 Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
@@ -391,7 +390,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     Device* device;
     TF_RETURN_IF_ERROR(
         ctx->FindDeviceFromName(request->device_name().c_str(), &device));
-    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, ctx->Executor(),
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, &ctx->Executor(),
                                          device, false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
@@ -419,7 +418,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
         send_tensor.device_name().c_str(), &device));
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, eager_context,
-                                         eager_context->Executor(), device,
+                                         &eager_context->Executor(), device,
                                          false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();

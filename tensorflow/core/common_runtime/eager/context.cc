@@ -136,10 +136,10 @@ void EagerContext::InitDeviceMapAndAsync() {
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
-EagerExecutor* EagerContext::Executor() {
+EagerExecutor& EagerContext::Executor() {
   tf_shared_lock l(executor_map_mu_);
-  return gtl::FindWithDefault(thread_local_executor_,
-                              std::this_thread::get_id(), &default_executor_);
+  return *gtl::FindWithDefault(thread_local_executor_,
+                               std::this_thread::get_id(), &default_executor_);
 }
 
 void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
