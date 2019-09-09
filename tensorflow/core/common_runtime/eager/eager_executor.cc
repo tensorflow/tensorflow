@@ -200,7 +200,7 @@ void EagerExecutor::NodeDone(NodeItem* item, const Status& status) {
     mutex_lock l(node_queue_mutex_);
     if (!status_.ok()) return;
     bool need_notification = false;
-    if (item == node_queue_.front().get()) {
+    if (!node_queue_.empty() && item == node_queue_.front().get()) {
       need_notification = unfinished_nodes_.empty();
       current_item = std::move(node_queue_.front());
       node_queue_.pop();
