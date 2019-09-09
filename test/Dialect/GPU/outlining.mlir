@@ -1,5 +1,6 @@
 // RUN: mlir-opt -gpu-kernel-outlining -split-input-file %s | FileCheck %s
 
+// CHECK-LABEL: func @launch()
 func @launch() {
   // CHECK: %[[ARG0:.*]] = "op"() : () -> f32
   %0 = "op"() : () -> (f32)
@@ -33,7 +34,8 @@ func @launch() {
   return
 }
 
-// CHECK: func @launch_kernel(%[[ARG0:.*]]: f32, %[[ARG1:.*]]: memref<?xf32, 1>)
+// CHECK-LABEL: func @launch_kernel
+// CHECK-SAME: (%[[ARG0:.*]]: f32, %[[ARG1:.*]]: memref<?xf32, 1>)
 // CHECK-NEXT: attributes {gpu.kernel}
 // CHECK-NEXT: %[[BID:.*]] = "gpu.block_id"() {dimension = "x"} : () -> index
 // CHECK-NEXT: = "gpu.block_id"() {dimension = "y"} : () -> index
