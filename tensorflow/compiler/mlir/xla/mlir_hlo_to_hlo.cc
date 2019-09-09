@@ -39,7 +39,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-using tensorflow::int64;
+using ::tensorflow::int16;
+using ::tensorflow::int32;
+using ::tensorflow::int64;
+using ::tensorflow::int8;
+using ::tensorflow::uint16;
+using ::tensorflow::uint32;
+using ::tensorflow::uint64;
+using ::tensorflow::uint8;
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   auto values = attr.getValues<int64>();
