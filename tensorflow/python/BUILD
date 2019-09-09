@@ -5095,11 +5095,14 @@ tf_py_wrap_cc(
 # the dynamic libraries of custom ops can find it at runtime.
 genrule(
     name = "pywrap_tensorflow_filtered_def_file",
-    srcs = [
-        "//tensorflow:tensorflow_def_file",
-        ":pybind_symbol_target_libs_file",
-        "//tensorflow/tools/def_file_filter:symbols_pybind",
-    ],
+    srcs = select({
+        "//tensorflow:windows": [
+            "//tensorflow:tensorflow_def_file",
+            ":pybind_symbol_target_libs_file",
+            "//tensorflow/tools/def_file_filter:symbols_pybind",
+        ],
+        "//conditions:default": [],
+    }),
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
         "//tensorflow:windows": """
