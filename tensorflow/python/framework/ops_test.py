@@ -917,7 +917,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       def test():
         output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                              [1])
-        while_op = output.op.inputs[0].op
+        while_op = output.op
         self.assertEqual(while_op.type, "StatelessWhile")
         orig_num_inputs = len(while_op.inputs)
 
