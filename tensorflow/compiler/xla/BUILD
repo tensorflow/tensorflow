@@ -774,8 +774,8 @@ tf_cc_test(
     name = "window_util_test",
     srcs = ["window_util_test.cc"],
     deps = [
-        ":window_util",
         ":test",
+        ":window_util",
         "//tensorflow/core:test_main",
     ],
 )
