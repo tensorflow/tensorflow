@@ -348,3 +348,11 @@ func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
   // CHECK-LABEL: stop_gradient
   // CHECK:  return %arg0 : tensor<3xi32>
 }
+
+func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %0 = "tf.CheckNumerics"(%arg0) {message = ""}: (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: CheckNumerics
+  // CHECK:  return %arg0 : tensor<3xf32>
+}

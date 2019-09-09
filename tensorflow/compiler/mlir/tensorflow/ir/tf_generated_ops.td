@@ -544,6 +544,27 @@ def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [SameOperandsAndResultType]> {
+  let summary = "Checks a tensor for NaN and Inf values.";
+
+  let description = [{
+When run, reports an `InvalidArgument` error if `tensor` has any values
+that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$tensor,
+
+    StrAttr:$message
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 
