@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/micro_interpreter.h"
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/micro/test_helpers.h"
 
 namespace tflite {
 namespace {
+
 class StackAllocator : public flatbuffers::Allocator {
  public:
   StackAllocator() : data_(data_backing_), data_size_(0) {}
@@ -58,7 +58,80 @@ flatbuffers::FlatBufferBuilder* BuilderInstance() {
   return inst;
 }
 
-const Tensor* Create1dTensor(int size) {
+const Model* BuildMockModel() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
+
+  constexpr size_t buffer_data_size = 1;
+  const uint8_t buffer_data[buffer_data_size] = {21};
+  constexpr size_t buffers_size = 2;
+  const Offset<Buffer> buffers[buffers_size] = {
+      CreateBuffer(*builder),
+      CreateBuffer(*builder,
+                   builder->CreateVector(buffer_data, buffer_data_size))};
+  constexpr size_t tensor_shape_size = 1;
+  const int32_t tensor_shape[tensor_shape_size] = {1};
+  constexpr size_t tensors_size = 3;
+  const Offset<Tensor> tensors[tensors_size] = {
+      CreateTensor(*builder,
+                   builder->CreateVector(tensor_shape, tensor_shape_size),
+                   TensorType_INT32, 0,
+                   builder->CreateString("test_input_tensor"), 0, false),
+      CreateTensor(*builder,
+                   builder->CreateVector(tensor_shape, tensor_shape_size),
+                   TensorType_UINT8, 1,
+                   builder->CreateString("test_weight_tensor"), 0, false),
+      CreateTensor(*builder,
+                   builder->CreateVector(tensor_shape, tensor_shape_size),
+                   TensorType_INT32, 0,
+                   builder->CreateString("test_output_tensor"), 0, false),
+  };
+  constexpr size_t inputs_size = 1;
+  const int32_t inputs[inputs_size] = {0};
+  constexpr size_t outputs_size = 1;
+  const int32_t outputs[outputs_size] = {2};
+  constexpr size_t operator_inputs_size = 2;
+  const int32_t operator_inputs[operator_inputs_size] = {0, 1};
+  constexpr size_t operator_outputs_size = 1;
+  const int32_t operator_outputs[operator_outputs_size] = {2};
+  constexpr size_t operators_size = 1;
+  const Offset<Operator> operators[operators_size] = {CreateOperator(
+      *builder, 0, builder->CreateVector(operator_inputs, operator_inputs_size),
+      builder->CreateVector(operator_outputs, operator_outputs_size),
+      BuiltinOptions_NONE)};
+  constexpr size_t subgraphs_size = 1;
+  const Offset<SubGraph> subgraphs[subgraphs_size] = {
+      CreateSubGraph(*builder, builder->CreateVector(tensors, tensors_size),
+                     builder->CreateVector(inputs, inputs_size),
+                     builder->CreateVector(outputs, outputs_size),
+                     builder->CreateVector(operators, operators_size),
+                     builder->CreateString("test_subgraph"))};
+  constexpr size_t operator_codes_size = 1;
+  const Offset<OperatorCode> operator_codes[operator_codes_size] = {
+      CreateOperatorCodeDirect(*builder, BuiltinOperator_CUSTOM, "mock_custom",
+                               0)};
+  const Offset<Model> model_offset = CreateModel(
+      *builder, 0, builder->CreateVector(operator_codes, operator_codes_size),
+      builder->CreateVector(subgraphs, subgraphs_size),
+      builder->CreateString("test_model"),
+      builder->CreateVector(buffers, buffers_size));
+  FinishModelBuffer(*builder, model_offset);
+  void* model_pointer = builder->GetBufferPointer();
+  const Model* model = flatbuffers::GetRoot<Model>(model_pointer);
+  return model;
+}
+
+}  // namespace
+
+const Model* GetMockModel() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildMockModel());
+  }
+  return model;
+}
+
+const Tensor* Create1dFlatbufferTensor(int size) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
   constexpr size_t tensor_shape_size = 1;
@@ -72,7 +145,7 @@ const Tensor* Create1dTensor(int size) {
   return tensor;
 }
 
-const Tensor* CreateMissingQuantizationTensor(int size) {
+const Tensor* CreateMissingQuantizationFlatbufferTensor(int size) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
   const Offset<QuantizationParameters> quant_params =
@@ -90,7 +163,8 @@ const Tensor* CreateMissingQuantizationTensor(int size) {
   return tensor;
 }
 
-const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* CreateBuffers() {
+const flatbuffers::Vector<flatbuffers::Offset<Buffer>>*
+CreateFlatbufferBuffers() {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
   constexpr size_t buffers_size = 1;
@@ -107,101 +181,4 @@ const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* CreateBuffers() {
   return result;
 }
 
-}  // namespace
 }  // namespace tflite
-
-TF_LITE_MICRO_TESTS_BEGIN
-
-TF_LITE_MICRO_TEST(TestAllocateTensor) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  const tflite::Tensor* tensor = tflite::Create1dTensor(100);
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
-      tflite::CreateBuffers();
-
-  TfLiteTensor allocated_tensor;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      allocator.AllocateTensor(*tensor, 0, 1, buffers, micro_test::reporter,
-                               &allocated_tensor));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
-  TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(400, allocated_tensor.bytes);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, allocated_tensor.data.i32);
-}
-
-TF_LITE_MICRO_TEST(TestTooLarge) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  const tflite::Tensor* tensor = tflite::Create1dTensor(2000);
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
-      tflite::CreateBuffers();
-
-  TfLiteTensor allocated_tensor;
-  TF_LITE_MICRO_EXPECT_NE(
-      kTfLiteOk,
-      allocator.AllocateTensor(*tensor, 0, 1, buffers, micro_test::reporter,
-                               &allocated_tensor));
-}
-
-TF_LITE_MICRO_TEST(TestJustFits) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  uint8_t* result = allocator.AllocateMemory(arena_size, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-}
-
-TF_LITE_MICRO_TEST(TestAligned) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  uint8_t* result = allocator.AllocateMemory(1, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-
-  result = allocator.AllocateMemory(16, 4);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-  TF_LITE_MICRO_EXPECT_EQ(0, reinterpret_cast<size_t>(result) & 3);
-}
-
-TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  uint8_t* result = allocator.AllocateMemory(768, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
-
-  result = allocator.AllocateMemory(768, 1);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
-}
-
-TF_LITE_MICRO_TEST(TestAllocateTensor) {
-  constexpr size_t arena_size = 1024;
-  uint8_t arena[arena_size];
-  tflite::SimpleTensorAllocator allocator(arena, arena_size);
-
-  const tflite::Tensor* tensor = tflite::CreateMissingQuantizationTensor(100);
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
-      tflite::CreateBuffers();
-
-  TfLiteTensor allocated_tensor;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      allocator.AllocateTensor(*tensor, 0, 1, buffers, micro_test::reporter,
-                               &allocated_tensor));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
-  TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(400, allocated_tensor.bytes);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, allocated_tensor.data.i32);
-}
-
-TF_LITE_MICRO_TESTS_END

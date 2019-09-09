@@ -76,7 +76,8 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
-$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
+$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*test.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
@@ -84,6 +85,7 @@ $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.cc) \
 tensorflow/lite/c/c_api_internal.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -96,6 +98,7 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SR
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
