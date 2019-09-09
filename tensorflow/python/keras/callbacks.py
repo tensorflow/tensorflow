@@ -716,6 +716,7 @@ class ProgbarLogger(Callback):
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
     self.stateful_metrics = set(stateful_metrics or [])
+    self.log_values = None
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
