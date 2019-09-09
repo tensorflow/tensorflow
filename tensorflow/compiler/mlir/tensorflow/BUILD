@@ -423,6 +423,7 @@ tf_cc_test(
     name = "convert_tensor_test",
     size = "small",
     srcs = ["utils/convert_tensor_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":convert_tensor",
         "//tensorflow/compiler/xla:test",
@@ -698,6 +699,7 @@ tf_cc_test(
     name = "compile_mlir_util_test",
     size = "small",
     srcs = ["utils/compile_mlir_util_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":compile_mlir_util",
         "//tensorflow/compiler/tf2xla:common",
