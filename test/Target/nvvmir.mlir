@@ -25,6 +25,10 @@ func @nvvm_special_regs() -> !llvm.i32 {
   %11 = nvvm.read.ptx.sreg.nctaid.y : !llvm.i32
   // CHECK: call i32 @llvm.nvvm.read.ptx.sreg.nctaid.z()
   %12 = nvvm.read.ptx.sreg.nctaid.z : !llvm.i32
+  // CHECK: call i32 @llvm.nvvm.read.ptx.sreg.warpsize()
+  %13 = nvvm.read.ptx.sreg.warpsize : !llvm.i32
+  // CHECK: call i32 @llvm.nvvm.read.ptx.sreg.laneid()
+  %14 = nvvm.read.ptx.sreg.laneid : !llvm.i32
   llvm.return %1 : !llvm.i32
 }
 
