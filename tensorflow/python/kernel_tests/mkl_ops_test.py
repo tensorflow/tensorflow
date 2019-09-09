@@ -14,7 +14,7 @@
 # ==============================================================================
 """
   Tests to verify if the converion of python ops to MKL graph ops happen when
-  MKK is enabled. These tests create graphs to verify the rewrite, and
+  MKL is enabled. These tests create graphs to verify the rewrite, and
   therefore will not test eager rewrites. The tests will be skipped if MKL is
   not enabled.
 """
