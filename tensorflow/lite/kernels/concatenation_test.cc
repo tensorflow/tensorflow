@@ -130,29 +130,56 @@ TEST(ConcatenationOpTest, FiveDimensionalTwoInputNegativeAxes) {
                                 7, 8, 9, 19, 20, 21, 10, 11, 12, 22, 23, 24}));
 }
 
-TEST(ConcatenationOpTest, FiveDimensionalTwoInputQuantizedUint8) {
+template <typename Type>
+struct QuantizedConcatenationOpTest : public testing::Test {
+  using TestType = Type;
+
+  enum TensorType tensor_type =
+      std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_UINT8;
+};
+
+using TestTypes = testing::Types<uint8_t, int16_t>;
+TYPED_TEST_CASE(QuantizedConcatenationOpTest, TestTypes);
+
+TYPED_TEST(QuantizedConcatenationOpTest, FiveDimensionalTwoInputQuantized) {
+  using TestType = typename TestFixture::TestType;
+
   QuantizedConcatenationOpModel m0(
-      {TensorType_UINT8, {2, 1, 2, 1, 3}, -12.7, 12.8},
+      {TestFixture::tensor_type, {2, 1, 2, 1, 3}, -12.7, 12.8},
       /*axis=*/0,
       /*num_inputs=*/2);
 
-  m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
-                           10.0f, 11.0f, 12.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 7.1f, 8.1f, 9.1f,
-                           10.1f, 11.1f, 12.1f});
+  m0.SetInput<TestType>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                            9.0f, 10.0f, 11.0f, 12.0f});
+  m0.SetInput<TestType>(1, {1.1f, 2.1f, 3.1f, 4.1f, 5.1f, 6.1f, 7.1f, 8.1f,
+                            9.1f, 10.1f, 11.1f, 12.1f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+
+  EXPECT_THAT(m0.GetDequantizedOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 2.0f,  3.0f,  4.0f,  5.0f, 6.0f,  7.0f,  8.0f,
                   9.0f, 10.0f, 11.0f, 12.0f, 1.1f, 2.1f,  3.1f,  4.1f,
                   5.1f, 6.1f,  7.1f,  8.1f,  9.1f, 10.1f, 11.1f, 12.1f,
               })));
-  EXPECT_THAT(
-      m0.GetOutput<uint8_t>(),
-      ElementsAreArray({
-          137, 147, 157, 167, 177, 187, 197, 207, 217, 227, 237, 247, 138,  //
-          148, 158, 168, 178, 188, 198, 208, 218, 228, 238, 248,
-      }));
+
+  if (TestFixture::tensor_type == TensorType_UINT8) {
+    EXPECT_THAT(
+        m0.GetOutput<uint8_t>(),
+        ElementsAreArray({
+            137, 147, 157, 167, 177, 187, 197, 207, 217, 227, 237, 247, 138,  //
+            148, 158, 168, 178, 188, 198, 208, 218, 228, 238, 248,
+        }));
+  }
+
+  if (TestFixture::tensor_type == TensorType_INT16) {
+    EXPECT_THAT(m0.GetOutput<int16_t>(),
+                ElementsAreArray({
+                    2441,  5011,  7581,  10151, 12721, 15291,
+                    17861, 20431, 23001, 25571, 28141, 30711,  //
+                    2698,  5268,  7838,  10408, 12978, 15548,
+                    18118, 20688, 23258, 25828, 28398, 30968,
+                }));
+  }
 }
 
 TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
@@ -246,26 +273,41 @@ TEST(ConcatenationOpTest, FourInputs) {
               }));
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantizedUint8) {
-  QuantizedConcatenationOpModel m0({TensorType_UINT8, {2, 1, 2}, -12.7, 12.8},
-                                   /*axis=*/2,
-                                   /*num_inputs=*/4);
+TYPED_TEST(QuantizedConcatenationOpTest, FourInputsQuantizedUint8) {
+  QuantizedConcatenationOpModel m0(
+      {TestFixture::tensor_type, {2, 1, 2}, -12.7, 12.8},
+      /*axis=*/2,
+      /*num_inputs=*/4);
 
-  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  using TestType = typename TestFixture::TestType;
+
+  m0.SetInput<TestType>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<TestType>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<TestType>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<TestType>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetDequantizedOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
                   4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
               })));
-  EXPECT_THAT(m0.GetOutput<uint8_t>(),
-              ElementsAreArray({
-                  137, 157, 138, 158, 139, 159, 140, 160,  //
-                  167, 197, 168, 198, 169, 199, 170, 200,  //
-              }));
+
+  if (TestFixture::tensor_type == TensorType_UINT8) {
+    EXPECT_THAT(m0.GetOutput<TestType>(),
+                ElementsAreArray({
+                    137, 157, 138, 158, 139, 159, 140, 160,  //
+                    167, 197, 168, 198, 169, 199, 170, 200,  //
+                }));
+  }
+
+  if (TestFixture::tensor_type == TensorType_INT16) {
+    EXPECT_THAT(m0.GetOutput<TestType>(),
+                ElementsAreArray({
+                    2441, 7581, 2698, 7838, 2955, 8095,      //
+                    3212, 8352, 10151, 17861, 10408, 18118,  //
+                    10665, 18375, 10922, 18632,              //
+                }));
+  }
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantizedInt8) {
@@ -289,132 +331,188 @@ TEST(ConcatenationOpTest, FourInputsQuantizedInt8) {
                                       }));
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
-  QuantizedConcatenationOpModel m0({{TensorType_UINT8, {2, 1, 2}, -10.7, 10.8},
-                                    {TensorType_UINT8, {2, 1, 2}, 0, 12.8},
-                                    {TensorType_UINT8, {2, 1, 2}, -11, 11.8},
-                                    {TensorType_UINT8, {2, 1, 2}, 0, 7.4}},
-                                   /*axis=*/2, /*num_inputs=*/4,
-                                   {TensorType_UINT8, {2, 1, 2}, -12.7, 12.8});
+TYPED_TEST(QuantizedConcatenationOpTest, FourInputsQuantizedMixedRange) {
+  QuantizedConcatenationOpModel m0(
+      {{TestFixture::tensor_type, {2, 1, 2}, -10.7, 10.8},
+       {TestFixture::tensor_type, {2, 1, 2}, 0, 12.8},
+       {TestFixture::tensor_type, {2, 1, 2}, -11, 11.8},
+       {TestFixture::tensor_type, {2, 1, 2}, 0, 7.4}},
+      /*axis=*/2, /*num_inputs=*/4,
+      {TestFixture::tensor_type, {2, 1, 2}, -12.7, 12.8});
 
-  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  using TestType = typename TestFixture::TestType;
+
+  m0.SetInput<TestType>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<TestType>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<TestType>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<TestType>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetDequantizedOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear({
                   1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
                   4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
               })));
-  EXPECT_THAT(m0.GetOutput<uint8_t>(),
-              ElementsAreArray({
-                  137, 157, 138, 158, 139, 159, 140, 160,  //
-                  167, 197, 168, 198, 169, 199, 170, 200,  //
-              }));
+
+  if (TestFixture::tensor_type == TensorType_UINT8) {
+    EXPECT_THAT(m0.GetOutput<TestType>(),
+                ElementsAreArray({
+                    137, 157, 138, 158, 139, 159, 140, 160,  //
+                    167, 197, 168, 198, 169, 199, 170, 200,  //
+                }));
+  }
+
+  if (TestFixture::tensor_type == TensorType_INT16) {
+    EXPECT_THAT(m0.GetOutput<TestType>(),
+                ElementsAreArray({
+                    2441, 7581, 2698, 7838, 2955, 8095, 3212, 8352,          //
+                    10151, 17861, 10408, 18118, 10665, 18375, 10922, 18632,  //
+                }));
+  }
 }
 
-TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
-  QuantizedConcatenationOpModel m0({{TensorType_UINT8, {2, 1, 2}, -10.7, 10.8},
-                                    {TensorType_UINT8, {2, 1, 2}, 0, 12.8},
-                                    {TensorType_UINT8, {2, 1, 2}, -11, 11.8},
-                                    {TensorType_UINT8, {2, 1, 2}, 0, 7.4}},
-                                   /*axis=*/2, /*num_inputs=*/4,
-                                   {TensorType_UINT8, {2, 1, 2}, -1., 1.});
+TYPED_TEST(QuantizedConcatenationOpTest,
+           FourInputsQuantizedMixedRangeClampingLogic) {
+  QuantizedConcatenationOpModel m0(
+      {{TestFixture::tensor_type, {2, 1, 2}, -10.7, 10.8},
+       {TestFixture::tensor_type, {2, 1, 2}, 0, 12.8},
+       {TestFixture::tensor_type, {2, 1, 2}, -11, 11.8},
+       {TestFixture::tensor_type, {2, 1, 2}, 0, 7.4}},
+      /*axis=*/2, /*num_inputs=*/4,
+      {TestFixture::tensor_type, {2, 1, 2}, -1., 1.});
 
-  m0.SetInput<uint8_t>(0, {1.0f, -3.0f, -4.0f, -7.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput<uint8_t>(2, {1.2f, -3.2f, -4.2f, 7.2f});
-  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  using TestType = typename TestFixture::TestType;
+
+  m0.SetInput<TestType>(0, {1.0f, -3.0f, -4.0f, -7.0f});
+  m0.SetInput<TestType>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<TestType>(2, {1.2f, -3.2f, -4.2f, 7.2f});
+  m0.SetInput<TestType>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetDequantizedOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.0f, -1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f,   //
                       -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f,  //
                   },
                   4e-3)));
-  EXPECT_THAT(m0.GetOutput<uint8_t>(),
-              ElementsAreArray({
-                  255, 0, 255, 255, 255, 0, 255, 255,  //
-                  0, 0, 255, 255, 0, 255, 255, 255,    //
-              }));
+
+  if (TestFixture::tensor_type == TensorType_UINT8) {
+    EXPECT_THAT(m0.GetOutput<TestType>(),
+                ElementsAreArray({
+                    255, 0, 255, 255, 255, 0, 255, 255,  //
+                    0, 0, 255, 255, 0, 255, 255, 255,    //
+                }));
+  }
+
+  if (TestFixture::tensor_type == TensorType_INT16) {
+    EXPECT_THAT(
+        m0.GetOutput<TestType>(),
+        ElementsAreArray({
+            32765, -32768, 32767, 32767, 32767, -32768, 32767, 32767,   //
+            -32768, -32768, 32767, 32767, -32768, 32767, 32767, 32767,  //
+        }));
+  }
 }
 
-TEST(ConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
-  QuantizedConcatenationOpModel m0(
-      {TensorType_UINT8, {2, 1, 2}, 0, std::numeric_limits<uint8_t>::max()},
-      /*axis=*/1,
-      /*num_inputs=*/1);
-  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+TYPED_TEST(QuantizedConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
+  using TestType = typename TestFixture::TestType;
+
+  QuantizedConcatenationOpModel m0({TestFixture::tensor_type,
+                                    {2, 1, 2},
+                                    std::numeric_limits<TestType>::min(),
+                                    std::numeric_limits<TestType>::max()},
+                                   /*axis=*/1,
+                                   /*num_inputs=*/1);
+
+  m0.SetInput<TestType>(0, {1.0f, 3.0f, 4.0f, 7.0f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetOutput<TestType>(),
               ElementsAreArray(ArrayFloatNear({1.0f, 3.0f, 4.0f, 7.0f})));
 }
 
-TEST(ConcatenationOpTest, OneTrivialNonQuantizedInput) {
-  QuantizedConcatenationOpModel m0(
-      {TensorType_UINT8, {1}, 0, std::numeric_limits<uint8_t>::max()},
-      /*axis=*/0,
-      /*num_inputs=*/1);
-  m0.SetInput<uint8_t>(0, {5.0f});
+TYPED_TEST(QuantizedConcatenationOpTest, OneTrivialNonQuantizedInput) {
+  using TestType = typename TestFixture::TestType;
+
+  QuantizedConcatenationOpModel m0({TestFixture::tensor_type,
+                                    {1},
+                                    std::numeric_limits<TestType>::min(),
+                                    std::numeric_limits<TestType>::max()},
+                                   /*axis=*/0,
+                                   /*num_inputs=*/1);
+  m0.SetInput<TestType>(0, {5.0f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetOutput<uint8_t>(), ::testing::ElementsAre(5));
+  EXPECT_THAT(m0.GetOutput<TestType>(), ::testing::ElementsAre(5));
 }
 
-TEST(ConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
-  QuantizedConcatenationOpModel m0(
-      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
-      /*axis=*/0,
-      /*num_inputs=*/1);
-  m0.SetInput<uint8_t>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+TYPED_TEST(QuantizedConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
+  using TestType = typename TestFixture::TestType;
+
+  QuantizedConcatenationOpModel m0({TestFixture::tensor_type,
+                                    {2, 3},
+                                    std::numeric_limits<TestType>::min(),
+                                    std::numeric_limits<TestType>::max()},
+                                   /*axis=*/0,
+                                   /*num_inputs=*/1);
+  m0.SetInput<TestType>(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   m0.Invoke();
-  EXPECT_THAT(m0.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+  EXPECT_THAT(m0.GetOutput<TestType>(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
+TYPED_TEST(QuantizedConcatenationOpTest,
+           TwoInputsTwoAxesNegativeAxesNonQuantized) {
+  using TestType = typename TestFixture::TestType;
+
   // We will concatenate two tensors along different dimensions.
   auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
 
-  QuantizedConcatenationOpModel m0(
-      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
-      /*axis=*/0,
-      /*num_inputs=*/2);
-  m0.SetInput<uint8_t>(0, tensor0);
-  m0.SetInput<uint8_t>(1, tensor1);
+  QuantizedConcatenationOpModel m0({TestFixture::tensor_type,
+                                    {2, 3},
+                                    std::numeric_limits<TestType>::min(),
+                                    std::numeric_limits<TestType>::max()},
+                                   /*axis=*/0,
+                                   /*num_inputs=*/2);
+  m0.SetInput<TestType>(0, tensor0);
+  m0.SetInput<TestType>(1, tensor1);
   m0.Invoke();
-  EXPECT_THAT(m0.GetOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetOutput<TestType>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
   QuantizedConcatenationOpModel m0_negative(
-      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      {TestFixture::tensor_type,
+       {2, 3},
+       std::numeric_limits<TestType>::min(),
+       std::numeric_limits<TestType>::max()},
       /*axis=*/-2,
       /*num_inputs=*/2);
-  m0_negative.SetInput<uint8_t>(0, tensor0);
-  m0_negative.SetInput<uint8_t>(1, tensor1);
+  m0_negative.SetInput<TestType>(0, tensor0);
+  m0_negative.SetInput<TestType>(1, tensor1);
   m0_negative.Invoke();
-  EXPECT_THAT(m0_negative.GetOutput<uint8_t>(),
+  EXPECT_THAT(m0_negative.GetOutput<TestType>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
-  QuantizedConcatenationOpModel m1(
-      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
-      /*axis=*/1,
-      /*num_inputs=*/2);
-  m1.SetInput<uint8_t>(0, tensor0);
-  m1.SetInput<uint8_t>(1, tensor1);
+  QuantizedConcatenationOpModel m1({TestFixture::tensor_type,
+                                    {2, 3},
+                                    std::numeric_limits<TestType>::min(),
+                                    std::numeric_limits<TestType>::max()},
+                                   /*axis=*/1,
+                                   /*num_inputs=*/2);
+  m1.SetInput<TestType>(0, tensor0);
+  m1.SetInput<TestType>(1, tensor1);
   m1.Invoke();
-  EXPECT_THAT(m1.GetOutput<uint8_t>(),
+  EXPECT_THAT(m1.GetOutput<TestType>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 
   QuantizedConcatenationOpModel m1_negative(
-      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      {TestFixture::tensor_type,
+       {2, 3},
+       std::numeric_limits<TestType>::min(),
+       std::numeric_limits<TestType>::max()},
       /*axis=*/-1,
       /*num_inputs=*/2);
-  m1_negative.SetInput<uint8_t>(0, tensor0);
-  m1_negative.SetInput<uint8_t>(1, tensor1);
+  m1_negative.SetInput<TestType>(0, tensor0);
+  m1_negative.SetInput<TestType>(1, tensor1);
   m1_negative.Invoke();
-  EXPECT_THAT(m1_negative.GetOutput<uint8_t>(),
+  EXPECT_THAT(m1_negative.GetOutput<TestType>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 

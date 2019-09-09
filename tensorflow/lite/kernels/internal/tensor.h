@@ -76,12 +76,13 @@ class VectorOfTensors {
 
 // A list of quantized tensors in a format that can be used by kernels like
 // split and concatenation.
-class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
+template <typename T>
+class VectorOfQuantizedTensors : public VectorOfTensors<T> {
  public:
   // Build with the tensors in 'tensor_list'.
   VectorOfQuantizedTensors(const TfLiteContext& context,
                            const TfLiteIntArray& tensor_list)
-      : VectorOfTensors<uint8>(context, tensor_list) {
+      : VectorOfTensors<T>(context, tensor_list) {
     for (int i = 0; i < tensor_list.size; ++i) {
       TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
       zero_point_.push_back(t->params.zero_point);
