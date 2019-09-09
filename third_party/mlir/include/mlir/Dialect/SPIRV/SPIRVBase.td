@@ -144,6 +144,7 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
 def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
@@ -173,9 +174,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFUnordNotEqual, SPV_OC_OpFOrdLessThan, SPV_OC_OpFUnordLessThan,
       SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
-      SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual, SPV_OC_OpLabel,
-      SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
-      SPV_OC_OpReturnValue
+      SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
+      SPV_OC_OpLoopMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -921,6 +922,28 @@ def SPV_LinkageTypeAttr :
     ]> {
   let returnType = "::mlir::spirv::LinkageType";
   let convertFromStorage = "static_cast<::mlir::spirv::LinkageType>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_LC_None               : I32EnumAttrCase<"None", 0x0000>;
+def SPV_LC_Unroll             : I32EnumAttrCase<"Unroll", 0x0001>;
+def SPV_LC_DontUnroll         : I32EnumAttrCase<"DontUnroll", 0x0002>;
+def SPV_LC_DependencyInfinite : I32EnumAttrCase<"DependencyInfinite", 0x0004>;
+def SPV_LC_DependencyLength   : I32EnumAttrCase<"DependencyLength", 0x0008>;
+def SPV_LC_MinIterations      : I32EnumAttrCase<"MinIterations", 0x0010>;
+def SPV_LC_MaxIterations      : I32EnumAttrCase<"MaxIterations", 0x0020>;
+def SPV_LC_IterationMultiple  : I32EnumAttrCase<"IterationMultiple", 0x0040>;
+def SPV_LC_PeelCount          : I32EnumAttrCase<"PeelCount", 0x0080>;
+def SPV_LC_PartialCount       : I32EnumAttrCase<"PartialCount", 0x0100>;
+
+def SPV_LoopControlAttr :
+    I32EnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
+      SPV_LC_None, SPV_LC_Unroll, SPV_LC_DontUnroll, SPV_LC_DependencyInfinite,
+      SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
+      SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
+    ]> {
+  let returnType = "::mlir::spirv::LoopControl";
+  let convertFromStorage = "static_cast<::mlir::spirv::LoopControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 

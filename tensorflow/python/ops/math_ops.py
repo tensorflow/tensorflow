@@ -1270,12 +1270,65 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+@tf_export("math.equal", "equal")
+@dispatch.add_dispatch_support
+def equal(x, y, name=None):
+  """Returns the truth value of (x == y) element-wise.
+
+  Usage:
+
+  ```python
+  x = tf.constant([2, 4])
+  y = tf.constant(2)
+  tf.math.equal(x, y) ==> array([True, False])
+
+  x = tf.constant([2, 4])
+  y = tf.constant([2, 4])
+  tf.math.equal(x, y) ==> array([True,  True])
+  ```
+
+  **NOTE**: `Equal` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.equal(x, y, name=name)
+
+
+@tf_export("math.not_equal", "not_equal")
+@dispatch.add_dispatch_support
+def not_equal(x, y, name=None):
+  """Returns the truth value of (x != y) element-wise.
+
+  **NOTE**: `NotEqual` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.not_equal(x, y, name=name)
+
+
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    return gen_math_ops.equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1284,7 +1337,10 @@ def tensor_equals(self, other):
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    return gen_math_ops.not_equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.not_equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other

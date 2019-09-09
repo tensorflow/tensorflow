@@ -1491,24 +1491,25 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     def f(x):
 
       @custom_gradient.custom_gradient(primals=(x,))
-      def g(unused_dz):
+      def g(dz):
 
         def h(unused_ddz):
           return 2.2
 
-        return x * 2.1, h
+        return x * 2.1 * dz, h
 
       return x + 1., g
 
     with backprop.GradientTape(persistent=True) as t:
       with backprop.GradientTape(persistent=True) as tt:
         v = variables.Variable(1.)
-        self.evaluate(v.initializer)
+        w = variables.Variable(0.)
+        self.evaluate([v.initializer, w.initializer])
         t.watch(v)
         tt.watch(v)
-        output = f(v)
+        output = f(v + w)
         self.assertAllClose(2., output)
-      g = tt.gradient(output, v)
+      g = tt.gradient(output, v, output_gradients=1. + w)
       self.assertAllClose(2.1, g)
     gg = t.gradient(g, v)
     self.assertAllClose(2.2, gg)

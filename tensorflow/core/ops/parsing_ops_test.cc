@@ -100,7 +100,7 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
             .Input(NodeOutList(num_dense, string_in))
             .Input(NodeOutList(num_dense, string_in))
             .Attr("sparse_types", DataTypeList(num_sparse, DT_FLOAT))
-            .Attr("dense_types", DataTypeList(num_dense, DT_FLOAT))
+            // Tdense is inferred from  dense_defaults.
             .Attr("dense_shapes", MakeDenseShapes(num_dense, add_extra_shape,
                                                   unknown_outer_dims))
             .Finalize(&op.node_def));
@@ -132,6 +132,9 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
   INFER_OK(op, "?;?;?;?;?;?;?;?;?;?",
            ("[?,2];[?,2];[?];[?];[2];[2];"      // sparse outputs
             "[?,?,1];[?,?,1,2];[?,?,1,2,3]"));  // dense outputs
+  INFER_OK(op, "[?];?;?;?;?;?;?;?;?;?",
+           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
+            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
   INFER_OK(op, "[10];?;?;?;?;?;?;?;?;?",
            ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
             "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
@@ -209,7 +212,7 @@ TEST(ParsingOpsTest, ParseSequenceExample_ShapeFn) {
   INFER_OK(op, "[?];[?]",
            ("[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
             "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
-            "[d0_0];[d0_0];[d0_0]"));                  // feature_list length
+            "in0;in0;in0"));                           // feature_list length
 
   // Combine previous two test cases.
   set_outputs(2, 3, 2, 3);
@@ -218,7 +221,7 @@ TEST(ParsingOpsTest, ParseSequenceExample_ShapeFn) {
             "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"        // context dense
             "[?,3];[?,3];[?];[?];[3];[3];"             // feature_list sparse
             "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3];"  // feature_list dense
-            "[d0_0];[d0_0];[d0_0]"));                  // feature_list length
+            "in0;in0;in0"));                           // feature_list length
 
   // Confirm an error from ParseSequenceExampleAttrs.Init().
   set_outputs(1, 1, 1, 1, true /* add_extra_shape */);
@@ -294,6 +297,92 @@ TEST(ParsingOpsTest, ParseSingleSequenceExample_ShapeFn) {
   // Confirm an error from ParseSingleSequenceExampleAttrs.Init().
   set_outputs(1, 1, 1, 1, true /* add_extra_shape */);
   INFER_ERROR("len(context_dense_keys) != len(context_dense_shapes)", op,
+              "?;?;?;?;?;?;?;?");
+}
+
+TEST(ParsingOpsTest, ParseExampleV2_ShapeFn) {
+  ShapeInferenceTestOp op("ParseExampleV2");
+  auto set_outputs = [&op](int num_sparse, int num_dense, int num_ragged,
+                           bool add_extra_shape = false,
+                           int unknown_outer_dims = 0) {
+    using NodeOutList = std::vector<NodeDefBuilder::NodeOut>;
+    using DataTypeList = std::vector<DataType>;
+    NodeDefBuilder::NodeOut string_in{"a", 0, DT_STRING};
+
+    TF_ASSERT_OK(
+        NodeDefBuilder("test", "ParseExampleV2")
+            .Input("serialized", 0, DT_STRING)
+            .Input("names", 0, DT_STRING)
+            .Input("sparse_keys", 0, DT_STRING)
+            .Input("dense_keys", 0, DT_STRING)
+            .Input("ragged_keys", 0, DT_STRING)
+            .Input(NodeOutList(num_dense, string_in))  // dense_defaults
+            .Attr("num_sparse", num_sparse)
+            .Attr("sparse_types", DataTypeList(num_sparse, DT_FLOAT))
+            .Attr("ragged_value_types", DataTypeList(num_ragged, DT_FLOAT))
+            .Attr("ragged_split_types", DataTypeList(num_ragged, DT_INT32))
+            .Attr("dense_shapes", MakeDenseShapes(num_dense, add_extra_shape,
+                                                  unknown_outer_dims))
+            .Finalize(&op.node_def));
+  };
+
+  // Verify inputs 'serialized' and 'names'.
+  set_outputs(0 /* num_sparse */, 0 /* num_dense */, 0 /* num_ragged */);
+  INFER_OK(op, "?;?;[0];[0];[0]", "");
+  INFER_OK(op, "[10];[10];[0];[0];[0]", "");
+  INFER_OK(op, "[];[];[0];[0];[0]", "");
+  INFER_ERROR("must be at most rank 1", op, "[1,2];?;?;?;?");
+  INFER_ERROR("must be at most rank 1", op, "?;[2,3];?;?;?");
+
+  // Verify the sparse, dense, and ragged outputs.
+  set_outputs(2 /* num_sparse */, 3 /* num_dense */, 4 /* num_ragged */);
+  INFER_OK(op, "[?];?;?;?;?;?;?;?",              // Vector input, unknown size
+           ("[?,2];[?,2];"                       // sparse indices
+            "[?];[?];"                           // sparse values
+            "[2];[2];"                           // sparse dense_shapes
+            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
+            "[?];[?];[?];[?];"                   // ragged values
+            "[?];[?];[?];[?]"));                 // ragged row_splits
+  INFER_OK(op, "[10];?;?;?;?;?;?;?",             // Vector input, known size
+           ("[?,2];[?,2];"                       // sparse indices
+            "[?];[?];"                           // sparse values
+            "[2];[2];"                           // sparse dense_shapes
+            "[d0_0,1];[d0_0,1,2];[d0_0,1,2,3];"  // dense outputs
+            "[?];[?];[?];[?];"                   // ragged values
+            "[11];[11];[11];[11]"));             // ragged row_splits
+  INFER_OK(op, "[];?;?;?;?;?;?;?",               // Scalar input
+           ("[?,1];[?,1];"                       // sparse indices
+            "[?];[?];"                           // sparse values
+            "[1];[1];"                           // sparse dense_shapes
+            "[1];[1,2];[1,2,3];"                 // dense outputs
+            "[?];[?];[?];[?];"                   // ragged values
+            "[?];[?];[?];[?]"));                 // ragged row_splits
+  INFER_OK(op, "?;?;?;?;?;?;?;?",                // Input with unknown rank
+           ("[?,?];[?,?];"                       // sparse indices
+            "[?];[?];"                           // sparse values
+            "[?];[?];"                           // sparse dense_shapes
+            "?;?;?;"                             // dense outputs
+            "[?];[?];[?];[?];"                   // ragged values
+            "[?];[?];[?];[?]"));                 // ragged row_splits
+
+  // Confirm an error from ParseExampleAttrs.Init().
+  set_outputs(2, 3, 0, true /* add_extra_shape */);
+  INFER_ERROR("len(dense_keys) != len(dense_shapes)", op, "?;?;?;?;?;?;?;?");
+  set_outputs(2, 3, 0, true /* add_extra_shape */, 1 /* unknown_outer_dims */);
+  INFER_ERROR("len(dense_keys) != len(dense_shapes)", op, "?;?;?;?;?;?;?;?");
+
+  // Allow variable strides
+  set_outputs(2, 3, 0, false /* add_extra_shape */, 1 /* unknown_outer_dims */);
+  INFER_OK(op, "[?];?;?;?;?;?;?;?",
+           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
+            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+  INFER_OK(op, "[10];?;?;?;?;?;?;?",
+           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
+            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+
+  // Variable inner dimensions are not supported
+  set_outputs(2, 3, 0, false /* add_extra_shape */, 2 /* unknown_outer_dims */);
+  INFER_ERROR("shapes[0] has unknown rank or unknown inner dimensions", op,
               "?;?;?;?;?;?;?;?");
 }
 

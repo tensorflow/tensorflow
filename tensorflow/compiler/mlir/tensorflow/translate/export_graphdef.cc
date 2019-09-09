@@ -280,21 +280,10 @@ Status Exporter::AddInstructionNode(mlir::Operation* inst) {
     auto name = UniqueName(inst);
     // Convert registered TF ops to NodeDef. Only registered ops are handled to
     // ensure that PopulateDerivedAttrs adds the correct attributes.
-    // TODO(jpienaar): It should be possible to handle every TF op here, the
-    // check is too conservative given we could use a OpDef.
-    if (auto abstract_op = inst->getAbstractOperation()) {
-      if (&abstract_op->dialect == tf_dialect_) {
-        TF_ASSIGN_OR_RETURN(
-            node_def, ConvertTFDialectOpToNodeDef(
-                          inst, name, /*ignore_unregistered_attrs=*/false));
-      }
-    }
-    // Convert TF control flow dialect ops.
-    if (!node_def) {
-      absl::flat_hash_set<absl::string_view> attrs_to_ignore;
-      TF_ASSIGN_OR_RETURN(
-          node_def, GetOperationNodeDef(attrs_to_ignore, inst, name.c_str()));
-    }
+    TF_ASSIGN_OR_RETURN(node_def,
+                        ConvertTFDialectOpToNodeDef(
+                            inst, name, /*ignore_unregistered_attrs=*/false));
+
     Node* node = graph_->AddNode(*node_def, &status);
     TF_RETURN_IF_ERROR(status);
     nodes_[inst] = node;

@@ -208,6 +208,43 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
   });
 }
 
+XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
+                        const std::function<XlaOp(XlaOp, XlaOp)>& combiner) {
+  XlaBuilder* builder = input.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
+    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    std::vector<int64> index_broacast_dims;
+    std::vector<int64> sizes;
+    for (int64 i = 0; i < index_shape.rank(); ++i) {
+      if (i < dim) {
+        index_broacast_dims.push_back(i);
+      } else {
+        if (i == dim) {
+          sizes.push_back(input_shape.dimensions(i));
+        }
+        index_broacast_dims.push_back(i + 1);
+      }
+      sizes.push_back(index_shape.dimensions(i));
+    }
+    auto mask =
+        Eq(BroadcastInDim(index, sizes, index_broacast_dims),
+           Iota(builder,
+                ShapeUtil::MakeShape(index_shape.element_type(), sizes), dim));
+    auto masked_src =
+        Select(mask, BroadcastInDim(src, sizes, index_broacast_dims),
+               Zeros(builder,
+                     ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
+
+    return combiner(
+        input,
+        Reduce(masked_src, Zero(builder, input_shape.element_type()),
+               CreateScalarComputation("reducer", input_shape.element_type(),
+                                       builder, combiner),
+               {dim + 1}));
+  });
+}
+
 XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -238,10 +275,8 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
     }
     for (int64 i = 0; i < input_shape.rank(); ++i) {
       if (i < batch_dims || i == dim) {
-        if (slice_sizes[i] != 0) {
-          slice_sizes[i] = 1;
-          gather_dnums.add_collapsed_slice_dims(i);
-        }
+        slice_sizes[i] = std::min<int64>(slice_sizes[i], 1);
+        gather_dnums.add_collapsed_slice_dims(i);
         gather_dnums.add_start_index_map(i);
       } else {
         if (i < dim) {

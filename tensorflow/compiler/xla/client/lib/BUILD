@@ -310,7 +310,9 @@ xla_test(
     srcs = ["slicing_test.cc"],
     deps = [
         ":slicing",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/client:xla_builder",

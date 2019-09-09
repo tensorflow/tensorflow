@@ -176,8 +176,14 @@ ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
 Status ConcatZ::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, channels_, linked_operations_);
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR() && !IsAllChannelsX4(channels_)) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
+      code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
 }
 

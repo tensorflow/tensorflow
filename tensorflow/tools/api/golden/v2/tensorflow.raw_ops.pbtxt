@@ -1030,7 +1030,7 @@ tf_module {
   }
   member_method {
     name: "Dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'-1\', \'None\'], "
   }
   member_method {
     name: "DeserializeIterator"
@@ -1178,7 +1178,7 @@ tf_module {
   }
   member_method {
     name: "Equal"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'y\', \'incompatible_shape_error\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "Erf"
@@ -1902,71 +1902,71 @@ tf_module {
   }
   member_method {
     name: "LoadTPUEmbeddingADAMParameters"
-    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingADAMParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingAdadeltaParameters"
-    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingAdadeltaParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingAdagradParameters"
-    argspec: "args=[\'parameters\', \'accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingAdagradParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingCenteredRMSPropParameters"
-    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'mg\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'mg\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingFTRLParameters"
-    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingFTRLParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingMDLAdagradLightParameters"
-    argspec: "args=[\'parameters\', \'accumulators\', \'weights\', \'benefits\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'weights\', \'benefits\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingMomentumParameters"
-    argspec: "args=[\'parameters\', \'momenta\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'momenta\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingMomentumParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'momenta\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'momenta\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingProximalAdagradParameters"
-    argspec: "args=[\'parameters\', \'accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingRMSPropParameters"
-    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingRMSPropParametersGradAccumDebug"
-    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingStochasticGradientDescentParameters"
-    argspec: "args=[\'parameters\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'parameters\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Log"
@@ -2402,7 +2402,7 @@ tf_module {
   }
   member_method {
     name: "NotEqual"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'x\', \'y\', \'incompatible_shape_error\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "NthElement"
@@ -2545,6 +2545,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ParseExampleV2"
+    argspec: "args=[\'serialized\', \'names\', \'sparse_keys\', \'dense_keys\', \'ragged_keys\', \'dense_defaults\', \'num_sparse\', \'sparse_types\', \'ragged_value_types\', \'ragged_split_types\', \'dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ParseSequenceExample"
     argspec: "args=[\'serialized\', \'debug_name\', \'context_dense_defaults\', \'feature_list_dense_missing_assumed_empty\', \'context_sparse_keys\', \'context_dense_keys\', \'feature_list_sparse_keys\', \'feature_list_dense_keys\', \'Ncontext_sparse\', \'Ncontext_dense\', \'Nfeature_list_sparse\', \'Nfeature_list_dense\', \'context_sparse_types\', \'feature_list_dense_types\', \'context_dense_shapes\', \'feature_list_sparse_types\', \'feature_list_dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'[]\', \'[]\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
@@ -2658,7 +2662,7 @@ tf_module {
   }
   member_method {
     name: "QuantizeV2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizedAdd"
@@ -3374,71 +3378,71 @@ tf_module {
   }
   member_method {
     name: "RetrieveTPUEmbeddingADAMParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingADAMParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingAdadeltaParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingAdagradParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingAdagradParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingCenteredRMSPropParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingFTRLParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingFTRLParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingMDLAdagradLightParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingMomentumParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingMomentumParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingProximalAdagradParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingRMSPropParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "RetrieveTPUEmbeddingStochasticGradientDescentParameters"
-    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'None\'], "
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Reverse"

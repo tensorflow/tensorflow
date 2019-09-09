@@ -164,7 +164,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           // mask and pad value.
           //
           const Shape mask_shape =
-              ShapeUtil::ChangeElementType(operand->shape(), xla::U32);
+              ShapeUtil::ChangeElementType(operand->shape(), xla::S32);
           const Shape pred_shape =
               ShapeUtil::ChangeElementType(operand->shape(), xla::PRED);
           HloInstruction* iota = computation->AddInstruction(

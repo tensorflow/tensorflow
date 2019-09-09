@@ -57,8 +57,15 @@ struct FastParseExampleConfig {
     DataType dtype;
   };
 
+  struct Ragged {
+    string feature_name;
+    DataType dtype;
+    DataType splits_dtype;
+  };
+
   std::vector<Dense> dense;
   std::vector<Sparse> sparse;
+  std::vector<Ragged> ragged;
 
   // If `true`, `Result::feature_stats` will contain one
   // `PerExampleFeatureStats` for each serialized example in the input.
@@ -88,6 +95,8 @@ struct Result {
   std::vector<Tensor> sparse_values;
   std::vector<Tensor> sparse_shapes;
   std::vector<Tensor> dense_values;
+  std::vector<Tensor> ragged_values;
+  std::vector<Tensor> ragged_splits;
 
   // This vector will be populated with one element per example if
   // `FastParseExampleConfig::collect_feature_stats` is set to `true`.

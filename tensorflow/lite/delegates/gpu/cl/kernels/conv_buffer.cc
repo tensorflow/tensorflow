@@ -72,7 +72,7 @@ std::string GenerateConvBuffer(
   c += "    int4 src_size,                   \n";
   c += "    int4 dst_size,                   \n";
   c += "    int2 kernel_size,                \n";
-  c += "    int2 dillation,                  \n";
+  c += "    int2 dilation,                   \n";
   c += "    int2 stride,                     \n";
   c += "    int2 padding                     \n";
   c += ") {\n";
@@ -97,7 +97,7 @@ std::string GenerateConvBuffer(
   c += "  for (int y = 0; y < kernel_size.y; ++y) {\n";
   for (int y = 0; y < y_elements; ++y) {
     std::string y_s = std::to_string(y);
-    c += "  int c" + y_s + "y = y * dillation.y + yc" + y_s + ";\n";
+    c += "  int c" + y_s + "y = y * dilation.y + yc" + y_s + ";\n";
     c += "  bool y" + y_s + "_in = c" + y_s + "y >= 0 && c" + y_s +
          "y < src_size.y;\n";
     c += "  c" + y_s + "y = clamp(c" + y_s + "y, 0, src_size.y - 1);\n";
@@ -105,7 +105,7 @@ std::string GenerateConvBuffer(
   c += "  for (int x = 0; x < kernel_size.x; ++x) {\n";
   for (int x = 0; x < x_elements; ++x) {
     std::string x_s = std::to_string(x);
-    c += "  int c" + x_s + "x = x * dillation.x + xc" + x_s + ";\n";
+    c += "  int c" + x_s + "x = x * dilation.x + xc" + x_s + ";\n";
     c += "  bool x" + x_s + "_in = c" + x_s + "x >= 0 && c" + x_s +
          "x < src_size.x;\n";
     c += "  c" + x_s + "x = clamp(c" + x_s + "x, 0, src_size.x - 1);\n";

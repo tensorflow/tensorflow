@@ -137,6 +137,12 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
+  def serialize(self, executable):
+    return self.client.SerializeExecutable(executable)
+
+  def deserialize(self, serialized_executable):
+    return self.client.DeserializeExecutable(serialized_executable, self.client)
+
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -1544,11 +1550,12 @@ class ComputationBuilder(object):
               updates,
               update_computation,
               dimension_numbers,
-              indices_are_sorted=False):
+              indices_are_sorted=False,
+              unique_indices=False):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
                        update_computation.computation, dimension_numbers,
-                       indices_are_sorted)
+                       indices_are_sorted, unique_indices)
 
   def Fft(self, operand, fft_type, fft_lengths):
     """Enqueues a FFT operation onto the computation."""

@@ -201,7 +201,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     for tensor_name, value in loader_impl.get_asset_tensors(
         self._export_dir, meta_graph_def).items():
       asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
-      asset_paths.append(tracking.TrackableAsset(value))
+      asset_paths.append(tracking.Asset(value))
     init_fn = wrapped.prune(
         feeds=asset_feed_tensors,
         fetches=[init_anchor, wrapped.graph.as_graph_element(init_op)])

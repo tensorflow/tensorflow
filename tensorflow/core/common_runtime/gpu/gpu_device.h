@@ -137,7 +137,13 @@ class BaseGPUDevice : public LocalDevice {
   friend class GPUDeviceTestHelper;
   struct StreamGroup {
     se::Stream* compute = nullptr;
+<<<<<<< HEAD
     se::Stream* nccl = nullptr;
+=======
+#if TENSORFLOW_USE_ROCM
+    se::Stream* nccl = nullptr;
+#endif
+>>>>>>> google_upstream/master
     se::Stream* host_to_device = nullptr;
     se::Stream* device_to_host = nullptr;
     gtl::InlinedVector<se::Stream*, 4> device_to_device;

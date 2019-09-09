@@ -141,7 +141,7 @@ exports_files(["builtin_ops.h"])
 cc_library(
     name = "string",
     hdrs = [
-        "string.h",
+        "string_type.h",
     ],
     copts = TFLITE_DEFAULT_COPTS,
 )

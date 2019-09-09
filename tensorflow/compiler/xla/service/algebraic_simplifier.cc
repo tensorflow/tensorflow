@@ -1878,14 +1878,17 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
 Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   const Shape& operand_shape = gather->operand(0)->shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    return ReplaceInstruction(gather, MakeScalarLike(gather, 0));
+  }
   // If the operand of a gather is very small, it is easier to fuse a
   // sequence of selects.
+  const Shape& index_shape = gather->operand(1)->shape();
   if (operand_shape.rank() == 1 &&
       operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
       gather->gather_dimension_numbers().index_vector_dim() ==
-          gather->operand(1)->shape().rank() &&
+          index_shape.rank() &&
       gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
-    const Shape& index_shape = gather->operand(1)->shape();
     const int64 operand_elements = operand_shape.dimensions(0);
     auto get_value = [&](int64 i) {
       auto slice = computation_->AddInstruction(HloInstruction::CreateSlice(

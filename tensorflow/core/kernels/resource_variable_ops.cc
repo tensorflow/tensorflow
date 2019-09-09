@@ -850,13 +850,38 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ResourceScatterUpdateOp : public OpKernel {
  public:
-  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
+    // We use the same kernel for many operations.
+    // Each operation has a different set of attributes defined in its nodes.
+    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    if (!s.ok()) {
+      use_exclusive_lock_ = false;
+    }
+  }
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
-    tf_shared_lock ml(*v->mu());
+    const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
+                                  c->input_dtype(0) == DT_STRING ||
+                                  c->input_dtype(0) == DT_VARIANT;
+    if (is_non_pod_dtype || use_exclusive_lock_) {
+      mutex_lock ml(*v->mu());
+      DoCompute(c);
+    } else {
+      // For POD dtypes, we can safely run the update without the mutex.
+      tf_shared_lock ml(*v->mu());
+      DoCompute(c);
+    }
+  }
+
+ private:
+  bool use_exclusive_lock_;
+
+  void DoCompute(OpKernelContext* c) {
+    core::RefCountPtr<Var> v;
+    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);

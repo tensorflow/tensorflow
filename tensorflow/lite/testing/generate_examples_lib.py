@@ -59,7 +59,6 @@ from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import spectral_ops_test_util
 
 
 RANDOM_SEED = 342
@@ -3484,7 +3483,7 @@ def make_lstm_tests(options):
     # forget_bias == 0, inner state activation == tanh.
     # TODO(zhixianyan): Add another test with forget_bias == 1.
     # TODO(zhixianyan): Add another test with relu as activation.
-    lstm_cell = tf.contrib.rnn.BasicLSTMCell(
+    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(
         num_cells, forget_bias=0.0, state_is_tuple=True)
     cell_outputs, _ = rnn.static_rnn(
         lstm_cell, inputs_after_split, dtype=tf.float32)
@@ -5311,8 +5310,7 @@ def make_rfft2d_tests(options):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    with spectral_ops_test_util.fft_kernel_label_map():
-      outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
+    outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
     return [input_value], [outs]
 
   def build_inputs(parameters, sess, inputs, outputs):

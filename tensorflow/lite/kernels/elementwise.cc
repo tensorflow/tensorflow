@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
-
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -26,11 +24,6 @@ namespace ops {
 namespace builtin {
 namespace elementwise {
 namespace {
-
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
 
 bool IsNumericSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32;
@@ -86,40 +79,15 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::abs);
 }
 
-typedef void (*UnaryOp)(const float* in, int n, float* out);
-
-inline TfLiteStatus EvalNumericOptimized(TfLiteContext* context,
-                                         TfLiteNode* node, UnaryOp op) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const int64_t num_elements = NumElements(input);
-  const float* in_data = GetTensorData<float>(input);
-  float* out_data = GetTensorData<float>(output);
-  op(in_data, num_elements, out_data);
-  return kTfLiteOk;
-}
-
-template <KernelType kernel_type>
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
-  if (kernel_type == kGenericOptimized) {
-    return EvalNumericOptimized(context, node, optimized_ops::Sin<float>);
-  }
   return EvalNumeric(context, node, std::sin);
 }
 
-template <KernelType kernel_type>
 TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
-  if (kernel_type == kGenericOptimized) {
-    return EvalNumericOptimized(context, node, optimized_ops::Cos<float>);
-  }
   return EvalNumeric(context, node, std::cos);
 }
 
-template <KernelType kernel_type>
 TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
-  if (kernel_type == kGenericOptimized) {
-    return EvalNumericOptimized(context, node, optimized_ops::Log<float>);
-  }
   return EvalNumeric(context, node, std::log);
 }
 
@@ -150,59 +118,29 @@ TfLiteRegistration* Register_ABS() {
   return &r;
 }
 
-TfLiteRegistration* Register_SIN_REF() {
+TfLiteRegistration* Register_SIN() {
   static TfLiteRegistration r = {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::SinEval<elementwise::kReference>};
+      elementwise::SinEval};
   return &r;
 }
 
-TfLiteRegistration* Register_SIN_GENERIC_OPT() {
+TfLiteRegistration* Register_COS() {
   static TfLiteRegistration r = {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::SinEval<elementwise::kGenericOptimized>};
+      elementwise::CosEval};
   return &r;
 }
 
-TfLiteRegistration* Register_SIN() { return Register_SIN_GENERIC_OPT(); }
-
-TfLiteRegistration* Register_COS_REF() {
+TfLiteRegistration* Register_LOG() {
   static TfLiteRegistration r = {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::CosEval<elementwise::kReference>};
+      elementwise::LogEval};
   return &r;
 }
-
-TfLiteRegistration* Register_COS_GENERIC_OPT() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::CosEval<elementwise::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_COS() { return Register_COS_GENERIC_OPT(); }
-
-TfLiteRegistration* Register_LOG_REF() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::LogEval<elementwise::kReference>};
-  return &r;
-}
-
-TfLiteRegistration* Register_LOG_GENERIC_OPT() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
-      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::LogEval<elementwise::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_LOG() { return Register_LOG_GENERIC_OPT(); }
 
 TfLiteRegistration* Register_SQRT() {
   static TfLiteRegistration r = {

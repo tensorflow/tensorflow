@@ -112,8 +112,12 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
                     ->nccl_stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     auto participant = absl::make_unique<NcclManager::Participant>(
+<<<<<<< HEAD
         compute_stream->parent(), compute_stream, nccl_stream,
         gpu_info->event_mgr, gpu_info->gpu_id, input, output,
+=======
+        compute_stream->parent(), compute_stream, gpu_info, input, output,
+>>>>>>> google_upstream/master
         /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddToAllReduce(
         std::move(participant),
@@ -147,8 +151,12 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
                     ->nccl_stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     auto participant = absl::make_unique<NcclManager::Participant>(
+<<<<<<< HEAD
         compute_stream->parent(), compute_stream, nccl_stream,
         gpu_info->event_mgr, gpu_info->gpu_id, &c->input(0),
+=======
+        compute_stream->parent(), compute_stream, gpu_info, &c->input(0),
+>>>>>>> google_upstream/master
         /*output=*/nullptr, /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddReduceSend(
         std::move(participant),
@@ -187,8 +195,12 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
                     ->nccl_stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     auto participant = absl::make_unique<NcclManager::Participant>(
+<<<<<<< HEAD
         compute_stream->parent(), compute_stream, nccl_stream,
         gpu_info->event_mgr, gpu_info->gpu_id, input, output,
+=======
+        compute_stream->parent(), compute_stream, gpu_info, input, output,
+>>>>>>> google_upstream/master
         /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddReduceRecv(
         std::move(participant),
@@ -225,8 +237,12 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
                     ->nccl_stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     auto participant = absl::make_unique<NcclManager::Participant>(
+<<<<<<< HEAD
         compute_stream->parent(), compute_stream, nccl_stream,
         gpu_info->event_mgr, gpu_info->gpu_id, &c->input(0),
+=======
+        compute_stream->parent(), compute_stream, gpu_info, &c->input(0),
+>>>>>>> google_upstream/master
         /*output=*/nullptr, /*global_rank=*/-1, std::move(actual_done));
     NcclManager::instance()->AddBroadcastSend(
         std::move(participant), {GetCollectiveKey(c),
@@ -265,9 +281,14 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
                     ->nccl_stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
     auto participant = absl::make_unique<NcclManager::Participant>(
+<<<<<<< HEAD
         compute_stream->parent(), compute_stream, nccl_stream,
         gpu_info->event_mgr, gpu_info->gpu_id, /*input=*/nullptr,
         output, /*global_rank=*/-1, std::move(actual_done));
+=======
+        compute_stream->parent(), compute_stream, gpu_info,
+        /*input=*/nullptr, output, /*global_rank=*/-1, std::move(actual_done));
+>>>>>>> google_upstream/master
     NcclManager::instance()->AddBroadcastRecv(
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),

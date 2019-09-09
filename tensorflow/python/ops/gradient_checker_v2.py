@@ -175,7 +175,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
         r_begin = i * x_val_size
         r_end = r_begin + x_val_size
         jacobian[r_begin:r_end, col] += v.flat
-    else:
+    elif grad is not None:
       jacobian[:, col] = grad.ravel().view(jacobian.dtype)
 
   # If the output is empty, run the gradients at least once and make sure

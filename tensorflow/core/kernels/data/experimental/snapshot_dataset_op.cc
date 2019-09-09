@@ -29,7 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/platform/file_system.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
+#include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -55,6 +58,8 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
+const int64 kSnappyBufferSizeBytes = 256 << 10;  // 256 KB
+
 const size_t kHeaderSize = sizeof(uint64);
 
 constexpr char kSnapshotFilename[] = "snapshot.metadata";
@@ -72,11 +77,13 @@ class SnapshotWriter {
   explicit SnapshotWriter(WritableFile* dest, const string& compression_type =
                                                   io::compression::kNone)
       : dest_(dest), compression_type_(compression_type) {
-    if (compression_type == io::compression::kGzip) {
 #if defined(IS_SLIM_BUILD)
+    if (compression_type != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
                  << "off compression.";
+    }
 #else   // IS_SLIM_BUILD
+    if (compression_type == io::compression::kGzip) {
       io::ZlibCompressionOptions zlib_options;
       zlib_options = io::ZlibCompressionOptions::GZIP();
 
@@ -86,8 +93,14 @@ class SnapshotWriter {
       TF_CHECK_OK(zlib_output_buffer->Init());
       dest_ = zlib_output_buffer;
       dest_is_owned_ = true;
-#endif  // IS_SLIM_BUILD
+    } else if (compression_type == io::compression::kSnappy) {
+      io::SnappyOutputBuffer* snappy_output_buffer = new io::SnappyOutputBuffer(
+          dest, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
+      dest_ = snappy_output_buffer;
+      dest_is_owned_ = true;
     }
+#endif  // IS_SLIM_BUILD
   }
 
   Status WriteRecord(const StringPiece& data) {
@@ -147,21 +160,28 @@ class SnapshotReader {
   explicit SnapshotReader(
       RandomAccessFile* file,
       const string& compression_type = io::compression::kNone)
-      : input_stream_(new io::RandomAccessInputStream(file)),
+      : file_(file),
+        input_stream_(new io::RandomAccessInputStream(file)),
         compression_type_(compression_type) {
-    if (compression_type_ == io::compression::kGzip) {
 #if defined(IS_SLIM_BUILD)
+    if (compression_type_ != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
                  << "off compression.";
+    }
 #else   // IS_SLIM_BUILD
+    if (compression_type_ == io::compression::kGzip) {
       io::ZlibCompressionOptions zlib_options;
       zlib_options = io::ZlibCompressionOptions::GZIP();
 
       input_stream_.reset(new io::ZlibInputStream(
           input_stream_.release(), zlib_options.input_buffer_size,
           zlib_options.output_buffer_size, zlib_options, true));
-#endif  // IS_SLIM_BUILD
+    } else if (compression_type_ == io::compression::kSnappy) {
+      input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
+          file_, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
     }
+#endif  // IS_SLIM_BUILD
   }
 
   Status ReadRecord(tstring* record) {
@@ -194,6 +214,7 @@ class SnapshotReader {
 #endif
 
  private:
+  RandomAccessFile* file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
 };
@@ -323,8 +344,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(
         ctx,
         compression_ == io::compression::kNone ||
-            compression_ == io::compression::kGzip,
-        errors::InvalidArgument("compression must be either '' or 'GZIP'."));
+            compression_ == io::compression::kGzip ||
+            compression_ == io::compression::kSnappy,
+        errors::InvalidArgument("compression must be either '', 'GZIP' or "
+                                "'SNAPPY'."));
 
     OP_REQUIRES(
         ctx, pending_snapshot_expiry_seconds_ >= 1,

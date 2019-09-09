@@ -244,10 +244,6 @@ class BASE_HLO_AndOp {
   }];
 }
 
-//===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
-//===----------------------------------------------------------------------===//
-
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -256,6 +252,17 @@ class BASE_HLO_ReduceOp {
     in parallel.
 
     See https://www.tensorflow.org/xla/operation_semantics#reduce.
+  }];
+}
+
+class BASE_HLO_ReduceWindowOp {
+  string summary = "ReduceWindow operator";
+
+  string description = [{
+    Returns the result of executing a reduction function over all elements in
+    each window of one or more arrays in parallel.
+
+    See https://www.tensorflow.org/xla/operation_semantics#reducewindow.
   }];
 }
 

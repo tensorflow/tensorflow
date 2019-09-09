@@ -1077,7 +1077,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn((func + 'add'), converter._debug_info.traces)
+    self.assertIn(('add@' + func), converter._debug_info.traces)
 
 
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):

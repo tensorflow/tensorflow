@@ -221,9 +221,15 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                                   *kernel_args);
 }
 
+<<<<<<< HEAD
 se::GpuAsmOpts GpuAsmOptsFromConfig(const HloModuleConfig& hlo_module_config) {
   return se::GpuAsmOpts(
       hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations(),
+=======
+se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
+  return se::GpuAsmOpts(
+      hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
+>>>>>>> google_upstream/master
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
 }
 

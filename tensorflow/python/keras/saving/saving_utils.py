@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -136,7 +137,11 @@ def trace_model_call(model, input_signature=None):
     # When given a single input, Keras models will call the model on the tensor
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs, training=False))
+
+    with base_layer_utils.call_context().enter(
+        model, inputs=inputs, build_graph=False, training=False, saving=True):
+      outputs_list = nest.flatten(model(inputs=inputs, training=False))
+
     try:
       output_names = model.output_names
     except AttributeError:

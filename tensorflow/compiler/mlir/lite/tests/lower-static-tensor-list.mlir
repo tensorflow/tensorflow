@@ -143,6 +143,19 @@ func @tensorlistPushBack(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: t
 // CHECK:   return [[RESULT]] : tensor<?x10xf32>
 }
 
+func @tensorlistLength(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>) -> (tensor<i32>) {
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>
+  %1 = "tf.TensorListLength"(%0) : (tensor<!tf.variant<tensor<10xf32>>>) -> tensor<i32>
+  return %1: tensor<i32>
+
+// CHECK-LABEL: tensorlistLength
+// CHECK-SAME: ([[INPUT:%.*]]: tensor<3x10xf32>, [[ELEM_SHAPE:%.*]]: tensor<1xi32>)
+// CHECK-DAG: [[SHAPE:%.*]] = "tf.Shape"([[INPUT]]) {{.*}} -> tensor<2xi32>
+// CHECK-DAG: [[ZERO:%cst.*]] = constant dense<0> : tensor<i32>
+// CHECK: [[RESULT:%.*]] = "tf.Gather"([[SHAPE]], [[ZERO]]) {validate_indices = true} : (tensor<2xi32>, tensor<i32>) -> tensor<i32>
+// CHECK: return [[RESULT]] : tensor<i32>
+}
+
 func @tensorlistWhileLoop(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
   %cst = constant dense<3> : tensor<1xi32>
   %cst_0 = constant dense<0> : tensor<i32>

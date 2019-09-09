@@ -58,7 +58,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class SwitchFold : public mlir::FunctionPass<SwitchFold> {
+class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
  public:
   void runOnFunction() override;
 };
@@ -266,7 +266,7 @@ bool HasSendOrReceive(FuncOp function) {
       .wasInterrupted();
 }
 
-void SwitchFold::runOnFunction() {
+void SwitchFoldPass::runOnFunction() {
   if (HasSendOrReceive(getFunction())) return;
   DeadQueue queue;
   // Initialize dead queue with dead outputs of foldable SwitchOps.
@@ -277,7 +277,13 @@ void SwitchFold::runOnFunction() {
   if (failed(FoldMergeNodes(getFunction(), queue))) return signalPassFailure();
 }  // namespace mlir
 
-static PassRegistration<SwitchFold> pass(
+namespace tf_executor {
+std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass() {
+  return std::make_unique<SwitchFoldPass>();
+}
+}  // namespace tf_executor
+
+static PassRegistration<SwitchFoldPass> pass(
     "tf-switch-fold", "Fold switch nodes with constant predicates");
 
 }  // namespace mlir

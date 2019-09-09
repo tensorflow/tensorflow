@@ -78,7 +78,10 @@ int main(int argc, char **argv) {
   auto output = mlir::openOutputFile(output_filename, &error_message);
   QCHECK(output) << error_message;
 
-  return failed(mlir::MlirOptMain(output->os(), std::move(file), pass_list,
-                                  split_input_file, verify_diagnostics,
-                                  verify_passes));
+  if (failed(mlir::MlirOptMain(output->os(), std::move(file), pass_list,
+                               split_input_file, verify_diagnostics,
+                               verify_passes)))
+    return 1;
+  output->keep();
+  return 0;
 }

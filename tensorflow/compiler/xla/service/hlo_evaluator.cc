@@ -410,9 +410,9 @@ Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(U32, {}));
+  Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -1719,6 +1719,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       /*output_shape=*/shape);
 
   const Shape& operand_shape = operand.shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    evaluated_[gather] = std::move(result);
+    return Status::OK();
+  }
 
   auto gather_inner_loop_body =
       [&](absl::Span<const int64> output_window_index,

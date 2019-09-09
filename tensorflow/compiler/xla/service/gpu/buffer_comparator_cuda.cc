@@ -364,9 +364,15 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   uint64 buffer_size = lhs_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/buffer_comparator_cuda.cc
                       se::cuda::CompilePtxOrGetCached(
                           executor->device_ordinal(), buffer_compare_ptx,
                           GpuAsmOptsFromConfig(config)));
+=======
+                      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
+                                                   buffer_compare_ptx,
+                                                   PtxOptsFromConfig(config)));
+>>>>>>> google_upstream/master:tensorflow/compiler/xla/service/gpu/buffer_comparator.cc
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,

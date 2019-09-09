@@ -67,7 +67,7 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
 
   // If the graph is partitioned, then try and round trip them individually.
   for (auto& it : *options.partition_graphs) {
-    VLOG(1) << "Roundtripping: " << it.first << " " << it.second;
+    VLOG(1) << "Roundtripping: " << it.first;
     // TODO(jpienaar): Roundtrip results in different failures, investigate.
     TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
   }

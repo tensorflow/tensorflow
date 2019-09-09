@@ -27,7 +27,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
     xla_enable_strict_auto_jit = True,
@@ -42,7 +41,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
     shard_count = 4,
@@ -75,7 +73,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
-        "//tensorflow/python:spectral_ops_test_util",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -131,7 +128,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
     tags = [

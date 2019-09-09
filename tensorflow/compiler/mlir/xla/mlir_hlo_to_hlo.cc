@@ -27,12 +27,14 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -132,13 +134,47 @@ static double ConvertAPFloat(llvm::APFloat value) {
 namespace mlir {
 namespace {
 
+StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
+  xla::Shape shape = xla::TypeToShape(type);
+
+#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
+  case xla_type: {                                         \
+    xla::Array<cpp_type> source_data(shape.dimensions());  \
+    source_data.SetValues(attr.getValues<cpp_type>());     \
+    return xla::LiteralUtil::CreateFromArray(source_data); \
+  }
+
+  switch (shape.element_type()) {
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::PRED, bool)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F32, float)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F64, double)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S8, int8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64)
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    default:
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
+  }
+#undef ELEMENTS_ATTR_TO_LITERAL
+}
+
 class ConvertToHloModule {
  public:
   using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
-  explicit ConvertToHloModule(mlir::ModuleOp module)
-      : module_(module), module_builder_("main") {}
+  explicit ConvertToHloModule(mlir::ModuleOp module, bool use_tuple_args,
+                              bool always_return_tuple)
+      : module_(module),
+        module_builder_("main"),
+        use_tuple_args_(use_tuple_args),
+        always_return_tuple_(always_return_tuple) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
@@ -160,6 +196,9 @@ class ConvertToHloModule {
   }
 
  private:
+  LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
+                      ConvertToHloModule::ValueLoweringMap* value_lowering);
+
   // The module being lowered.
   mlir::ModuleOp module_;
 
@@ -168,26 +207,37 @@ class ConvertToHloModule {
 
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
+
+  // Whether the entry function should take a single tuple as input.
+  bool use_tuple_args_;
+
+  // Whether to always return a tuple.
+  bool always_return_tuple_;
 };
 
-LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
-                    ConvertToHloModule::FunctionLoweringMap* function_lowering,
-                    ConvertToHloModule::ValueLoweringMap* value_lowering) {
-  if (auto xla_op = CreateXlaOperator(inst, value_lowering)) return success();
-
-  // TODO(riverriddle) We currently don't support lowering constant operations.
-  if (isa<mlir::xla_hlo::ConstOp>(inst)) {
-    inst->emitError("unable to lower 'xla_hlo.constant' operation");
-    return failure();
-  }
+LogicalResult ConvertToHloModule::Lower(
+    mlir::Operation* inst, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  if (succeeded(ExportXlaOperator(inst, value_lowering))) return success();
 
   auto& value_map = *value_lowering;
+  ElementsAttr const_attr;
+  // TODO(jpienaar): This doesn't support layouts yet.
+  if (matchPattern(inst, m_Constant(&const_attr))) {
+    auto literal_or =
+        CreateLiteralFromAttr(*inst->result_type_begin(), const_attr);
+    if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
+    value_map[inst->getResult(0)] =
+        xla::ConstantLiteral(builder, literal_or.ValueOrDie());
+    return success();
+  }
+
   if (auto ret = dyn_cast<mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
     unsigned num_return_values = ret.getNumOperands();
-    if (num_return_values > 1) {
+    if (always_return_tuple_ || num_return_values > 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (unsigned i = 0, e = ret.getNumOperands(); i != e; ++i) {
         returns[i] = value_map[ret.getOperand(i)];
@@ -205,7 +255,7 @@ LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
       return failure();
     }
     auto f = inst->getParentOfType<mlir::FuncOp>();
-    (*function_lowering)[f] = std::move(computation_or.ValueOrDie());
+    lowered_computation_[f] = std::move(computation_or.ValueOrDie());
     return success();
   }
   inst->emitError("unable to lower operation of type '" +
@@ -228,28 +278,42 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   // Mapping from the Value to lowered XlaOp. The code below lowers in
   // program order and will fail if an operand is unseen. This can be improved.
   ValueLoweringMap lowering;
-  for (auto& bb : f) {
-    int num = 0;
-    for (auto& arg : bb.getArguments()) {
+  auto& bb = f.front();
+
+  // If using tuples as input, then there is only one input
+  // parameter that is a tuple.
+  if (use_tuple_args_) {
+    std::vector<xla::Shape> arg_shapes;
+    arg_shapes.reserve(bb.getNumArguments());
+    for (auto& arg : bb.getArguments())
+      arg_shapes.push_back(xla::TypeToShape(arg->getType()));
+    xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
+    auto tuple = xla::Parameter(&builder, 0, input_shape, "arg_tuple");
+    for (auto& it : llvm::enumerate(bb.getArguments())) {
+      lowering[it.value()] = xla::GetTupleElement(tuple, it.index());
+    }
+  } else {
+    for (auto& it : llvm::enumerate(bb.getArguments())) {
+      auto* arg = it.value();
+      auto num = it.index();
       xla::Shape shape = xla::TypeToShape(arg->getType());
       lowering[arg] =
           xla::Parameter(&builder, num, shape, absl::StrCat("Arg_", num));
-      ++num;
     }
-
-    for (auto& inst : bb)
-      if (failed(Lower(&inst, &builder, &lowered_computation_, &lowering)))
-        return failure();
   }
+
+  for (auto& inst : bb)
+    if (failed(Lower(&inst, &builder, &lowering))) return failure();
 
   return success();
 }
 
 }  // namespace
 
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto) {
+Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+                           bool use_tuple_args, bool always_return_tuple) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  ConvertToHloModule converter(module);
+  ConvertToHloModule converter(module, use_tuple_args, always_return_tuple);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

@@ -1069,10 +1069,13 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
     // still fail.
     TF_SetStatus(status, TF_OK, "");
     TFE_DeleteTensorHandle(retvals[0]);
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
+    EXPECT_NE(TF_OK, TF_GetCode(status));
+    TF_SetStatus(status, TF_OK, "");
     retvals[0] = nullptr;
     TFE_Execute(matmul2, &retvals[0], &num_retvals, status);
     EXPECT_NE(TF_OK, TF_GetCode(status));
-    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_ExecutorClearError(executor);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);

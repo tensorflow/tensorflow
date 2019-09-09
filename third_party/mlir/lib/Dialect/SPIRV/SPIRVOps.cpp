@@ -754,8 +754,10 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
     auto elemType = arrayType.getElementType();
     for (auto element : value.cast<ArrayAttr>().getValue()) {
       if (element.getType() != elemType)
-        return constOp.emitOpError(
-            "has array element that are not of result array element type");
+        return constOp.emitOpError("has array element whose type (")
+               << element.getType()
+               << ") does not match the result element type (" << elemType
+               << ')';
     }
   } break;
   default:
@@ -763,6 +765,25 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   }
 
   return success();
+}
+
+OpFoldResult spirv::ConstantOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "constant has no operands");
+  return value();
+}
+
+bool spirv::ConstantOp::isBuildableWith(Type type) {
+  // Must be valid SPIR-V type first.
+  if (!SPIRVDialect::isValidType(type))
+    return false;
+
+  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
+      type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
+    // TODO(antiagainst): support contant struct
+    return type.isa<spirv::ArrayType>();
+  }
+
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -994,6 +1015,143 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
     return failure();
   }
   return verifyMemoryAccessAttribute(loadOp);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.loop
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseLoopOp(OpAsmParser *parser, OperationState *state) {
+  // TODO(antiagainst): support loop control properly
+  Builder builder = parser->getBuilder();
+  state->addAttribute("loop_control",
+                      builder.getI32IntegerAttr(
+                          static_cast<uint32_t>(spirv::LoopControl::None)));
+
+  return parser->parseRegion(*state->addRegion(), /*arguments=*/{},
+                             /*argTypes=*/{});
+}
+
+static void print(spirv::LoopOp loopOp, OpAsmPrinter *printer) {
+  auto *op = loopOp.getOperation();
+
+  *printer << spirv::LoopOp::getOperationName();
+  printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                       /*printBlockTerminators=*/true);
+}
+
+/// Returns true if the given `block` only contains one `spv._merge` op.
+static inline bool isMergeBlock(Block &block) {
+  return std::next(block.begin()) == block.end() &&
+         isa<spirv::MergeOp>(block.front());
+}
+
+/// Returns true if the given `srcBlock` contains only one `spv.Branch` to the
+/// given `dstBlock`.
+static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
+  // Check that there is only one op in the `srcBlock`.
+  if (std::next(srcBlock.begin()) != srcBlock.end())
+    return false;
+
+  auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
+  return branchOp && branchOp.getSuccessor(0) == &dstBlock;
+}
+
+static LogicalResult verify(spirv::LoopOp loopOp) {
+  auto *op = loopOp.getOperation();
+
+  // We need to verify that the blocks follow the following layout:
+  //
+  //                     +-------------+
+  //                     | entry block |
+  //                     +-------------+
+  //                            |
+  //                            v
+  //                     +-------------+
+  //                     | loop header | <-----+
+  //                     +-------------+       |
+  //                                           |
+  //                           ...             |
+  //                          \ | /            |
+  //                            v              |
+  //                    +---------------+      |
+  //                    | loop continue | -----+
+  //                    +---------------+
+  //
+  //                           ...
+  //                          \ | /
+  //                            v
+  //                     +-------------+
+  //                     | merge block |
+  //                     +-------------+
+
+  auto &region = op->getRegion(0);
+  // Allow empty region as a degenerated case, which can come from
+  // optimizations.
+  if (region.empty())
+    return success();
+
+  // The last block is the merge block.
+  Block &merge = region.back();
+  if (!isMergeBlock(merge))
+    return loopOp.emitOpError(
+        "last block must be the merge block with only one 'spv._merge' op");
+
+  if (std::next(region.begin()) == region.end())
+    return loopOp.emitOpError(
+        "must have an entry block branching to the loop header block");
+  // The first block is the entry block.
+  Block &entry = region.front();
+
+  if (std::next(region.begin(), 2) == region.end())
+    return loopOp.emitOpError(
+        "must have a loop header block branched from the entry block");
+  // The second block is the loop header block.
+  Block &header = *std::next(region.begin(), 1);
+
+  if (!hasOneBranchOpTo(entry, header))
+    return loopOp.emitOpError(
+        "entry block must only have one 'spv.Branch' op to the second block");
+
+  if (std::next(region.begin(), 3) == region.end())
+    return loopOp.emitOpError(
+        "requires a loop continue block branching to the loop header block");
+  // The second to last block is the loop continue block.
+  Block &cont = *std::prev(region.end(), 2);
+
+  // Make sure that we have a branch from the loop continue block to the loop
+  // header block.
+  if (llvm::none_of(
+          llvm::seq<unsigned>(0, cont.getNumSuccessors()),
+          [&](unsigned index) { return cont.getSuccessor(index) == &header; }))
+    return loopOp.emitOpError("second to last block must be the loop continue "
+                              "block that branches to the loop header block");
+
+  // Make sure that no other blocks (except the entry and loop continue block)
+  // branches to the loop header block.
+  for (auto &block : llvm::make_range(std::next(region.begin(), 2),
+                                      std::prev(region.end(), 2))) {
+    for (auto i : llvm::seq<unsigned>(0, block.getNumSuccessors())) {
+      if (block.getSuccessor(i) == &header) {
+        return loopOp.emitOpError("can only have the entry and loop continue "
+                                  "block branching to the loop header block");
+      }
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv._merge
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(spirv::MergeOp mergeOp) {
+  Block &parentLastBlock = mergeOp.getParentRegion()->back();
+  if (mergeOp.getOperation() != parentLastBlock.getTerminator())
+    return mergeOp.emitOpError(
+        "can only be used in the last block of 'spv.loop'");
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1350,8 +1508,7 @@ static LogicalResult verify(spirv::SpecConstantOp constOp) {
   case StandardAttributes::Integer:
   case StandardAttributes::Float: {
     // Make sure bitwidth is allowed.
-    auto *dialect = static_cast<spirv::SPIRVDialect *>(constOp.getDialect());
-    if (!dialect->isValidSPIRVType(value.getType()))
+    if (!spirv::SPIRVDialect::isValidType(value.getType()))
       return constOp.emitOpError("default value bitwidth disallowed");
     return success();
   }

@@ -24,7 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+<<<<<<< HEAD
 #include "tensorflow/stream_executor/gpu_asm_opts.h"
+=======
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+>>>>>>> google_upstream/master
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 // Helper functions for interacting with StreamExecutor.
@@ -74,7 +78,12 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              int64 threads_per_block, int64 block_count,
                              se::Stream* stream);
 
+<<<<<<< HEAD
 se::GpuAsmOpts GpuAsmOptsFromConfig(const HloModuleConfig& hlo_module_config);
+=======
+// Create GpuAsmOpts out of HloModuleConfig.
+se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
+>>>>>>> google_upstream/master
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.

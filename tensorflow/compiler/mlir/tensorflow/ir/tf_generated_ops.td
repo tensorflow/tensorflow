@@ -261,6 +261,88 @@ window in `value`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [NoSideEffect]> {
+  let summary = "Multiplies slices of two tensors in batches.";
+
+  let description = [{
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+viewed as an element of a batch), and arranges the individual results
+in a single output tensor of the same batch size. Each of the
+individual slices can optionally be adjointed (to adjoint a matrix
+means to transpose and conjugate it) before multiplication by setting
+the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+and `[..., r_y, c_y]`.
+
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+
+    r_o = c_x if adj_x else r_x
+    c_o = r_y if adj_y else c_y
+
+It is computed as:
+
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BatchMatMulV2Op : TF_Op<"BatchMatMulV2", [NoSideEffect]> {
+  let summary = "Multiplies slices of two tensors in batches.";
+
+  let description = [{
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+viewed as an element of a batch), and arranges the individual results
+in a single output tensor of the same batch size. Each of the
+individual slices can optionally be adjointed (to adjoint a matrix
+means to transpose and conjugate it) before multiplication by setting
+the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+and `[..., r_y, c_y]`.
+
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+
+    r_o = c_x if adj_x else r_x
+    c_o = r_y if adj_y else c_y
+
+It is computed as:
+
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+
+*NOTE*: `BatchMatMulV2` supports broadcasting in the batch dimensions. More
+about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BatchToSpaceNDOp : TF_Op<"BatchToSpaceND", [NoSideEffect]> {
   let summary = "BatchToSpace for N-D tensors of type T.";
 
@@ -2006,6 +2088,100 @@ def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let results = (outs);
 }
 
+def TF_NonMaxSuppressionV4Op : TF_Op<"NonMaxSuppressionV4", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$boxes,
+    TensorOf<[F16, F32]>:$scores,
+    I32Tensor:$max_output_size,
+    TensorOf<[F16, F32]>:$iou_threshold,
+    TensorOf<[F16, F32]>:$score_threshold,
+
+    DefaultValuedAttr<BoolAttr, "false">:$pad_to_max_output_size
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    I32Tensor:$valid_outputs
+  );
+
+  TF_DerivedOperandTypeAttr T_threshold = TF_DerivedOperandTypeAttr<3>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_NonMaxSuppressionV5Op : TF_Op<"NonMaxSuppressionV5", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
+Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+of other overlapping boxes instead of directly causing them to be pruned.
+To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+larger than 0.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$boxes,
+    TensorOf<[F16, F32]>:$scores,
+    I32Tensor:$max_output_size,
+    TensorOf<[F16, F32]>:$iou_threshold,
+    TensorOf<[F16, F32]>:$score_threshold,
+    TensorOf<[F16, F32]>:$soft_nms_sigma,
+
+    DefaultValuedAttr<BoolAttr, "false">:$pad_to_max_output_size
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    TensorOf<[F16, F32]>:$selected_scores,
+    I32Tensor:$valid_outputs
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]>,
                     WithBroadcastableCmpOpBuilder {
   let summary = "Returns the truth value of (x != y) element-wise.";
@@ -2261,6 +2437,33 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_PowOp : TF_Op<"Pow", [Broadcastable, NoSideEffect]>,
+               WithBroadcastableBinOpBuilder {
+  let summary = "Computes the power of one value to another.";
+
+  let description = [{
+Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
+corresponding elements in `x` and `y`. For example:
+
+```
+# tensor 'x' is [[2, 2]], [3, 3]]
+# tensor 'y' is [[8, 16], [2, 3]]
+tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
@@ -3004,6 +3207,10 @@ shape(t) ==> [2, 2, 3]
     return Verify(*this);
   }];
 
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState* result, Value* input, BoolAttr use32Bit">
+  ];
+
   let hasFolder = 1;
 }
 
@@ -3654,29 +3861,20 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", [NoSideEffect]> {
-  let summary = [{
-Metadata indicating how the TPU computation should be replicated.
-  }];
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
+  let summary = "Returns the result of a TPU compilation.";
 
   let description = [{
-This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+This operation returns the result of a TPU compilation as a serialized
+CompilationResultProto, which holds a status and an error message if an error
+occurred during compilation.
   }];
 
-  let arguments = (ins
-    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
-    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
-    StrAttr:$topology,
-    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
-    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
-    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
-    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
-  );
+  let arguments = (ins);
 
-  let results = (outs);
+  let results = (outs
+    TF_StrTensor:$output
+  );
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3746,6 +3944,23 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListLengthOp : TF_Op<"TensorListLength", [NoSideEffect]> {
+  let summary = "Returns the number of tensors in the input tensor list.";
+
+  let description = [{
+input_handle: the input list
+length: the number of tensors in the list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle
+  );
+
+  let results = (outs
+    I32Tensor:$length
+  );
 }
 
 def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {

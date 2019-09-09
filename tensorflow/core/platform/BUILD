@@ -27,6 +27,11 @@ load(
     "tf_protobuf_deps",
 )
 load(
+    "//tensorflow/core/platform:default/build_refactor.bzl",
+    "tf_instantiate_platform_libraries",
+    "tf_platform_helper_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
 )
@@ -37,6 +42,19 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
+
+# Note(bmzhao): These are temporary BUILD rule helpers for
+# platform-specific library dependencies. These temporarily
+# exist to allow us incrementally add granular targets
+# to tf/core/platform/BUILD. We will remove these helpers,
+# after we finish refactoring tf/core/platform/BUILD.
+tf_instantiate_platform_libraries(names = [
+    "context",
+    "cord",
+    "dynamic_annotations",
+    "env_time",
+    "fingerprint",
+])
 
 cc_library(
     name = "abi",
@@ -65,6 +83,24 @@ cc_library(
 )
 
 cc_library(
+    name = "context",
+    textual_hdrs = ["context.h"],
+    deps = [
+        # See call to tf_instantiate_platform_libraries() above.
+        ":context_impl",
+    ],
+)
+
+cc_library(
+    name = "cord",
+    hdrs = ["cord.h"],
+    deps = [
+        ":cord_impl",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "cpu_feature_guard",
     srcs = ["cpu_feature_guard.cc"],
     hdrs = ["cpu_feature_guard.h"],
@@ -89,6 +125,15 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda",
+    hdrs = ["cuda.h"],
+    deps = [
+        ":platform",
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+    ],
+)
+
+cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
@@ -102,18 +147,45 @@ cc_library(
 )
 
 cc_library(
-    name = "env_time",
-    srcs = tf_platform_srcs(["env_time.cc"]),
-    hdrs = ["env_time.h"],
+    name = "dynamic_annotations",
+    hdrs = ["dynamic_annotations.h"],
     deps = [
-        ":types",
+        ":dynamic_annotations_impl",
+        ":platform",
     ],
+)
+
+cc_library(
+    name = "env_time",
+    textual_hdrs = ["env_time.h"],
+    deps = tf_platform_helper_deps("env_time_impl"),
 )
 
 cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [":types"],
+)
+
+cc_library(
+    name = "fingerprint",
+    hdrs = ["fingerprint.h"],
+    deps = [
+        ":fingerprint_impl",
+        ":platform",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "grpc_services",
+    hdrs = ["grpc_services.h"],
+    deps = [
+        ":platform",
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+    ],
 )
 
 cc_library(
@@ -217,7 +289,10 @@ cc_library(
 
 cc_library(
     name = "stacktrace",
-    srcs = glob(["*/stacktrace.h"]),
+    srcs = tf_platform_srcs([
+        "stacktrace.h",
+        "stacktrace.cc",
+    ]),
     hdrs = ["stacktrace.h"],
     deps = [
         ":abi",
