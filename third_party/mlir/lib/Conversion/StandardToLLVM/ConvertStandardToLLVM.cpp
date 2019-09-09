@@ -1042,16 +1042,15 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
-          llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::ArrayRef<Value *>(),
+                                                  llvm::ArrayRef<Block *>(),
+                                                  op->getAttrs());
       return matchSuccess();
     }
     if (numArguments == 1) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
           op, llvm::ArrayRef<Value *>(operands.front()),
-          llvm::ArrayRef<Block *>(), llvm::ArrayRef<llvm::ArrayRef<Value *>>(),
-          op->getAttrs());
+          llvm::ArrayRef<Block *>(), op->getAttrs());
       return matchSuccess();
     }
 
@@ -1066,9 +1065,9 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
           op->getLoc(), packedType, packed, operands[i],
           rewriter.getIndexArrayAttr(i));
     }
-    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-        op, llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
-        llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::makeArrayRef(packed),
+                                                llvm::ArrayRef<Block *>(),
+                                                op->getAttrs());
     return matchSuccess();
   }
 };
