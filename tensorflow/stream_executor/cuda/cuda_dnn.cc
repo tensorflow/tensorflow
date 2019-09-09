@@ -1208,6 +1208,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 };
 
 class CudnnCtcLossDescriptor : public dnn::CtcLossDescriptor {
+#if CUDNN_VERSION >= 7601
   CudnnCtcLossDescriptor(gpu::CtcLossDescriptor ctc_loss_desc,
                          cudnnDataType_t data_type,
                          cudnnLossNormalizationMode_t norm_mode,
@@ -1216,6 +1217,7 @@ class CudnnCtcLossDescriptor : public dnn::CtcLossDescriptor {
         data_type_(data_type),
         norm_mode_(norm_mode),
         grad_mode_(grad_mode){}
+#endif
 
  public:
   CudnnCtcLossDescriptor(CudnnCtcLossDescriptor&& other) = default;
@@ -1224,30 +1226,33 @@ class CudnnCtcLossDescriptor : public dnn::CtcLossDescriptor {
       cudnnDataType_t data_type,
       cudnnLossNormalizationMode_t norm_mode=CUDNN_LOSS_NORMALIZATION_SOFTMAX,
       cudnnNanPropagation_t grad_mode=CUDNN_NOT_PROPAGATE_NAN) {
-    gpu::CtcLossDescriptor ctc_loss_desc = CreateCtcLossDescriptor();
 #if CUDNN_VERSION >= 7601
+    gpu::CtcLossDescriptor ctc_loss_desc = CreateCtcLossDescriptor();
     RETURN_IF_CUDNN_ERROR(cudnnSetCTCLossDescriptorEx(
         /*ctcLossDesc=*/ctc_loss_desc.get(),
         /*compType=*/data_type,
         /*normMode=*/norm_mode,
         /*gradMode=*/grad_mode));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnSetCTCLossDescriptorEx when "
-                          "CUDNN_VERSION < 7.6.3");
-#endif
-
     return CudnnCtcLossDescriptor(std::move(ctc_loss_desc), data_type,
                                   norm_mode, grad_mode);
+#else
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "No supported cudnnSetCTCLossDescriptorEx when "
+                        "CUDNN_VERSION < 7.6.3");
+#endif
   }
 
+#if CUDNN_VERSION >= 7601
   cudnnCTCLossDescriptor_t handle() const { return ctc_loss_desc_.get(); }
+#endif
   cudnnDataType_t data_type() const { return data_type_; }
   cudnnLossNormalizationMode_t lnorm_mode() const { return norm_mode_; }
   cudnnNanPropagation_t grad_mode() const { return grad_mode_; }
 
  private:
+#if CUDNN_VERSION >= 7601
   gpu::CtcLossDescriptor ctc_loss_desc_;
+#endif
   cudnnDataType_t data_type_;
   cudnnLossNormalizationMode_t norm_mode_;
   cudnnNanPropagation_t grad_mode_;
