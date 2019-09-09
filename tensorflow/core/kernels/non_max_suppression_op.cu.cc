@@ -498,10 +498,10 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
                               original_boxes, sorted_boxes));
   int limited_num_boxes = num_boxes;
   // filter boxes by scores if nms v3
-  if (score_threshold > std::numeric_limits<float>::min()) {
+  if (score_threshold > std::numeric_limits<float>::lowest()) {
     GreaterThanCubOp score_limit(score_threshold);
     TF_RETURN_IF_ERROR(CountIf(context, d_sorted_scores.flat<float>().data(),
-                                 score_limit, num_boxes, &limited_num_boxes));
+                               score_limit, num_boxes, &limited_num_boxes));
     if (limited_num_boxes == 0) {
       Tensor* output_indices = nullptr;
       VLOG(1) << "Number of boxes above score threshold " << score_threshold
@@ -510,8 +510,8 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
           context->allocate_output(0, TensorShape({0}), &output_indices));
       return Status::OK();
     } else {
-      VLOG(2) << "Number of boxes above threshold=" << score_threshold
-              << " is " << limited_num_boxes;
+      VLOG(2) << "Number of boxes above threshold=" << score_threshold << " is "
+              << limited_num_boxes;
     }
   }
   int num_to_keep = 0;
@@ -580,8 +580,8 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                 // otherwise tests fail!
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
-      OP_REQUIRES_OK(context,
-          context->allocate_output(0, TensorShape({0}), &output_indices));
+      OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({0}),
+                                                       &output_indices));
       return;
     }
     const int64_t output_size = max_output_size.scalar<int>()();
@@ -589,7 +589,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
         context,
         DoNMS(context, boxes, scores, output_size, iou_threshold_val,
               /*score_threshold is float min if score threshold is disabled*/
-              std::numeric_limits<float>::min()));
+              std::numeric_limits<float>::lowest()));
   }
 };
 
