@@ -1,5 +1,37 @@
 op {
   graph_op_name: "ZipDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "input_datasets"
+    description: <<END
+List of `N` variant Tensors representing datasets to be zipped together.
+END
+  }
+  attr {
+    name: "output_types"
+  }
+  attr {
+    name: "output_shapes"
+  }
+  attr {
+    name: "N"
+    description: "The length of `input_datasets`"
+  }
   summary: "Creates a dataset that zips together `input_datasets`."
+  description: <<END
+The resulting dataset will produce a stream of elements, where elements `k`
+contains the concatenation of the `k`th elements from each of the input
+datasets.
+
+The stream will stop as soon as any one of the input datasets runs out 
+of elements, and noerror will be raised if the other datasets contain 
+additional data.
+
+`ZipDataset` invokes its input datasets serially, one record at a time.
+
+Most instances of this type of dataset come from the `zip()` method in
+`tf.data.DataSet`.  The `hoist_random_uniform`
+static optimization also creates instances of `ZipDataset` while rewriting
+stateful functions into stateless functions.
+END
 }
