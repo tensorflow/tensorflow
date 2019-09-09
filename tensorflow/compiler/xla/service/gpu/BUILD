@@ -236,9 +236,9 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_allocations",
-        ":cudnn_conv_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
@@ -505,7 +505,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cusolver_context",
-        ":cudnn_conv_runner",
+        ":gpu_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_types",
         ":hlo_execution_profiler",
@@ -615,7 +615,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_runner",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         ":stream_executor_util",
@@ -637,14 +637,14 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_algorithm_picker",
-    srcs = ["cudnn_conv_algorithm_picker.cc"],
-    hdrs = ["cudnn_conv_algorithm_picker.h"],
+    name = "gpu_conv_algorithm_picker",
+    srcs = ["gpu_conv_algorithm_picker.cc"],
+    hdrs = ["gpu_conv_algorithm_picker.h"],
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":hlo_algorithm_blacklist",
         ":ir_emission_utils",
@@ -672,7 +672,7 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_runner",
+    name = "gpu_conv_runner",
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
     deps = [
@@ -1057,6 +1057,7 @@ cc_library(
         ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
+        ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
@@ -1156,13 +1157,13 @@ cc_library(
     ],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_compiler",
+        ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",

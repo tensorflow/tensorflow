@@ -55,8 +55,8 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
-  se::StreamExecutor* stream_exec_;                   // never null
-  se::DeviceMemoryAllocator* allocator_;              // may be null
+  se::StreamExecutor* stream_exec_;       // never null
+  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu
