@@ -2,6 +2,7 @@
 // RUN: mlir-opt %s -disable-pass-threading=true -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=PIPELINE %s
 // RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=list 2>&1 | FileCheck -check-prefix=MT_LIST %s
 // RUN: mlir-opt %s -disable-pass-threading=false -verify-each=true -cse -canonicalize -cse -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=MT_PIPELINE %s
+// RUN: mlir-opt %s -disable-pass-threading=false -verify-each=false -test-pm-nested-pipeline -pass-timing -pass-timing-display=pipeline 2>&1 | FileCheck -check-prefix=NESTED_MT_PIPELINE %s
 
 // LIST: Pass execution timing report
 // LIST: Total Execution Time:
@@ -51,6 +52,17 @@
 // MT_PIPELINE-NEXT: Verifier
 // MT_PIPELINE-NEXT: Total
 
+// NESTED_MT_PIPELINE: Pass execution timing report
+// NESTED_MT_PIPELINE: Total Execution Time:
+// NESTED_MT_PIPELINE: Name
+// NESTED_MT_PIPELINE-NEXT: 'module' Pipeline
+// NESTED_MT_PIPELINE-NEXT:   TestModulePass
+// NESTED_MT_PIPELINE-NEXT:   'func' Pipeline
+// NESTED_MT_PIPELINE-NEXT:     TestFunctionPass
+// NESTED_MT_PIPELINE-NEXT: 'func' Pipeline
+// NESTED_MT_PIPELINE-NEXT:   TestFunctionPass
+// NESTED_MT_PIPELINE-NEXT: Total
+
 func @foo() {
   return
 }
@@ -65,4 +77,14 @@ func @baz() {
 
 func @foobar() {
   return
+}
+
+module {
+  func @baz() {
+    return
+  }
+
+  func @foobar() {
+    return
+  }
 }

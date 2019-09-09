@@ -77,16 +77,11 @@ private:
   std::vector<OpPassManager> asyncExecutors;
 };
 
-/// Utility function to return if a pass refers to an OpToOpAdaptorPass
-/// instance.
-inline bool isOpToOpAdaptorPass(Pass *pass) {
+/// Utility function to return if a pass refers to an adaptor pass. Adaptor
+/// passes are those that internally execute a pipeline.
+inline bool isAdaptorPass(Pass *pass) {
   return isa<OpToOpPassAdaptorParallel>(pass) || isa<OpToOpPassAdaptor>(pass);
 }
-
-/// Utility function to return if a pass refers to an adaptor pass. Adaptor
-/// passes are those that internally execute a pipeline, such as the
-/// OpToOpPassAdaptor.
-inline bool isAdaptorPass(Pass *pass) { return isOpToOpAdaptorPass(pass); }
 
 /// Utility function to return the operation name that the given adaptor pass
 /// operates on. Return None if the given pass is not an adaptor pass.
