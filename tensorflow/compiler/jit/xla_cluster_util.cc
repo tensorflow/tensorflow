@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/xla_config_proxy.h"
 
 namespace tensorflow {
 
@@ -224,13 +225,9 @@ struct XlaGlobalJitLevel {
 };
 
 XlaGlobalJitLevel GetXlaGlobalJitLevel(
-    const GraphOptimizationPassOptions& options) {
+    const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
   XlaGlobalJitLevel result;
 
-  OptimizerOptions::GlobalJitLevel jit_level_in_session_opts =
-      options.session_options->config.graph_options()
-          .optimizer_options()
-          .global_jit_level();
   if (jit_level_in_session_opts == OptimizerOptions::DEFAULT) {
     // To set compilation to be on by default, change the following line.
     result.single_gpu = result.general = OptimizerOptions::OFF;
@@ -289,7 +286,12 @@ bool IsSingleGpuGraph(const Graph& g) {
 
 OptimizerOptions::GlobalJitLevel GetGlobalJitLevelForGraph(
     const GraphOptimizationPassOptions& options) {
-  XlaGlobalJitLevel xla_global_jit_level = GetXlaGlobalJitLevel(options);
+  OptimizerOptions::GlobalJitLevel jit_level_in_session_opts =
+      options.session_options->config.graph_options()
+          .optimizer_options()
+          .global_jit_level();
+  XlaGlobalJitLevel xla_global_jit_level =
+      GetXlaGlobalJitLevel(jit_level_in_session_opts);
   if (xla_global_jit_level.single_gpu == xla_global_jit_level.general) {
     VLOG(4) << "GetGlobalJitLevelForGraph returning "
             << xla_global_jit_level.single_gpu;
@@ -386,4 +388,24 @@ XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
 
   return result;
 }
+
+// Implement and register a setter for OptimizerOptions::GlobalJitLevel, so that
+// the Tensorflow core can query its value.
+bool GlobalJitLevelSetter(OptimizerOptions::GlobalJitLevel& global_jit_level) {
+  XlaGlobalJitLevel xla_global_jit_level =
+      GetXlaGlobalJitLevel(global_jit_level);
+  // Take the general flag to avoid the dependency on Tensorflow::Graph.
+  OptimizerOptions::GlobalJitLevel new_jit_level = xla_global_jit_level.general;
+
+  if (new_jit_level != global_jit_level) {
+    global_jit_level = new_jit_level;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+REGISTER_XLA_CONFIG_SETTER(OptimizerOptions::GlobalJitLevel,
+                           GlobalJitLevelSetter);
+
 }  // namespace tensorflow

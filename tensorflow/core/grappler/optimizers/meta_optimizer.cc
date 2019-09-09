@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/xla_config_proxy.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -127,14 +128,17 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
 }
 
 // A helper function to decide whether to enable the memory optimizer.
-bool MemoryOptimizerEnabled(RewriterConfig::MemOptType mem_opt_type,
-                            OptimizerOptions::GlobalJitLevel global_jit_level) {
+bool MemoryOptimizerEnabled(
+    RewriterConfig::MemOptType mem_opt_type,
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
   // Disable the default memory optimizer when GlobalJitLevel is ON as it hurts
   // the XLA JIT performance. The (current) XLA clustering can result in loss of
   // concurrency between kernel compute and memory copies. As such, it usually
   // loses the concurrency needed to hide the latencies of the inserted swap-ins
   // and swap-outs and incurs great performance overhead. Remove this check when
   // the XLA JIT can better deal with the concurrency.
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      XlaConfigProxy::GetGlobalJitLevel(jit_level_in_session_opts);
   if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
       (global_jit_level == OptimizerOptions::ON_1 ||
        global_jit_level == OptimizerOptions::ON_2)) {
