@@ -129,7 +129,7 @@ class DatasetParams {
                 std::vector<PartialTensorShape> output_shapes, string node_name,
                 DatasetParamsType type);
 
-  ~DatasetParams() {}
+  virtual ~DatasetParams() {}
 
   // Returns the dataset input values as a TensorValue vector.
   virtual Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;

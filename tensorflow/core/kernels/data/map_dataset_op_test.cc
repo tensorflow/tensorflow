@@ -71,7 +71,7 @@ MapDatasetParams MapDatasetParams2() {
       /*output_shapes=*/{PartialTensorShape({1})},
       /*use_inter_op_parallelism=*/true,
       /*preserve_cardinality=*/false,
-      /*node_name=*/"map_dataset");
+      /*node_name=*/kNodeName);
 }
 
 // In this test case, the function `XTimesFour()` will call `XTimesTwo()`, so
@@ -88,7 +88,7 @@ MapDatasetParams MapDatasetParams3() {
       /*output_shapes=*/{PartialTensorShape({})},
       /*use_inter_op_parallelism=*/false,
       /*preserve_cardinality=*/true,
-      /*node_name=*/"map_dataset");
+      /*node_name=*/kNodeName);
 }
 
 std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {
