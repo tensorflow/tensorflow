@@ -269,18 +269,12 @@ class LocalRendezvousImpl : public Rendezvous {
         // NOTE(mrry): We must wrap `done` with code that deregisters the
         // cancellation callback before calling the `done` callback, because the
         // cancellation manager may no longer be live after `done` is called.
-        auto wrapped_done = std::bind(
-            [cm, token](const DoneCallback& done,
-                        // Begin unbound arguments.
-                        const Status& s, const Args& send_args,
-                        const Args& recv_args, const Tensor& v, bool dead) {
-              cm->TryDeregisterCallback(token);
-              done(s, send_args, recv_args, v, dead);
-            },
-            std::move(done), std::placeholders::_1, std::placeholders::_2,
-            std::placeholders::_3, std::placeholders::_4,
-            std::placeholders::_5);
-        item->waiter = std::move(wrapped_done);
+        item->waiter = [cm, token, done = std::move(done)](
+                           const Status& s, const Args& send_args,
+                           const Args& recv_args, const Tensor& v, bool dead) {
+          cm->TryDeregisterCallback(token);
+          done(s, send_args, recv_args, v, dead);
+        };
       } else {
         item->waiter = std::move(done);
       }
