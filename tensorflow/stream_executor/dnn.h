@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -132,6 +133,10 @@ struct ToDataType<int8> {
 template <>
 struct ToDataType<int32> {
   static constexpr DataType value = DataType::kInt32;
+};
+template <>
+struct ToDataType<tensorflow::bfloat16> {
+  static constexpr DataType value = DataType::kBFloat16;
 };
 
 // Specifies the types of a RNN model.

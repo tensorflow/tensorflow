@@ -49,6 +49,8 @@ template struct ReverseTransformFilter<Eigen::GpuDevice, float, 4>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 4>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 4>;
 template struct PadInput<Eigen::GpuDevice, float, int, 4>;
+template struct ConvertToBFloat16<Eigen::GpuDevice, float, 4>;
+template struct ConvertFromBFloat16<Eigen::GpuDevice, float, 4>;
 
 // For 3d ops.
 template struct TransformFilter<Eigen::GpuDevice, float, int, 5>;

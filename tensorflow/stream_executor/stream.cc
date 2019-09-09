@@ -728,16 +728,59 @@ Stream &Stream::ThenConvolveWithAlgorithm(
   return *this;
 }
 
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<Eigen::half> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<Eigen::half> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
+Stream& Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<tensorflow::bfloat16>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<tensorflow::bfloat16>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<tensorflow::bfloat16>* output,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output), PARAM(algorithm_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmDesc algorithm_desc;
+      auto status =
+          dnn->PrepareForConvolution(
+                 dnn::ConvolutionKind::FORWARD, this, input_descriptor,
+                 input_data, filter_descriptor, filter_data, output_descriptor,
+                 *output, convolution_descriptor, algorithm_config,
+                 scratch_allocator, &algorithm_desc, &scratch_memory)
+              .ok();
+      if (status) {
+        status = dnn->DoConvolve(
+            this, input_descriptor, input_data, filter_descriptor, filter_data,
+            convolution_descriptor, output_descriptor, output, algorithm_desc,
+            &scratch_memory, output_profile_result);
+      }
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream& Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<Eigen::half>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<Eigen::half>* output, ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(convolution_descriptor), PARAM(output_descriptor),
@@ -1046,17 +1089,62 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
   return *this;
 }
 
-Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<Eigen::half> &filter_data,
-    const dnn::BatchDescriptor &output_descriptor,
+Stream& Stream::ThenConvolveBackwardDataWithAlgorithm(
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<tensorflow::bfloat16>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<tensorflow::bfloat16> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<tensorflow::bfloat16>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmDesc algorithm_desc;
+      auto status =
+          dnn->PrepareForConvolution(
+                 dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
+                 *backward_input_data, filter_descriptor, filter_data,
+                 output_descriptor, backward_output_data,
+                 convolution_descriptor, algorithm_config, scratch_allocator,
+                 &algorithm_desc, &scratch_memory)
+              .ok();
+      if (status) {
+        status = dnn->DoConvolveBackwardData(
+            this, filter_descriptor, filter_data, output_descriptor,
+            backward_output_data, convolution_descriptor, input_descriptor,
+            backward_input_data, algorithm_desc, &scratch_memory,
+            output_profile_result);
+      }
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream& Stream::ThenConvolveBackwardDataWithAlgorithm(
+    const dnn::FilterDescriptor& filter_descriptor,
+    const DeviceMemory<Eigen::half>& filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
     DeviceMemory<Eigen::half> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &input_descriptor,
-    DeviceMemory<Eigen::half> *backward_input_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& input_descriptor,
+    DeviceMemory<Eigen::half>* backward_input_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
   VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
             PARAM(convolution_descriptor), PARAM(input_descriptor),
@@ -1147,6 +1235,51 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
     ScratchAllocator *scratch_allocator,
     const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmDesc algorithm_desc;
+      auto status =
+          dnn->PrepareForConvolution(
+                 dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
+                 input_data, filter_descriptor, *backward_filter_data,
+                 output_descriptor, backward_output_data,
+                 convolution_descriptor, algorithm_config, scratch_allocator,
+                 &algorithm_desc, &scratch_memory)
+              .ok();
+      if (status) {
+        status = dnn->DoConvolveBackwardFilter(
+            this, input_descriptor, input_data, output_descriptor,
+            backward_output_data, convolution_descriptor, filter_descriptor,
+            backward_filter_data, algorithm_desc, &scratch_memory,
+            output_profile_result);
+      }
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream& Stream::ThenConvolveBackwardFilterWithAlgorithm(
+    const dnn::BatchDescriptor& input_descriptor,
+    const DeviceMemory<tensorflow::bfloat16>& input_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemory<tensorflow::bfloat16> backward_output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemory<tensorflow::bfloat16>* backward_filter_data,
+    ScratchAllocator* scratch_allocator,
+    const dnn::AlgorithmConfig& algorithm_config,
+    dnn::ProfileResult* output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
             PARAM(convolution_descriptor), PARAM(filter_descriptor),
