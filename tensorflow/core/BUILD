@@ -4141,6 +4141,7 @@ tf_cc_tests(
         "util/tensor_slice_util_test.cc",
         "util/tensor_slice_writer_test.cc",
         "util/work_sharder_test.cc",
+        "util/xla_config_proxy_test.cc",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_XLA_CONFIG_PROXY_H
 
 #include <functional>
+#include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
