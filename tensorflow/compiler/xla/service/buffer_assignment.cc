@@ -234,8 +234,9 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
                                      int64 size) {
-  VLOG(4) << "Adding the following buffer to allocation #" << index() << " ["
-          << offset << ", " << size << "]: " << buffer;
+  VLOG(4) << "Adding the following buffer to allocation #" << index()
+          << absl::StrFormat(" (size=%d, offset=%d) %s", size, offset,
+                             buffer.ToShortString());
   CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -291,6 +292,10 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   return proto;
 }
 
+static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {
+  return a->id() < b->id();
+}
+
 string BufferAllocation::ToString() const {
   string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
@@ -319,15 +324,14 @@ string BufferAllocation::ToString() const {
   for (const auto& buffer_offset_size : assigned_buffers_) {
     sorted_buffers.push_back(buffer_offset_size.first);
   }
-  absl::c_sort(sorted_buffers, [](const HloValue* a, const HloValue* b) {
-    return a->id() < b->id();
-  });
+  absl::c_sort(sorted_buffers, &CompareHloValuesById);
   for (const HloValue* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    StrAppend(&output, absl::StrFormat(
-                           "  %s [%d,%d]: %s\n", buffer->ToString(),
-                           offset_size.offset, offset_size.size,
-                           ShapeUtil::HumanStringWithLayout(buffer->shape())));
+    StrAppend(&output,
+              absl::StrFormat(
+                  " value: %s (size=%d,offset=%d): %s\n",
+                  buffer->ToShortString(), offset_size.size, offset_size.offset,
+                  ShapeUtil::HumanStringWithLayout(buffer->shape())));
   }
   return output;
 }
@@ -715,8 +719,17 @@ string BufferAssignment::Stats::ToString() const {
 string BufferAssignment::ToString() const {
   string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
+  std::vector<const HloValue*> used_values;
   for (auto& allocation : allocations_) {
     absl::StrAppend(&output, allocation.ToString());
+    for (const auto& p : allocation.assigned_buffers()) {
+      used_values.push_back(p.first);
+    }
+  }
+  absl::StrAppend(&output, "\nUsed values:\n");
+  absl::c_sort(used_values, &CompareHloValuesById);
+  for (const HloValue* value : used_values) {
+    absl::StrAppend(&output, value->ToString());
   }
   return output;
 }

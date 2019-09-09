@@ -97,7 +97,8 @@ string HloValue::ToShortString() const {
 
 string HloValue::ToString(int indent) const {
   string indentation(indent, ' ');
-  string out = StrCat(indentation, ToShortString(), ", positions:\n");
+  string out =
+      StrCat(indentation, ToShortString(), "\n", indentation, " positions:\n");
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
