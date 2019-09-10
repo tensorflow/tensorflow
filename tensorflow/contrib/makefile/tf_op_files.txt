@@ -57,6 +57,7 @@ tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_bitwise_and.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
+tensorflow/core/kernels/cwise_op_ceil.cc
 tensorflow/core/kernels/cwise_op_cos.cc
 tensorflow/core/kernels/cwise_op_cosh.cc
 tensorflow/core/kernels/cwise_op_div.cc
