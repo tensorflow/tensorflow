@@ -1086,32 +1086,11 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                              \
   template <>                                                            \
-  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(              \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& order,                                \
-      const Eigen::array<bool, 4>& reverse_dims,                         \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;        \
-  template <>                                                            \
-  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& strides,                              \
-      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,            \
-      const Eigen::DSizes<int, 4>& order,                                \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
-  template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
       const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
       typename TTypes<T, 4, int>::ConstTensor in,                        \
       typename TTypes<T, 4, int>::Tensor out);                           \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
-  template <>                                                            \
-  void TransformDepth<GPUDevice, T, int>::operator()(                    \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
-      const Eigen::DSizes<int, 4>& shuffle,                              \
-      typename TTypes<T, 4, int>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, int>;              \
   template <>                                                            \
   void PadInput<GPUDevice, T, int, 4>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
