@@ -395,3 +395,26 @@ module {
 }
 
 
+// -----
+
+
+// Tests that TPUCompilationResult operations are properly rewritten
+
+// CHECK-LABEL: func @tpu_compilation_result
+func @tpu_compilation_result(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>) {
+
+  // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
+  // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+  %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func} : (tensor<?xi32>) -> tensor<?xi32>
+
+  %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
+  %compile_result2 = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
+
+  // CHECK: return %[[EXECUTE_OUTPUT]], %[[COMPILE_OUTPUT]]#0, %[[COMPILE_OUTPUT]]#0
+  return %1, %compile_result, %compile_result2 : tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>
+}
+
+func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}

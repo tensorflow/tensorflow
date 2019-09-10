@@ -237,8 +237,21 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 // Operations that jit-compiles and executes function in `tf_device.launch_func`
 // on TPU.
 void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
+  // Skip non-tpu device launch_func.
+  auto replicate_attr = launch_func.getAttrOfType<StringAttr>("_tpu_replicate");
+  if (!replicate_attr) return;
+
   builder->setInsertionPoint(launch_func);
   Operation* compile_op = BuildCompileOp(launch_func, builder);
+
+  // After rewrite, find if there is a TPUCompilationResultOp in the block with
+  // the same _tpu_replicate attribute and replace it with the result of the
+  // compile op. This op is used as a placeholder to hook during graph creation
+  // the other ops that are intended to consume the compile result.
+  Block* block = launch_func.getOperation()->getBlock();
+  for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
+    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
   // TODO(ycao): Right now we only support single-core case. The right thing to
   // do is to read from launch_func attributes to determine how many execute
@@ -251,8 +264,6 @@ void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
 void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
   getModule().walk([&](tf_device::LaunchFuncOp op) {
-    // Skip non-tpu device launch_func.
-    if (!op.getAttrOfType<StringAttr>("_tpu_replicate")) return;
     Rewrite(op, &builder);
   });
 
