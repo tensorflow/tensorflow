@@ -774,9 +774,9 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                           std::forward_as_tuple(instruction),
                           std::forward_as_tuple(instruction->shape()));
 
-      // Lambda to set the value set to define all values in the output of the
-      // instruction.
-      auto define_all_values = [this, &instruction](bool is_phi = false) {
+      // For each sub-shape of the instruction shape, add a new HloValue to its
+      // HloValueSet.
+      auto define_all_values = [this, &instruction]() {
         for (auto& pair : GetInstructionValueSet(instruction)) {
           const ShapeIndex& index = pair.first;
           HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
@@ -784,16 +784,8 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         }
       };
 
-      // Lambda to set the value set to define only the top-level buffer in the
-      // output of the instruction. Any other values flow from the operands of
-      // the instruction (or from cross-computation dataflow).
-      auto define_top_level_only = [this, &instruction]() {
-        HloValue* value =
-            NewHloValue(instruction, /*index=*/{}, /*is_phi=*/false);
-        GetValueSet(instruction, /*index=*/{}).AddValue(value);
-      };
-
-      // Lambda to set the value set at the given index of the output.
+      // Add a new HloValue to the HloValueSet corresponding to the given index
+      // of the instruction shape.
       auto define_value_at = [this, &instruction](const ShapeIndex& index) {
         HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
         GetValueSet(instruction, index).AddValue(value);
@@ -840,7 +832,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
-          define_top_level_only();
+          define_value_at(/*index=*/{});
           break;
         case HloOpcode::kCopyDone:
           // CopyDone produces an element. Its output aliases its input tuple
