@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import re
 import sys
+import textwrap
 import numpy as np
 
 from absl import flags
@@ -88,6 +89,10 @@ class TfTestCase(tf.test.TestCase):
 
 
 class CustomOutputChecker(doctest.OutputChecker):
+  """Changes the `want` and `got` strings.
+
+  This allows it to be customized before they are compared.
+  """
 
   def check_output(self, want, got, optionflags):
     # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
@@ -95,6 +100,18 @@ class CustomOutputChecker(doctest.OutputChecker):
     # examples in docstrings, so replacing the id with `...` makes it safe.
     want = re.sub(r'\bid=(\d+)\b', r'id=...', want)
     return doctest.OutputChecker.check_output(self, want, got, optionflags)
+
+  _MESSAGE = textwrap.dedent("""\n
+        #############################################################
+        Check the doctest documentation
+        (https://docs.python.org/3/library/doctest.html) on how to
+        write testable docstrings.
+        #############################################################""")
+
+  def output_difference(self, example, got, optionflags):
+    got = got + self._MESSAGE
+    return doctest.OutputChecker.output_difference(self, example, got,
+                                                   optionflags)
 
 
 def load_tests(unused_loader, tests, unused_ignore):
@@ -126,8 +143,10 @@ def load_tests(unused_loader, tests, unused_ignore):
             setUp=testcase.set_up,
             tearDown=testcase.tear_down,
             checker=CustomOutputChecker(),
-            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE |
-                         doctest.IGNORE_EXCEPTION_DETAIL),
+            optionflags=(doctest.ELLIPSIS |
+                         doctest.NORMALIZE_WHITESPACE |
+                         doctest.IGNORE_EXCEPTION_DETAIL |
+                         doctest.DONT_ACCEPT_BLANKLINE),
         ))
   return tests
 
