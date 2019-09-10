@@ -357,7 +357,7 @@ void RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   conv->parent()->RemoveInstructionAndUnusedOperands(convert_or_clamp);
 }
 
-bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
+void RewriteForFinalOutput(ConvWithConvertOrClamp match) {
   // When the matched clamp has a single user, which is convert<int8>, we
   // will absorb it, if
   // 1. the side_input matches a convert<float>(int8_side_input), or
@@ -385,7 +385,6 @@ bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
 
     RewriteForConvertOrClampImpl(match);
   }
-  return true;
 }
 
 // Fuse the clamp/convert pattern with the int8 convolution custom call
@@ -402,7 +401,8 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
       }
     }
     for (const ConvWithConvertOrClamp& match : matches) {
-      changed |= RewriteForFinalOutput(match);
+      RewriteForFinalOutput(match);
+      changed = true;
     }
 
     // Report error for any convolution still having int32 output.
@@ -456,10 +456,6 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
   return absl::nullopt;
 }
 
-void RewriteForConvertToFloat(ConvWithConvertOrClamp match) {
-  RewriteForConvertOrClampImpl(match);
-}
-
 // Transform
 // convert<float>(GetTupleElement<int32>(custom_call<int32>(int8_x, int8_w)))
 // to
@@ -488,7 +484,7 @@ StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
     }
 
     for (const ConvWithConvertOrClamp& match : matches) {
-      RewriteForConvertToFloat(match);
+      RewriteForConvertOrClampImpl(match);
       changed = true;
     }
   }
