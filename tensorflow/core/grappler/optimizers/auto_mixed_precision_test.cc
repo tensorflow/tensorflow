@@ -746,6 +746,56 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushPop) {
   }
 }
 
+TEST_F(AutoMixedPrecisionTest, TensorListFromTensor) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Input shape = {32};
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  auto tl1 = ops::TensorListFromTensor(s.WithOpName("tl1"), wht1, shape);
+  Output tl1r1 = ops::TensorListStack(s.WithOpName("tl1r1"), tl1.output_handle,
+                                      shape, DT_FLOAT)
+                     .tensor;
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+
+  // This tests that a white-painted object node (tl2) will force an unpainted
+  // client node (tl2w1) to be painted white as well. (Without the force, tl2w1
+  // would remain unpainted, producing an invalid graph).
+  auto tl2 = ops::TensorListFromTensor(s.WithOpName("tl2"), wht1, shape);
+  auto tl2w1 =
+      ops::TensorListPushBack(s.WithOpName("tl2w1"), tl2.output_handle, input);
+
+  GrapplerItem item;
+  item.fetch = {"fetch1"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  const char* type_key = "element_dtype";
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 2e-4);
+  }
+}
+
 TEST_F(AutoMixedPrecisionTest, TensorListPushBackBatchAndConcatLists) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   tensorflow::Input shape = {32, 32};

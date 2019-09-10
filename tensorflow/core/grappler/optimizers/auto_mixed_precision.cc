@@ -1259,6 +1259,17 @@ Status AutoMixedPrecisionImpl::Optimize() {
         ephemeral_edges.emplace_back(write_node_type, read_node_type);
       }
     }
+    const NodeTypeId& object_node_type = object_clients.first;
+    // These object types also act as writers because they initialize the object
+    // from an input tensor.
+    if (object_node_type.node->op() == "TensorListSplit" ||
+        object_node_type.node->op() == "TensorListFromTensor" ||
+        object_node_type.node->op() == "TensorListScatter" ||
+        object_node_type.node->op() == "TensorListScatterV2") {
+      for (const NodeTypeId& read_node_type : client_nodes.second) {
+        ephemeral_edges.emplace_back(object_node_type, read_node_type);
+      }
+    }
   }
 
   VLOG(2) << "Constructing graph type attribute topology view";
@@ -1631,6 +1642,9 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
     NodeTypeIdSet all_client_nodes = client_nodes.first;
     all_client_nodes.insert(client_nodes.second.begin(),
                             client_nodes.second.end());
+    // The object node may be considered a client too (e.g.,
+    // TensorListFromTensor).
+    all_client_nodes.insert(object_node_type);
     bool any_black = false;
     bool any_white = false;
     for (const NodeTypeId& node_type : all_client_nodes) {
@@ -1648,8 +1662,6 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
         any_white = true;
       }
     }
-    // Apply coloring to the object node too.
-    all_client_nodes.insert(object_node_type);
     if (any_black || any_white) {
       for (const NodeTypeId& node_type : all_client_nodes) {
         VLOG(2) << "Painting type " << node_type.type_attr.DebugString()
