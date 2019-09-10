@@ -165,6 +165,18 @@ cc_library(
 )
 
 cc_library(
+    name = "error",
+    srcs = ["error.cc"],
+    hdrs = ["error.h"],
+    deps = [
+        ":platform",
+        ":types",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/strings:string_utils",
+    ],
+)
+
+cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [":types"],

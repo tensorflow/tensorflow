@@ -479,15 +479,6 @@ def tf_platform_srcs(files):
     windows_set = base_set + ["windows/" + f for f in files]
     posix_set = base_set + ["posix/" + f for f in files]
 
-    # Handle cases where we must also bring the posix file in. Usually, the list
-    # of files to build on windows builds is just all the stuff in the
-    # windows_set. However, in some cases the implementations in 'posix/' are
-    # just what is necessary and historically we choose to simply use the posix
-    # file instead of making a copy in 'windows'.
-    for f in files:
-        if f == "error.cc":
-            windows_set.append("posix/" + f)
-
     return select({
         "//tensorflow:windows": native.glob(windows_set),
         "//conditions:default": native.glob(posix_set),

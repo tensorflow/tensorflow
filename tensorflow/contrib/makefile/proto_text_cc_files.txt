@@ -40,11 +40,11 @@ tensorflow/core/platform/default/mutex.cc
 tensorflow/core/platform/default/tracing.cc
 tensorflow/core/platform/denormal.cc
 tensorflow/core/platform/env.cc
+tensorflow/core/platform/error.cc
 tensorflow/core/platform/file_system.cc
 tensorflow/core/platform/file_system_helper.cc
 tensorflow/core/platform/numbers.cc
 tensorflow/core/platform/posix/env.cc
-tensorflow/core/platform/posix/error.cc
 tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/posix/port.cc
 tensorflow/core/platform/posix/posix_file_system.cc
