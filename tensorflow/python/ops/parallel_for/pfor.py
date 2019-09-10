@@ -2307,7 +2307,6 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Div", math_ops.div)
 @RegisterPForWithArgs("DivNoNan", math_ops.div_no_nan)
 @RegisterPForWithArgs("Elu", nn_ops.elu)
-@RegisterPForWithArgs("Equal", math_ops.equal)
 @RegisterPForWithArgs("Erf", math_ops.erf)
 @RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Exp", math_ops.exp)
@@ -2342,7 +2341,6 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Mul", math_ops.multiply)
 @RegisterPForWithArgs("MulNoNan", math_ops.mul_no_nan)
 @RegisterPForWithArgs("Neg", math_ops.negative)
-@RegisterPForWithArgs("NotEqual", math_ops.not_equal)
 @RegisterPForWithArgs("Polygamma", math_ops.polygamma)
 @RegisterPForWithArgs("Pow", math_ops.pow)
 @RegisterPForWithArgs("Real", math_ops.real)
@@ -2379,6 +2377,26 @@ def _convert_cwise(pfor_input, op_type, op_func):
     assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
   pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("Equal")
+def _convert_equal(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  x = pfor_input.input(0)[0]
+  y = pfor_input.input(1)[0]
+  incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
+  assert incompatible_shape_error
+  return wrap(math_ops.equal(x, y), True)
+
+
+@RegisterPFor("NotEqual")
+def _convert_not_equal(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  x = pfor_input.input(0)[0]
+  y = pfor_input.input(1)[0]
+  incompatible_shape_error = pfor_input.get_attr("incompatible_shape_error")
+  assert incompatible_shape_error
+  return wrap(math_ops.not_equal(x, y), True)
 
 
 @RegisterPFor("ApproximateEqual")
