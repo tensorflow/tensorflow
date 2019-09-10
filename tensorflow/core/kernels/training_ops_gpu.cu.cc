@@ -100,6 +100,81 @@ struct ApplyAdadelta<GPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrl<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    auto l1_bcast = l1.reshape(single).broadcast(bcast);
+    auto l2_bcast = l2.reshape(single).broadcast(bcast);
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto lr_power_bcast = -lr_power.reshape(single).broadcast(bcast);
+    const auto two = static_cast<T>(2.0);
+
+    auto new_accum = accum + grad.square();
+    auto accum_power = accum.binaryExpr(lr_power_bcast,
+                                        Eigen::internal::scalar_pow_op<T, T>());
+    auto new_accum_power = new_accum.binaryExpr(
+        lr_power_bcast, Eigen::internal::scalar_pow_op<T, T>());
+    linear.device(d) += grad - (new_accum_power - accum_power) * var / lr_bcast;
+    auto x = (l1_bcast * linear.sign() - linear);
+    auto y = (new_accum_power / lr_bcast) + linear.constant(two) * l2_bcast;
+    auto pre_shrink = x / y;
+    var.device(d) = (linear.abs() > l1_bcast)
+                        .select(pre_shrink, var.constant(static_cast<T>(0)));
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
+struct ApplyFtrlV2<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    auto l1_bcast = l1.reshape(single).broadcast(bcast);
+    auto l2_bcast = l2.reshape(single).broadcast(bcast);
+    auto l2_shrinkage_bcast = l2_shrinkage.reshape(single).broadcast(bcast);
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto lr_power_bcast = -lr_power.reshape(single).broadcast(bcast);
+    const auto two = static_cast<T>(2.0);
+
+    auto new_accum = accum + grad.square();
+    auto accum_power = accum.binaryExpr(lr_power_bcast,
+                                        Eigen::internal::scalar_pow_op<T, T>());
+    auto new_accum_power = new_accum.binaryExpr(
+        lr_power_bcast, Eigen::internal::scalar_pow_op<T, T>());
+    auto grad_with_shrinkage =
+        grad + (var.constant(two) * l2_shrinkage_bcast * var);
+    linear.device(d) +=
+        grad_with_shrinkage - (new_accum_power - accum_power) * var / lr_bcast;
+    auto x = (l1_bcast * linear.sign() - linear);
+    auto y = (new_accum_power / lr_bcast) + linear.constant(two) * l2_bcast;
+    auto pre_shrink = x / y;
+    var.device(d) = (linear.abs() > l1_bcast)
+                        .select(pre_shrink, var.constant(static_cast<T>(0)));
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
 struct ApplyMomentum<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -374,6 +449,14 @@ template struct functor::ApplyAdagradV2<GPUDevice, double>;
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
+
+template struct functor::ApplyFtrl<GPUDevice, Eigen::half>;
+template struct functor::ApplyFtrl<GPUDevice, float>;
+template struct functor::ApplyFtrl<GPUDevice, double>;
+
+template struct functor::ApplyFtrlV2<GPUDevice, Eigen::half>;
+template struct functor::ApplyFtrlV2<GPUDevice, float>;
+template struct functor::ApplyFtrlV2<GPUDevice, double>;
 
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
