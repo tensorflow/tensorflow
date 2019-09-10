@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -249,6 +250,12 @@ void InferenceContext::Merge() {
         dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
     if (!elementwise || linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
+      continue;
+    }
+    auto* apply_mask =
+        dynamic_cast<ApplyMask*>(linkable_node.operations[0].get());
+    // ApplyMask can be fused by first tensor only
+    if (apply_mask && linkable_node.inputs[0] != node.outputs[0]) {
       continue;
     }
     MergeCLNodes(&linkable_node, &node);
