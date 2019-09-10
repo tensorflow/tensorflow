@@ -421,7 +421,8 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
 
 Status DoNMS(OpKernelContext* context, const Tensor& boxes,
              const Tensor& scores, const int64_t max_output_size,
-             const float iou_threshold_val, const float score_threshold) {
+             const float iou_threshold_val, const float score_threshold,
+             bool pad_to_max_output, int* num_saved_outputs) {
   const int output_size = max_output_size;
   int num_boxes = boxes.dim_size(0);
   size_t cub_sort_temp_storage_bytes = 0;
@@ -448,6 +449,8 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       0, 8 * sizeof(float),          // sort all bits
       cuda_stream);
   TF_RETURN_IF_CUDA_ERROR(cuda_ret);
+  TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
+
   Tensor d_cub_sort_buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)cub_sort_temp_storage_bytes}),
@@ -498,20 +501,22 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
                               original_boxes, sorted_boxes));
   int limited_num_boxes = num_boxes;
   // filter boxes by scores if nms v3
-  if (score_threshold > std::numeric_limits<float>::min()) {
+  if (score_threshold > std::numeric_limits<float>::lowest()) {
     GreaterThanCubOp score_limit(score_threshold);
     TF_RETURN_IF_ERROR(CountIf(context, d_sorted_scores.flat<float>().data(),
-                                 score_limit, num_boxes, &limited_num_boxes));
+                               score_limit, num_boxes, &limited_num_boxes));
     if (limited_num_boxes == 0) {
       Tensor* output_indices = nullptr;
       VLOG(1) << "Number of boxes above score threshold " << score_threshold
               << " is 0";
-      TF_RETURN_IF_ERROR(
-          context->allocate_output(0, TensorShape({0}), &output_indices));
+      int len_output = pad_to_max_output ? max_output_size : 0;
+      *num_saved_outputs = 0;
+      TF_RETURN_IF_ERROR(context->allocate_output(0, TensorShape({len_output}),
+                                                  &output_indices));
       return Status::OK();
     } else {
-      VLOG(2) << "Number of boxes above threshold=" << score_threshold
-              << " is " << limited_num_boxes;
+      VLOG(2) << "Number of boxes above threshold=" << score_threshold << " is "
+              << limited_num_boxes;
     }
   }
   int num_to_keep = 0;
@@ -528,9 +533,23 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   }
   Tensor* output_indices = nullptr;
   int num_outputs = std::min(num_to_keep, output_size);  // no padding!
-  TF_RETURN_IF_ERROR(
-      context->allocate_output(0, TensorShape({num_outputs}), &output_indices));
-  if (num_outputs == 0) return Status::OK();
+  if (pad_to_max_output && num_outputs!=max_output_size) {
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        0, TensorShape({max_output_size}), &output_indices));
+    config = GetGpuLaunchConfig(max_output_size, device);
+    TF_CHECK_OK(GpuLaunchKernel(SetZero<int>, config.block_count,
+                                config.thread_per_block, 0, device.stream(),
+                                config.virtual_thread_count,
+                                output_indices->flat<int>().data()));
+
+  } else {
+    TF_RETURN_IF_ERROR(context->allocate_output(0, TensorShape({num_outputs}),
+                                                &output_indices));
+  }
+  if (num_outputs == 0) {
+    *num_saved_outputs = num_outputs;
+    return Status::OK();
+  }
   config = GetGpuLaunchConfig(num_outputs, device);
   TF_CHECK_OK(GpuLaunchKernel(
       IndexMultiSelect<int, int>, config.block_count, config.thread_per_block,
@@ -538,6 +557,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       d_selected_indices.flat<int>().data(), sorted_indices,
       (*output_indices).flat<int>().data()));
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
+  *num_saved_outputs = num_outputs;
   return Status::OK();
 }
 
@@ -580,16 +600,18 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                 // otherwise tests fail!
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
-      OP_REQUIRES_OK(context,
-          context->allocate_output(0, TensorShape({0}), &output_indices));
+      OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({0}),
+                                                       &output_indices));
       return;
     }
     const int64_t output_size = max_output_size.scalar<int>()();
+
     OP_REQUIRES_OK(
         context,
         DoNMS(context, boxes, scores, output_size, iou_threshold_val,
               /*score_threshold is float min if score threshold is disabled*/
-              std::numeric_limits<float>::min()));
+              std::numeric_limits<float>::lowest(),
+              /*pad_to_max_output*/ false, &num_boxes));
   }
 };
 
@@ -645,9 +667,82 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
     }
     const int output_size = max_output_size.scalar<int>()();
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
-                                  iou_threshold_val, score_threshold_val));
+                                  iou_threshold_val, score_threshold_val,
+                                  /*pad_to_max_output*/ false, &num_boxes));
   }
 };
+
+class NonMaxSuppressionV4GPUOp : public OpKernel {
+ public:
+  explicit NonMaxSuppressionV4GPUOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
+                                             &pad_to_max_output_size_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // boxes: [num_boxes, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [num_boxes]
+    const Tensor& scores = context->input(1);
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+
+    const Tensor& score_threshold = context->input(4);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
+                                score_threshold.shape().DebugString()));
+    const float score_threshold_val = score_threshold.scalar<float>()();
+
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+    OP_REQUIRES(context, boxes.dims() == 2,
+                errors::InvalidArgument("boxes must be a rank 2 tensor!"));
+    int num_boxes = boxes.dim_size(0);
+    OP_REQUIRES(context, boxes.dim_size(1) == 4,
+                errors::InvalidArgument("boxes must be Nx4"));
+    OP_REQUIRES(context, scores.dims() == 1,
+                errors::InvalidArgument("scores must be a vector!"));
+    OP_REQUIRES(
+        context, scores.dim_size(0) == num_boxes,
+        errors::InvalidArgument(
+            "scores has incompatible shape"));  // message must be exactly this
+                                                // otherwise tests fail!
+    Tensor* num_outputs_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, tensorflow::TensorShape({}), &num_outputs_t));
+    auto device=context->eigen_gpu_device();
+    if (num_boxes == 0) {
+      Tensor* output_indices = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({}),
+                                                       &output_indices));
+      device.memcpy((num_outputs_t->flat<int>().data()),&num_boxes,sizeof(int));
+      return;
+    }
+    const int output_size = max_output_size.scalar<int>()();
+    int num_outputs = 0;
+    OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
+                                  iou_threshold_val, score_threshold_val,
+                                  pad_to_max_output_size_, &num_outputs));
+    device.memcpyHostToDevice((num_outputs_t->flat<int>().data()),&num_outputs,sizeof(int));
+    return;
+  }
+
+ private:
+  bool pad_to_max_output_size_;
+};
+
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
                             .TypeConstraint<float>("T")
@@ -662,6 +757,13 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
                             .HostMemory("max_output_size")
                             .HostMemory("score_threshold"),
                         NonMaxSuppressionV3GPUOp);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
+                            .TypeConstraint<float>("T")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("iou_threshold")
+                            .HostMemory("max_output_size")
+                            .HostMemory("score_threshold"),
+                        NonMaxSuppressionV4GPUOp);
 
 }  // namespace tensorflow
 #endif
