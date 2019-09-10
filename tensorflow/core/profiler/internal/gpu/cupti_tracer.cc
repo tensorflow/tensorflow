@@ -110,8 +110,8 @@ const char *getActivityUnifiedMemoryKindString(
 // GetCachedTID() caches the thread ID in thread-local storage (which is a
 // userspace construct) to avoid unnecessary system calls. Without this caching,
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
-pid_t GetCachedTID() {
-  static thread_local pid_t current_thread_id =
+int32 GetCachedTID() {
+  static thread_local int32 current_thread_id =
       Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }
