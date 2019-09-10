@@ -5,19 +5,19 @@ func @batchMatMulV2TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf32>
   return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2TwoDim
-  // CHECK-DAG: %[[cst:.*]] = constant dense<[6, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_2:.*]] = constant dense<[6, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_6:.*]] = constant dense<[3, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_7:.*]] = constant dense<[4, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_8:.*]] = constant dense<[5, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_9:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_10:.*]] = constant dense<[5, 6]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_11:.*]] = constant dense<[2, 3, 4, 6]> : tensor<4xi64>
+  // CHECK: %[[cst:.*]] = constant dense<[6, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
+  // CHECK: %[[cst_2:.*]] = constant dense<[6, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
+  // CHECK: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_6:.*]] = constant dense<[3, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_7:.*]] = constant dense<[4, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_8:.*]] = constant dense<[5, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_9:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_10:.*]] = constant dense<[5, 6]> : tensor<2xi64>
+  // CHECK: %[[cst_11:.*]] = constant dense<[2, 3, 4, 6]> : tensor<4xi64>
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[v1:.*]] = "tf.Slice"(%[[v0]], %[[cst_3]], %[[cst_0]]) : (tensor<6x4x5xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x4x5xf32>
@@ -65,16 +65,16 @@ func @batchMatMulV2FlatInput(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>)
   return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulV2FlatInput
-  // CHECK-DAG: %[[cst:.*]] = constant dense<[3, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_2:.*]] = constant dense<[3, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_6:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_7:.*]] = constant dense<[5, 6]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_8:.*]] = constant dense<[3, 4, 6]> : tensor<3xi64>
+  // CHECK: %[[cst:.*]] = constant dense<[3, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
+  // CHECK: %[[cst_2:.*]] = constant dense<[3, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
+  // CHECK: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_6:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_7:.*]] = constant dense<[5, 6]> : tensor<2xi64>
+  // CHECK: %[[cst_8:.*]] = constant dense<[3, 4, 6]> : tensor<3xi64>
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<3x4x5xf32>, tensor<3xi64>) -> tensor<3x4x5xf32>
   // CHECK: %[[v1:.*]] = "tf.Slice"(%[[v0]], %[[cst_3]], %[[cst_0]]) : (tensor<3x4x5xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x4x5xf32>
@@ -116,19 +116,19 @@ func @batchMatMulTwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf32>) 
   return %0 : tensor<2x3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulTwoDim
-  // CHECK-DAG: %[[cst:.*]] = constant dense<[6, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_2:.*]] = constant dense<[6, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_6:.*]] = constant dense<[3, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_7:.*]] = constant dense<[4, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_8:.*]] = constant dense<[5, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_9:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_10:.*]] = constant dense<[5, 6]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_11:.*]] = constant dense<[2, 3, 4, 6]> : tensor<4xi64>
+  // CHECK: %[[cst:.*]] = constant dense<[6, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
+  // CHECK: %[[cst_2:.*]] = constant dense<[6, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
+  // CHECK: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_6:.*]] = constant dense<[3, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_7:.*]] = constant dense<[4, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_8:.*]] = constant dense<[5, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_9:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_10:.*]] = constant dense<[5, 6]> : tensor<2xi64>
+  // CHECK: %[[cst_11:.*]] = constant dense<[2, 3, 4, 6]> : tensor<4xi64>
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<2x3x4x5xf32>, tensor<3xi64>) -> tensor<6x4x5xf32>
   // CHECK: %[[v1:.*]] = "tf.Slice"(%[[v0]], %[[cst_3]], %[[cst_0]]) : (tensor<6x4x5xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x4x5xf32>
@@ -176,16 +176,16 @@ func @batchMatMulFlatInput(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -
   return %0 : tensor<3x4x6xf32>
 
   // CHECK-LABEL: batchMatMulFlatInput
-  // CHECK-DAG: %[[cst:.*]] = constant dense<[3, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_2:.*]] = constant dense<[3, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_6:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
-  // CHECK-DAG: %[[cst_7:.*]] = constant dense<[5, 6]> : tensor<2xi64>
-  // CHECK-DAG: %[[cst_8:.*]] = constant dense<[3, 4, 6]> : tensor<3xi64>
+  // CHECK: %[[cst:.*]] = constant dense<[3, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_0:.*]] = constant dense<[1, 4, 5]> : tensor<3xi64>
+  // CHECK: %[[cst_1:.*]] = constant dense<[4, 5]> : tensor<2xi64>
+  // CHECK: %[[cst_2:.*]] = constant dense<[3, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_3:.*]] = constant dense<0> : tensor<3xi64>
+  // CHECK: %[[cst_4:.*]] = constant dense<[1, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_5:.*]] = constant dense<[2, 0, 0]> : tensor<3xi64>
+  // CHECK: %[[cst_6:.*]] = constant dense<[1, 5, 6]> : tensor<3xi64>
+  // CHECK: %[[cst_7:.*]] = constant dense<[5, 6]> : tensor<2xi64>
+  // CHECK: %[[cst_8:.*]] = constant dense<[3, 4, 6]> : tensor<3xi64>
 
   // CHECK: %[[v0:.*]] = "tf.Reshape"(%arg0, %[[cst]]) : (tensor<3x4x5xf32>, tensor<3xi64>) -> tensor<3x4x5xf32>
   // CHECK: %[[v1:.*]] = "tf.Slice"(%[[v0]], %[[cst_3]], %[[cst_0]]) : (tensor<3x4x5xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x4x5xf32>
