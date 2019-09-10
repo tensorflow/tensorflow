@@ -224,6 +224,22 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
                      branch_results[0].xla_output_shape);
     }
 
+    // Check that all branches have same TensorList output indices.
+    for (int output_index = 0; output_index < branch_results[0].outputs.size();
+         output_index++) {
+      bool is_tensor_list_in_branch_0 =
+          branch_results[0].outputs[output_index].is_tensor_list;
+      bool is_tensor_list_in_branch_j =
+          branch_results[j].outputs[output_index].is_tensor_list;
+      OP_REQUIRES(
+          ctx, is_tensor_list_in_branch_0 == is_tensor_list_in_branch_j,
+          errors::FailedPrecondition("Output #", output_index, " is ",
+                                     (is_tensor_list_in_branch_0 ? "" : "not"),
+                                     " a TensorList in branch 0, but is ",
+                                     (is_tensor_list_in_branch_j ? "" : "not"),
+                                     " a TensorList in branch ", j));
+    }
+
     // We set return_updated_values_for_all_resources=true and we pass the same
     // arguments to both computations, so the resource update count must match.
     OP_REQUIRES(ctx,
@@ -285,7 +301,12 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
         LOG(INFO) << "Shape unknown for output " << i;
       }
     }
-    ctx->SetOutput(i, output_handle);
+    // We have checked that all branches have same TensorList output indices.
+    if (branch_results[0].outputs[i].is_tensor_list) {
+      ctx->SetTensorListOutput(i, output_handle);
+    } else {
+      ctx->SetOutput(i, output_handle);
+    }
   }
   if (has_token_input_output_) {
     // Set token output for this "Case" op. Token output is the last output of
