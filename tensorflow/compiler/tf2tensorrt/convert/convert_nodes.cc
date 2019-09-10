@@ -1566,8 +1566,11 @@ void Converter::MaybeApplyQuantizationRanges() {
 #endif
 
   if (use_calibration()) return;
+#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Attempt to find tensors that are missing ranges, and set the corresponding
   // layer's precision to FP16 to avoid Builder::buildCudaEngine() failing.
+  // This is only needed for TensorRT 5 and before because
+  // TensorRT6 falls to FP16 internally.
   // TensorRT doesn't need ranges for intermediate tensors when layers are fused
   // so find fused layers first.
   // Get all tensors from network and deduce fused ops.
@@ -1696,6 +1699,7 @@ void Converter::MaybeApplyQuantizationRanges() {
       }
     }
   }
+#endif
 }
 
 void Converter::PropagateQuantizationRanges() {
