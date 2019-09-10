@@ -60,7 +60,7 @@ TEST(StructsGenTest, ClassofExtraFalse) {
   mlir::MLIRContext context;
   mlir::DictionaryAttr structAttr = getTestStruct(&context);
   auto expectedValues = structAttr.getValue();
-  ASSERT_EQ(expectedValues.size(), 3);
+  ASSERT_EQ(expectedValues.size(), 3u);
 
   // Copy the set of named attributes.
   llvm::SmallVector<mlir::NamedAttribute, 5> newValues(expectedValues.begin(),
@@ -82,7 +82,7 @@ TEST(StructsGenTest, ClassofBadNameFalse) {
   mlir::MLIRContext context;
   mlir::DictionaryAttr structAttr = getTestStruct(&context);
   auto expectedValues = structAttr.getValue();
-  ASSERT_EQ(expectedValues.size(), 3);
+  ASSERT_EQ(expectedValues.size(), 3u);
 
   // Create a copy of all but the first NamedAttributes.
   llvm::SmallVector<mlir::NamedAttribute, 4> newValues(
@@ -103,7 +103,7 @@ TEST(StructsGenTest, ClassofMissingFalse) {
   mlir::MLIRContext context;
   mlir::DictionaryAttr structAttr = getTestStruct(&context);
   auto expectedValues = structAttr.getValue();
-  ASSERT_EQ(expectedValues.size(), 3);
+  ASSERT_EQ(expectedValues.size(), 3u);
 
   // Copy a subset of the structures Named Attributes.
   llvm::SmallVector<mlir::NamedAttribute, 3> newValues(
