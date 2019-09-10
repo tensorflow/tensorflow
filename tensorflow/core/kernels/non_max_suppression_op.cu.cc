@@ -656,13 +656,15 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
                             .HostMemory("iou_threshold")
                             .HostMemory("max_output_size"),
                         NonMaxSuppressionV2GPUOp);
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
-                            .TypeConstraint<float>("T")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("iou_threshold")
-                            .HostMemory("max_output_size")
-                            .HostMemory("score_threshold"),
-                        NonMaxSuppressionV3GPUOp);
+
+// TODO(laigd): enable the op once b/140816449 is fixed.
+// REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
+//                             .TypeConstraint<float>("T")
+//                             .Device(DEVICE_GPU)
+//                             .HostMemory("iou_threshold")
+//                             .HostMemory("max_output_size")
+//                             .HostMemory("score_threshold"),
+//                         NonMaxSuppressionV3GPUOp);
 
 }  // namespace tensorflow
 #endif

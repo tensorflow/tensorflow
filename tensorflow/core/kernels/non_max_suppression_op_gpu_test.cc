@@ -210,9 +210,10 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestEmptyInput) {
 class NonMaxSuppressionV3GPUOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    SetDevice(DEVICE_GPU,
-              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
-                  "GPU", {}, "/job:a/replica:0/task:0")));
+    // TODO(laigd): enable the op once b/140816449 is fixed.
+    // SetDevice(DEVICE_GPU,
+    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+    //               "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV3")
                      .Input(FakeInput(DT_FLOAT))
