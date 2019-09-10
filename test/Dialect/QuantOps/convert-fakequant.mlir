@@ -180,3 +180,22 @@ func @fakeQuantArgs_UnrankedTensor(tensor<f32>) -> tensor<f32> {
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// -----
+// Verifies a qint8 per axis
+// CHECK_LABEL: fakeQuantPerAxis
+func @fakeQuantPerAxis(tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+^bb0(%arg0: tensor<8x4x3xf32>):
+
+  // CHECK: %[[q:.*]] = "quant.qcast"(%arg0) : (tensor<8x4x3xf32>)
+  // CHECK-SAME: -> tensor<8x4x3x!quant.uniform<i8:f32:2, {7.812500e-03,1.000000e+00:-128,0.0039215686274509803:-128}>>
+  // CHECK: %[[d:.*]] = "quant.dcast"(%[[q]])
+  // CHECK-SAME: (tensor<8x4x3x!quant.uniform<i8:f32:2, {7.812500e-03,1.000000e+00:-128,0.0039215686274509803:-128}>>)
+
+  %0 = "quant.const_fake_quant_per_axis"(%arg0) {
+    min = [-1.0 : f32, 0.0 : f32, 0.0 : f32],
+    max = [0.9921875 : f32, 0.0: f32, 1.0 : f32],
+    num_bits = 8, narrow_range = false, is_signed = true, axis = 2
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %0 : tensor<8x4x3xf32>
+}
