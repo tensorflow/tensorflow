@@ -48,7 +48,7 @@ namespace tflite {
 namespace tensor_utils {
 namespace {
 
-constexpr int kValuesPerNeonVector = 4;
+constexpr int kFloatValuesPerNeonVector = 4;
 constexpr int kInt16ValuesPerNeonVector = 8;
 
 template <int PerNeonSize>
