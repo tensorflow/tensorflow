@@ -25,6 +25,11 @@ This enables writing forward compatible code: by explicitly importing either `te
   * Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the session.run(). When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to `session.run()`, an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
 
 ## Bug Fixes and Other Changes
+* `tf.estimator`:
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint` format, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * Fix tests in canned estimators.
+  * Expose Head as public API.
+  * Fixes critical bugs that help with `DenseFeatures` usability in TF2
 * `tf.data`:
   * Promoting `unbatch` from experimental to core API.
   * Adding support for datasets as inputs to `from_tensors` and `from_tensor_slices` and batching and unbatching of nested datasets.
