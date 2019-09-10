@@ -78,7 +78,7 @@ HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
 bool HloValue::operator==(const HloValue& other) const {
   bool equal = defining_instruction() == other.defining_instruction() &&
                defining_index() == other.defining_index();
-  // If the values are equal they most both be phi (or non phi).
+  // If the values are equal they must both be phi (or non phi).
   CHECK(!(equal && is_phi() != other.is_phi()));
   return equal;
 }
