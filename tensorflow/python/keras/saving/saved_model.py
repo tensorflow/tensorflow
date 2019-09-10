@@ -44,6 +44,10 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `model.save(..., save_format="tf")` or 
+    `tf.keras.models.save_model(..., save_format="tf")`.")
 @keras_export('keras.experimental.export_saved_model')
 def export_saved_model(model,
                        saved_model_path,
