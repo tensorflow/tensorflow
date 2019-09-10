@@ -91,6 +91,17 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "strong_hash": {
+        "name": "strong_hash_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/strong_hash.h",
+        ],
+        "deps": [
+            "@highwayhash//:sip_hash",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {

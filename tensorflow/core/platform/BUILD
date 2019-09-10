@@ -56,6 +56,7 @@ tf_instantiate_platform_libraries(names = [
     "fingerprint",
     "mutex",
     "notification",
+    "strong_hash",
 ])
 
 cc_library(
@@ -391,6 +392,16 @@ cc_library(
     hdrs = ["stringprintf.h"],
     deps = [
         ":macros",
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "strong_hash",
+    hdrs = ["strong_hash.h"],
+    deps = [
+        ":platform",
+        ":strong_hash_impl",
         ":types",
     ],
 )
