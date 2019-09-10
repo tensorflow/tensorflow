@@ -273,6 +273,13 @@ class BackendUtilsTest(test.TestCase):
     f = keras.backend.function(x, y)
     f(0)
 
+  def test_cast_to_floatx(self):
+    x = keras.backend.variable(1, dtype='float64')
+    x = keras.backend.cast_to_floatx(x)
+    self.assertEqual(x.dtype.name, 'float32')
+    x = keras.backend.cast_to_floatx(2)
+    self.assertEqual(x.dtype.name, 'float32')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendVariableTest(test.TestCase):
