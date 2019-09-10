@@ -746,6 +746,61 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushPop) {
   }
 }
 
+TEST_F(AutoMixedPrecisionTest, TensorListPushBackBatchAndConcatLists) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Input shape = {32, 32};
+  auto tl1 = ops::EmptyTensorList(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
+  auto tl2 = ops::EmptyTensorList(s.WithOpName("tl2"), {32, 32}, 8, DT_FLOAT);
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output tl1_tl2 =
+      ops::Stack(s.WithOpName("tl1_tl2"), {tl1.handle, tl2.handle});
+  Output wht1_wht1 = ops::Stack(s.WithOpName("wht1_wht1"), {wht1, wht1});
+  auto tl12w1 =
+      ops::TensorListPushBackBatch(s.WithOpName("tl12w1"), tl1_tl2, wht1_wht1);
+  OutputList tl12w1_outputs =
+      ops::Split(s.WithOpName("tl12w1_outputs"), 0, tl12w1.output_handles, 2)
+          .output;
+  Output scalar_shape = ops::Const(s.WithOpName("scalar_shape"), 0, {0});
+  Output tl12w1_output0 = ops::Reshape(s.WithOpName("tl12w1_output0"),
+                                       tl12w1_outputs[0], scalar_shape);
+  Output tl12w1_output1 = ops::Reshape(s.WithOpName("tl12w1_output1"),
+                                       tl12w1_outputs[1], scalar_shape);
+  Output tl3 = ops::TensorListConcatLists(s.WithOpName("tl3"), tl12w1_output0,
+                                          tl12w1_output1, DT_FLOAT);
+  Output tl3r1 =
+      ops::TensorListPopBack(s.WithOpName("tl3r1"), tl3, shape, DT_FLOAT)
+          .tensor;
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl3r1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+
+  GrapplerItem item;
+  item.fetch = {"fetch1"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  // TODO(benbarsdell): Add checks for data type conversion here once support
+  // for TensorListPushBackBatch and TensorListConcatLists is added in the
+  // auto_mixed_precision pass.
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
+}
+
 int GetCudaVersion(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   for (const auto& device : devices) {

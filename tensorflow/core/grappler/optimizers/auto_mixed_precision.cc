@@ -1203,25 +1203,52 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Building node type map for graph";
   TF_RETURN_IF_ERROR(node_type_map_.Init(*graph_));
 
-  DataStructureOpsMap object_clients_map;
+  // TODO(benbarsdell): Add support for TensorListPushBackBatch and
+  // TensorListConcatLists. They require special handling because they connect
+  // multiple list objects together. Currently if they appear in the graph then
+  // we have no choice but to disallow changing any tensor list ops, as
+  // otherwise we risk breaking the graph if some are changed and some are not
+  // (within a connected cluster of tensor list nodes).
+  bool can_change_tensor_list_ops = true;
+  for (const NodeDef& node : graph_->node()) {
+    if (node.op() == "TensorListPushBackBatch" ||
+        node.op() == "TensorListConcatLists") {
+      can_change_tensor_list_ops = false;
+      break;
+    }
+  }
 
-  // TODO(benbarsdell): Work out how to handle "TensorListPushBackBatch".
-  VLOG(2) << "Identifying TensorList* nodes";
-  TF_RETURN_IF_ERROR(AddDataStructureOpsToMap(
-      {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
-       "TensorListReserve", "TensorListScatter", "TensorListScatterV2",
-       "TensorListConcatLists"},
-      TypeAttrId("element_dtype"),
-      {{"TensorListPushBack", TypeAttrId("element_dtype")},
-       {"TensorListSetItem", TypeAttrId("element_dtype")},
-       {"TensorListScatterIntoExistingList", TypeAttrId("element_dtype")}},
-      {{"TensorListPopBack", TypeAttrId("element_dtype")},
-       {"TensorListStack", TypeAttrId("element_dtype")},
-       {"TensorListConcat", TypeAttrId("element_dtype")},
-       {"TensorListConcatV2", TypeAttrId("element_dtype")},
-       {"TensorListGetItem", TypeAttrId("element_dtype")},
-       {"TensorListGather", TypeAttrId("element_dtype")}},
-      &object_clients_map));
+  DataStructureOpsMap object_clients_map;
+  if (can_change_tensor_list_ops) {
+    VLOG(2) << "Identifying TensorList* nodes";
+    TF_RETURN_IF_ERROR(AddDataStructureOpsToMap(
+        {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
+         "TensorListReserve", "TensorListScatter", "TensorListScatterV2"},
+        TypeAttrId("element_dtype"),
+        {{"TensorListPushBack", TypeAttrId("element_dtype")},
+         {"TensorListSetItem", TypeAttrId("element_dtype")},
+         {"TensorListScatterIntoExistingList", TypeAttrId("element_dtype")}},
+        {{"TensorListPopBack", TypeAttrId("element_dtype")},
+         {"TensorListStack", TypeAttrId("element_dtype")},
+         {"TensorListConcat", TypeAttrId("element_dtype")},
+         {"TensorListConcatV2", TypeAttrId("element_dtype")},
+         {"TensorListGetItem", TypeAttrId("element_dtype")},
+         {"TensorListGather", TypeAttrId("element_dtype")}},
+        &object_clients_map));
+  } else {
+    for (const string& list_op :
+         {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
+          "TensorListReserve", "TensorListScatter", "TensorListScatterV2",
+          "TensorListConcatLists", "TensorListPushBack",
+          "TensorListPushBackBatch", "TensorListSetItem",
+          "TensorListScatterIntoExistingList", "TensorListPopBack",
+          "TensorListStack", "TensorListConcat", "TensorListConcatV2",
+          "TensorListGetItem", "TensorListGather"}) {
+      fp16_whitelist_.erase(list_op);
+      fp16_graylist_.erase(list_op);
+      fp16_clearlist_.erase(list_op);
+    }
+  }
 
   // Create ephemeral edges between writers and readers of data structure ops.
   std::vector<NodeTypeIdEdge> ephemeral_edges;
