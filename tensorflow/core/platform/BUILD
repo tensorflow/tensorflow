@@ -50,6 +50,7 @@ package(
 tf_instantiate_platform_libraries(names = [
     "context",
     "cord",
+    "cuda_libdevice_path",
     "dynamic_annotations",
     "env_time",
     "fingerprint",
@@ -134,6 +135,14 @@ cc_library(
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",
+    ],
+)
+
+cc_library(
+    name = "cuda_libdevice_path",
+    textual_hdrs = ["cuda_libdevice_path.h"],
+    deps = [
+        ":cuda_libdevice_path_impl",
     ],
 )
 

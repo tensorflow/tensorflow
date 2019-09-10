@@ -48,6 +48,22 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "cuda_libdevice_path": {
+        "name": "cuda_libdevice_path_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:cuda_libdevice_path.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/cuda_libdevice_path.cc",
+        ],
+        "deps": [
+            "@local_config_cuda//cuda:cuda_headers",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "dynamic_annotations": {
         "name": "dynamic_annotations_impl",
         "hdrs": [
