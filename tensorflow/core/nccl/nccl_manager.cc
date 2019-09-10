@@ -167,8 +167,8 @@ struct NcclManager::Collective : public core::RefCounted {
     // For example, the nccl_manager_test will use both paradigms in the same
     // executable, but not running concurrently (which would hang otherwise).
     if (NcclManager::instance_count > 1) {
-      status = errors::Internal(
-          "ROCm cannot use multi-node NCCL collectives on a single node");
+        status = errors::Internal(
+            "ROCm cannot use multi-node NCCL collectives on a single node");
     }
 #endif
   }
@@ -210,15 +210,15 @@ struct NcclManager::Collective : public core::RefCounted {
 };
 
 NcclManager::NcclManager() {
-  VLOG(2) << "New NcclManager " << this;
+    VLOG(2) << "New NcclManager " << this;
 #if TENSORFLOW_USE_ROCM
-  ++instance_count;
+    ++instance_count;
 #endif
 }
 NcclManager::~NcclManager() {
   VLOG(2) << "~NcclManager " << this;
 #if TENSORFLOW_USE_ROCM
-  --instance_count;
+    --instance_count;
 #endif
   for (auto& it : device_to_comm_streams_) {
     for (NcclStream* nccl_stream : it.second) {

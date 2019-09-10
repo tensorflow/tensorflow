@@ -17,7 +17,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -119,8 +118,9 @@ void NcclReducer::Run(StatusCallback done) {
     nccl_done.Notify();
   };
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
-      col_ctx_->output, col_params_->default_rank, std::move(done_callback));
+      compute_stream->parent(), compute_stream, gpu_info,
+      col_ctx_->input, col_ctx_->output,
+      col_params_->default_rank, std::move(done_callback));
   VLOG(1) << "NcclReducer calling NcclManager::AddToAllReduce num_tasks "
           << col_params_->group.num_tasks << " current task "
           << col_params_->instance.task_names[col_params_->default_rank]

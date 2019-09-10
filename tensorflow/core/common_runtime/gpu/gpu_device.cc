@@ -256,8 +256,7 @@ class BaseGPUDevice::StreamGroupFactory {
       group->nccl = new se::Stream(executor);
       group->nccl->Init();
       VLOG(2) << "Created nccl_stream[" << stream_group_within_gpu
-              << "] = " << group->nccl;
-
+              << "] = " << group->compute;
       // Force underlying resource creation now.
       group->compute->ThenWaitFor(group->nccl);
       group->nccl->ThenWaitFor(group->compute);

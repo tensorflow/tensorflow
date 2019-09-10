@@ -17,7 +17,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
-#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -33,8 +32,9 @@ void NcclBroadcaster::Run(StatusCallback done) {
   string nccl_collective_key =
       NcclCollectiveKey(col_ctx_->exec_key, col_ctx_->step_id);
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
-      col_ctx_->output, col_params_->default_rank, std::move(done));
+      compute_stream->parent(), compute_stream,
+      gpu_info, col_ctx_->input, col_ctx_->output,
+      col_params_->default_rank, std::move(done));
   VLOG(1)
       << "NcclBroadcast calling NcclManager::AddBroadcastSend/Recv num_tasks "
       << col_params_->group.num_tasks << " current task "
