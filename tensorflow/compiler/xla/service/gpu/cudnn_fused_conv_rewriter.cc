@@ -340,7 +340,7 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
 // A help function to rewrite convert_or_clamp_or_other<new_type>(gte(conv()))
 // to gte<new_type>(conv<new_type>()).  It bypasses convert_or_clamp_or_other
 // and set the output data type on gte and conv.
-bool RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
+void RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   auto conv = match.conv;
   auto gte = match.gte;
   auto convert_or_clamp = match.convert_or_clamp;
@@ -355,12 +355,9 @@ bool RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
   // get_tuple_element(custom_call(x,w, ...))
   convert_or_clamp->ReplaceAllUsesWithDifferentShape(gte);
   conv->parent()->RemoveInstructionAndUnusedOperands(convert_or_clamp);
-
-  return true;
 }
 
 bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
-  bool changed = false;
   // When the matched clamp has a single user, which is convert<int8>, we
   // will absorb it, if
   // 1. the side_input matches a convert<float>(int8_side_input), or
@@ -377,7 +374,7 @@ bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
   if (match.conv->operand_count() < 4) {
     // Conv input #3 (zero based) is side_input, after x, w, and bias.
     // Side input doesn't exist in this case.
-    changed = RewriteForConvertOrClampImpl(match);
+    RewriteForConvertOrClampImpl(match);
   } else if (is_one_to_one_X_to_Y_cast(match.conv->operand(3), S8, F32)) {
     // If side_input has a convert_float_to_int8, absorb it as well.
     auto side_converter = match.conv->mutable_operand(3);
@@ -386,9 +383,9 @@ bool RewriteForFinalOutput(ConvWithConvertOrClamp match) {
     side_converter->parent()->RemoveInstructionAndUnusedOperands(
         side_converter);
 
-    changed = RewriteForConvertOrClampImpl(match);
+    RewriteForConvertOrClampImpl(match);
   }
-  return changed;
+  return true;
 }
 
 // Fuse the clamp/convert pattern with the int8 convolution custom call
@@ -459,8 +456,8 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
   return absl::nullopt;
 }
 
-bool RewriteForConvertToFloat(ConvWithConvertOrClamp match) {
-  return RewriteForConvertOrClampImpl(match);
+void RewriteForConvertToFloat(ConvWithConvertOrClamp match) {
+  RewriteForConvertOrClampImpl(match);
 }
 
 // Transform
@@ -491,7 +488,8 @@ StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
     }
 
     for (const ConvWithConvertOrClamp& match : matches) {
-      changed |= RewriteForConvertToFloat(match);
+      RewriteForConvertToFloat(match);
+      changed = true;
     }
   }
   return changed;
