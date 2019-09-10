@@ -87,8 +87,7 @@ class LstmUtilsTest : public ::testing::Test {
 };
 
 TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
-  auto convert =
-      mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM(fused_lstm_func_, false);
+  mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM convert(fused_lstm_func_, false);
 
   auto result = convert.Initialize();
   EXPECT_FALSE(failed(result));
@@ -149,8 +148,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 }
 
 TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
-  auto convert =
-      mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM(fused_lstm_func_, true);
+  mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM convert(fused_lstm_func_, true);
 
   auto result = convert.Initialize();
   EXPECT_FALSE(failed(result));
@@ -170,7 +168,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
 }
 
 TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
-  auto convert = mlir::TFL::ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM(
+  mlir::TFL::ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM convert(
       fused_lstm_func_, false);
 
   auto result = convert.Initialize();
