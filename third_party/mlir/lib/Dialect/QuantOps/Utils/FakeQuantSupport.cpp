@@ -136,7 +136,6 @@ UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
                                           loc);
 }
 
-// TODO(fengliuai): test this method once the quantizeAttr method is fixed.
 UniformQuantizedPerAxisType
 fakeQuantAttrsToType(Location loc, unsigned numBits, int32_t quantizedDimension,
                      ArrayRef<double> rmins, ArrayRef<double> rmaxs,
@@ -180,8 +179,8 @@ fakeQuantAttrsToType(Location loc, unsigned numBits, int32_t quantizedDimension,
 
   unsigned flags = isSigned ? QuantizationFlags::Signed : 0;
   return UniformQuantizedPerAxisType::getChecked(
-      flags, storageType, expressedType, scales, zeroPoints, qmin, qmax,
-      quantizedDimension, loc);
+      flags, storageType, expressedType, scales, zeroPoints, quantizedDimension,
+      qmin, qmax, loc);
 }
 
 } // namespace quant
