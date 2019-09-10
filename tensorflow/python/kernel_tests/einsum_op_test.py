@@ -130,7 +130,7 @@ class EinsumOpTest(test.TestCase):
     self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
     self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
     self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
-    # Following 2 from # https://stackoverflow.com/a/19203475/1611416
+    # Following 2 from https://stackoverflow.com/a/19203475/1611416
     self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
     self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
@@ -236,6 +236,29 @@ class EinsumOpTest(test.TestCase):
     b = self.evaluate(gen_linalg_ops.einsum([np.diag(a)], s))
     self.assertAllClose(diag_a, b, atol=1e-4, rtol=1e-4)
 
+  @test_util.disable_xla('b/131919749')
+  def testEmpty(self):
+    def check(equation, input_shapes, output_shape):
+      # All these cases result in an output filled with zeros, so we don't call
+      # np.einsum. Also np.einsum doesn't support generalized diagonals which
+      # are needed for EinsumOp gradients.
+      r = np.random.RandomState(0)
+      inputs = [np.array(r.randn(*shape)) for shape in input_shapes]
+      output = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
+      self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
+
+    # Contractions along zero-sized dimensons.
+    check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
+    # From transformer xl.
+    check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
+    # Generalized traces with zero-sized dimensions.
+    check('aab,bc->ac', [(0, 0, 10), (10, 10)], (0, 10))
+    check('aaab,bc->c', [(0, 0, 0, 3), (3, 4)], (4,))
+    # Generalized diagonals along with contraction.
+    check('ab,bc->aaca', [(0, 10), (10, 5)], (0, 0, 5, 0))
+    check('ab,bc->aaa', [(0, 10), (10, 5)], (0, 0, 0))
+    check('ab,bc->cc', [(0, 10), (10, 5)], (5, 5))
+    check('ab,ab->aaa', [(0, 5), (0, 5)], (0, 0, 0))
 
 class EinsumBenchmark(test.Benchmark):
   cases = [
