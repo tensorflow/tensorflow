@@ -286,6 +286,7 @@ cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
         "transforms/generated_quantize.inc",
+        "transforms/load_quantization_recipe.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",

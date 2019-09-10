@@ -355,7 +355,7 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
 
 // TODO(haoliang): Implement legalization pass after pattern rewrite generator
 // supports variadic inputs.
-def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
+def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -363,11 +363,11 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I32]>>:$inputs
+    Variadic<TensorOf<[F32, I32, QI16, QUI16]>>:$inputs
   );
 
   let results = (outs
-    TensorOf<[F32, I32]>:$sum
+    TensorOf<[F32, I32, QI16, QUI16]>:$sum
   );
 }
 
@@ -1138,11 +1138,11 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[F32, QUI8, QI8, I8]>:$input,
+    TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$input,
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TensorOf<[F32, QUI8, QI8, I8]>:$output);
+  let results = (outs TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$output);
 
   let hasOptions = 1;
 
@@ -1251,9 +1251,9 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8]>:$x);
+  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$x);
 
-  let results = (outs TensorOf<[AnyFloat, QI8, QUI8]>:$y);
+  let results = (outs TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$y);
 }
 
 def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2092,9 +2092,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -2779,6 +2779,10 @@ Ba et al. “Layer Normalization”
   );
 
   let results = (outs AnyTensor:$output);
+
+  // TODO(fengliuai): customize printer and parser to not display
+  // empty region.
+  let regions = (region AnyRegion:$internal);
 
   let hasOptions = 1;
 
