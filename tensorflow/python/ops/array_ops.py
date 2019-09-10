@@ -1653,9 +1653,9 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Args:
     value: The `Tensor` to split.
     num_or_size_splits: Either an integer indicating the number of splits along
-      split_dim or a 1-D integer `Tensor` or Python list containing the sizes of
-      each output tensor along split_dim. If a scalar then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split dimension
+      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
+      each output tensor along `axis`. If a scalar, then it must evenly divide
+      `value.shape[axis]`; otherwise the sum of sizes along the split axis
       must match that of the `value`.
     axis: An integer or scalar `int32` `Tensor`. The dimension along which to
       split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
