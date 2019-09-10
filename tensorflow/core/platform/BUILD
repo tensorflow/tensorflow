@@ -10,7 +10,6 @@
 
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_additional_device_tracer_srcs",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_libdevice_srcs",
@@ -474,8 +473,6 @@ filegroup(
             "**/monitoring.cc",
             "**/stream_executor.h",
             "**/env_time.cc",
-            "**/device_tracer.cc",
-            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -573,8 +570,6 @@ filegroup(
             "**/env_time.cc",
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
-            "**/device_tracer.cc",
-            "**/tpu_tracer.cc",
             "**/logger.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
@@ -597,12 +592,6 @@ filegroup(
 filegroup(
     name = "legacy_test_srcs",
     srcs = tf_additional_test_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_device_tracer_srcs",
-    srcs = tf_additional_device_tracer_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

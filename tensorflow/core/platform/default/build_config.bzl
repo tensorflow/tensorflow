@@ -573,22 +573,9 @@ def tf_protos_grappler():
     )
 
 def tf_additional_device_tracer_srcs():
-    return ["default/device_tracer.cc"]
+    return ["device_tracer.cc"]
 
 def tf_additional_cupti_utils_cuda_deps():
-    return []
-
-def tf_additional_device_tracer_cuda_deps():
-    return [
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ]
-
-def tf_additional_device_tracer_test_flags():
     return []
 
 def tf_additional_cupti_test_flags():

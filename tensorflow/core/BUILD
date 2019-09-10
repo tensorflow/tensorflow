@@ -107,8 +107,6 @@ load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_additional_core_deps",
-    "tf_additional_device_tracer_cuda_deps",
-    "tf_additional_device_tracer_test_flags",
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
@@ -3398,28 +3396,6 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
-    name = "device_tracer",
-    srcs = [
-        "//tensorflow/core/platform:legacy_device_tracer_srcs",
-    ],
-    copts = tf_copts(),
-    cuda_deps = tf_additional_device_tracer_cuda_deps(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        ":core_cpu_internal",
-        ":lib",
-        ":protos_all_cc",
-        "//tensorflow/core/profiler/internal:parse_annotation",
-        "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/flags:flag",
-    ],
-    alwayslink = True,
-)
-
 tf_proto_library_cc(
     name = "replay_log_proto",
     srcs = ["protobuf/replay_log.proto"],
@@ -5232,36 +5208,6 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "device_tracer_test",
-    size = "small",
-    srcs = ["//tensorflow/core/platform:device_tracer_test.cc"],
-    args =
-        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":device_tracer",
-        ":direct_session",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/profiler/internal:profiler_interface",
     ],
 )
 
