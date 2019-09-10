@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 #ifdef TENSORFLOW_EAGER_USE_XLA
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -102,27 +104,30 @@ tensorflow::Status GetAllRemoteDevices(
     tensorflow::WorkerCacheInterface* worker_cache,
     std::unique_ptr<tensorflow::DynamicDeviceMgr>* device_mgr) {
   std::vector<std::unique_ptr<tensorflow::Device>> remote_devices;
-  tensorflow::Status status;
-  // TODO(nareshmodi) do this in parallel instead of serially.
-  for (const string& remote_worker : remote_workers) {
-    tensorflow::Notification n;
+  tensorflow::mutex remote_devices_mu;
+  int num_remote_workers = remote_workers.size();
+  tensorflow::BlockingCounter counter(num_remote_workers);
+  std::vector<tensorflow::Status> statuses(num_remote_workers);
+  for (int i = 0; i < num_remote_workers; i++) {
     tensorflow::NewRemoteDevices(
-        tensorflow::Env::Default(), worker_cache, remote_worker,
-        [&status, &n, &remote_devices](
+        tensorflow::Env::Default(), worker_cache, remote_workers[i],
+        [i, &statuses, &counter, &remote_devices, &remote_devices_mu](
             const tensorflow::Status& s,
             std::vector<tensorflow::Device*>* devices) {
-          status = s;
+          statuses[i] = s;
           if (s.ok()) {
+            tensorflow::mutex_lock l(remote_devices_mu);
             for (tensorflow::Device* d : *devices) {
               remote_devices.emplace_back(d);
             }
           }
-          n.Notify();
+          counter.DecrementCount();
         });
-    n.WaitForNotification();
   }
-  TF_RETURN_IF_ERROR(status);
-
+  counter.Wait();
+  for (int i = 0; i < num_remote_workers; i++) {
+    TF_RETURN_IF_ERROR(statuses[i]);
+  }
   auto remote_device_mgr = absl::make_unique<tensorflow::DynamicDeviceMgr>();
   TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
   *device_mgr = std::move(remote_device_mgr);
@@ -134,11 +139,15 @@ tensorflow::Status CreateRemoteContexts(
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
     const tensorflow::eager::CreateContextRequest& base_request) {
-  for (int i = 0; i < remote_workers.size(); i++) {
+  int num_remote_workers = remote_workers.size();
+  tensorflow::BlockingCounter counter(num_remote_workers);
+  std::vector<tensorflow::Status> statuses(num_remote_workers);
+  for (int i = 0; i < num_remote_workers; i++) {
     const string& remote_worker = remote_workers[i];
 
     tensorflow::eager::CreateContextRequest request(base_request);
-    tensorflow::eager::CreateContextResponse response;
+    tensorflow::eager::CreateContextResponse* response =
+        new tensorflow::eager::CreateContextResponse();
     request.set_context_id(context_id);
     tensorflow::DeviceNameUtils::ParsedName parsed_name;
     if (!tensorflow::DeviceNameUtils::ParseFullName(remote_worker,
@@ -158,16 +167,17 @@ tensorflow::Status CreateRemoteContexts(
       return tensorflow::errors::Internal(
           "Cannot find a client for the given target:", remote_worker);
     }
-    tensorflow::Notification n;
-    tensorflow::Status status;
-    // TODO(nareshmodi) do this in parallel instead of serially.
     eager_client->CreateContextAsync(
-        &request, &response, [&status, &n](const tensorflow::Status& s) {
-          status = s;
-          n.Notify();
+        &request, response,
+        [i, &statuses, &counter, response](const tensorflow::Status& s) {
+          statuses[i] = s;
+          delete response;
+          counter.DecrementCount();
         });
-    n.WaitForNotification();
-    TF_RETURN_IF_ERROR(status);
+  }
+  counter.Wait();
+  for (int i = 0; i < num_remote_workers; i++) {
+    TF_RETURN_IF_ERROR(statuses[i]);
   }
   return tensorflow::Status::OK();
 }
