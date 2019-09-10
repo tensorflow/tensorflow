@@ -31,7 +31,7 @@ namespace llvm {
 
 // Specialize GraphTraits to treat Block as a graph of Operations as nodes and
 // uses as edges.
-template <> struct llvm::GraphTraits<mlir::Block *> {
+template <> struct GraphTraits<mlir::Block *> {
   using GraphType = mlir::Block *;
   using NodeRef = mlir::Operation *;
 
