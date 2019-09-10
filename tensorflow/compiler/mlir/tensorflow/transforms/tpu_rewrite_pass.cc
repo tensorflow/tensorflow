@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -265,6 +267,17 @@ void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
   getModule().walk([&](tf_device::LaunchFuncOp op) {
     Rewrite(op, &builder);
+  });
+
+  // Eliminate TPUReplicatedInput and TPUReplicatedOutput now that the rewrite
+  // is complete.
+  getModule().walk([&](Operation* op) {
+    auto op_name = op->getName().getStringRef();
+    if (op_name != "tf.TPUReplicatedInput" &&
+        op_name != "tf.TPUReplicatedOutput")
+      return;
+    op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+    op->erase();
   });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
