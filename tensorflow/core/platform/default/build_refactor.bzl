@@ -57,6 +57,23 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "human_readable_json": {
+        "name": "human_readable_json_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:human_readable_json.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/human_readable_json.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/core:status",
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform:protobuf",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "mutex": {
         "name": "mutex_impl",
         "hdrs": [

@@ -54,6 +54,7 @@ tf_instantiate_platform_libraries(names = [
     "dynamic_annotations",
     "env_time",
     "fingerprint",
+    "human_readable_json",
     "mutex",
     "notification",
     "strong_hash",
@@ -207,6 +208,14 @@ cc_library(
     name = "host_info",
     hdrs = ["host_info.h"],
     deps = [":types"],
+)
+
+cc_library(
+    name = "human_readable_json",
+    textual_hdrs = ["human_readable_json.h"],
+    deps = [
+        ":human_readable_json_impl",
+    ],
 )
 
 cc_library(
