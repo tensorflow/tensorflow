@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/types/variant.h"
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
@@ -26,11 +28,24 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// Get the number of available GPUs whose number of multiprocessors is no less
-// than 8 and whose CUDA compute capability is no less than
-// min_cuda_compute_capability.
+// GpuVersion is used to abstract Gpu hardware version. On Cuda platform,
+// it comprises a pair of integers denoting major and minor version.
+// On ROCm platform, it comprises one integer for AMD GCN ISA version.
+using GpuVersion = absl::variant<std::pair<int, int>, int>;
+
+// Get the number of available GPUs.
+// On CUDA platform, look for GPUs whose number of multiprocessors is no less
+// than 8 and whose CUDA compute capability is no less than min_gpu_version,
+// represented as a pair of integers.
+// On ROCm platform, look for GPUs whose ISA version number is no less than
+// min_gpu_version, represented as a single integer.
 int GetNumAvailableGPUs(
-    const std::pair<int, int>& min_cuda_compute_capability = {0, 0});
+#if GOOGLE_CUDA
+    const GpuVersion& min_gpu_version = std::pair<int, int>(0, 0)
+#elif TENSORFLOW_USE_ROCM
+    const GpuVersion& min_gpu_version = 0
+#endif
+);
 
 // Maximum amount of gpu memory available per gpu. gpu_id must be in the range
 // [0, num_available_gpu)
