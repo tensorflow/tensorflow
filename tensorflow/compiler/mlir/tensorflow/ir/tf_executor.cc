@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -80,12 +81,33 @@ ShapedType DropRefType(ShapedType type) {
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+struct TensorFlowExecutorOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the executor dialect we materialize inside an island.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<tf_executor::IslandOp>(region->getParentOp());
+  }
+};
+
+}  // namespace
+
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf_executor", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
+
+  addInterfaces<TensorFlowExecutorOpFolderDialectInterface>();
+
   addTypes<ControlType, TokenType>();
 }
 
