@@ -516,6 +516,41 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         [[0, 0]],
         self.evaluate(loaded(array_ops.constant([[1, 5.]]), training=False)))
 
+  def testReviveFunctionalModel(self):
+
+    class CustomAdd(keras.layers.Add):
+
+      def build(self, input_shape):
+        self.w = self.add_weight('w', shape=[])
+        super(CustomAdd, self).build(input_shape)
+
+      def call(self, inputs):
+        outputs = super(CustomAdd, self).call(inputs)
+        return outputs * self.w
+
+    input1 = keras.layers.Input(shape=(None, 3), name='input_1')
+    input2 = keras.layers.Input(shape=(None, 3), name='input_2')
+
+    d = keras.layers.Dense(4, name='dense_with_two_inbound_nodes')
+    output1 = d(input1)
+    output2 = d(input2)
+
+    # Use a custom layer in this model to ensure that layers aren't being
+    # recreated directly from the config.
+    outputs = CustomAdd(name='custom')([output1, output2])
+    model = keras.models.Model([input1, input2], outputs, name='save_model')
+
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertEqual('save_model', loaded.name)
+    self.assertLen(
+        loaded.get_layer('dense_with_two_inbound_nodes')._inbound_nodes, 2)
+    self.assertEqual('CustomAdd', type(loaded.get_layer('custom')).__name__)
+    self.assertLen(loaded.get_layer('custom').weights, 1)
+
 
 class TestLayerCallTracing(test.TestCase):
 

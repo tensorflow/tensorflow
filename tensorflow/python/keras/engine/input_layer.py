@@ -25,6 +25,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import node as node_module
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -157,6 +158,10 @@ class InputLayer(base_layer.Layer):
         'name': self.name
     }
     return config
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.InputLayerSavedModelSaver(self)
 
 
 @keras_export('keras.layers.Input', 'keras.Input')
