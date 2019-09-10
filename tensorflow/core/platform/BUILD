@@ -56,6 +56,7 @@ tf_instantiate_platform_libraries(names = [
     "human_readable_json",
     "mutex",
     "notification",
+    "platform_port",
     "strong_hash",
 ])
 
@@ -280,6 +281,28 @@ cc_library(
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
+)
+
+cc_library(
+    name = "platform_port",
+    srcs = [
+        "cpu_info.cc",
+    ],
+    copts = tf_copts(),
+    textual_hdrs = [
+        "cpu_info.h",
+        "demangle.h",
+        "host_info.h",
+        "init_main.h",
+        "mem.h",
+        "numa.h",
+        "snappy.h",
+    ],
+    deps = [
+        ":logging",
+        ":platform",
+        ":types",
+    ] + tf_platform_helper_deps("platform_port_impl"),
 )
 
 cc_library(
