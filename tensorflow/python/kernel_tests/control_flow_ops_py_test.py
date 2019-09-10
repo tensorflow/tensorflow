@@ -502,6 +502,16 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(
           1.0, self.evaluate(control_flow_ops.cond(rv, case, lambda: t)))
 
+  @test_util.run_deprecated_v1
+  def testCondResourceGradShape(self):
+    rv1 = resource_variable_ops.ResourceVariable([1.0, 2.0])
+    rv2 = resource_variable_ops.ResourceVariable([3.0, 4.0])
+    pred = constant_op.constant(True)
+    result = control_flow_ops.cond(pred, lambda: rv1, lambda: rv2)
+    grads = gradients_impl.gradients(result, [rv1, rv2])
+    self.assertAllEqual(grads[0].shape.as_list(), [2])
+    self.assertAllEqual(grads[1].shape.as_list(), [2])
+
   @test_util.run_v1_only("b/120545219")
   def testCondWithTensorArrayGrad(self):
     with self.cached_session() as sess:

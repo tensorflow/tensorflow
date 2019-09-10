@@ -25,6 +25,7 @@ from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -226,19 +227,8 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def IsTrainable(tensor_or_dtype):
-  if isinstance(tensor_or_dtype, ops.Tensor):
-    dtype = tensor_or_dtype.dtype
-  else:
-    dtype = tensor_or_dtype
-  dtype = dtypes.as_dtype(dtype)
-  return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                              dtypes.complex64, dtypes.complex128,
-                              dtypes.resource, dtypes.variant)
-
-
 def _IsBackpropagatable(tensor):
-  if IsTrainable(tensor):
+  if backprop_util.IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype == dtypes.bfloat16
@@ -592,7 +582,7 @@ def _GradientsHelper(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if IsTrainable(y):
+        if backprop_util.IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -658,7 +648,8 @@ def _GradientsHelper(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
-                (not grad_fn and is_func_call) or IsTrainable(op.outputs[i])):
+                (not grad_fn and is_func_call)
+                or backprop_util.IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -765,7 +756,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
             # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if IsTrainable(y):
+              if backprop_util.IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:
@@ -902,19 +893,12 @@ class AggregationMethod(object):
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
-  * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
-    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the
-    overall sum in a single buffer that is shared across threads.
-    This method of summing gradients can result in a lower memory footprint
-    and lower latency at the expense of higher CPU/GPU utilization.
-    For gradients of types that "AccumulateN" does not support, this
-    summation method falls back on the behavior of `EXPERIMENTAL_TREE`
   """
   ADD_N = 0
   DEFAULT = ADD_N
   # The following are experimental and may not be supported in future releases.
   EXPERIMENTAL_TREE = 1
-  EXPERIMENTAL_ACCUMULATE_N = 2
+  EXPERIMENTAL_ACCUMULATE_N = 2  # An alias for EXPERIMENTAL_ADD_N = 1
 
 
 def _AggregatedGrads(grads,
@@ -974,19 +958,7 @@ def _AggregatedGrads(grads,
         out_grads[i] = out_grad[0]
       elif all(isinstance(g, ops.Tensor) for g in out_grad if g is not None):
         tensor_shape = _AccumulatorShape(out_grad)
-        if (aggregation_method == AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
-            and len(out_grad) > 2 and tensor_shape.is_fully_defined()):
-          # The benefit of using AccumulateN is that its inputs can be combined
-          # in any order and this can allow the expression to be evaluated with
-          # a smaller memory footprint.  When used with gpu_allocator_retry,
-          # it is possible to compute a sum of terms which are much larger than
-          # total GPU memory.
-          # AccumulateN can currently only be used if we know the shape for
-          # an accumulator variable.  If this is not known, or if we only have
-          # 2 grads then we fall through to the "tree" case below.
-          used = "accumulate_n"
-          out_grads[i] = math_ops.accumulate_n(out_grad)
-        elif aggregation_method in [
+        if aggregation_method in [
             AggregationMethod.EXPERIMENTAL_TREE,
             AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
         ]:

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -53,21 +54,20 @@ bool IsReady(const std::unordered_set<ValueId>& ready_tensors,
 std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
     const CLNode& node) {
   std::vector<std::pair<ValueId, TensorDescriptor>> result;
-  for (int i = 0; i < node.operations.size(); ++i) {
-    const OperationDef op_def = node.operations[i]->GetDefinition();
-    const auto& first_range = node.ranges[0];
-    for (int k = first_range.x; k < first_range.y; ++k) {
-      result.push_back({node.inputs[k], op_def.src_tensors[k - first_range.x]});
+  const OperationDef main_def = node.operations[0]->GetDefinition();
+  const auto& first_range = node.ranges[0];
+  for (int k = first_range.x; k < first_range.y; ++k) {
+    result.push_back({node.inputs[k], main_def.src_tensors[k - first_range.x]});
+  }
+  for (int j = 1; j < node.ranges.size(); ++j) {
+    const auto& range = node.ranges[j];
+    const OperationDef op_def = node.operations[j]->GetDefinition();
+    for (int k = range.x; k < range.y; ++k) {
+      result.push_back({node.inputs[k], op_def.src_tensors[k - range.x + 1]});
     }
-    for (int j = 1; j < node.ranges.size(); ++j) {
-      const auto& range = node.ranges[j];
-      for (int k = range.x; k < range.y; ++k) {
-        result.push_back({node.inputs[k], op_def.src_tensors[k - range.x + 1]});
-      }
-    }
-    for (int j = 0; j < node.outputs.size(); ++j) {
-      result.push_back({node.outputs[j], op_def.dst_tensors[j]});
-    }
+  }
+  for (int j = 0; j < node.outputs.size(); ++j) {
+    result.push_back({node.outputs[j], main_def.dst_tensors[j]});
   }
 
   return result;
@@ -250,6 +250,12 @@ void InferenceContext::Merge() {
         dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
     if (!elementwise || linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
+      continue;
+    }
+    auto* apply_mask =
+        dynamic_cast<ApplyMask*>(linkable_node.operations[0].get());
+    // ApplyMask can be fused by first tensor only
+    if (apply_mask && linkable_node.inputs[0] != node.outputs[0]) {
       continue;
     }
     MergeCLNodes(&linkable_node, &node);

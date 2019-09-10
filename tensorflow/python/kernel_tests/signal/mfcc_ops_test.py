@@ -23,7 +23,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.signal import mfcc_ops
 from tensorflow.python.platform import test
 
@@ -48,20 +47,18 @@ class MFCCTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_basic(self):
     """A basic test that the op runs on random input."""
-    with spectral_ops_test_util.fft_kernel_label_map():
-      with self.session(use_gpu=True):
-        signal = random_ops.random_normal((2, 3, 5))
-        mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
+    with self.session(use_gpu=True):
+      signal = random_ops.random_normal((2, 3, 5))
+      mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
 
   @test_util.run_deprecated_v1
   def test_unknown_shape(self):
     """A test that the op runs when shape and rank are unknown."""
-    with spectral_ops_test_util.fft_kernel_label_map():
-      with self.session(use_gpu=True):
-        signal = array_ops.placeholder_with_default(
-            random_ops.random_normal((2, 3, 5)), tensor_shape.TensorShape(None))
-        self.assertIsNone(signal.shape.ndims)
-        mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
+    with self.session(use_gpu=True):
+      signal = array_ops.placeholder_with_default(
+          random_ops.random_normal((2, 3, 5)), tensor_shape.TensorShape(None))
+      self.assertIsNone(signal.shape.ndims)
+      mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
 
 if __name__ == "__main__":
   test.main()

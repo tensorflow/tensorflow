@@ -119,11 +119,6 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       s_shape = array_ops.shape(self.spectrum)
       self._block_shape_tensor = s_shape[-self.block_depth:]
 
-      # Add common variants of spectrum to the graph.
-      self._spectrum_complex = _to_complex(self.spectrum)
-      self._abs_spectrum = math_ops.abs(self.spectrum)
-      self._conj_spectrum = math_ops.conj(self._spectrum_complex)
-
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
           graph_parents=[self.spectrum],
@@ -135,7 +130,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
-    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
+    spectrum = linear_operator_util.convert_nonref_to_tensor(spectrum,
+                                                             name="spectrum")
 
     if spectrum.shape.ndims is not None:
       if spectrum.shape.ndims < self.block_depth:
@@ -294,7 +290,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       `Tensor` with `dtype` `self.dtype`.
     """
     with self._name_scope(name):
-      h = self._ifft(self._spectrum_complex)
+      h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
   def _shape(self):
@@ -398,7 +394,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     #           = F^{H} diag(spectrum) F x,
     # so that
     # matmul(x, adjoint=True) = F^{H} diag(conj(spectrum)) F x.
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
 
     x = math_ops.cast(x, spectrum.dtype)
 
@@ -418,12 +416,15 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _log_abs_determinant(self):
     axis = [-(i + 1) for i in range(self.block_depth)]
-    lad = math_ops.reduce_sum(math_ops.log(self._abs_spectrum), axis=axis)
+    lad = math_ops.reduce_sum(
+        math_ops.log(math_ops.abs(self.spectrum)), axis=axis)
     return math_ops.cast(lad, self.dtype)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
 
     rhs, spectrum = self._broadcast_batch_dims(rhs, spectrum)
 

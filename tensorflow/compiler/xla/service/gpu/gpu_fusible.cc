@@ -162,8 +162,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
-  // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
-  return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
+  return ShapeUtil::EqualIgnoringElementType(get_loop_shape(instr_1),
                                              get_loop_shape(instr_2));
 }
 
@@ -227,6 +226,9 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (producer.IsMultiOutputFusion()) {
     return false;
   }
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
@@ -263,6 +265,9 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   }
 
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    return false;
+  }
+  if (CreatesNestedLoop(producer, consumer)) {
     return false;
   }
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {

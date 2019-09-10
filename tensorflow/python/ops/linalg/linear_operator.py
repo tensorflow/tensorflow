@@ -37,6 +37,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -147,6 +148,8 @@ class LinearOperator(module.Module):
     way.
   """
 
+  @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
+                               " no longer be used.", "graph_parents")
   def __init__(self,
                dtype,
                graph_parents=None,
@@ -163,8 +166,8 @@ class LinearOperator(module.Module):
     Args:
       dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
-      graph_parents: Python list of graph prerequisites of this `LinearOperator`
-        Typically tensors that are passed during initialization.
+      graph_parents: (Deprecated) Python list of graph prerequisites of this
+        `LinearOperator` Typically tensors that are passed during initialization
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
@@ -230,6 +233,7 @@ class LinearOperator(module.Module):
     return self._name
 
   @property
+  @deprecation.deprecated(None, "Do not call `graph_parents`.")
   def graph_parents(self):
     """List of graph dependencies of this `LinearOperator`."""
     return self._graph_parents

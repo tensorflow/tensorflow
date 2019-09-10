@@ -93,20 +93,9 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     if (type == DT_RESOURCE) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(i + 1, &resource));
-
-      arg.initialized = resource->initialized();
-      arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = resource->kind();
-
-      arg.type = resource->type();
-      arg.shape = resource->shape();
+      XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       OP_REQUIRES(ctx, arg.initialized,
                   errors::Unimplemented("Uninitialized arguments: ", arg.name));
-      arg.max_array_size = resource->max_array_size();
-      for (const auto& gradient : resource->tensor_array_gradients()) {
-        arg.tensor_array_gradients.insert(gradient.first);
-      }
-      arg.name = resource->name();
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString()

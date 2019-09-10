@@ -26,6 +26,7 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -580,9 +581,29 @@ class Flatten(Layer):
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(
-        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                 array_ops.shape(inputs)[0], -1))
+    input_shape = inputs.shape
+    if input_shape[1:].is_fully_defined():
+      flattened_dim = tensor_shape.dimension_value(
+          np.prod(input_shape[1:], dtype=int))
+      # Temporary fix for integer overflow issue.
+      if flattened_dim > np.iinfo(np.int32).max:
+        shape_dtype = dtypes.int64
+      else:
+        shape_dtype = dtypes.int32
+      outputs = array_ops.reshape(
+          inputs, constant_op.constant((-1, flattened_dim), dtype=shape_dtype))
+    else:
+      batch_size = tensor_shape.dimension_value(inputs.shape[0])
+      if batch_size:
+        # Temporary fix for integer overflow issue.
+        if batch_size > np.iinfo(np.int32).max:
+          shape_dtype = dtypes.int64
+        else:
+          shape_dtype = dtypes.int32
+        outputs = array_ops.reshape(
+            inputs, constant_op.constant((batch_size, -1), dtype=shape_dtype))
+      else:
+        outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs

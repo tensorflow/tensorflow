@@ -16,11 +16,6 @@
 #
 # Creates the project file distributions for the TensorFlow Lite Micro test and
 # example targets aimed at embedded platforms.
-#
-# Usage: ci_build_micro_projects.sh <TARGET OS> <TAGS>
-#
-# For example:
-# ci_build_micro_projects.sh mbed "CMSIS disco_f746ng"
 
 set -e
 

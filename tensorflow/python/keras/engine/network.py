@@ -27,10 +27,12 @@ import os
 import threading
 
 import numpy as np
+import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -42,6 +44,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -422,9 +425,11 @@ class Network(base_layer.Layer):
       try:
         self._is_graph_network
       except AttributeError:
-        raise RuntimeError('It looks like you are subclassing `Model` and you '
-                           'forgot to call `super(YourClass, self).__init__()`.'
-                           ' Always start with this line.')
+        # six.raise_from supresses the original AttributeError from being raised
+        six.raise_from(
+            RuntimeError('It looks like you are subclassing `Model` and you '
+                         'forgot to call `super(YourClass, self).__init__()`.'
+                         ' Always start with this line.'), None)
 
     super(Network, self).__setattr__(name, value)
 
@@ -470,6 +475,11 @@ class Network(base_layer.Layer):
     Returns:
       A list of variables.
     """
+    return self._dedup_weights(self._undeduplicated_weights)
+
+  @property
+  def _undeduplicated_weights(self):
+    """Returns the undeduplicated list of all layer variables/weights."""
     self._assert_weights_created()
     weights = []
     for layer in self._layers:
@@ -533,18 +543,21 @@ class Network(base_layer.Layer):
   @property
   def trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._trainable_weights))
 
   @property
   def non_trainable_weights(self):
     self._assert_weights_created()
-    return trackable_layer_utils.gather_non_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._non_trainable_weights + self._trainable_weights)
+    return self._dedup_weights(
+        trackable_layer_utils.gather_non_trainable_weights(
+            trainable=self.trainable,
+            sub_layers=self._layers,
+            extra_variables=self._non_trainable_weights +
+            self._trainable_weights))
 
   @property
   def input_spec(self):
@@ -692,7 +705,9 @@ class Network(base_layer.Layer):
       raise NotImplementedError('When subclassing the `Model` class, you should'
                                 ' implement a `call` method.')
 
-    return self._run_internal_graph(inputs, training=training, mask=mask)
+    return self._run_internal_graph(
+        inputs, training=training, mask=mask,
+        convert_kwargs_to_constants=base_layer_utils.call_context().saving)
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
@@ -766,7 +781,8 @@ class Network(base_layer.Layer):
     # Return shapes as TensorShapes.
     return output_shapes
 
-  def _run_internal_graph(self, inputs, training=None, mask=None):
+  def _run_internal_graph(self, inputs, training=None, mask=None,
+                          convert_kwargs_to_constants=False):
     """Computes output tensors for new inputs.
 
     # Note:
@@ -776,6 +792,9 @@ class Network(base_layer.Layer):
         inputs: Tensor or nested structure of Tensors.
         training: Boolean learning phase.
         mask: (Optional) Tensor or nested structure of Tensors.
+        convert_kwargs_to_constants: Whether to convert Tensor kwargs to
+          constants. This is used when tracing the model call function during
+          saving to ensure that external tensors aren't captured.
 
     Returns:
         Two lists: output_tensors, output_masks
@@ -823,6 +842,9 @@ class Network(base_layer.Layer):
 
           # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
+          if convert_kwargs_to_constants:
+            kwargs = _map_tensors_to_constants(kwargs)
+
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
@@ -1119,7 +1141,8 @@ class Network(base_layer.Layer):
            overwrite=True,
            include_optimizer=True,
            save_format=None,
-           signatures=None):
+           signatures=None,
+           options=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1148,6 +1171,8 @@ class Network(base_layer.Layer):
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
+      options: Optional `tf.saved_model.SaveOptions` object that specifies
+        options for saving to SavedModel.
 
     Example:
 
@@ -1163,7 +1188,7 @@ class Network(base_layer.Layer):
     ```
     """
     saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures)
+                      signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1613,10 +1638,6 @@ class Network(base_layer.Layer):
                        'inputs or `build()` is called with an `input_shape`.' %
                        self.name)
 
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_network'
-
   def _graph_network_add_loss(self, symbolic_loss):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
@@ -1634,6 +1655,10 @@ class Network(base_layer.Layer):
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
     self._insert_layers(new_layers, new_nodes)
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return network_serialization.NetworkSavedModelSaver(self)
 
 
 def _is_hdf5_filepath(filepath):
@@ -1869,6 +1894,15 @@ def _serialize_tensors(kwargs):
     return t
 
   return nest.map_structure(_serialize_keras_tensor, kwargs)
+
+def _map_tensors_to_constants(kwargs):
+
+  def _map_to_constants(t):
+    if not hasattr(t, '_keras_history') and isinstance(t, ops.Tensor):
+      return constant_op.constant(backend.get_value(t))
+    return t
+
+  return nest.map_structure(_map_to_constants, kwargs)
 
 
 def _deserialize_keras_tensors(kwargs, layer_map):

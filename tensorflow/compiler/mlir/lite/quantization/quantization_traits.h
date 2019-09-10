@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace mlir {
 namespace OpTrait {
-namespace TFL {
+namespace quant {
 
 using QuantizedType = mlir::quant::QuantizedType;
 using UniformQuantizedType = mlir::quant::UniformQuantizedType;
@@ -119,7 +119,7 @@ class NoQuantizableResult
   static bool IsQuantizable() { return false; }
 };
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace OpTrait
 }  // namespace mlir
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
@@ -299,6 +300,38 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
 
   if (!isOfRankedFloatTensorType(op.max(), 0))
     return op.emitOpError("requires max to be a 0d float tensor");
+
+  int64_t num_bits = op.num_bits().getSExtValue();
+  if (num_bits < 2 || num_bits > 16) {
+    return op.emitOpError(
+        "requires num_bits to be between 2 and 16, inclusive");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FakeQuantWithMinMaxVarsPerChannelOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
+  if (!isOfRankedFloatTensorType(op.min(), 1))
+    return op.emitOpError("requires min to be a 1d float tensor");
+
+  if (!isOfRankedFloatTensorType(op.max(), 1))
+    return op.emitOpError("requires max to be a 1d float tensor");
+
+  Value *inputs = op.inputs();
+  if (!HasRankAtLeast(inputs, 1) ||
+      inputs->getType().isa<UnrankedTensorType>()) {
+    return op.emitError("requires inputs to be at least 1d float tensor");
+  }
+
+  auto inputsType = inputs->getType().cast<ShapedType>();
+  int depth = inputsType.getDimSize(inputsType.getRank() - 1);
+  if (op.min()->getType().cast<ShapedType>().getDimSize(0) != depth ||
+      op.max()->getType().cast<ShapedType>().getDimSize(0) != depth) {
+    return op.emitOpError(
+        "requires min and max to have same size as last dimension of inputs");
+  }
 
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
@@ -731,6 +764,16 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   return b.getDenseElementsAttr(resultType, dimensions);
 }
 
+void ShapeOp::build(Builder *builder, OperationState *result, Value *input,
+                    BoolAttr use32Bit) {
+  auto rankedTensorType = input->getType().dyn_cast<RankedTensorType>();
+  int64_t rank = rankedTensorType ? rankedTensorType.getRank() : -1;
+  auto out_type = use32Bit.getValue() ? builder->getIntegerType(32)
+                                      : builder->getIntegerType(64);
+  return ShapeOp::build(builder, result,
+                        builder->getTensorType({rank}, out_type), input);
+}
+
 //===----------------------------------------------------------------------===//
 // ShapeNOp
 //===----------------------------------------------------------------------===//
@@ -1075,11 +1118,7 @@ void TensorFlowDialect::PrintVariantType(VariantType ty,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
-    return builder.create<ConstOp>(loc, type, value);
-  return nullptr;
+  return builder.create<ConstOp>(loc, type, value);
 }
 
 }  // namespace TF

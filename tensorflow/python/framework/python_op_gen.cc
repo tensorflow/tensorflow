@@ -117,7 +117,8 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string Code() override;
 
  protected:
-  void HandleGraphMode(const string& function_setup);
+  void HandleGraphMode(const string& function_setup,
+                       const std::vector<string>& output_sizes);
 
   string GetEagerNotAllowedError();
   void ExpectListArg(const string& indentation, const string& arg_name,
@@ -315,12 +316,20 @@ string GenEagerPythonOp::Code() {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
     strings::StrAppend(&parameters, param.GetRenameTo());
   }
+  string parameters_with_defaults = parameters;
   for (const auto& param_and_default : params_with_default_) {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo(), "=",
+    if (!parameters_with_defaults.empty())
+      strings::StrAppend(&parameters_with_defaults, ", ");
+    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo());
+    strings::StrAppend(&parameters_with_defaults,
+                       param_and_default.first.GetRenameTo(), "=",
                        param_and_default.second);
   }
-  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name=None");
+
+  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name");
+  strings::StrAppend(&parameters_with_defaults,
+                     parameters_with_defaults.empty() ? "" : ", ", "name=None");
 
   // Add attr_expressions_ for attrs that are params.
   for (int i = 0; i < attrs_.size(); ++i) {
@@ -346,7 +355,7 @@ string GenEagerPythonOp::Code() {
 
   string eager_not_allowed_error = GetEagerNotAllowedError();
 
-  if (!AddEagerFastPathAndGraphCode(parameters, output_sizes,
+  if (!AddEagerFastPathAndGraphCode(parameters_with_defaults, output_sizes,
                                     eager_not_allowed_error)) {
     return result_;
   }
@@ -359,7 +368,8 @@ string GenEagerPythonOp::Code() {
   return prelude_ + result_;
 }
 
-void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
+void GenEagerPythonOp::HandleGraphMode(
+    const string& function_setup, const std::vector<string>& output_sizes) {
   strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
   strings::StrAppend(&result_, function_setup);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
@@ -382,9 +392,9 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
                          "  if not _result:\n"
                          "    return _op\n");
     }
-    strings::StrAppend(&result_, "  _inputs_flat = _op.inputs\n");
 
-    // Compute graph-mode attrs.
+    // Compute graph-mode attrs when we need to record a gradient.
+    strings::StrAppend(&result_, "  if _execute.must_record_gradient():\n");
     if (op_def_.attr_size() > 0) {
       string attr_values;
       for (int i = 0; i < op_def_.attr_size(); ++i) {
@@ -393,17 +403,48 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
         if (op_def_.attr(i).type() == "type") {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op._get_attr_type(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "bool") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_bool(\"", attr_name, "\")");
+        } else if (op_def_.attr(i).type() == "int") {
+          strings::StrAppend(&attr_values, "\"", attr_name,
+                             "\", _op._get_attr_int(\"", attr_name, "\")");
         } else {
           strings::StrAppend(&attr_values, "\"", attr_name,
                              "\", _op.get_attr(\"", attr_name, "\")");
         }
       }
       strings::StrAppend(&attr_values, ")");
-      strings::StrAppend(
-          &result_, WordWrap("  _attrs = (", attr_values, kRightMargin), "\n");
+      strings::StrAppend(&result_,
+                         WordWrap("    _attrs = (", attr_values, kRightMargin),
+                         "\n");
+
     } else {
-      strings::StrAppend(&result_, "  _attrs = None\n");
+      strings::StrAppend(&result_, "    _attrs = ()\n");
     }
+
+    strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
+    strings::StrAppend(&result_, "    _execute.record_gradient(\n",
+                       "        \"", op_def_.name(),
+                       "\", _inputs_flat, _attrs, _result, name)\n");
+
+    if (num_outs_ == 1 && !output_sizes[0].empty()) {
+      // Single list result.
+    } else if (num_outs_ == 1) {
+      // Execute returns a single-element list which we need to destructure.
+      strings::StrAppend(&result_, "  ", "_result, = _result\n");
+    } else {
+      // Have multiple outputs, so we will need to reformat the return
+      // value of execute() to be a list with one entry per op output
+      // (that entry will be a list of tensors if that output is of list
+      // type).
+      // For list outputs, convert the right subrange of _result into a list.
+      Unflatten("  ", output_sizes, "_result", &result_);
+      // Convert to a named tuple.
+      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
+                         "Output._make(_result)\n");
+    }
+    strings::StrAppend(&result_, "  return _result\n\n");
   } else {
     strings::StrAppend(&result_, "  return _op\n");
   }
@@ -614,8 +655,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
     bool execute_record_gradient) {
   if (num_outs_ > 0) {
     if (execute_record_gradient) {
-      strings::StrAppend(&result_, indentation, "_execute.record_gradient(\n",
-                         "      \"", op_def_.name(),
+      strings::StrAppend(&result_, indentation,
+                         "if _execute.must_record_gradient():\n");
+      strings::StrAppend(&result_, indentation, "  _execute.record_gradient(\n",
+                         "        \"", op_def_.name(),
                          "\", _inputs_flat, _attrs, _result, name)\n");
     }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
@@ -658,11 +701,10 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  strings::StrAppend(
-      &result_,
-      "  _ctx = _context._context or _context.context()\n"
-      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
-      "\n");
+  strings::StrAppend(&result_,
+                     "  _ctx = _context._context or _context.context()\n"
+                     "  if _ctx._thread_local_data.is_eager:",
+                     "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
@@ -675,9 +717,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     result_ = function_setup;
     return false;
   }
-  HandleGraphMode(function_setup);
-  AddEagerFunctionTeardown("  ", output_sizes,
-                           true /* execute_record_gradient */);
+  HandleGraphMode(function_setup, output_sizes);
 
   AddRawOpExport(parameters);
   strings::StrAppend(&result_, "\n\n");
@@ -689,19 +729,12 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     const string& num_outputs_expr, const string& eager_not_allowed_error) {
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
-      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx=None"));
+      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
 
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
   }
-
-  strings::StrAppend(
-      &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
-  strings::StrAppend(&result_, "  This is for function ", function_name_,
-                     "\n  \"\"\"\n");
-
-  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -786,14 +819,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   // _NotOkStatusException.
   strings::StrAppend(&result_, "    ",
                      "except _core._NotOkStatusException as e:\n");
-  strings::StrAppend(&result_, "      ", "if name is not None:\n");
-  strings::StrAppend(&result_, "        ",
-                     "message = e.message + \" name: \" + name\n");
-  strings::StrAppend(&result_, "      ", "else:\n");
-  strings::StrAppend(&result_, "        ", "message = e.message\n");
-  strings::StrAppend(
-      &result_, "      ",
-      "_six.raise_from(_core._status_to_exception(e.code, message), None)\n");
+  strings::StrAppend(&result_, "      ",
+                     "_ops.raise_from_not_ok_status(e, name)\n");
 }
 
 void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
@@ -808,7 +835,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
         const string flattened =
             FlattenInputs(&arg_list->second, &output_sizes);
         string conversion = strings::StrCat("_execute.args_to_matching_eager(",
-                                            flattened, ", _ctx");
+                                            flattened, ", ctx");
         if (attr.has_default_value()) {
           strings::StrAppend(
               &conversion, ", ",
@@ -868,7 +895,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
           conversion = "_execute.convert_to_mixed_eager_tensors";
         }
         strings::StrAppend(&result_, indentation, var_name, ", ", inputs_var,
-                           " = ", conversion, "(", inputs_var, ", _ctx)\n");
+                           " = ", conversion, "(", inputs_var, ", ctx)\n");
       }
     }
   }
@@ -915,7 +942,7 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
       strings::StrCat(indentation, "_result = _execute.execute(");
   const string return_args = strings::StrCat(
       "b\"", op_def_.name(), "\", ", num_outputs_expr,
-      ", inputs=_inputs_flat, attrs=_attrs, ctx=_ctx, name=name)");
+      ", inputs=_inputs_flat, attrs=_attrs, ctx=ctx, name=name)");
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
@@ -935,32 +962,14 @@ void GenEagerPythonOp::AddDispatch(const string& prefix) {
 }
 
 void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
-  string arguments;
-  for (const auto& param_names : param_names_) {
-    const string renamed = param_names.GetRenameTo();
-    strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", renamed, "=",
-                       renamed);
-  }
-  strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", "name=name");
-
+  // Example:
+  //
+  // Identity = tf_export("raw_ops.Identity")(_ops._to_raw_op(identity))
   const string raw_function_name =
       python_op_gen_internal::AvoidPythonReserved(op_def_.name());
-
-  strings::StrAppend(&result_, "def ", raw_function_name, "(", parameters,
-                     "):\n");
-  strings::StrAppend(&result_, "  return ", function_name_, "(", arguments,
-                     ")\n");
-
-  // Copy the __doc__ from the original op and apply the decorators.
-  strings::StrAppend(&result_, raw_function_name, ".__doc__", " = ",
-                     function_name_, ".__doc__\n");
-  strings::StrAppend(&result_, raw_function_name, " = ",
-                     "_doc_controls.do_not_generate_docs(_kwarg_only(",
-                     raw_function_name, "))\n");
-
-  // Export.
-  strings::StrAppend(&result_, "tf_export(\"raw_ops.", raw_function_name,
-                     "\")(", raw_function_name, ")\n");
+  strings::StrAppend(&result_, raw_function_name, " = tf_export(\"raw_ops.",
+                     raw_function_name, "\")", "(_ops.to_raw_op(",
+                     function_name_, "))\n");
 }
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
@@ -984,16 +993,13 @@ This file is MACHINE GENERATED! Do not edit.
 
   strings::StrAppend(&result, R"("""
 
-import collections as _collections
-import six as _six
+import collections
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
 from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
-from tensorflow.python.framework import errors as _errors
-from tensorflow.python.framework import tensor_shape as _tensor_shape
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 # Needed to trigger the call to _set_call_cpp_shape_fn.
@@ -1004,8 +1010,6 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.tf_export import kwarg_only as _kwarg_only
-from tensorflow.tools.docs import doc_controls as _doc_controls
 
 )");
 
@@ -1076,11 +1080,6 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
   return op_def_lib
 )");
 
-  result.append("# ");
-  auto ops_text = cleaned_ops.DebugString();
-  absl::StripTrailingAsciiWhitespace(&ops_text);
-  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
-  result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
                    absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;

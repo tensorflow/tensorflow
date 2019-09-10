@@ -124,7 +124,7 @@ Returns a tensor with the same shape and contents as input.
     TF_Tensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_IfOp : TF_Op<"If", []> {
@@ -302,4 +302,32 @@ element_dtype: the desired type of elements in the list.
   );
 }
 
+// This operation when auto-generated is marked as NoSideEffect because it isn't
+// stateful in TensorFlow. However it is kept alive through control dependency,
+// and does not have any output. When placed in an island it wouldn't be kept
+// alive in any way and the canonicalizer would just always fold it away.
+def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", []> {
+  let summary = [{
+Metadata indicating how the TPU computation should be replicated.
+  }];
+
+  let description = [{
+This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+  }];
+
+  let arguments = (ins
+    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
+    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
+    StrAttr:$topology,
+    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
+    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
+    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
+  );
+
+  let results = (outs);
+}
 #endif // TF_OPS

@@ -30,12 +30,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
-from tensorflow.python.keras.losses import cosine_similarity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
 from tensorflow.python.keras.losses import logcosh
@@ -65,7 +64,7 @@ from tensorflow.tools.docs import doc_controls
 
 @keras_export('keras.metrics.Metric')
 @six.add_metaclass(abc.ABCMeta)
-class Metric(Layer):
+class Metric(base_layer.Layer):
   """Encapsulates metric logic and state.
 
   Usage:
@@ -2805,13 +2804,20 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   return math_ops.cast(
       nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
+
+def cosine_proximity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions."""
+  y_true = nn.l2_normalize(y_true, axis=axis)
+  y_pred = nn.l2_normalize(y_pred, axis=axis)
+  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+
 # Aliases
 
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
-cosine_proximity = cosine_similarity
+cosine_similarity = cosine_proximity
 
 
 def clone_metric(metric):

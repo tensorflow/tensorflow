@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -99,7 +100,7 @@ string DeviceName(const tensorflow::Device* d) {
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
-    std::unique_ptr<tensorflow::DeviceMgr>* device_mgr) {
+    std::unique_ptr<tensorflow::DynamicDeviceMgr>* device_mgr) {
   std::vector<std::unique_ptr<tensorflow::Device>> remote_devices;
   tensorflow::Status status;
   // TODO(nareshmodi) do this in parallel instead of serially.
@@ -120,11 +121,10 @@ tensorflow::Status GetAllRemoteDevices(
         });
     n.WaitForNotification();
   }
-  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::DeviceMgr(std::move(remote_devices)));
-
   TF_RETURN_IF_ERROR(status);
 
+  auto remote_device_mgr = absl::make_unique<tensorflow::DynamicDeviceMgr>();
+  TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
   *device_mgr = std::move(remote_device_mgr);
   return tensorflow::Status::OK();
 }
@@ -214,7 +214,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       std::remove(remote_workers.begin(), remote_workers.end(), worker_name),
       remote_workers.end());
 
-  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr;
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> remote_device_mgr;
   LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
       remote_workers, grpc_server->master_env()->worker_cache,
       &remote_device_mgr));
@@ -246,7 +246,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   LOG_AND_RETURN_IF_ERROR(
       CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
                            server_def, remote_eager_workers.get(),
-                           ctx->context->Executor()->Async(), base_request));
+                           ctx->context->Executor().Async(), base_request));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
@@ -384,7 +384,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(std::move(devices)));
+      new tensorflow::StaticDeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
@@ -563,7 +563,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->Executor(),
+        handle, handle->Context(), &handle->Context()->Executor(),
         handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
@@ -893,10 +893,9 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
   VLOG(1) << "Calling TFE_Execute() on op " << op;
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
-      *num_retvals);
-  status->status =
-      tensorflow::EagerExecute(&op->operation, &handle_retvals, num_retvals);
+  absl::FixedArray<tensorflow::TensorHandle*> handle_retvals(*num_retvals);
+  status->status = tensorflow::EagerExecute(&op->operation,
+                                            handle_retvals.data(), num_retvals);
   if (!status->status.ok()) {
     return;
   }
@@ -916,7 +915,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
-                                                 ctx->context->Executor(),
+                                                 &ctx->context->Executor(),
                                                  device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);
@@ -967,7 +966,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
+  status->status = ctx->context->Executor().WaitForAllPendingNodes();
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
   status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);
@@ -979,9 +978,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
     SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
   }
   return func_op;
 }
@@ -1029,7 +1028,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
     } break;
     case tensorflow::AttrValue::kFunc: {
       const auto func_op = GetFunc(ctx, default_value.func(), status);
-      if (TF_GetCode(status) != TF_OK) return;
+      if (!status->status.ok()) return;
       // TODO(nareshmodi): TFE_OpSetAttrFunction and TFE_OpSetAttrFunctionList
       // require TFE_Op* and just convert it internally a NameAttrValue, so
       // consider adding an overload to the C API to make this case easier.

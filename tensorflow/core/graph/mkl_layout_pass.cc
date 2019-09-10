@@ -350,6 +350,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // in the MklUtil.h (IsMklElementWiseOp method) to ensure that the
     // MklInputConversion op is added before it.
     csinfo_.add = "Add";
+    csinfo_.add_v2 = "AddV2";
     csinfo_.maximum = "Maximum";
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
@@ -362,6 +363,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.add_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.add_v2),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
@@ -869,6 +874,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
   typedef struct {
     string addn;
     string add;
+    string add_v2;
     string avg_pool;
     string avg_pool_grad;
     string avg_pool3d;

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -49,6 +50,7 @@ class EinsumOpTest(test.TestCase):
     b = self.evaluate(gen_linalg_ops.einsum(input_tensors, s))
     self.assertAllClose(a, b, atol=1e-4, rtol=1e-4)
 
+  @test_util.disable_xla('b/131919749')
   def testUnary(self):
     self._check('->', ())
     self._check('aa->', (3, 3))
@@ -65,7 +67,10 @@ class EinsumOpTest(test.TestCase):
     self._check('aabcc->ac', (3, 3, 5, 4, 4))
     self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
+  @test_util.disable_xla('b/131919749')
   def testUnaryEllipsis(self):
+    # Unary cases with ellipsis.
+    # Edge cases.
     self._check('...->...', ())
     self._check('...->', ())
     self._check('->...', ())
@@ -77,6 +82,7 @@ class EinsumOpTest(test.TestCase):
     self._check('a...a->a...', (2, 1, 2))
     self._check('a...a->a...', (2, 3, 4, 5, 2))
 
+    # Regular cases.
     self._check('...ijk->...ki', (3, 4, 5))
     self._check('...ijk->...ki', (1, 3, 4, 5))
     self._check('...ijk->...ki', (2, 2, 3, 4, 5))
@@ -84,24 +90,36 @@ class EinsumOpTest(test.TestCase):
     # Repeated indices.
     self._check('i...ii->...i', (3, 2, 3, 3))
 
-  def testBinary(self):
+  def testBinarySimple(self):
+    # Binary cases in XLA mode must have either (a) each index appearing exactly
+    # once in both the inputs (batch or contraction index), or (b) appearing
+    # exactly once in an input and in the output (free index).
     self._check(',->', (), ())
     self._check('a,a->', (3,), (3,))
     self._check('a,a->a', (3,), (3,))
-    self._check('ba,b->', (3, 2), (3,))
     self._check('ab,b->a', (3, 4), (4,))
     self._check('ab,ab->', (3, 4), (3, 4))
+    self._check('ab,bc->ac', (3, 4), (4, 5))
     self._check('nij,jk->nik', (5, 2, 3), (3, 4))
     self._check('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
+    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    self._check('sa,shb->shab', (2, 1), (2, 3, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testReducedIndices(self):
+    self._check('ba,b->', (3, 2), (3,))
+    self._check('ab,ab->', (3, 4), (3, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testRepeatedIndices(self):
     # Repeated indices.
     self._check('ijj,k->ik', (2, 3, 3), (4,))
     self._check('aba,a->b', (3, 4, 3), (3,))
     # From https://github.com/dask/dask/pull/3412#discussion_r182413444
     self._check('aab,bc->ac', (2, 2, 3), (3, 4))
     self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
-    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
-    self._check('sa,shb->shab', (2, 1), (2, 3, 4))
 
+  @test_util.disable_xla('b/131919749')
   def testBroadcasting(self):
     # Batch matmul without broadcasting.
     self._check('...ij,...jk->...ik', (5, 1, 2, 3), (5, 1, 3, 4))
@@ -112,23 +130,50 @@ class EinsumOpTest(test.TestCase):
     self._check('...ij,...jk->...ik', (2, 3), (5, 3, 5))
     self._check('...ij,...jk->...ik', (3, 1, 2, 3), (1, 1, 7, 3, 5))
     self._check('i...j,j...k->...ik', (2, 1, 3, 1, 3), (3, 1, 7, 5))
+    # Following 2 from # https://stackoverflow.com/a/19203475/1611416
+    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
+    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
+
+  @test_util.disable_xla('b/131919749')
+  def testBroadcastingWithRepeatedIndices(self):
     # Broadcasting with repeated indices.
     self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check('ij,jk...k->...i', (3, 2), (2, 4, 5, 4))
     self._check('ijj,jk...k->i...', (3, 2, 2), (2, 4, 1, 4))
     self._check('i...jj,jk...k->i...', (3, 3, 1, 2, 2), (2, 4, 1, 5, 4))
-    # Following 2 from # https://stackoverflow.com/a/19203475/1611416
-    self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
-    self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def testDtypes(self):
-    for dtype in [np.float64, np.float32, np.complex64, np.complex128]:
-      self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
-      self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
-      self._check('ji,kj->ik', (2, 2), (2, 2), dtype=dtype)
-      self._check('ij,jk->ki', (2, 2), (2, 2), dtype=dtype)
-      self._check('ji,kj->ki', (2, 2), (2, 2), dtype=dtype)
+    bfloat16 = dtypes.bfloat16.as_numpy_dtype
 
+    def check(dtype):
+      r = np.random.RandomState(0)
+      equation = 'ij,jk->ik'
+      input_shapes = [(2, 2), (2, 2)]
+      inputs = []
+      for shape in input_shapes:
+        arr = np.array(r.randn(*shape)).astype(dtype)
+        if dtype == np.complex64 or dtype == np.complex128:
+          arr += 1j * np.array(r.randn(*shape)).astype(dtype)
+        inputs.append(arr)
+      input_tensors = [constant_op.constant(x) for x in inputs]
+      if dtype == bfloat16:
+        # np.einsum doesn't support bfloat16.
+        a = np.einsum(equation,
+                      *[x.astype(np.float32) for x in inputs]).astype(dtype)
+      else:
+        a = np.einsum(equation, *inputs)
+
+      b = self.evaluate(gen_linalg_ops.einsum(input_tensors, equation))
+      tol = 1e-2 if dtype == bfloat16 else 1e-4
+      self.assertAllClose(a, b, atol=tol, rtol=tol)
+
+    for dtype in [
+        bfloat16, np.float32, np.float64, np.complex64, np.complex128, np.int32,
+        np.int64
+    ]:
+      check(dtype)
+
+  @test_util.disable_xla('b/131919749')
   @test_util.run_in_graph_and_eager_modes
   def testInvalid(self):
     r = np.random.RandomState(0)
@@ -154,6 +199,7 @@ class EinsumOpTest(test.TestCase):
       with self.assertRaises((ValueError, errors.InvalidArgumentError)):
         _ = self.evaluate(gen_linalg_ops.einsum(placeholders, args[0]))
 
+  @test_util.disable_xla('b/131919749')
   @test_util.run_in_graph_and_eager_modes
   def testPlaceholder(self):
 
@@ -178,9 +224,11 @@ class EinsumOpTest(test.TestCase):
           ((4, 3), (None, 3)))
     check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
 
+  @test_util.disable_xla('b/131919749')
   def testOutputRepeatedLabels(self):
-    # This is the reverse operation of repeated input labels, to be used for
-    # computing symbolic gradients of einsum.
+    # This is the reverse operation of generalized traces, to be used for
+    # computing symbolic gradients of einsum. Note: this operation is not
+    # supported by np.einsum as it's only required for gradients.
     r = np.random.RandomState(0)
     a = r.randn(2, 2)
     s = 'a->aa'

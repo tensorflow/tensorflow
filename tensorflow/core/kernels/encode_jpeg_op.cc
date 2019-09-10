@@ -124,7 +124,7 @@ class EncodeJpegOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
                 jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<string>()()),
+                               adjusted_flags, &output->scalar<tstring>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 
@@ -190,7 +190,7 @@ class EncodeJpegVariableQualityOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
                 jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<string>()()),
+                               adjusted_flags, &output->scalar<tstring>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 };

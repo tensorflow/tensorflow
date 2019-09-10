@@ -108,7 +108,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
 }
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
-  string graph_def_string;
+  tstring graph_def_string;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;

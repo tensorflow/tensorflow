@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 
@@ -81,13 +82,13 @@ TEST_F(VariableOpsTest, TestAssignThenReadVariable) {
   TfLiteTensor* input_read_index = interpreter_.tensor(1);
   input_read_index->data.i32[0] = 1;
   TfLiteTensor* input_data_index = interpreter_.tensor(2);
-  input_data_index->data.f[0] = 1717;
+  GetTensorData<float>(input_data_index)[0] = 1717;
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
 
   // Verify output.
   TfLiteTensor* output = interpreter_.tensor(3);
   ASSERT_EQ(output->dims->size, 0);
-  EXPECT_EQ(output->data.f[0], 1717);
+  EXPECT_EQ(GetTensorData<float>(output)[0], 1717);
 }
 
 TEST_F(VariableOpsTest, TestReadVariableBeforeAssign) {
@@ -97,7 +98,7 @@ TEST_F(VariableOpsTest, TestReadVariableBeforeAssign) {
   TfLiteTensor* input_read_index = interpreter_.tensor(1);
   input_read_index->data.i32[0] = 2;
   TfLiteTensor* input_data_index = interpreter_.tensor(2);
-  input_data_index->data.f[0] = 1717;
+  GetTensorData<float>(input_data_index)[0] = 1717;
 
   // Error because variable 2 is never initialized.
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteError);
@@ -113,13 +114,13 @@ TEST_F(VariableOpsTest, TestReeasignToDifferentSize) {
     TfLiteTensor* input_read_index = interpreter_.tensor(1);
     input_read_index->data.i32[0] = 1;
     TfLiteTensor* input_data_index = interpreter_.tensor(2);
-    input_data_index->data.f[0] = 1717;
+    GetTensorData<float>(input_data_index)[0] = 1717;
     ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
 
     // Verify output.
     TfLiteTensor* output = interpreter_.tensor(3);
     ASSERT_EQ(output->dims->size, 0);
-    EXPECT_EQ(output->data.f[0], 1717);
+    EXPECT_EQ(GetTensorData<float>(output)[0], 1717);
   }
 
   // 2nd invocation. The variable is assigned as a 1D vector with 2 elements.
@@ -132,16 +133,16 @@ TEST_F(VariableOpsTest, TestReeasignToDifferentSize) {
     TfLiteTensor* input_read_index = interpreter_.tensor(1);
     input_read_index->data.i32[0] = 1;
     TfLiteTensor* input_data_index = interpreter_.tensor(2);
-    input_data_index->data.f[0] = 1717;
-    input_data_index->data.f[1] = 2121;
+    GetTensorData<float>(input_data_index)[0] = 1717;
+    GetTensorData<float>(input_data_index)[1] = 2121;
     ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
 
     // Verify output.
     TfLiteTensor* output = interpreter_.tensor(3);
     ASSERT_EQ(output->dims->size, 1);
     ASSERT_EQ(output->dims->data[0], 2);
-    EXPECT_EQ(output->data.f[0], 1717);
-    EXPECT_EQ(output->data.f[1], 2121);
+    EXPECT_EQ(GetTensorData<float>(output)[0], 1717);
+    EXPECT_EQ(GetTensorData<float>(output)[1], 2121);
   }
 }
 

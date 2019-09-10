@@ -138,25 +138,21 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
 namespace {
 Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
                                             AsyncOpKernel::DoneCallback done) {
-  using namespace std::placeholders;
-  return std::bind(
-      [ctx](AsyncOpKernel::DoneCallback done,
-            // Begin unbound arguments.
-            const Status& s, const Rendezvous::Args& send_args,
-            const Rendezvous::Args& recv_args, const Tensor& val,
-            bool is_dead) {
-        ctx->SetStatus(s);
-        if (s.ok()) {
-          // 'ctx' allocates the output tensor of the expected type.
-          // The runtime checks whether the tensor received here is
-          // the same type.
-          if (!is_dead) {
-            ctx->set_output(0, val);
-          }
-        }
-        done();
-      },
-      std::move(done), _1, _2, _3, _4, _5);
+  return [ctx, done = std::move(done)](const Status& s,
+                                       const Rendezvous::Args& send_args,
+                                       const Rendezvous::Args& recv_args,
+                                       const Tensor& val, bool is_dead) {
+    ctx->SetStatus(s);
+    if (s.ok()) {
+      // 'ctx' allocates the output tensor of the expected type.
+      // The runtime checks whether the tensor received here is
+      // the same type.
+      if (!is_dead) {
+        ctx->set_output(0, val);
+      }
+    }
+    done();
+  };
 }
 }  // namespace
 

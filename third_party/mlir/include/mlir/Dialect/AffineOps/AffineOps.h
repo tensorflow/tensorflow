@@ -522,6 +522,10 @@ bool isValidSymbol(Value *value);
 /// 2. drop unused dims and symbols from map
 void canonicalizeMapAndOperands(AffineMap *map,
                                 llvm::SmallVectorImpl<Value *> *operands);
+/// Canonicalizes an integer set the same way canonicalizeMapAndOperands does
+/// for affine maps.
+void canonicalizeSetAndOperands(IntegerSet *set,
+                                llvm::SmallVectorImpl<Value *> *operands);
 
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
 /// other AffineApplyOps supplying those operands. The operands of the resulting

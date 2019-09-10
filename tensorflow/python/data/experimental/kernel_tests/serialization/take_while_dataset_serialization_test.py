@@ -21,7 +21,9 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import take_while_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
@@ -33,10 +35,13 @@ class TakeWhileDatasetSerializationTest(
     return dataset_ops.Dataset.range(num_elements).apply(
         take_while_ops.take_while(lambda x: x < upper_bound))
 
-  @parameterized.parameters((23, 7), (10, 0), (25, 25))
-  def testCore(self, num_elem, upper_bound):
-    self.run_core_tests(lambda: self._build_dataset(num_elem, upper_bound),
-                        upper_bound)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_elements=[10, 23], upper_bound=[10, 23])))
+  def testCore(self, num_elements, upper_bound):
+    self.run_core_tests(lambda: self._build_dataset(num_elements, upper_bound),
+                        min(num_elements, upper_bound))
 
 
 if __name__ == "__main__":

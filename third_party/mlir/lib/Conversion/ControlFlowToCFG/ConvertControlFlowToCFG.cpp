@@ -270,8 +270,8 @@ void ControlFlowToCFGPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *mlir::createConvertToCFGPass() {
-  return new ControlFlowToCFGPass();
+std::unique_ptr<FunctionPassBase> mlir::createLowerToCFGPass() {
+  return std::make_unique<ControlFlowToCFGPass>();
 }
 
 static PassRegistration<ControlFlowToCFGPass>

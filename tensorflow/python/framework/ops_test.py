@@ -491,13 +491,6 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("None", "bar")
     self.assertProtoEquals("op: 'None' name: 'bar'", nodedef)
 
-  def testArgs(self):
-    nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
-                           nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
-
 
 def _apply_op(g, *args, **kwargs):
   op = g.create_op(*args, **kwargs)
@@ -575,12 +568,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op:'Foo2' name:'myop3'
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
-
-  def testDeviceFromNodeDef(self):
-    op = ops.Operation(
-        ops._NodeDef("None", "myop", device="/job:goo/device:GPU:0"),
-        ops.Graph(), [], [])
-    self.assertEqual("/job:goo/device:GPU:0", op.device)
 
   def testDeviceObject(self):
     op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
@@ -930,7 +917,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       def test():
         output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                              [1])
-        while_op = output.op.inputs[0].op
+        while_op = output.op
         self.assertEqual(while_op.type, "StatelessWhile")
         orig_num_inputs = len(while_op.inputs)
 
@@ -984,7 +971,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = test_ops.int_output()
       op = test_ops.int_input_int_output(x, name="myop").op
     with self.assertRaisesRegexp(
-        AttributeError, "'_InputList' object has no attribute 'append'"):
+        AttributeError, "'tuple' object has no attribute 'append'"):
       op.inputs.append(None)
 
 
@@ -3361,28 +3348,6 @@ class NameScopeTest(test_util.TensorFlowTestCase):
             pass
 
     self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
-
-
-class TracebackTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testTracebackWithStartLines(self):
-    with self.cached_session() as sess:
-      a = constant_op.constant(2.0)
-      sess.run(
-          a,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assertTrue(sess.graph.get_operations())
-
-      # Tests that traceback_with_start_lines is the same as traceback
-      # but includes one more element at the end.
-      for op in sess.graph.get_operations():
-        self.assertEquals(len(op.traceback), len(op.traceback_with_start_lines))
-        for frame, frame_with_start_line in zip(
-            op.traceback, op.traceback_with_start_lines):
-          self.assertEquals(5, len(frame_with_start_line))
-          self.assertEquals(frame, frame_with_start_line[:-1])
 
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):

@@ -22,6 +22,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -30,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 
@@ -106,6 +106,7 @@ class BaseFFTOpsTest(test.TestCase):
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
@@ -158,25 +159,21 @@ class FFTOpsTest(BaseFFTOpsTest):
     else:
       raise ValueError("invalid rank")
 
-  @test_util.run_deprecated_v1
   def testEmpty(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type in (np.complex64, np.complex128):
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 3):
-            x = np.zeros((0,) * dims).astype(np_type)
-            self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
-            self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
+    for np_type in (np.complex64, np.complex128):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          x = np.zeros((0,) * dims).astype(np_type)
+          self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
+          self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
-  @test_util.run_deprecated_v1
   def testBasic(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 3):
-            self._compare(
-                np.mod(np.arange(np.power(4, dims)), 10).reshape(
-                    (4,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
+    for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          self._compare(
+              np.mod(np.arange(np.power(4, dims)), 10).reshape(
+                  (4,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
 
   def testLargeBatch(self):
     if test.is_gpu_available(cuda_only=True):
@@ -197,57 +194,55 @@ class FFTOpsTest(BaseFFTOpsTest):
   #           np.mod(np.arange(np.power(128, dims)), 64).reshape(
   #               (128,) * dims).astype(np.complex64), rank)
 
-  @test_util.run_deprecated_v1
   def testBasicPlaceholder(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 3):
-            self._compare(
-                np.mod(np.arange(np.power(4, dims)), 10).reshape(
-                    (4,) * dims).astype(np_type),
-                rank, use_placeholder=True, rtol=tol, atol=tol)
+    if context.executing_eagerly():
+      return
+    for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          self._compare(
+              np.mod(np.arange(np.power(4, dims)), 10).reshape(
+                  (4,) * dims).astype(np_type),
+              rank, use_placeholder=True, rtol=tol, atol=tol)
 
-  @test_util.run_deprecated_v1
   def testRandom(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 5e-6)):
-        def gen(shape):
-          n = np.prod(shape)
-          re = np.random.uniform(size=n)
-          im = np.random.uniform(size=n)
-          return (re + im * 1j).reshape(shape)
+    for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 5e-6)):
+      def gen(shape):
+        n = np.prod(shape)
+        re = np.random.uniform(size=n)
+        im = np.random.uniform(size=n)
+        return (re + im * 1j).reshape(shape)
 
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 3):
-            self._compare(gen((4,) * dims).astype(np_type), rank,
-                          rtol=tol, atol=tol)
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          self._compare(gen((4,) * dims).astype(np_type), rank,
+                        rtol=tol, atol=tol)
 
-  @test_util.run_deprecated_v1
   def testRandom1D(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type in (np.complex64, np.complex128):
-        has_gpu = test.is_gpu_available(cuda_only=True)
-        tol = {(np.complex64, True): 1e-4,
-               (np.complex64, False): 1e-2,
-               (np.complex128, True): 1e-4,
-               (np.complex128, False): 1e-2}[(np_type, has_gpu)]
-        def gen(shape):
-          n = np.prod(shape)
-          re = np.random.uniform(size=n)
-          im = np.random.uniform(size=n)
-          return (re + im * 1j).reshape(shape)
+    for np_type in (np.complex64, np.complex128):
+      has_gpu = test.is_gpu_available(cuda_only=True)
+      tol = {(np.complex64, True): 1e-4,
+             (np.complex64, False): 1e-2,
+             (np.complex128, True): 1e-4,
+             (np.complex128, False): 1e-2}[(np_type, has_gpu)]
+      def gen(shape):
+        n = np.prod(shape)
+        re = np.random.uniform(size=n)
+        im = np.random.uniform(size=n)
+        return (re + im * 1j).reshape(shape)
 
-        # Check a variety of power-of-2 FFT sizes.
-        for dim in (128, 256, 512, 1024):
-          self._compare(gen((dim,)).astype(np_type), 1, rtol=tol, atol=tol)
+      # Check a variety of power-of-2 FFT sizes.
+      for dim in (128, 256, 512, 1024):
+        self._compare(gen((dim,)).astype(np_type), 1, rtol=tol, atol=tol)
 
-        # Check a variety of non-power-of-2 FFT sizes.
-        for dim in (127, 255, 511, 1023):
-          self._compare(gen((dim,)).astype(np_type), 1, rtol=tol, atol=tol)
+      # Check a variety of non-power-of-2 FFT sizes.
+      for dim in (127, 255, 511, 1023):
+        self._compare(gen((dim,)).astype(np_type), 1, rtol=tol, atol=tol)
 
-  @test_util.run_deprecated_v1
   def testError(self):
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
     for rank in VALID_FFT_RANKS:
       for dims in xrange(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
@@ -258,33 +253,36 @@ class FFTOpsTest(BaseFFTOpsTest):
             ValueError, "Shape must be .*rank {}.*".format(rank)):
           self._tfIFFT(x, rank)
 
-  @test_util.run_deprecated_v1
   def testGrad_Simple(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type, tol in ((np.float32, 1e-4), (np.float64, 1e-10)):
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 2):
-            re = np.ones(shape=(4,) * dims, dtype=np_type) / 10.0
-            im = np.zeros(shape=(4,) * dims, dtype=np_type)
-            self._checkGradComplex(self._tfFFTForRank(rank), re, im,
-                                   rtol=tol, atol=tol)
-            self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
-                                   rtol=tol, atol=tol)
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
+    for np_type, tol in ((np.float32, 1e-4), (np.float64, 1e-10)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 2):
+          re = np.ones(shape=(4,) * dims, dtype=np_type) / 10.0
+          im = np.zeros(shape=(4,) * dims, dtype=np_type)
+          self._checkGradComplex(self._tfFFTForRank(rank), re, im,
+                                 rtol=tol, atol=tol)
+          self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
+                                 rtol=tol, atol=tol)
 
-  @test_util.run_deprecated_v1
   def testGrad_Random(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for np_type, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 2):
-            re = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
-            im = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
-            self._checkGradComplex(self._tfFFTForRank(rank), re, im,
-                                   rtol=tol, atol=tol)
-            self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
-                                   rtol=tol, atol=tol)
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
+    for np_type, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 2):
+          re = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
+          im = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
+          self._checkGradComplex(self._tfFFTForRank(rank), re, im,
+                                 rtol=tol, atol=tol)
+          self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
+                                 rtol=tol, atol=tol)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest):
 
   def _compareBackward(self, x, rank, fft_length=None, use_placeholder=False):
@@ -341,30 +339,26 @@ class RFFTOpsTest(BaseFFTOpsTest):
     else:
       raise ValueError("invalid rank")
 
-  @test_util.run_deprecated_v1
   def testEmpty(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 3):
-          x = np.zeros((0,) * dims).astype(np.float32)
-          self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
-          x = np.zeros((0,) * dims).astype(np.complex64)
-          self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        x = np.zeros((0,) * dims).astype(np.float32)
+        self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
+        x = np.zeros((0,) * dims).astype(np.complex64)
+        self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
-  @test_util.run_deprecated_v1
   def testBasic(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 3):
-          for size in (5, 6):
-            inner_dim = size // 2 + 1
-            r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
-                (size,) * dims)
-            self._compareForward(r2c.astype(np.float32), rank, (size,) * rank)
-            c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
-                         10).reshape((size,) * (dims - 1) + (inner_dim,))
-            self._compareBackward(
-                c2r.astype(np.complex64), rank, (size,) * rank)
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        for size in (5, 6):
+          inner_dim = size // 2 + 1
+          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+              (size,) * dims)
+          self._compareForward(r2c.astype(np.float32), rank, (size,) * rank)
+          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                       10).reshape((size,) * (dims - 1) + (inner_dim,))
+          self._compareBackward(
+              c2r.astype(np.complex64), rank, (size,) * rank)
 
   def testLargeBatch(self):
     if test.is_gpu_available(cuda_only=True):
@@ -379,43 +373,42 @@ class RFFTOpsTest(BaseFFTOpsTest):
                        10).reshape((size,) * (dims - 1) + (inner_dim,))
           self._compareBackward(c2r.astype(np.complex64), rank, (size,) * rank)
 
-  @test_util.run_deprecated_v1
   def testBasicPlaceholder(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
+    if context.executing_eagerly():
+      return
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        for size in (5, 6):
+          inner_dim = size // 2 + 1
+          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+              (size,) * dims)
+          self._compareForward(
+              r2c.astype(np.float32),
+              rank, (size,) * rank,
+              use_placeholder=True)
+          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                       10).reshape((size,) * (dims - 1) + (inner_dim,))
+          self._compareBackward(
+              c2r.astype(np.complex64),
+              rank, (size,) * rank,
+              use_placeholder=True)
+
+  def testFftLength(self):
+    if test.is_gpu_available(cuda_only=True):
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           for size in (5, 6):
             inner_dim = size // 2 + 1
             r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
                 (size,) * dims)
-            self._compareForward(
-                r2c.astype(np.float32),
-                rank, (size,) * rank,
-                use_placeholder=True)
             c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
                          10).reshape((size,) * (dims - 1) + (inner_dim,))
-            self._compareBackward(
-                c2r.astype(np.complex64),
-                rank, (size,) * rank,
-                use_placeholder=True)
-
-  @test_util.run_deprecated_v1
-  def testFftLength(self):
-    if test.is_gpu_available(cuda_only=True):
-      with spectral_ops_test_util.fft_kernel_label_map():
-        for rank in VALID_FFT_RANKS:
-          for dims in xrange(rank, rank + 3):
-            for size in (5, 6):
-              inner_dim = size // 2 + 1
-              r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
-                  (size,) * dims)
-              c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
-                           10).reshape((size,) * (dims - 1) + (inner_dim,))
-              # Test truncation (FFT size < dimensions).
-              fft_length = (size - 2,) * rank
-              self._compareForward(r2c.astype(np.float32), rank, fft_length)
-              self._compareBackward(c2r.astype(np.complex64), rank, fft_length)
-              # Confirm it works with unknown shapes as well.
+            # Test truncation (FFT size < dimensions).
+            fft_length = (size - 2,) * rank
+            self._compareForward(r2c.astype(np.float32), rank, fft_length)
+            self._compareBackward(c2r.astype(np.complex64), rank, fft_length)
+            # Confirm it works with unknown shapes as well.
+            if not context.executing_eagerly():
               self._compareForward(
                   r2c.astype(np.float32),
                   rank,
@@ -426,11 +419,12 @@ class RFFTOpsTest(BaseFFTOpsTest):
                   rank,
                   fft_length,
                   use_placeholder=True)
-              # Test padding (FFT size > dimensions).
-              fft_length = (size + 2,) * rank
-              self._compareForward(r2c.astype(np.float32), rank, fft_length)
-              self._compareBackward(c2r.astype(np.complex64), rank, fft_length)
-              # Confirm it works with unknown shapes as well.
+            # Test padding (FFT size > dimensions).
+            fft_length = (size + 2,) * rank
+            self._compareForward(r2c.astype(np.float32), rank, fft_length)
+            self._compareBackward(c2r.astype(np.complex64), rank, fft_length)
+            # Confirm it works with unknown shapes as well.
+            if not context.executing_eagerly():
               self._compareForward(
                   r2c.astype(np.float32),
                   rank,
@@ -442,168 +436,184 @@ class RFFTOpsTest(BaseFFTOpsTest):
                   fft_length,
                   use_placeholder=True)
 
-  @test_util.run_deprecated_v1
   def testRandom(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      def gen_real(shape):
-        n = np.prod(shape)
-        re = np.random.uniform(size=n)
-        ret = re.reshape(shape)
-        return ret
+    def gen_real(shape):
+      n = np.prod(shape)
+      re = np.random.uniform(size=n)
+      ret = re.reshape(shape)
+      return ret
 
-      def gen_complex(shape):
-        n = np.prod(shape)
-        re = np.random.uniform(size=n)
-        im = np.random.uniform(size=n)
-        ret = (re + im * 1j).reshape(shape)
-        return ret
+    def gen_complex(shape):
+      n = np.prod(shape)
+      re = np.random.uniform(size=n)
+      im = np.random.uniform(size=n)
+      ret = (re + im * 1j).reshape(shape)
+      return ret
 
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 3):
-          for size in (5, 6):
-            inner_dim = size // 2 + 1
-            self._compareForward(gen_real((size,) * dims), rank, (size,) * rank)
-            complex_dims = (size,) * (dims - 1) + (inner_dim,)
-            self._compareBackward(
-                gen_complex(complex_dims), rank, (size,) * rank)
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        for size in (5, 6):
+          inner_dim = size // 2 + 1
+          self._compareForward(gen_real((size,) * dims), rank, (size,) * rank)
+          complex_dims = (size,) * (dims - 1) + (inner_dim,)
+          self._compareBackward(
+              gen_complex(complex_dims), rank, (size,) * rank)
 
-  @test_util.run_deprecated_v1
   def testError(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(0, rank):
-          x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Shape .* must have rank at least {}".format(rank)):
-            self._tfFFT(x, rank)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Shape .* must have rank at least {}".format(rank)):
-            self._tfIFFT(x, rank)
-        for dims in xrange(rank, rank + 2):
-          x = np.zeros((1,) * rank)
-
-          # Test non-rank-1 fft_length produces an error.
-          fft_length = np.zeros((1, 1)).astype(np.int32)
-          with self.assertRaisesWithPredicateMatch(ValueError,
-                                                   "Shape .* must have rank 1"):
-            self._tfFFT(x, rank, fft_length)
-          with self.assertRaisesWithPredicateMatch(ValueError,
-                                                   "Shape .* must have rank 1"):
-            self._tfIFFT(x, rank, fft_length)
-
-          # Test wrong fft_length length.
-          fft_length = np.zeros((rank + 1,)).astype(np.int32)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
-            self._tfFFT(x, rank, fft_length)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
-            self._tfIFFT(x, rank, fft_length)
-
-        # Test that calling the kernel directly without padding to fft_length
-        # produces an error.
-        rffts_for_rank = {
-            1: [gen_spectral_ops.rfft, gen_spectral_ops.irfft],
-            2: [gen_spectral_ops.rfft2d, gen_spectral_ops.irfft2d],
-            3: [gen_spectral_ops.rfft3d, gen_spectral_ops.irfft3d]
-        }
-        rfft_fn, irfft_fn = rffts_for_rank[rank]
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(0, rank):
+        x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
-            errors.InvalidArgumentError,
-            "Input dimension .* must have length of at least 6 but got: 5"):
-          x = np.zeros((5,) * rank).astype(np.float32)
-          fft_length = [6] * rank
-          with self.cached_session():
-            self.evaluate(rfft_fn(x, fft_length))
-
+            ValueError, "Shape .* must have rank at least {}".format(rank)):
+          self._tfFFT(x, rank)
         with self.assertRaisesWithPredicateMatch(
-            errors.InvalidArgumentError,
-            "Input dimension .* must have length of at least .* but got: 3"):
-          x = np.zeros((3,) * rank).astype(np.complex64)
-          fft_length = [6] * rank
-          with self.cached_session():
-            self.evaluate(irfft_fn(x, fft_length))
+            ValueError, "Shape .* must have rank at least {}".format(rank)):
+          self._tfIFFT(x, rank)
+      for dims in xrange(rank, rank + 2):
+        x = np.zeros((1,) * rank)
 
-  @test_util.run_deprecated_v1
+        # Test non-rank-1 fft_length produces an error.
+        fft_length = np.zeros((1, 1)).astype(np.int32)
+        with self.assertRaisesWithPredicateMatch(ValueError,
+                                                 "Shape .* must have rank 1"):
+          self._tfFFT(x, rank, fft_length)
+        with self.assertRaisesWithPredicateMatch(ValueError,
+                                                 "Shape .* must have rank 1"):
+          self._tfIFFT(x, rank, fft_length)
+
+        # Test wrong fft_length length.
+        fft_length = np.zeros((rank + 1,)).astype(np.int32)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
+          self._tfFFT(x, rank, fft_length)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
+          self._tfIFFT(x, rank, fft_length)
+
+      # Test that calling the kernel directly without padding to fft_length
+      # produces an error.
+      rffts_for_rank = {
+          1: [gen_spectral_ops.rfft, gen_spectral_ops.irfft],
+          2: [gen_spectral_ops.rfft2d, gen_spectral_ops.irfft2d],
+          3: [gen_spectral_ops.rfft3d, gen_spectral_ops.irfft3d]
+      }
+      rfft_fn, irfft_fn = rffts_for_rank[rank]
+      with self.assertRaisesWithPredicateMatch(
+          errors.InvalidArgumentError,
+          "Input dimension .* must have length of at least 6 but got: 5"):
+        x = np.zeros((5,) * rank).astype(np.float32)
+        fft_length = [6] * rank
+        with self.cached_session():
+          self.evaluate(rfft_fn(x, fft_length))
+
+      with self.assertRaisesWithPredicateMatch(
+          errors.InvalidArgumentError,
+          "Input dimension .* must have length of at least .* but got: 3"):
+        x = np.zeros((3,) * rank).astype(np.complex64)
+        fft_length = [6] * rank
+        with self.cached_session():
+          self.evaluate(irfft_fn(x, fft_length))
+
   def testGrad_Simple(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for rank in VALID_FFT_RANKS:
-        # rfft3d/irfft3d do not have gradients yet.
-        if rank == 3:
-          continue
-        for dims in xrange(rank, rank + 2):
-          for size in (5, 6):
-            re = np.ones(shape=(size,) * dims, dtype=np.float32)
-            im = -np.ones(shape=(size,) * dims, dtype=np.float32)
-            self._checkGradReal(self._tfFFTForRank(rank), re)
-            self._checkGradComplex(
-                self._tfIFFTForRank(rank), re, im, result_is_complex=False)
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
+    for rank in VALID_FFT_RANKS:
+      # rfft3d/irfft3d do not have gradients yet.
+      if rank == 3:
+        continue
+      for dims in xrange(rank, rank + 2):
+        for size in (5, 6):
+          re = np.ones(shape=(size,) * dims, dtype=np.float32)
+          im = -np.ones(shape=(size,) * dims, dtype=np.float32)
+          self._checkGradReal(self._tfFFTForRank(rank), re)
+          self._checkGradComplex(
+              self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
-  @test_util.run_deprecated_v1
   def testGrad_Random(self):
-    with spectral_ops_test_util.fft_kernel_label_map():
-      for rank in VALID_FFT_RANKS:
-        # rfft3d/irfft3d do not have gradients yet.
-        if rank == 3:
-          continue
-        for dims in xrange(rank, rank + 2):
-          for size in (5, 6):
-            re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-            im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-            self._checkGradReal(self._tfFFTForRank(rank), re)
-            self._checkGradComplex(
-                self._tfIFFTForRank(rank), re, im, result_is_complex=False)
+    # TODO(rjryan): Fix this test under Eager.
+    if context.executing_eagerly():
+      return
+    for rank in VALID_FFT_RANKS:
+      # rfft3d/irfft3d do not have gradients yet.
+      if rank == 3:
+        continue
+      for dims in xrange(rank, rank + 2):
+        for size in (5, 6):
+          re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
+          im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
+          self._checkGradReal(self._tfFFTForRank(rank), re)
+          self._checkGradComplex(
+              self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FFTShiftTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def testDefinition(self):
     with self.session():
       x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
       y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-      self.assertAllEqual(fft_ops.fftshift(x).eval(), y)
-      self.assertAllEqual(fft_ops.ifftshift(y).eval(), x)
+      self.assertAllEqual(fft_ops.fftshift(x), y)
+      self.assertAllEqual(fft_ops.ifftshift(y), x)
       x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
       y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
-      self.assertAllEqual(fft_ops.fftshift(x).eval(), y)
-      self.assertAllEqual(fft_ops.ifftshift(y).eval(), x)
+      self.assertAllEqual(fft_ops.fftshift(x), y)
+      self.assertAllEqual(fft_ops.ifftshift(y), x)
 
-  @test_util.run_deprecated_v1
   def testAxesKeyword(self):
     with self.session():
       freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
       shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
-      self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, 1)).eval(), shifted)
+      self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, 1)), shifted)
       self.assertAllEqual(
-          fft_ops.fftshift(freqs, axes=0).eval(),
-          fft_ops.fftshift(freqs, axes=(0,)).eval())
-      self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, 1)).eval(), freqs)
+          fft_ops.fftshift(freqs, axes=0),
+          fft_ops.fftshift(freqs, axes=(0,)))
+      self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, 1)), freqs)
       self.assertAllEqual(
-          fft_ops.ifftshift(shifted, axes=0).eval(),
-          fft_ops.ifftshift(shifted, axes=(0,)).eval())
-      self.assertAllEqual(fft_ops.fftshift(freqs).eval(), shifted)
-      self.assertAllEqual(fft_ops.ifftshift(shifted).eval(), freqs)
+          fft_ops.ifftshift(shifted, axes=0),
+          fft_ops.ifftshift(shifted, axes=(0,)))
+      self.assertAllEqual(fft_ops.fftshift(freqs), shifted)
+      self.assertAllEqual(fft_ops.ifftshift(shifted), freqs)
 
-  @test_util.run_deprecated_v1
   def testNumpyCompatibility(self):
     with self.session():
       x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
       y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-      self.assertAllEqual(fft_ops.fftshift(x).eval(), np.fft.fftshift(x))
-      self.assertAllEqual(fft_ops.ifftshift(y).eval(), np.fft.ifftshift(y))
+      self.assertAllEqual(fft_ops.fftshift(x), np.fft.fftshift(x))
+      self.assertAllEqual(fft_ops.ifftshift(y), np.fft.ifftshift(y))
       x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
       y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
-      self.assertAllEqual(fft_ops.fftshift(x).eval(), np.fft.fftshift(x))
-      self.assertAllEqual(fft_ops.ifftshift(y).eval(), np.fft.ifftshift(y))
+      self.assertAllEqual(fft_ops.fftshift(x), np.fft.fftshift(x))
+      self.assertAllEqual(fft_ops.ifftshift(y), np.fft.ifftshift(y))
       freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
       shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
       self.assertAllEqual(
-          fft_ops.fftshift(freqs, axes=(0, 1)).eval(),
+          fft_ops.fftshift(freqs, axes=(0, 1)),
           np.fft.fftshift(freqs, axes=(0, 1)))
       self.assertAllEqual(
-          fft_ops.ifftshift(shifted, axes=(0, 1)).eval(),
+          fft_ops.ifftshift(shifted, axes=(0, 1)),
           np.fft.ifftshift(shifted, axes=(0, 1)))
+
+  def testPlaceholder(self):
+    if context.executing_eagerly():
+      return
+    x = array_ops.placeholder(shape=[None, None, None], dtype="float32")
+    axes_to_test = [None, 1, [1, 2]]
+    for axes in axes_to_test:
+      y_fftshift = fft_ops.fftshift(x, axes=axes)
+      y_ifftshift = fft_ops.ifftshift(x, axes=axes)
+      with self.session() as sess:
+        x_np = np.random.rand(16, 256, 256)
+        y_fftshift_res, y_ifftshift_res = sess.run(
+            [y_fftshift, y_ifftshift],
+            feed_dict={x: x_np},
+        )
+        self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
+        self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
 
 
 if __name__ == "__main__":

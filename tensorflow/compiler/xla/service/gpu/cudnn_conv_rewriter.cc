@@ -268,7 +268,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   int64 input_feature = lhs->shape().dimensions(input_feature_dimension);
 
   // Reshape batch_dim G*N -> [G,N]
-  std::vector<int64> reshape_dims = lhs->shape().dimensions();
+  std::vector<int64> reshape_dims = SpanToVector(lhs->shape().dimensions());
   auto num_groups = conv->feature_group_count();
   CHECK_EQ(input_batch % num_groups, 0)
       << "Input batch should be an exact multiple of feature group count";
@@ -290,7 +290,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);
   std::vector<int64> transpose_reshape_dims =
-      lhs_reshape_1->shape().dimensions();
+      SpanToVector(lhs_reshape_1->shape().dimensions());
   transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
                                input_batch_dimension);
   transpose_reshape_dims.insert(
@@ -320,9 +320,11 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
-  // for the backward input convolution, but at least for now with version 7.1.4
-  // it is slower. This needs to be re-evaluated for future cuDNN versions.
+  // TODO: Theoretically cuDNN supports grouped convolutions also
+  // for the backward input convolution, but based on the cudnn's current state
+  // there is not much performance improvement when using the
+  // cudnn backward input API for grouped conv.
+  // This needs to be re-evaluated for future cuDNN versions.
   // Note that we already have the necessary code down below, the only thing to
   // enable it is to remove the following early return.
   if (conv->feature_group_count() > 1) {
@@ -333,6 +335,22 @@ MatchBackwardInput(HloInstruction* conv) {
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
   HloInstruction* reverse_filter = conv->mutable_operand(1);
   ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
+
+  // Match BackwardInput for a depthwise convolution and thunk it to forward
+  // convolution Output feature dimension and input feature dimension has been
+  // swapped in the bridge. Hence to get the actual input features we need to
+  // query the output feature dimension
+  auto kernel_out_feature_dim = dnums.kernel_output_feature_dimension();
+  auto kernel_out_features =
+      reverse_filter->shape().dimensions(kernel_out_feature_dim);
+
+  // For a depthwise convolution, the input features must be equal to the
+  // feature_group_count. We can leverage this property to match a depthwise
+  // convolution and thunk it to forward conv
+  if (conv->feature_group_count() > 1 &&
+      kernel_out_features == conv->feature_group_count()) {
+    return no_match_result;
+  }
 
   // We pattern-match to a backwards input conv if:
   //
@@ -521,7 +539,7 @@ MatchBackwardInput(HloInstruction* conv) {
     reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
         reverse_filter->shape(), reverse_filter,
         AsInt64Slice(dnums.kernel_spatial_dimensions())));
-    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_no=*/1, reverse_filter));
+    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
   // Calculate the 'rhs' that goes into the backward input convolution.
@@ -542,7 +560,6 @@ MatchBackwardInput(HloInstruction* conv) {
   // dimensions, we need to divide the new 'kernel_input_feature_dimension' by
   // 'feature_group_count' and multiply the new
   // 'kernel_output_feature_dimension' by 'feature_group_count'.
-  Shape new_shape = rhs->shape();
   int64 input_feature_dimension = dnums.kernel_input_feature_dimension();
   int64 output_feature_dimension = dnums.kernel_output_feature_dimension();
 
@@ -550,13 +567,48 @@ MatchBackwardInput(HloInstruction* conv) {
   // feature dimensions, and we are guaranteed that the spatial dimensions are
   // adjacent.
   CHECK_EQ(std::abs(input_feature_dimension - output_feature_dimension), 1LL);
-  int64 input_features = new_shape.dimensions(input_feature_dimension);
-  int64 output_features = new_shape.dimensions(output_feature_dimension);
-  new_shape.set_dimensions(input_feature_dimension,
-                           input_features / conv->feature_group_count());
-  new_shape.set_dimensions(output_feature_dimension,
-                           output_features * conv->feature_group_count());
+  int64 input_features = rhs->shape().dimensions(input_feature_dimension);
+  int64 output_features = rhs->shape().dimensions(output_feature_dimension);
+
+  // Reshape [H, W, ..., in_depth, out_depth / G] -> [H, W, ..., G, in_depth/G,
+  // out_depth / G]
+  std::vector<int64> reshape_dims = SpanToVector(rhs->shape().dimensions());
+  auto num_groups = conv->feature_group_count();
+  CHECK_EQ(input_features % num_groups, 0)
+      << "Input feature count should be an exact multiple of feature group "
+         "count";
+  reshape_dims[input_feature_dimension] =
+      reshape_dims[input_feature_dimension] / num_groups;
+  reshape_dims.insert(reshape_dims.begin() + input_feature_dimension,
+                      num_groups);
+
   HloComputation* c = conv->parent();
+  rhs = c->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(rhs->shape().element_type(), reshape_dims), rhs));
+
+  // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
+  // in_depth/G, G, out_depth / G]
+  std::vector<int64> transpose_dims(rhs->shape().dimensions_size());
+  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
+  transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
+                        input_feature_dimension);
+  std::vector<int64> transpose_reshape_dims =
+      SpanToVector(rhs->shape().dimensions());
+  transpose_reshape_dims.erase(transpose_reshape_dims.begin() +
+                               input_feature_dimension);
+  transpose_reshape_dims.insert(
+      transpose_reshape_dims.begin() + output_feature_dimension, num_groups);
+  rhs = c->AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(rhs->shape().element_type(), transpose_reshape_dims),
+      rhs, transpose_dims));
+
+  // Reshape [H, W, ..., in_depth/G, G, out_depth / G] -> [H, W, ...,
+  // in_depth/G, out_depth]
+  Shape new_shape = rhs->shape();
+  new_shape.DeleteDimension(output_feature_dimension);
+  new_shape.set_dimensions(output_feature_dimension,
+                           output_features * num_groups);
   rhs = c->AddInstruction(HloInstruction::CreateReshape(new_shape, rhs));
   return std::make_tuple(true, new_window, dnums, rhs);
 }

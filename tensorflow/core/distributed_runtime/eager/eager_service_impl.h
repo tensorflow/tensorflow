@@ -189,6 +189,13 @@ class EagerServiceImpl {
 
     void Abort(Status status) override {}
 
+    string DebugString() const override {
+      string out = "[ClientTensorHandleDeleteNode]";
+      strings::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);
+      strings::StrAppend(&out, ", output_num: ", handle_to_delete_->output_num);
+      return out;
+    }
+
    private:
     // Owns one reference.
     ServerContext* const context_;

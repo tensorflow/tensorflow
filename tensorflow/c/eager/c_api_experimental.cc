@@ -597,5 +597,5 @@ void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
 }
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
-  return new TFE_Executor(ctx->context->Executor());
+  return new TFE_Executor(&ctx->context->Executor());
 }

@@ -147,6 +147,13 @@ class HloModuleConfig {
     shardable_value_update_pairs_ = std::move(pairs);
   }
 
+  // Whether input and output buffers are aliased if the associated parameter is
+  // passed-through XLA modules without being changed.
+  bool alias_passthrough_params() const { return alias_passthrough_params_; }
+  void set_alias_passthrough_params(bool alias_passthrough_params) {
+    alias_passthrough_params_ = alias_passthrough_params;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -168,6 +175,8 @@ class HloModuleConfig {
   absl::optional<DeviceAssignment> static_device_assignment_;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
+
+  bool alias_passthrough_params_ = false;
 };
 
 }  // namespace xla

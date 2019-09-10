@@ -789,9 +789,10 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
-        op = g.create_op(op_type_name, inputs, dtypes=None, name=scope,
-                         input_types=input_types, attrs=attr_protos,
-                         op_def=op_def)
+        # pylint: disable=protected-access
+        op = g._create_op_internal(op_type_name, inputs, dtypes=None,
+                                   name=scope, input_types=input_types,
+                                   attrs=attr_protos, op_def=op_def)
 
       # Conditionally invoke tfdbg v2's op callback(s).
       if op_callbacks.should_invoke_op_callbacks():

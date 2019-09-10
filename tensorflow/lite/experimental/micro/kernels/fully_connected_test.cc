@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -24,20 +25,16 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestFullyConnectedFloat(std::initializer_list<int> input_dims_data,
-                             std::initializer_list<float> input_data,
-                             std::initializer_list<int> weights_dims_data,
-                             std::initializer_list<float> weights_data,
-                             std::initializer_list<int> bias_dims_data,
-                             std::initializer_list<float> bias_data,
-                             std::initializer_list<float> expected_output_data,
-                             std::initializer_list<int> output_dims_data,
-                             TfLiteFusedActivation activation,
-                             float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* weights_dims = IntArrayFromInitializer(weights_dims_data);
-  TfLiteIntArray* bias_dims = IntArrayFromInitializer(bias_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+void TestFullyConnectedFloat(
+    const int* input_dims_data, const float* input_data,
+    const int* weights_dims_data, const float* weights_data,
+    const int* bias_dims_data, const float* bias_data,
+    const float* expected_output_data, const int* output_dims_data,
+    TfLiteFusedActivation activation, float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* weights_dims = IntArrayFromInts(weights_dims_data);
+  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 3;
@@ -93,26 +90,23 @@ void TestFullyConnectedFloat(std::initializer_list<int> input_dims_data,
     registration->free(&context, user_data);
   }
   for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
   }
 }
 
 template <typename T>
 void TestFullyConnectedQuantized(
-    std::initializer_list<int> input_dims_data,
-    std::initializer_list<T> input_data, float input_min, float input_max,
-    std::initializer_list<int> weights_dims_data,
-    std::initializer_list<T> weights_data, float weights_min, float weights_max,
-    std::initializer_list<int> bias_dims_data,
-    std::initializer_list<int32_t> bias_data, float bias_scale,
-    std::initializer_list<T> expected_output_data,
-    std::initializer_list<int> output_dims_data, float output_min,
-    float output_max, TfLiteFusedActivation activation, T* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* weights_dims = IntArrayFromInitializer(weights_dims_data);
-  TfLiteIntArray* bias_dims = IntArrayFromInitializer(bias_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+    const int* input_dims_data, const T* input_data, const float input_min,
+    const float input_max, const int* weights_dims_data, const T* weights_data,
+    const float weights_min, const float weights_max, const int* bias_dims_data,
+    const int32_t* bias_data, const float bias_scale,
+    const T* expected_output_data, const int* output_dims_data,
+    const float output_min, const float output_max,
+    TfLiteFusedActivation activation, T* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* weights_dims = IntArrayFromInts(weights_dims_data);
+  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 3;
@@ -173,7 +167,7 @@ void TestFullyConnectedQuantized(
     registration->free(&context, user_data);
   }
   for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
 }
 
@@ -184,78 +178,82 @@ void TestFullyConnectedQuantized(
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleTest) {
+  const int input_dims_data[] = {2, 2, 10};
+  const float input_data[] = {
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const float weights_data[] = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  };
+  const int bias_dims_data[] = {1, 3};
+  const float bias_data[] = {1, 2, 3};
+  const float expected_output_data[] = {
+      24, 25, 26, 58, 59, 60,
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(  //
-      {2, 2, 10},                            // Input shape.
-      {
-          1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-          1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-      },
-      {2, 3, 10},  // Weights shape.
-      {
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-      },
-      {1, 3},  // Bias shape.
-      {
-          1, 2, 3,  // Bias values.
-      },
-      {
-          24, 25, 26, 58, 59, 60,  // Expected results.
-      },
-      {2, 2, 3},  // Output shape.
+  tflite::testing::TestFullyConnectedFloat(
+      input_dims_data, input_data, weights_dims_data, weights_data,
+      bias_dims_data, bias_data, expected_output_data, output_dims_data,
       kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTest2) {
+  const int input_dims_data[] = {2, 2, 2};
+  const float input_data[] = {
+      1, 2,  // b = 0
+      2, 1,  // b = 1
+  };
+  const int weights_dims_data[] = {2, 1, 2};
+  const float weights_data[] = {
+      2, 4,  // u = 0
+  };
+  const int bias_dims_data[] = {1, 1};
+  const float bias_data[] = {1};
+  const float expected_output_data[] = {
+      11,
+      9,
+  };
+  const int output_dims_data[] = {2, 2, 1};
+
   const int output_dims_count = 6;
   float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(  //
-      {2, 2, 2},                             // Input shape.
-      {
-          1, 2,  // b = 0
-          2, 1,  // b = 1
-      },
-      {2, 1, 2},  // Weights shape.
-      {
-          2, 4,  // u = 0
-      },
-      {1, 1},  // Bias shape.
-      {
-          1,  // Bias values.
-      },
-      {
-          11, 9,  // Expected results.
-      },
-      {2, 2, 1},  // Output shape.
+  tflite::testing::TestFullyConnectedFloat(
+      input_dims_data, input_data, weights_dims_data, weights_data,
+      bias_dims_data, bias_data, expected_output_data, output_dims_data,
       kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestRelu) {
+  const int input_dims_data[] = {2, 2, 10};
+  const float input_data[] = {
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const float weights_data[] = {
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 0
+      -1, -2, -3, -4, -5, -6, -7, -8, -9, -10,  // u = 1
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 2
+  };
+  const int bias_dims_data[] = {1, 3};
+  const float bias_data[] = {1, -2, 3};
+  const float expected_output_data[] = {
+      24, 0, 26, 58, 0, 60,
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(  //
-      {2, 2, 10},                            // Input shape.
-      {
-          1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-          1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-      },
-      {2, 3, 10},  // Weights shape.
-      {
-          1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 0
-          -1, -2, -3, -4, -5, -6, -7, -8, -9, -10,  // u = 1
-          1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 2
-      },
-      {1, 3},  // Bias shape.
-      {
-          1, -2, 3,  // Bias values.
-      },
-      {
-          24, 0, 26, 58, 0, 60,  // Expected results.
-      },
-      {2, 2, 3},  // Output shape.
+  tflite::testing::TestFullyConnectedFloat(
+      input_dims_data, input_data, weights_dims_data, weights_data,
+      bias_dims_data, bias_data, expected_output_data, output_dims_data,
       kTfLiteActRelu, output_data);
 }
 
@@ -270,63 +268,58 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const uint8_t input_data[] = {
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
+      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
+      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const uint8_t weights_data[] = {
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const uint8_t expected_output_data[] = {
+      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
+      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
+      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      {2, 2, 10},  // Input shape.
-      {
-          // Input values.
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-          F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-          F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,
-      {
-          // Expected results.
-          F2Q(24, output_min, output_max),
-          F2Q(25, output_min, output_max),
-          F2Q(26, output_min, output_max),
-          F2Q(58, output_min, output_max),
-          F2Q(59, output_min, output_max),
-          F2Q(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 // TODO(b/138811455): Fix code duplication in micro tests
@@ -341,63 +334,58 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const int8_t input_data[] = {
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
+      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
+      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const int8_t weights_data[] = {
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const int8_t expected_output_data[] = {
+      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
+      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
+      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      {2, 2, 10},  // Input shape.
-      {
-          // Input values.
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-          F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-          F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,  // Bias quantization range.
-      {
-          // Expected results.
-          F2QS(24, output_min, output_max),
-          F2QS(25, output_min, output_max),
-          F2QS(26, output_min, output_max),
-          F2QS(58, output_min, output_max),
-          F2QS(59, output_min, output_max),
-          F2QS(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8Relu) {
@@ -411,63 +399,58 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8Relu) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const uint8_t input_data[] = {
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
+      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
+      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const uint8_t weights_data[] = {
+      F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
+      F2Q(-1, weights_min, weights_max), F2Q(-2, weights_min, weights_max),
+      F2Q(-3, weights_min, weights_max), F2Q(-4, weights_min, weights_max),
+      F2Q(-5, weights_min, weights_max), F2Q(-6, weights_min, weights_max),
+      F2Q(-7, weights_min, weights_max), F2Q(-8, weights_min, weights_max),
+      F2Q(-9, weights_min, weights_max), F2Q(-10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(0, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const uint8_t expected_output_data[] = {
+      F2Q(24, output_min, output_max), F2Q(0, output_min, output_max),
+      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
+      F2Q(0, output_min, output_max),  F2Q(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      {2, 2, 10},  // Input shape.
-      {
-          // Input values.
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-          F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-          F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
-          F2Q(-1, weights_min, weights_max), F2Q(-2, weights_min, weights_max),
-          F2Q(-3, weights_min, weights_max), F2Q(-4, weights_min, weights_max),
-          F2Q(-5, weights_min, weights_max), F2Q(-6, weights_min, weights_max),
-          F2Q(-7, weights_min, weights_max), F2Q(-8, weights_min, weights_max),
-          F2Q(-9, weights_min, weights_max), F2Q(-10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(0, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,
-      {
-          // Expected results.
-          F2Q(24, output_min, output_max),
-          F2Q(0, output_min, output_max),
-          F2Q(26, output_min, output_max),
-          F2Q(58, output_min, output_max),
-          F2Q(0, output_min, output_max),
-          F2Q(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActRelu, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActRelu, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8Relu) {
@@ -481,78 +464,58 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8Relu) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const int8_t input_data[] = {
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
+      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
+      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const int8_t weights_data[] = {
+      F2QS(1, weights_min, weights_max),  F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max),  F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max),  F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max),  F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max),  F2QS(10, weights_min, weights_max),
+      F2QS(-1, weights_min, weights_max), F2QS(-2, weights_min, weights_max),
+      F2QS(-3, weights_min, weights_max), F2QS(-4, weights_min, weights_max),
+      F2QS(-5, weights_min, weights_max), F2QS(-6, weights_min, weights_max),
+      F2QS(-7, weights_min, weights_max), F2QS(-8, weights_min, weights_max),
+      F2QS(-9, weights_min, weights_max), F2QS(-10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max),  F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max),  F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max),  F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max),  F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max),  F2QS(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(0, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const int8_t expected_output_data[] = {
+      F2QS(24, output_min, output_max), F2QS(0, output_min, output_max),
+      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
+      F2QS(0, output_min, output_max),  F2QS(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      {2, 2, 10},  // Input shape.
-      {
-          // Input values.
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-          F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-          F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2QS(1, weights_min, weights_max),
-          F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max),
-          F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max),
-          F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max),
-          F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max),
-          F2QS(10, weights_min, weights_max),
-          F2QS(-1, weights_min, weights_max),
-          F2QS(-2, weights_min, weights_max),
-          F2QS(-3, weights_min, weights_max),
-          F2QS(-4, weights_min, weights_max),
-          F2QS(-5, weights_min, weights_max),
-          F2QS(-6, weights_min, weights_max),
-          F2QS(-7, weights_min, weights_max),
-          F2QS(-8, weights_min, weights_max),
-          F2QS(-9, weights_min, weights_max),
-          F2QS(-10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max),
-          F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max),
-          F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max),
-          F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max),
-          F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max),
-          F2QS(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(0, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,  // Bias quantization range.
-      {
-          // Expected results.
-          F2QS(24, output_min, output_max),
-          F2QS(0, output_min, output_max),
-          F2QS(26, output_min, output_max),
-          F2QS(58, output_min, output_max),
-          F2QS(0, output_min, output_max),
-          F2QS(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActRelu, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActRelu, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8OutputMultiplierGreaterThan1) {
@@ -566,63 +529,58 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8OutputMultiplierGreaterThan1) {
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const uint8_t input_data[] = {
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
+      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
+      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const uint8_t weights_data[] = {
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const uint8_t expected_output_data[] = {
+      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
+      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
+      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      {2, 2, 10},  // Input shape.
-      {
-          // Input values.
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-          F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-          F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,
-      {
-          // Expected results.
-          F2Q(24, output_min, output_max),
-          F2Q(25, output_min, output_max),
-          F2Q(26, output_min, output_max),
-          F2Q(58, output_min, output_max),
-          F2Q(59, output_min, output_max),
-          F2Q(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8OutputMultiplierGreaterThan1) {
@@ -636,88 +594,84 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8OutputMultiplierGreaterThan1) {
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
+
+  const int input_dims_data[] = {2, 2, 10};
+  const int8_t input_data[] = {
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
+      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
+      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const int8_t weights_data[] = {
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const int8_t expected_output_data[] = {
+      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
+      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
+      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<int8_t>(  //
-      {2, 2, 10},                                        // Input shape.
-      {
-          // Input values.
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-          F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-          F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,  // Bias quantization range.
-      {
-          // Expected results.
-          F2QS(24, output_min, output_max),
-          F2QS(25, output_min, output_max),
-          F2QS(26, output_min, output_max),
-          F2QS(58, output_min, output_max),
-          F2QS(59, output_min, output_max),
-          F2QS(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTest4DInput) {
+  const int input_dims_data[] = {4, 1, 1, 5, 1};
+  const float input_data[] = {
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const float weights_data[] = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  };
+  const int bias_dims_data[] = {1, 3};
+  const float bias_data[] = {1, 2, 3};
+  const float expected_output_data[] = {
+      24, 25, 26, 58, 59, 60,  // Expected results.
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(  //
-      {4, 1, 1, 5, 1},                       // Input shape.
-      {
-          1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-          1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-      },
-      {2, 3, 10},  // Weights shape.
-      {
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-      },
-      {1, 3},  // Bias shape.
-      {
-          1, 2, 3,  // Bias values.
-      },
-      {
-          24, 25, 26, 58, 59, 60,  // Expected results.
-      },
-      {2, 2, 3},  // Output shape.
+  tflite::testing::TestFullyConnectedFloat(
+      input_dims_data, input_data, weights_dims_data, weights_data,
+      bias_dims_data, bias_data, expected_output_data, output_dims_data,
       kTfLiteActNone, output_data);
 }
 
@@ -732,63 +686,58 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedUInt8) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {4, 1, 1, 5, 1};
+  const uint8_t input_data[] = {
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
+      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
+      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const uint8_t weights_data[] = {
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const uint8_t expected_output_data[] = {
+      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
+      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
+      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      {4, 1, 1, 5, 1},  // Input shape.
-      {
-          // Input values.
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-          F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-          F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,
-      {
-          // Expected results.
-          F2Q(24, output_min, output_max),
-          F2Q(25, output_min, output_max),
-          F2Q(26, output_min, output_max),
-          F2Q(58, output_min, output_max),
-          F2Q(59, output_min, output_max),
-          F2Q(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8) {
@@ -802,63 +751,58 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8) {
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
+
+  const int input_dims_data[] = {4, 1, 1, 5, 1};
+  const int8_t input_data[] = {
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
+      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
+      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const int8_t weights_data[] = {
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const int8_t expected_output_data[] = {
+      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
+      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
+      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      {4, 1, 1, 5, 1},  // Input shape.
-      {
-          // Input values.
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-          F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-          F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,  // Bias quantization range.
-      {
-          // Expected results.
-          F2QS(24, output_min, output_max),
-          F2QS(25, output_min, output_max),
-          F2QS(26, output_min, output_max),
-          F2QS(58, output_min, output_max),
-          F2QS(59, output_min, output_max),
-          F2QS(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(
@@ -873,63 +817,58 @@ TF_LITE_MICRO_TEST(
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
+
+  const int input_dims_data[] = {4, 1, 1, 5, 1};
+  const uint8_t input_data[] = {
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
+      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
+      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
+      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
+      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
+      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
+      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const uint8_t weights_data[] = {
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
+      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
+      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
+      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
+      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const uint8_t expected_output_data[] = {
+      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
+      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
+      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      {4, 1, 1, 5, 1},  // Input shape.
-      {
-          // Input values.
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-          F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-          F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-          F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-          F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-          F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-          F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-          F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-          F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-          F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-          F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-          F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,
-      {
-          // Expected results.
-          F2Q(24, output_min, output_max),
-          F2Q(25, output_min, output_max),
-          F2Q(26, output_min, output_max),
-          F2Q(58, output_min, output_max),
-          F2Q(59, output_min, output_max),
-          F2Q(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8OutputMultiplierGreaterThan1) {
@@ -943,63 +882,58 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8OutputMultiplierGreaterThan1) {
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
+
+  const int input_dims_data[] = {4, 1, 1, 5, 1};
+  const int8_t input_data[] = {
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
+      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
+      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
+      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
+      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
+      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
+      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
+  };
+  const int weights_dims_data[] = {2, 3, 10};
+  const int8_t weights_data[] = {
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
+      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
+      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
+      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
+      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
+  };
+  const int bias_dims_data[] = {1, 3};
+  const int32_t bias_data[] = {
+      F2Q32(1, bias_scale),
+      F2Q32(2, bias_scale),
+      F2Q32(3, bias_scale),
+  };
+  const int8_t expected_output_data[] = {
+      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
+      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
+      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
+  };
+  const int output_dims_data[] = {2, 2, 3};
+
   const int output_dims_count = 6;
   int8_t output_data[output_dims_count];
   tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      {4, 1, 1, 5, 1},  // Input shape.
-      {
-          // Input values.
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-          F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-          F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-          F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-          F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-          F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-          F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-      },
-      input_min, input_max,  // Input quantization range.
-      {2, 3, 10},            // Weights shape.
-      {
-          // Weight values.
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-          F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-          F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-          F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-          F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-          F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      },
-      weights_min, weights_max,  // Weights quantization range.
-      {1, 3},                    // Bias shape.
-      {
-          F2Q32(1, bias_scale),
-          F2Q32(2, bias_scale),
-          F2Q32(3, bias_scale),
-      },
-      bias_scale,  // Bias quantization range.
-      {
-          // Expected results.
-          F2QS(24, output_min, output_max),
-          F2QS(25, output_min, output_max),
-          F2QS(26, output_min, output_max),
-          F2QS(58, output_min, output_max),
-          F2QS(59, output_min, output_max),
-          F2QS(60, output_min, output_max),
-      },
-      {2, 2, 3},               // Output shape.
-      output_min, output_max,  // Output quantization range.
-      kTfLiteActNone, output_data);
+      input_dims_data, input_data, input_min, input_max, weights_dims_data,
+      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
+      bias_scale, expected_output_data, output_dims_data, output_min,
+      output_max, kTfLiteActNone, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

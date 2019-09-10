@@ -24,7 +24,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -165,16 +164,15 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
   @test_util.run_deprecated_v1
   def test_random(self, shape):
     """Test randomly generated batches of data."""
-    with spectral_ops_test_util.fft_kernel_label_map():
-      with self.session(use_gpu=True):
-        signals = np.random.rand(*shape).astype(np.float32)
-        n = np.random.randint(1, 2 * signals.shape[-1])
-        n = np.random.choice([None, n])
-        # Normalization not implemented for orthonormal.
-        self._compare(signals, n, norm=None, dct_type=1)
-        for norm in (None, "ortho"):
-          self._compare(signals, n=n, norm=norm, dct_type=2)
-          self._compare(signals, n=n, norm=norm, dct_type=3)
+    with self.session(use_gpu=True):
+      signals = np.random.rand(*shape).astype(np.float32)
+      n = np.random.randint(1, 2 * signals.shape[-1])
+      n = np.random.choice([None, n])
+      # Normalization not implemented for orthonormal.
+      self._compare(signals, n, norm=None, dct_type=1)
+      for norm in (None, "ortho"):
+        self._compare(signals, n=n, norm=norm, dct_type=2)
+        self._compare(signals, n=n, norm=norm, dct_type=3)
 
   def test_error(self):
     signals = np.random.rand(10)

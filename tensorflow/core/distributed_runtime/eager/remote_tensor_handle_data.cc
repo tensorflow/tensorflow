@@ -25,8 +25,8 @@ namespace {
 
 void DestoryRemoteTensorHandle(EagerContext* ctx,
                                eager::EagerClient* eager_client,
-                               uint64 context_id, uint64 op_id,
-                               int output_num) {
+                               uint64 context_id, uint64 op_id, int output_num,
+                               bool ready) {
   if (ctx->GetContextId() != context_id) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
@@ -44,10 +44,10 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
-                                                        eager_client));
-  auto* executor = ctx->Executor();
-  if (executor->Async()) {
-    Status status = executor->Add(std::move(node));
+                                                        eager_client, ready));
+  auto& executor = ctx->Executor();
+  if (executor.Async()) {
+    Status status = executor.Add(std::move(node));
     if (!status.ok()) {
       LOG(ERROR) << "Unable to destroy remote tensor handles: "
                  << status.error_message();
@@ -87,7 +87,7 @@ RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
 
 RemoteTensorHandleData::~RemoteTensorHandleData() {
   DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
-                            output_num_);
+                            output_num_, /*ready=*/true);
   ctx_->Unref();
 }
 
@@ -150,7 +150,7 @@ UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
 UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
     DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
-                              output_num_);
+                              output_num_, /*ready=*/false);
   }
   ctx_->Unref();
 }

@@ -15,7 +15,7 @@ package_group(
     includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/contrib/tpu/...",
+        "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -55,6 +55,16 @@ xla_proto_library(
     deps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
+    ],
+)
+
+tf_proto_library_py(
+    name = "xla_proto",  # bzl adds a _py suffix
+    srcs = ["xla.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 

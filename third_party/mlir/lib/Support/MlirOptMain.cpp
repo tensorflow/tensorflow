@@ -54,7 +54,7 @@ performActions(raw_ostream &os, bool verifyDiagnostics, bool verifyPasses,
     return failure();
 
   // Apply any pass manager command line options.
-  PassManager pm(verifyPasses);
+  PassManager pm(context, verifyPasses);
   applyPassManagerCLOptions(pm);
 
   // Run each of the passes that were selected.

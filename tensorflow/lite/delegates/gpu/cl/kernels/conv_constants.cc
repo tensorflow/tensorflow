@@ -146,9 +146,9 @@ std::string GenerateConvolutionConstantCode(
     std::string s_i = std::to_string(i);
     c += "  {\n";
     c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
-    c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", s_i) + "\n";
-    c += PostProcess(linked_operations, "res", s_i, "dst_adr");
-    c += "  " + dst_tensor.Write3D("res", "dst_adr");
+    const LinkingContext context{"res", "X", "Y", s_i};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "X", "Y", s_i);
     c += "  }\n";
   }
   c += "}\n";
@@ -168,9 +168,9 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
   if (info.vendor != Vendor::QUALCOMM) {
-    // In general we not expect that this kernel will be used with non Adreno
-    // so as it tuned for Adreno special memory.
-    return 256 * 16;  // 4KB
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
   } else {
     return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
   }
@@ -217,6 +217,11 @@ Status ConvConstants::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno3xx()) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
+  if (definition_.precision != CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
@@ -255,9 +260,6 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (!device.IsAdreno()) {
-    return false;
-  }
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;

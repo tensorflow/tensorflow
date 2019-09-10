@@ -171,6 +171,8 @@ class QuantizedLstmParam {
     quant_lstm_parm_.effective_cell_to_output_scale_b = 1;
     quant_lstm_parm_.effective_proj_scale_a = 1105682560;
     quant_lstm_parm_.effective_proj_scale_b = -8;
+    quant_lstm_parm_.effective_hidden_scale_a = 0;
+    quant_lstm_parm_.effective_hidden_scale_b = 0;
     quant_lstm_parm_.layer_norm_input_scale_a = 2011617664;
     quant_lstm_parm_.layer_norm_input_scale_b = -11;
     quant_lstm_parm_.layer_norm_forget_scale_a = 1968024960;
@@ -181,47 +183,43 @@ class QuantizedLstmParam {
     quant_lstm_parm_.layer_norm_output_scale_b = -12;
     quant_lstm_parm_.quantized_cell_clip = 20480;
     quant_lstm_parm_.quantized_proj_clip = 0;
+    quant_lstm_parm_.cell_scale = -11;
     quant_lstm_parm_.inv_large_value[0] = 1;
     quant_lstm_parm_.inv_large_value[1] = 2;
     quant_lstm_parm_.inv_large_value[2] = 2;
     quant_lstm_parm_.inv_large_value[3] = 1;
-    quant_lstm_parm_.input_to_forget_weight_x_input_zp.reset(
+    quant_lstm_parm_.hidden_zp = 0;
+    quant_lstm_parm_.input_to_forget_effective_bias.reset(new int32_t[n_cell_]);
+    quant_lstm_parm_.recurrent_to_forget_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_forget_weight_x_activation_zp.reset(
+    quant_lstm_parm_.input_to_cell_effective_bias.reset(new int32_t[n_cell_]);
+    quant_lstm_parm_.recurrent_to_cell_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_cell_weight_x_input_zp.reset(
+    quant_lstm_parm_.input_to_output_effective_bias.reset(new int32_t[n_cell_]);
+    quant_lstm_parm_.recurrent_to_output_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_cell_weight_x_activation_zp.reset(
+    quant_lstm_parm_.input_to_input_effective_bias.reset(new int32_t[n_cell_]);
+    quant_lstm_parm_.recurrent_to_input_effective_bias.reset(
         new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_output_weight_x_input_zp.reset(
-        new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_output_weight_x_activation_zp.reset(
-        new int32_t[n_cell_]);
-    quant_lstm_parm_.input_to_input_weight_x_input_zp.reset(
-        new int32_t[n_cell_]);
-    quant_lstm_parm_.recurrent_to_input_weight_x_activation_zp.reset(
-        new int32_t[n_cell_]);
-    quant_lstm_parm_.projection_bias_accu.reset(new int32_t[n_output_]);
-    std::fill_n(quant_lstm_parm_.input_to_forget_weight_x_input_zp.get(),
-                n_cell_, 152);
-    std::fill_n(
-        quant_lstm_parm_.recurrent_to_forget_weight_x_activation_zp.get(),
-        n_cell_, 315);
-    std::fill_n(quant_lstm_parm_.input_to_cell_weight_x_input_zp.get(), n_cell_,
+    quant_lstm_parm_.projection_effective_bias.reset(new int32_t[n_output_]);
+    std::fill_n(quant_lstm_parm_.input_to_forget_effective_bias.get(), n_cell_,
+                152);
+    std::fill_n(quant_lstm_parm_.recurrent_to_forget_effective_bias.get(),
+                n_cell_, 315);
+    std::fill_n(quant_lstm_parm_.input_to_cell_effective_bias.get(), n_cell_,
                 165);
-    std::fill_n(quant_lstm_parm_.recurrent_to_cell_weight_x_activation_zp.get(),
+    std::fill_n(quant_lstm_parm_.recurrent_to_cell_effective_bias.get(),
                 n_cell_, 1165);
-    std::fill_n(quant_lstm_parm_.input_to_output_weight_x_input_zp.get(),
-                n_cell_, 159);
-    std::fill_n(
-        quant_lstm_parm_.recurrent_to_output_weight_x_activation_zp.get(),
-        n_cell_, 915);
-    std::fill_n(quant_lstm_parm_.input_to_input_weight_x_input_zp.get(),
-                n_cell_, -15);
-    std::fill_n(
-        quant_lstm_parm_.recurrent_to_input_weight_x_activation_zp.get(),
-        n_cell_, 315);
-    std::fill_n(quant_lstm_parm_.projection_bias_accu.get(), n_output_, 115);
+    std::fill_n(quant_lstm_parm_.input_to_output_effective_bias.get(), n_cell_,
+                159);
+    std::fill_n(quant_lstm_parm_.recurrent_to_output_effective_bias.get(),
+                n_cell_, 915);
+    std::fill_n(quant_lstm_parm_.input_to_input_effective_bias.get(), n_cell_,
+                -15);
+    std::fill_n(quant_lstm_parm_.recurrent_to_input_effective_bias.get(),
+                n_cell_, 315);
+    std::fill_n(quant_lstm_parm_.projection_effective_bias.get(), n_output_,
+                115);
     return &quant_lstm_parm_;
   }
 

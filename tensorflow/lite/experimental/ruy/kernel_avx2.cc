@@ -28,7 +28,19 @@ limitations under the License.
 
 namespace ruy {
 
-#if RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if !(RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM))
+
+void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
+  // CPU-ID-based checks should disable the path that would reach this point.
+  RUY_DCHECK(false);
+}
+
+#else  // RUY_PLATFORM(AVX2) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 static constexpr int kAvxFloatBlockSize = 8;
 static constexpr int kAvx8bitBlockSize = 8;

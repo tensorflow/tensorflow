@@ -64,7 +64,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       }
     }
     case OperationType::APPLY_MASK: {
-      SelectApplyMask(op_def, gpu_op);
+      SelectApplyMask(op_def, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
+                      gpu_op);
       return OkStatus();
     }
     case OperationType::CONCAT: {
@@ -129,7 +130,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
-      SelectReLU(attr, op_def, gpu_op);
+      SelectReLU(creation_context, attr, op_def, gpu_op);
       return OkStatus();
     }
     case OperationType::RESHAPE: {

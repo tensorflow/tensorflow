@@ -1455,10 +1455,8 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Divide(m::Broadcast(), m::Parameter(0))));
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kBroadcast);
-  EXPECT_EQ(root->operand(0)->operand(0)->literal().GetFirstElement<float>(),
-            1);
+  EXPECT_THAT(root, GmockMatch(m::Divide(m::Constant(), m::Parameter(0))));
+  EXPECT_EQ(root->operand(0)->literal().GetFirstElement<float>(), 1);
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {

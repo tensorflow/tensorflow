@@ -716,6 +716,7 @@ class ProgbarLogger(Callback):
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
     self.stateful_metrics = set(stateful_metrics or [])
+    self.log_values = None
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
@@ -807,6 +808,8 @@ class ModelCheckpoint(Callback):
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
         to the quantity monitored will not be overwritten.
+        If `filepath` doesn't contain formatting options like `{epoch}` then
+        `filepath` will be overwritten by each new better model.
       mode: one of {auto, min, max}. If `save_best_only=True`, the decision to
         overwrite the current save file is made based on either the maximization
         or the minimization of the monitored quantity. For `val_acc`, this
@@ -1350,10 +1353,12 @@ class LearningRateScheduler(Callback):
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
-    if not isinstance(lr, (float, np.float32, np.float64)):
+    if not isinstance(lr, (ops.Tensor, float, np.float32, np.float64)):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
-    K.set_value(self.model.optimizer.lr, lr)
+    if isinstance(lr, ops.Tensor) and not lr.dtype.is_floating:
+      raise ValueError('The dtype of Tensor should be float')
+    K.set_value(self.model.optimizer.lr, K.get_value(lr))
     if self.verbose > 0:
       print('\nEpoch %05d: LearningRateScheduler reducing learning '
             'rate to %s.' % (epoch + 1, lr))

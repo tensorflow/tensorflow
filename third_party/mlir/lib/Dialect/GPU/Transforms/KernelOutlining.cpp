@@ -56,6 +56,42 @@ static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   }
 }
 
+// Move all constant arguments of the given kernel function into the function,
+// thereby reducing the number of kernel arguments.
+static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
+                                         gpu::LaunchFuncOp launch) {
+  OpBuilder kernelBuilder(kernelFunc.getBody());
+  auto &firstBlock = kernelFunc.getBody().front();
+  llvm::SmallVector<Value *, 8> newLaunchArgs;
+  for (int i = launch.getNumKernelOperands() - 1; i >= 0; --i) {
+    auto operandOp = launch.getKernelOperand(i)->getDefiningOp();
+    auto constant = dyn_cast_or_null<ConstantOp>(operandOp);
+    if (!constant) {
+      newLaunchArgs.push_back(launch.getKernelOperand(i));
+      continue;
+    }
+    auto newConstant = kernelBuilder.clone(*operandOp);
+    firstBlock.getArgument(i)->replaceAllUsesWith(newConstant->getResult(0));
+    firstBlock.eraseArgument(i);
+  }
+  if (newLaunchArgs.size() == launch.getNumKernelOperands())
+    return launch;
+
+  std::reverse(newLaunchArgs.begin(), newLaunchArgs.end());
+  OpBuilder LaunchBuilder(launch);
+  SmallVector<Type, 8> newArgumentTypes;
+  newArgumentTypes.reserve(firstBlock.getNumArguments());
+  for (auto value : firstBlock.getArguments()) {
+    newArgumentTypes.push_back(value->getType());
+  }
+  kernelFunc.setType(LaunchBuilder.getFunctionType(newArgumentTypes, {}));
+  auto newLaunch = LaunchBuilder.create<gpu::LaunchFuncOp>(
+      launch.getLoc(), kernelFunc, launch.getGridSizeOperandValues(),
+      launch.getBlockSizeOperandValues(), newLaunchArgs);
+  launch.erase();
+  return newLaunch;
+}
+
 // Outline the `gpu.launch` operation body into a kernel function. Replace
 // `gpu.return` operations by `std.return` in the generated functions.
 static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
@@ -71,7 +107,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk<mlir::gpu::Return>([](mlir::gpu::Return op) {
+  outlinedFunc.walk([](mlir::gpu::Return op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();
@@ -80,14 +116,16 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
 }
 
 // Replace `gpu.launch` operations with an `gpu.launch_func` operation launching
-// `kernelFunc`.
+// `kernelFunc`. The kernel func contains the body of the `gpu.launch` with
+// constant region arguments inlined.
 static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   OpBuilder builder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues(
       launchOp.getKernelOperandValues());
-  builder.create<gpu::LaunchFuncOp>(
+  auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
+  inlineConstants(kernelFunc, launchFuncOp);
   launchOp.erase();
 }
 
@@ -98,7 +136,7 @@ public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk<mlir::gpu::LaunchOp>([&](mlir::gpu::LaunchOp op) {
+      func.walk([&](mlir::gpu::LaunchOp op) {
         FuncOp outlinedFunc = outlineKernelFunc(op);
         moduleManager.insert(outlinedFunc);
         convertToLaunchFuncOp(op, outlinedFunc);

@@ -126,6 +126,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_arm64e",
+    values = {
+        "cpu": "ios_arm64e",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -636,6 +643,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64e": [
             ":neon_tensor_utils",
         ],
         ":raspberry_pi_with_neon": [

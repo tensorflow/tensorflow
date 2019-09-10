@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -1425,6 +1424,4 @@ def _has_node_with_op(run_metadata, op_type):
 
 
 if __name__ == "__main__":
-  # Forward compat date for StatelessIf.
-  with forward_compat.forward_compatibility_horizon(2019, 7, 23):
-    test.main()
+  test.main()

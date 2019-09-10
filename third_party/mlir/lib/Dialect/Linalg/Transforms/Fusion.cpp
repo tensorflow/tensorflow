@@ -19,16 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/EDSC/Helpers.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/OpImplementation.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/EDSC/Helpers.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
@@ -107,7 +107,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
   }
   auto operands = getAssumedNonViewOperands(op);
   clonedViews.append(operands.begin(), operands.end());
-  return op.create(b, loc, clonedViews, op.getAttrs());
+  return op.clone(b, loc, clonedViews);
 }
 
 struct ViewDimension {
@@ -232,15 +232,14 @@ static bool isStructurallyFusableProducer(LinalgOp producer, Value *readView,
 }
 
 static void fuseLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
-  OperationFolder state;
+  OperationFolder state(f.getContext());
   DenseSet<Operation *> eraseSet;
 
   LLVM_DEBUG(f.print(dbgs() << "\nBefore linalg-fusion: \n"));
 
   // 1. Record the linalg ops so we can traverse them in reverse order.
   SmallVector<Operation *, 8> linalgOps;
-  f.walk<LinalgOp>(
-      [&](LinalgOp op) { linalgOps.push_back(op.getOperation()); });
+  f.walk([&](LinalgOp op) { linalgOps.push_back(op.getOperation()); });
 
   // 2. Setup the dependences graph, aliases are populated lazily.
   Aliases aliases;

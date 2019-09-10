@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -59,8 +59,8 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     const HloInstruction* gemm, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
     se::DeviceMemoryBase reference_result_buffer, se::Stream* stream,
-    const se::cuda::RedzoneAllocator& allocator,
-    const BufferComparator& comparator, bool crash_on_checking_failure) {
+    const se::RedzoneAllocator& allocator, const BufferComparator& comparator,
+    bool crash_on_checking_failure) {
   if (!stream->parent()->SynchronizeAllActivity()) {
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
@@ -113,7 +113,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     TF_ASSIGN_OR_RETURN(
-        se::cuda::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
+        se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
         allocator.CheckRedzones());
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
@@ -188,7 +188,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* rhs, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
     se::DeviceMemoryBase reference_result_buffer, se::Stream* stream,
-    bool crash_on_checking_failure, const se::cuda::RedzoneAllocator& allocator,
+    bool crash_on_checking_failure, const se::RedzoneAllocator& allocator,
     const BufferComparator& comparator) {
   // Don't run autotuning concurrently on the same GPU.
   tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
@@ -253,7 +253,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   }();
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
-  se::cuda::RedzoneAllocator input_output_allocator(
+  se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config));
 
   BufferComparator comparator(instr->shape(), hlo_module_config);

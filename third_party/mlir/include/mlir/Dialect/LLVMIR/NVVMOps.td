@@ -41,9 +41,11 @@ class NVVM_SpecialRegisterOp<string mnemonic,
   string llvmBuilder = "$res = createIntrinsicCall(builder,"
     # "llvm::Intrinsic::nvvm_" # !subst(".","_", mnemonic) # ");";
   let parser = [{ return parseNVVMSpecialRegisterOp(parser, result); }];
-  let printer = [{ printNVVMSpecialRegisterOp(p, this->getOperation()); }];
+  let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
 }
 
+def NVVM_LaneIdOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.laneid">;
+def NVVM_WarpSizeOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.warpsize">;
 def NVVM_ThreadIdXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.x">;
 def NVVM_ThreadIdYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.y">;
 def NVVM_ThreadIdZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.z">;
@@ -56,5 +58,43 @@ def NVVM_BlockIdZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ctaid.z">;
 def NVVM_GridDimXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.x">;
 def NVVM_GridDimYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.y">;
 def NVVM_GridDimZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.z">;
+
+def NVVM_Barrier0Op : NVVM_Op<"barrier0"> {
+  string llvmBuilder = [{
+      createIntrinsicCall(builder, llvm::Intrinsic::nvvm_barrier0);
+  }];
+  let parser = [{ return success(); }];
+  let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+}
+
+def NVVM_ShflBflyOp :
+  NVVM_Op<"shfl.sync.bfly">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_Type:$dst,
+                 LLVM_Type:$val,
+                 LLVM_Type:$offset,
+                 LLVM_Type:$mask_and_clamp)> {
+  string llvmBuilder = [{
+      auto intId = $val->getType()->isFloatTy() ?
+          llvm::Intrinsic::nvvm_shfl_sync_bfly_f32 :
+          llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
+      $res = createIntrinsicCall(builder,
+          intId, {$dst, $val, $offset, $mask_and_clamp});
+  }];
+  let parser = [{ return parseNVVMShflSyncBflyOp(parser, result); }];
+  let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+}
+
+def NVVM_VoteBallotOp :
+  NVVM_Op<"vote.ballot.sync">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins LLVM_Type:$mask, LLVM_Type:$pred)> {
+  string llvmBuilder = [{
+      $res = createIntrinsicCall(builder,
+            llvm::Intrinsic::nvvm_vote_ballot_sync, {$mask, $pred});
+  }];
+  let parser = [{ return parseNVVMVoteBallotOp(parser, result); }];
+  let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
+}
 
 #endif // NVVMIR_OPS

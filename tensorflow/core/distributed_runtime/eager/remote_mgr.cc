@@ -139,17 +139,17 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
   return Status::OK();
 }
 
-EagerExecutor* RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {
     auto it_and_bool = executor_map_.emplace(
         std::piecewise_construct, std::forward_as_tuple(stream_id),
-        std::forward_as_tuple(/*async=*/false));
+        std::forward_as_tuple(/*async=*/true));
     DCHECK(it_and_bool.second);
     it = it_and_bool.first;
   }
-  return &it->second;
+  return it->second;
 }
 
 void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {

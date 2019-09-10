@@ -12,6 +12,7 @@ tf_cc_test(
         "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

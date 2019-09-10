@@ -105,10 +105,10 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
-                             bool resizableOperandList, MLIRContext *context) {
+                             bool resizableOperandList) {
   return create(location, name, operands, resultTypes,
                 NamedAttributeList(attributes), successors, numRegions,
-                resizableOperandList, context);
+                resizableOperandList);
 }
 
 /// Create a new Operation from operation state.
@@ -116,7 +116,7 @@ Operation *Operation::create(const OperationState &state) {
   unsigned numRegions = state.regions.size();
   Operation *op = create(state.location, state.name, state.operands,
                          state.types, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList, state.context);
+                         numRegions, state.resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
     if (state.regions[i])
       op->getRegion(i).takeBody(*state.regions[i]);
@@ -130,7 +130,7 @@ Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              const NamedAttributeList &attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
-                             bool resizableOperandList, MLIRContext *context) {
+                             bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
 
   // Input operands are nullptr-separated for each successor, the null operands
@@ -148,9 +148,8 @@ Operation *Operation::create(Location location, OperationName name,
   void *rawMem = malloc(byteSize);
 
   // Create the new Operation.
-  auto op =
-      ::new (rawMem) Operation(location, name, resultTypes.size(),
-                               numSuccessors, numRegions, attributes, context);
+  auto op = ::new (rawMem) Operation(location, name, resultTypes.size(),
+                                     numSuccessors, numRegions, attributes);
 
   assert((numSuccessors == 0 || !op->isKnownNonTerminator()) &&
          "unexpected successors in a non-terminator operation");
@@ -229,7 +228,7 @@ Operation *Operation::create(Location location, OperationName name,
 
 Operation::Operation(Location location, OperationName name, unsigned numResults,
                      unsigned numSuccessors, unsigned numRegions,
-                     const NamedAttributeList &attributes, MLIRContext *context)
+                     const NamedAttributeList &attributes)
     : location(location), numResults(numResults), numSuccs(numSuccessors),
       numRegions(numRegions), name(name), attrs(attributes) {}
 
@@ -288,19 +287,6 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
   for (auto &operand : getOpOperands())
     if (operand.get() == from)
       operand.set(to);
-}
-
-//===----------------------------------------------------------------------===//
-// Operation Walkers
-//===----------------------------------------------------------------------===//
-
-void Operation::walk(llvm::function_ref<void(Operation *)> callback) {
-  // Visit any internal operations.
-  for (auto &region : getRegions())
-    region.walk(callback);
-
-  // Visit the current operation.
-  callback(this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -576,9 +562,9 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
 
   SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
-  auto *newOp = Operation::create(getLoc(), getName(), operands, resultTypes,
-                                  attrs, successors, numRegions,
-                                  hasResizableOperandsList(), getContext());
+  auto *newOp =
+      Operation::create(getLoc(), getName(), operands, resultTypes, attrs,
+                        successors, numRegions, hasResizableOperandsList());
 
   // Remember the mapping of any results.
   for (unsigned i = 0, e = getNumResults(); i != e; ++i)
@@ -771,6 +757,18 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   return success(sType1.getShape() == sType2.getShape());
 }
 
+LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
+  if (op->getNumOperands() == 0)
+    return failure();
+
+  auto type = op->getOperand(0)->getType();
+  for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
+    if (failed(verifyShapeMatch(opType, type)))
+      return op->emitOpError() << "requires the same shape for all operands";
+  }
+  return success();
+}
+
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return failure();
@@ -786,6 +784,26 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
+  if (op->getNumOperands() == 0)
+    return failure();
+
+  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
+  if (!type)
+    return op->emitOpError("requires shaped type results");
+  auto elementType = type.getElementType();
+
+  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
+    auto shapedType = operandType.dyn_cast<ShapedType>();
+    if (!shapedType)
+      return op->emitOpError("requires shaped type operands");
+    if (shapedType.getElementType() != elementType)
+      return op->emitOpError("requires the same element type for all operands");
+  }
+
   return success();
 }
 
@@ -1007,4 +1025,47 @@ void impl::ensureRegionTerminator(
     return;
 
   block.push_back(buildTerminatorOp());
+}
+
+UseIterator::UseIterator(Operation *op, bool end)
+    : op(op), res(end ? op->result_end() : op->result_begin()) {
+  // Only initialize current use if there are results/can be uses.
+  if (op->getNumResults())
+    skipOverResultsWithNoUsers();
+}
+
+UseIterator &UseIterator::operator++() {
+  // We increment over uses, if we reach the last use then move to next
+  // result.
+  if (use != (*res)->use_end())
+    ++use;
+  if (use == (*res)->use_end()) {
+    ++res;
+    skipOverResultsWithNoUsers();
+  }
+  return *this;
+}
+
+bool UseIterator::operator==(const UseIterator &other) const {
+  if (op != other.op)
+    return false;
+  if (op->getNumResults() == 0)
+    return true;
+  return res == other.res && use == other.use;
+}
+
+bool UseIterator::operator!=(const UseIterator &other) const {
+  return !(*this == other);
+}
+
+void UseIterator::skipOverResultsWithNoUsers() {
+  while (res != op->result_end() && (*res)->use_empty())
+    ++res;
+
+  // If we are at the last result, then set use to first use of
+  // first result (sentinel value used for end).
+  if (res == op->result_end())
+    use = {};
+  else
+    use = (*res)->use_begin();
 }

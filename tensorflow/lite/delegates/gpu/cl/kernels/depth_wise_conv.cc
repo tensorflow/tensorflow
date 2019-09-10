@@ -147,9 +147,9 @@ std::string GenerateDepthWiseConvolutionCode(
   }
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  FLT4 res0 = TO_FLT4(r) + bias_val;\n";
-  c += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  c += PostProcess(linked_operations, "res0", "Z", "address");
-  c += "  " + dst_tensor.Write3D("res0", "address") + "\n";
+  const LinkingContext context{"res0", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("res0", "X", "Y", "Z") + "\n";
   c += "}\n";
 
   return c;

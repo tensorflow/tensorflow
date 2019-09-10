@@ -74,9 +74,9 @@ std::string GetAveragePoolingKernelCode(
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
   code += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;
@@ -112,8 +112,8 @@ std::string GetMaxPoolingKernelCode(
   code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
   code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
-    code += "  int4 indexes = (int4)(0);\n";
-    code += "  int index_counter = 0;\n";
+    code += "  FLT4 indexes = (FLT4)(0.0f);\n";
+    code += "  FLT index_counter = (FLT)(0.1f);\n";
   }
   code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
   code += "    int y_c = Y * stride.y - padding.y + ky;\n";
@@ -142,18 +142,18 @@ std::string GetMaxPoolingKernelCode(
     code += "          indexes.w = index_counter;\n";
     code += "          maximum.w = src.w;\n";
     code += "        }\n";
-    code += "      index_counter++;\n";
+    code += "        index_counter += (FLT)(1.0f);\n";
   }
   code += "        maximum = max(src, maximum);\n";
   code += "      };\n";
   code += "    }\n";
   code += "  }\n";
   code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "maximum", "Z", "address");
+  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
   code += "  " + dst_tensor.Write3D("maximum", "address");
   if (output_indices) {
-    code += "  FLT4 result_value = TO_FLT4(indexes) + (FLT4)(0.1);\n";
-    code += "  " + indices_tensor.Write3D("result_value", "address");
+    code += "  " + indices_tensor.Write3D("indexes", "address");
   }
   code += "}\n";
 

@@ -162,10 +162,14 @@ class _ModuleInitCodeBuilder(object):
     # We store all possible ways of importing this symbol and later pick just
     # one.
     priority = 0
-    if symbol and hasattr(symbol, '__module__'):
+    if symbol:
       # Give higher priority to source module if it matches
       # symbol's original module.
-      priority = int(source_module_name == symbol.__module__)
+      if hasattr(symbol, '__module__'):
+        priority = int(source_module_name == symbol.__module__)
+      # Give higher priority if symbol name matches its __name__.
+      if hasattr(symbol, '__name__'):
+        priority += int(source_name == symbol.__name__)
     self._module_imports[dest_module_name][full_api_name].add(
         (import_str, priority))
 
@@ -195,8 +199,7 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          if submodule_index > 0:
-            import_from += '.' + '.'.join(module_split[:submodule_index])
+          import_from = '.'
           self.add_import(
               symbol=None,
               source_module_name=import_from,
@@ -243,22 +246,25 @@ __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
 ''' % underscore_names_str
 
-    for dest_module, _ in self._module_imports.items():
-      deprecation = 'False'
-      has_lite = 'False'
-      if self._api_version == 1:  # Add 1.* deprecations.
-        if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
-          deprecation = 'True'
-      # Workaround to make sure not load lite from lite/__init__.py
-      if (not dest_module and 'lite' in self._module_imports
-          and self._lazy_loading):
-        has_lite = 'True'
-      if self._lazy_loading:
-        public_apis_name = '_PUBLIC_APIS'
-      else:
-        public_apis_name = 'None'
-      footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
-          dest_module, public_apis_name, deprecation, has_lite)
+    # Add module wrapper if we need to print deprecation messages
+    # or if we use lazy loading.
+    if self._api_version == 1 or self._lazy_loading:
+      for dest_module, _ in self._module_imports.items():
+        deprecation = 'False'
+        has_lite = 'False'
+        if self._api_version == 1:  # Add 1.* deprecations.
+          if not dest_module.startswith(_COMPAT_MODULE_PREFIX):
+            deprecation = 'True'
+        # Workaround to make sure not load lite from lite/__init__.py
+        if (not dest_module and 'lite' in self._module_imports
+            and self._lazy_loading):
+          has_lite = 'True'
+        if self._lazy_loading:
+          public_apis_name = '_PUBLIC_APIS'
+        else:
+          public_apis_name = 'None'
+        footer_text_map[dest_module] = _DEPRECATION_FOOTER % (
+            dest_module, public_apis_name, deprecation, has_lite)
 
     return module_text_map, footer_text_map
 
@@ -428,6 +434,18 @@ def get_api_init_text(packages,
             module_code_builder, attr, module.__name__, module_contents_name,
             api_name, compat_api_version,
             _COMPAT_MODULE_TEMPLATE % compat_api_version)
+
+  # Include compat.vN-1 under compat.vN.
+  # For e.g. import compat.v1 under compat.v2.compat
+  for version in compat_api_versions:
+    if version - 1 in compat_api_versions:
+      prev_version = 'v%d' % (version - 1)
+      module_code_builder.add_import(
+          symbol=None,
+          source_module_name='%s.compat' % output_package,
+          source_name=prev_version,
+          dest_module_name='compat.v%d.compat' % version,
+          dest_name=prev_version)
 
   return module_code_builder.build()
 

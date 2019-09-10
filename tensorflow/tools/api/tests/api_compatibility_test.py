@@ -47,6 +47,14 @@ from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 
+# pylint: disable=g-import-not-at-top,unused-import
+_TENSORBOARD_AVAILABLE = True
+try:
+  import tensorboard as _tb
+except ImportError:
+  _TENSORBOARD_AVAILABLE = False
+# pylint: enable=g-import-not-at-top,unused-import
+
 # FLAGS defined at the bottom:
 FLAGS = None
 # DEFINE_boolean, update_goldens, default False:
@@ -314,7 +322,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.private_map['tf'] = ['contrib']
+    public_api_visitor.private_map['tf'].append('contrib')
     if api_version == 2:
       public_api_visitor.private_map['tf'].append('enable_v2_behavior')
 
@@ -360,7 +368,8 @@ class ApiCompatibilityTest(test.TestCase):
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     omit_golden_symbols_map = {}
-    if api_version == 2 and FLAGS.only_test_core_api:
+    if (api_version == 2 and FLAGS.only_test_core_api
+        and not _TENSORBOARD_AVAILABLE):
       # In TF 2.0 these summary symbols are imported from TensorBoard.
       omit_golden_symbols_map['tensorflow.summary'] = [
           'audio', 'histogram', 'image', 'scalar', 'text']
@@ -398,7 +407,7 @@ class ApiCompatibilityTest(test.TestCase):
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     omit_golden_symbols_map = {}
-    if FLAGS.only_test_core_api:
+    if FLAGS.only_test_core_api and not _TENSORBOARD_AVAILABLE:
       # In TF 2.0 these summary symbols are imported from TensorBoard.
       omit_golden_symbols_map['tensorflow.summary'] = [
           'audio', 'histogram', 'image', 'scalar', 'text']

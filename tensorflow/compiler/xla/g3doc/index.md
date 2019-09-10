@@ -59,7 +59,7 @@ Or by setting a configuration value within the program:
 ```
 import tensorflow as tf
 
-tf.config.optimizer_set_jit(True)
+tf.config.optimizer.set_jit(True)
 
 # ... the rest of your program ...
 ```

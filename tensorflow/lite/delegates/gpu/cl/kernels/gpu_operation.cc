@@ -29,7 +29,7 @@ std::string GetElementWiseCode(
     const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
     const ElementwiseOperation& op,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "dst_size", src_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
   std::string c = GetCommonDefines(precision);
@@ -39,19 +39,21 @@ std::string GetElementWiseCode(
   c += op.GetArgsDeclaration();
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  c += "    int4 src_size,\n";
   c += "    int4 dst_size\n";
   c += ") {\n";
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  " + src_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  c += "  FLT4 src = " + src_tensor.Read3D("address") + ";\n";
-  c += "  " + op.GetCoreCode("src", "Z", "address");
-  c += PostProcess(linked_operations, "src", "Z", "address");
-  c += "  " + dst_tensor.Write3D("src", "address") + "\n";
+  c += "  FLT4 src = " +
+       src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
+  const LinkingContext context{"src", "X", "Y", "Z"};
+  c += "  " + op.GetCoreCode(context);
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("src", "X", "Y", "Z") + "\n";
   c += "} \n";
   return c;
 }
@@ -128,6 +130,7 @@ Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(BindArguments(&kernel_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   return OkStatus();
 }
@@ -170,11 +173,10 @@ std::string GetArgsDeclaration(
 }
 
 std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const std::string& var_name, const std::string& z_coord,
-                        const std::string& global_address) {
+                        const LinkingContext& context) {
   std::string code;
   for (auto linked_op : linked_ops) {
-    code += linked_op->GetCoreCode(var_name, z_coord, global_address);
+    code += linked_op->GetCoreCode(context);
   }
   return code;
 }

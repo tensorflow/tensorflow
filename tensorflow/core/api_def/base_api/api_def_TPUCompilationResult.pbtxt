@@ -1,5 +1,10 @@
 op {
   graph_op_name: "TPUCompilationResult"
   visibility: HIDDEN
-  summary: "CompilationResultProto indicating the status of the TPU compilation."
+summary: "Returns the result of a TPU compilation."
+description: <<END
+This operation returns the result of a TPU compilation as a serialized
+CompilationResultProto, which holds a status and an error message if an error
+occurred during compilation.
+END
 }

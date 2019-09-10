@@ -34,12 +34,13 @@ Status ReadString(const string& data, int expected_length, string* value,
 
 TEST(WavIO, BadArguments) {
   float audio[] = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f};
-  string result;
+  tstring result;
 
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(nullptr, 44100, 2, 3, &result).code());
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            EncodeAudioAsS16LEWav(audio, 44100, 2, 3, nullptr).code());
+  EXPECT_EQ(
+      error::INVALID_ARGUMENT,
+      EncodeAudioAsS16LEWav(audio, 44100, 2, 3, (tstring*)nullptr).code());
 
   const size_t kuint32max_plus_one = static_cast<size_t>(kuint32max) + 1;
   const size_t kuint16max_plus_one = static_cast<size_t>(kuint16max) + 1;

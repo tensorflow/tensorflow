@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -30,27 +33,28 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
-namespace mlir {
-
+namespace mlir_gpu {
 namespace {
 
 using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::OwningModuleRef;
+using ::mlir::UnknownLoc;
 using ::mlir::LLVM::LLVMDialect;
 using ::xla::gpu::GpuExecutable;
 using ::xla::gpu::GpuHloSchedule;
 using ::xla::gpu::GpuVersion;
 using ::xla::gpu::StreamAssignment;
 using ::xla::gpu::ThunkSchedule;
-
-using ::mlir::MLIRContext;
-using ::mlir::ModuleOp;
-using ::mlir::UnknownLoc;
 
 int64 ConfigureLLVMModuleAndGetPointerSize(MLIRContext* context) {
   LLVMDialect* dialect = context->getRegisteredDialect<LLVMDialect>();
@@ -146,9 +150,32 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   MLIRContext mlir_context;
-  auto mlir_module = ModuleOp::create(UnknownLoc::get(&mlir_context));
+  OwningModuleRef mlir_module =
+      ModuleOp::create(UnknownLoc::get(&mlir_context));
   LhloDialectEmitter lhlo_emitter(*module, *buffer_assignment,
-                                  stream_exec->platform(), mlir_module);
+                                  stream_exec->platform(), *mlir_module);
+
+  TF_RETURN_IF_ERROR(
+      lhlo_emitter.EmitComputation(*module->entry_computation()));
+
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::LHLO) {
+    module_hook_.callback(*mlir_module);
+  }
+
+  TF_RETURN_IF_ERROR(LowerLHLOToGPU(*mlir_module));
+
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::GPU) {
+    module_hook_.callback(*mlir_module);
+  }
+
+  TF_RETURN_IF_ERROR(LowerKernelBodiesToNVVM(*mlir_module));
+
+  if (module_hook_.callback &&
+      module_hook_.stage == IRHook::LoweringStage::LLVM) {
+    module_hook_.callback(*mlir_module);
+  }
 
   // TODO(b/137624192): Emit function per hlo and turn into ptx string and blob.
   std::string ptx;
@@ -164,11 +191,9 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   }
 
   // TODO(b/137624192): Add profiling support.
-
-  return static_cast<std::unique_ptr<Executable>>(
-      absl::make_unique<GpuExecutable>(
-          ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
-          std::move(module), std::move(buffer_assignment), nullptr, nullptr));
+  return {absl::make_unique<GpuExecutable>(
+      ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment), nullptr, nullptr)};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompiler::Compile(
@@ -184,14 +209,22 @@ MlirCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   return Unimplemented("Not yet implemented in MLIR compiler");
 }
 
-}  // namespace mlir
+void MlirCompiler::SetModuleHook(IRHook module_hook) {
+  module_hook_ = module_hook;
+}
+
+void MlirCompiler::RemoveModuleHook() {
+  module_hook_ = {nullptr, IRHook::LoweringStage::LHLO};
+}
+
+}  // namespace mlir_gpu
 }  // namespace xla
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId, []() {
         return absl::make_unique<xla::FailoverCompiler>(
-            absl::make_unique<xla::mlir::MlirCompiler>(),
+            absl::make_unique<xla::mlir_gpu::MlirCompiler>(),
             absl::make_unique<xla::gpu::NVPTXCompiler>());
       });
   return true;
