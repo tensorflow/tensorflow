@@ -19,6 +19,7 @@ cc_library(
 
 gentbl(
     name = "TestOpsIncGen",
+    strip_include_prefix = "lib/TestDialect",
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -44,10 +45,7 @@ cc_library(
     name = "TestDialect",
     srcs = [
         "lib/TestDialect/TestDialect.cpp",
-        "lib/TestDialect/TestOps.cpp.inc",
-        "lib/TestDialect/TestOps.h.inc",
         "lib/TestDialect/TestPatterns.cpp",
-        "lib/TestDialect/TestPatterns.inc",
     ],
     hdrs = [
         "lib/TestDialect/TestDialect.h",
