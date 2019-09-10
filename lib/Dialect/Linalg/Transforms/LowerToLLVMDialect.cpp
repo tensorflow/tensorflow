@@ -619,8 +619,7 @@ public:
     auto viewOp = cast<ViewOp>(op);
     BaseViewConversionHelper helper(op, viewOp.getViewType(), rewriter,
                                     lowering);
-    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
-             viewDescriptorTy = helper.viewDescriptorTy;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
     Value *desc = helper.desc;
 
     Value *bufferDescriptor = adaptor.buffer();
