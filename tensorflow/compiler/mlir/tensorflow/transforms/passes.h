@@ -26,6 +26,10 @@ namespace TF {
 // dialect to MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
 
+// Materialize the MlirPassthroughOp by replacing it with the MLIR module
+// attached as an attribute.
+std::unique_ptr<FunctionPassBase> CreateMaterializePassthroughOpPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 

@@ -24,13 +24,18 @@ REGISTER_OP("MlirPassthroughOp")
     .Attr("Toutputs : list(type) >= 0")
     .Output("outputs: Toutputs")
     .Doc(R"doc(
-This operation wraps an arbitrary MLIR computation expressed as a module with a
-main() function. This operation does not have an associated kernel and is not
-intended to be executed in a regular TensorFlow session. Instead it is intended
-to be used for testing or for special case where a user intends to pass custom
-MLIR computation through a TensorFlow graph with the intent of having custom
-tooling processing it downstream (when targeting a different environment, like
-TensorFlow lite for example).
+Wraps an arbitrary MLIR computation expressed as a module with a main() function.
+
+This operation does not have an associated kernel and is not intended to be
+executed in a regular TensorFlow session. Instead it is intended to be used for
+testing or for special case where a user intends to pass custom MLIR computation
+through a TensorFlow graph with the intent of having custom tooling processing
+it downstream (when targeting a different environment, like TensorFlow lite for
+example).
+The MLIR module is expected to have a main() function that will be used as an
+entry point. The inputs to the operations will be passed as argument to the
+main() function and the returned values of the main function mapped to the
+outputs.
 Example usage:
 
 ```
