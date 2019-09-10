@@ -43,6 +43,13 @@ struct ConvWithRelu {
   HloConstantInstruction* alpha_side_input;
 };
 
+// The pattern we want to match:
+//   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
+//   or
+//   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
+//   * side_input + broadcast(bias));
+// With its variants involving commute/reassociation of adds, multiplies, and
+// max, and omission of alpha1, side_input, alpha2, or bias.
 absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
   using match::Add;
   using match::AddAnyOrder;
@@ -53,14 +60,6 @@ absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
   using match::Maximum;
   using match::MultiplyAnyOrder;
   using match::Op;
-
-  // The pattern we want to match:
-  //   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
-  //   or
-  //   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
-  //   * side_input + broadcast(bias));
-  // With its variants involving commute/reassociation of adds, multiplies, and
-  // max, and omission of alpha1, side_input, alpha2, or bias.
 
   HloInstruction* relu_input;
 
@@ -303,6 +302,9 @@ struct ConvWithConvertOrClamp {
   HloCustomCallInstruction* conv;
 };
 
+// The pattern we want to match:
+//   convert<int8>(clamp(broadcast(-128), (get_tuple_element(custom_call(int8_x,
+//   int8_w, ...)), broadcast(127));
 absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
     HloInstruction* instr) {
   using match::Broadcast;
@@ -310,11 +312,6 @@ absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
   using match::Convert;
   using match::GetTupleElement;
   using match::Op;
-
-  // The pattern we want to match:
-  //   convert<int8>(clamp(broadcast(-128), (get_tuple_element(custom_call(int8_x,
-  //   int8_w, ...)), broadcast(127));
-  //
 
   HloInstruction* gte = nullptr;
   HloInstruction* conv_instr = nullptr;
@@ -427,15 +424,13 @@ StatusOr<bool> RunFuseClamp(HloModule* module) {
   return changed;
 }
 
+// The pattern we want to match:
+//   convert<float>(get_tuple_element<int32>(custom_call()));
 absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
     HloInstruction* instr) {
   using match::Convert;
   using match::GetTupleElement;
   using match::Op;
-
-  // The pattern we want to match:
-  //   convert<float>(get_tuple_element<int32>(custom_call()));
-  //
 
   HloInstruction* gte = nullptr;
   HloInstruction* conv_instr = nullptr;
