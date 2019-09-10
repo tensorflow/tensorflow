@@ -277,12 +277,6 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
     return op.emitOpError("range is invalid: [" + Twine(std::to_string(rmin)) +
                           "," + Twine(std::to_string(rmax)) + "]");
   }
-  // Range must straddle zero.
-  if (rmin > 0.0 || rmax < 0.0) {
-    return op.emitOpError("range failed to straddle zero: [" +
-                          Twine(std::to_string(rmin)) + "," +
-                          Twine(std::to_string(rmax)) + "]");
-  }
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
@@ -332,7 +326,6 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
     return op.emitOpError(
         "requires min and max to have same size as last dimension of inputs");
   }
-
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
