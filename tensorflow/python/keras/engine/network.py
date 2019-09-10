@@ -27,6 +27,7 @@ import os
 import threading
 
 import numpy as np
+import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
@@ -424,9 +425,11 @@ class Network(base_layer.Layer):
       try:
         self._is_graph_network
       except AttributeError:
-        raise RuntimeError('It looks like you are subclassing `Model` and you '
-                           'forgot to call `super(YourClass, self).__init__()`.'
-                           ' Always start with this line.')
+        # six.raise_from supresses the original AttributeError from being raised
+        six.raise_from(
+            RuntimeError('It looks like you are subclassing `Model` and you '
+                         'forgot to call `super(YourClass, self).__init__()`.'
+                         ' Always start with this line.'), None)
 
     super(Network, self).__setattr__(name, value)
 
