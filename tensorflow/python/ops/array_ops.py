@@ -2500,7 +2500,7 @@ def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
     name=None):
-  """Creates a tensor with all elements set to zero.
+  """Creates a tensor with all elements set to one.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2521,7 +2521,7 @@ def ones_like_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` with all elements set to zero.
+    A `Tensor` with all elements set to one.
   """
   return ones_like_impl(input, dtype, name, optimize=True)
 
