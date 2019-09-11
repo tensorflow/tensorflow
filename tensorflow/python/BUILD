@@ -1515,21 +1515,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "contrib_test",
-    size = "small",
-    srcs = ["framework/contrib_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-    ],
-    main = "framework/contrib_test.py",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
-)
-
-tf_py_test(
     name = "build_info_test",
     size = "small",
     srcs = [
