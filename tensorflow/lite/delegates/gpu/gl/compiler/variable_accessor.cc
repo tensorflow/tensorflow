@@ -146,14 +146,14 @@ void GetValue(const Variable::ValueType& value, std::string* result) {
 struct SharedVariableDeclarationGenerator {
   template <typename T>
   void operator()(const T&) const {
-    absl::StrAppend(result, "shared ", GetVariableType(variable.value), " ",
-                    variable.name, ";\n");
+    absl::StrAppend(result, "shared highp ", GetVariableType(variable.value),
+                    " ", variable.name, ";\n");
   }
 
   template <typename T>
   void operator()(const std::vector<T>& v) const {
-    absl::StrAppend(result, "shared ", GetVariableType(variable.value), " ",
-                    variable.name, "[", v.size(), "];\n");
+    absl::StrAppend(result, "shared highp ", GetVariableType(variable.value),
+                    " ", variable.name, "[", v.size(), "];\n");
   }
 
   const Variable& variable;
