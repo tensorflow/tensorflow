@@ -25,11 +25,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
@@ -75,34 +74,33 @@ class BaseFFTOpsTest(test.TestCase):
   def _checkGradComplex(self, func, x, y, result_is_complex=True,
                         rtol=1e-2, atol=1e-2):
     with self.cached_session(use_gpu=True):
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      # func is a forward or inverse, real or complex, batched or unbatched FFT
-      # function with a complex input.
-      z = func(math_ops.complex(inx, iny))
-      # loss = sum(|z|^2)
-      loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
+      def f(inx, iny):
+        inx.set_shape(x.shape)
+        iny.set_shape(y.shape)
+        # func is a forward or inverse, real or complex, batched or unbatched
+        # FFT function with a complex input.
+        z = func(math_ops.complex(inx, iny))
+        # loss = sum(|z|^2)
+        loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
+        return loss
 
-      ((x_jacob_t, x_jacob_n),
-       (y_jacob_t, y_jacob_n)) = gradient_checker.compute_gradient(
-           [inx, iny], [list(x.shape), list(y.shape)],
-           loss, [1],
-           x_init_value=[x, y],
-           delta=1e-2)
+      ((x_jacob_t, y_jacob_t), (x_jacob_n, y_jacob_n)) = (
+          gradient_checker_v2.compute_gradient(f, [x, y], delta=1e-2))
 
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=rtol, atol=atol)
 
   def _checkGradReal(self, func, x, rtol=1e-2, atol=1e-2):
-    with self.cached_session(use_gpu=True):
-      inx = ops.convert_to_tensor(x)
+    def f(inx):
+      inx.set_shape(x.shape)
       # func is a forward RFFT function (batched or unbatched).
       z = func(inx)
       # loss = sum(|z|^2)
       loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
-      x_jacob_t, x_jacob_n = test.compute_gradient(
-          inx, list(x.shape), loss, [1], x_init_value=x, delta=1e-2)
+      return loss
 
+    (x_jacob_t,), (x_jacob_n,) = gradient_checker_v2.compute_gradient(
+        f, [x], delta=1e-2)
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
 
 
@@ -254,9 +252,6 @@ class FFTOpsTest(BaseFFTOpsTest):
           self._tfIFFT(x, rank)
 
   def testGrad_Simple(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
     for np_type, tol in ((np.float32, 1e-4), (np.float64, 1e-10)):
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
@@ -268,9 +263,6 @@ class FFTOpsTest(BaseFFTOpsTest):
                                  rtol=tol, atol=tol)
 
   def testGrad_Random(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
     for np_type, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
@@ -518,9 +510,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self.evaluate(irfft_fn(x, fft_length))
 
   def testGrad_Simple(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
     for rank in VALID_FFT_RANKS:
       # rfft3d/irfft3d do not have gradients yet.
       if rank == 3:
@@ -534,9 +523,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
               self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
   def testGrad_Random(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
     for rank in VALID_FFT_RANKS:
       # rfft3d/irfft3d do not have gradients yet.
       if rank == 3:
