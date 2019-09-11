@@ -1546,6 +1546,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "MlirTableGenMain",
+    srcs = [
+        "tools/mlir-tblgen/mlir-tblgen.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Support",
+        ":TableGen",
+        "@llvm//:config",
+        "@llvm//:support",
+        "@llvm//:tablegen",
+    ],
+)
+
 cc_binary(
     name = "mlir-tblgen",
     srcs = [
@@ -1558,13 +1573,13 @@ cc_binary(
         "tools/mlir-tblgen/RewriterGen.cpp",
         "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/StructsGen.cpp",
-        "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":MlirTableGenMain",
         ":Support",
         ":TableGen",
         "@llvm//:config",
