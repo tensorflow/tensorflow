@@ -3183,6 +3183,24 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return Status::OK();
   }
 
+  // Try to simplify concat -> slice to an operand of concat.
+  if (slice->operand(0)->opcode() == HloOpcode::kConcatenate &&
+      IsUnstridedSlice(slice)) {
+    auto concat = slice->operand(0);
+    int64 concat_dim = concat->concatenate_dimension();
+    int64 piece_start = 0;
+    for (auto piece : concat->operands()) {
+      if (!SameShape(piece, slice)) {
+        piece_start += piece->shape().dimensions(concat_dim);
+        continue;
+      }
+      if (slice->slice_starts(concat_dim) == piece_start) {
+        return ReplaceInstruction(slice, piece);
+      }
+      piece_start += piece->shape().dimensions(concat_dim);
+    }
+  }
+
   // Do not try to reorder slices and reshapes after layout assignment as it may
   // be invalid.
   if (!options_.is_layout_sensitive()) {

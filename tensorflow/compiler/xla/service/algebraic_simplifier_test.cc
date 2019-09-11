@@ -5687,5 +5687,21 @@ TEST_F(AlgebraicSimplifierTest, MaxOfClamp) {
       GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[100,50] parameter(0)
+      p1 = f32[50,50] parameter(1)
+      c0 = f32[150,50] concatenate(p0, p1), dimensions={0}
+      ROOT s0 = f32[50,50] slice(c0), slice={[100:150], [0:50]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(1)));
+}
+
 }  // namespace
 }  // namespace xla
