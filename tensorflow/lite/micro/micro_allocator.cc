@@ -37,6 +37,7 @@ struct AllocationInfo {
   int last_used;
   bool needs_allocating;
   void** output_ptr;
+  int offline_offset;
 };
 
 // We align tensor buffers to 16-byte boundaries, since this is a common
@@ -112,9 +113,17 @@ class AllocationInfoBuilder {
     return Allocate();
   }
 
+  // Check if model contains offline planned buffer offsets.
+  //  - If there's no metadata available, offline_planner_offsets is not set
+  //  - If there's metadata available, offline_planner_offsets will point to the
+  //    first offset in the metadata buffer list.
+  TfLiteStatus GetOfflinePlannedOffsets(const Model* model,
+                                        int** offline_planner_offsets);
+
   // Add allocaiton information for the tensors.
-  TfLiteStatus AddTensors(const SubGraph* subgraph,
+  TfLiteStatus AddTensors(const SubGraph* subgraph, int* offline_offsets,
                           TfLiteTensor* runtime_tensors);
+
   // Add allocation information for the scratch buffers.
   TfLiteStatus AddScratchBuffers(internal::ScratchBufferHandle* buffer_handles);
 
@@ -148,6 +157,7 @@ TfLiteStatus AllocationInfoBuilder::Allocate() {
 }
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
+                                               int* offline_offsets,
                                                TfLiteTensor* runtime_tensors) {
   // Set up allocation info for all tensors.
   for (size_t i = 0; i < tensor_count_; ++i) {
@@ -159,6 +169,11 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->last_used = -1;
     current->needs_allocating = (runtime_tensors[i].data.raw == nullptr) &&
                                 (!subgraph->tensors()->Get(i)->is_variable());
+    if (offline_offsets) {
+      current->offline_offset = offline_offsets[i];
+    } else {
+      current->offline_offset = kOnlinePlannedBuffer;
+    }
   }
 
   for (size_t i = 0; i < subgraph->inputs()->size(); ++i) {
@@ -216,6 +231,51 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
   return kTfLiteOk;
 }
 
+// The tensor offsets will be encoded in the metadata:[Metadata] field of the
+// Model. The following encoding applies:
+//
+// | Metadata component |                 Value                                |
+// |    name:string     | “OfflineMemoryAllocation”                            |
+// |    buffer:unit     | Index of buffer containing memory allocation data    |
+//
+// The buffer contents for the memory allocation is a list of 32-bit integers of
+// the following format:
+//
+// |  Offset |                            Value                                |
+// |    0    | Offline allocation format version – set to 0                    |
+// |    1    | Subgraph index to which this allocation applies                 |
+// |    2    | Number offsets following: n                                     |
+// |    3    | Arena byte offset of tensor #0 or -1 to allocate at runtime     |
+// |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
+// | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
+TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
+    const Model* model, int** offline_planner_offsets) {
+  if (model->metadata()) {
+    for (int i = 0; i < model->metadata()->size(); ++i) {
+      auto metadata = model->metadata()->Get(i);
+      if (strncmp(metadata->name()->c_str(), "OfflineMemoryAllocation",
+                  strlen("OfflineMemoryAllocation")) == 0) {
+        const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+            model->buffers();
+        auto* buffer = (*buffers)[metadata->buffer()];
+        auto* array = buffer->data();
+        const uint32_t* metadata_buffer = (uint32_t*)array->data();
+        const int32_t nbr_tensors = metadata_buffer[2];
+        *offline_planner_offsets = (int32_t*)&metadata_buffer[3];
+
+        if (tensor_count_ != nbr_tensors) {
+          TF_LITE_REPORT_ERROR(reporter_,
+                               "Nbr of offline buffer offsets (%d) in metadata "
+                               "not equal nbr tensors (%d)\n",
+                               nbr_tensors, tensor_count_);
+          return kTfLiteError;
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
     internal::ScratchBufferHandle* buffer_handles) {
   // Set up allocation info for buffers.
@@ -241,9 +301,17 @@ TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
     if (current->needs_allocating) {
       size_t aligned_bytes_required =
           AlignSizeUp(current->bytes, kBufferAlignment);
-      TF_LITE_ENSURE_STATUS(
-          planner->AddBuffer(error_reporter, aligned_bytes_required,
-                             current->first_created, current->last_used));
+      if (current->offline_offset == kOnlinePlannedBuffer) {
+        TF_LITE_ENSURE_STATUS(
+            planner->AddBuffer(error_reporter, aligned_bytes_required,
+                               current->first_created, current->last_used));
+      } else {
+        TF_LITE_ENSURE_STATUS(
+            (static_cast<GreedyMemoryPlanner*>(planner))
+                ->AddBuffer(error_reporter, aligned_bytes_required,
+                            current->first_created, current->last_used,
+                            current->offline_offset));
+      }
     }
   }
   return kTfLiteOk;
@@ -546,7 +614,11 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
         builder.Init(tensors_->size(), scratch_buffer_count_));
-    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph_, context_->tensors));
+    int* offline_planner_offsets = nullptr;
+    TF_LITE_ENSURE_STATUS(
+        builder.GetOfflinePlannedOffsets(model_, &offline_planner_offsets));
+    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph_, offline_planner_offsets,
+                                             context_->tensors));
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 
