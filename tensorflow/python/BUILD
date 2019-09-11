@@ -98,6 +98,8 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":_pywrap_stat_summarizer",
+        ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":array_ops",
@@ -375,6 +377,21 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tfprof",
+    srcs = ["util/tfprof_wrapper.cc"],
+    module_name = "_pywrap_tfprof",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+        "//third_party/eigen3",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
     ],
 )
 
@@ -724,6 +741,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_pywrap_stat_summarizer",
+        ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":common_shapes",
@@ -4997,7 +5015,6 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/py_checkpoint_reader.i",
         "util/scoped_annotation.i",
-        "util/tfprof.i",
         "util/traceme.i",
         "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
@@ -5096,6 +5113,7 @@ genrule(
     srcs = [
         ":cpp_python_util",  # util
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
