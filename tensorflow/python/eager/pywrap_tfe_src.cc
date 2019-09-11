@@ -3572,6 +3572,8 @@ const char kShapeDelim[] = "-";
 const char kDType[] = "d";
 const char kNone[] = "n";
 const char kCompositeTensor[] = "C";
+const char kAttrs[] = "A";
+const char kAttrsEnd[] = "a";
 
 struct EncodeResult {
   string str;
@@ -3748,6 +3750,20 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
           "Error while reading CompositeTensor._type_spec.");
     }
     result->objects.push_back(type_spec);
+  } else if (tensorflow::swig::IsAttrs(arg)) {
+    absl::StrAppend(&result->str, kAttrs);
+    tensorflow::Safe_PyObjectPtr attrs(
+        PyObject_GetAttrString(arg, "__attrs_attrs__"));
+    tensorflow::Safe_PyObjectPtr iter(PyObject_GetIter(attrs.get()));
+    for (tensorflow::Safe_PyObjectPtr item(PyIter_Next(iter.get())); item;
+         item.reset(PyIter_Next(iter.get()))) {
+      tensorflow::Safe_PyObjectPtr name(
+          PyObject_GetAttrString(item.get(), "name"));
+      tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
+          attr_arg.get(), include_tensor_ranks_only, result));
+    }
+    absl::StrAppend(&result->str, kAttrsEnd);
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 
