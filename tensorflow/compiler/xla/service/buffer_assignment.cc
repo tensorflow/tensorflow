@@ -1269,8 +1269,7 @@ Status BufferAssigner::AssignBuffersForComputations(
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);
         const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        return post_order_position.at(a_min->instruction()) <
-               post_order_position.at(b_min->instruction());
+        return compare(a_min, b_min);
       });
 
   std::vector<BufferAllocation::Index> allocation_indices;
