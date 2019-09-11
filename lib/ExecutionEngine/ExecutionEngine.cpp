@@ -119,8 +119,8 @@ bool ExecutionEngine::setupTargetTriple(Module *llvmModule) {
     errs() << "NO target: " << errorMessage << "\n";
     return true;
   }
-  auto machine =
-      target->createTargetMachine(targetTriple, "generic", "", {}, {});
+  std::unique_ptr<llvm::TargetMachine> machine(
+      target->createTargetMachine(targetTriple, "generic", "", {}, {}));
   llvmModule->setDataLayout(machine->createDataLayout());
   llvmModule->setTargetTriple(targetTriple);
   return false;
