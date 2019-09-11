@@ -591,9 +591,9 @@ static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
 
   if (auto weights = branchOp.branch_weights()) {
     *printer << " [";
-    mlir::interleaveComma(
-        weights->getValue(), printer->getStream(),
-        [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+    interleaveComma(weights->getValue(), *printer, [&](Attribute a) {
+      *printer << a.cast<IntegerAttr>().getInt();
+    });
     *printer << "]";
   }
 
@@ -860,8 +860,7 @@ static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter *printer) {
            << entryPointOp.fn();
   if (auto interface = entryPointOp.interface()) {
     *printer << ", ";
-    mlir::interleaveComma(interface.getValue().getValue(), printer->getStream(),
-                          [&](Attribute a) { printer->printAttribute(a); });
+    interleaveComma(interface.getValue().getValue(), *printer);
   }
 }
 
@@ -908,8 +907,8 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
     return;
   }
   *printer << ", ";
-  mlir::interleaveComma(
-      values.getValue().cast<ArrayAttr>(), printer->getStream(),
+  interleaveComma(
+      values.getValue().cast<ArrayAttr>(), *printer,
       [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
 }
 
@@ -1083,7 +1082,7 @@ static inline bool isMergeBlock(Block &block) {
 /// given `dstBlock`.
 static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
   // Check that there is only one op in the `srcBlock`.
-  if (std::next(srcBlock.begin()) != srcBlock.end())
+  if (srcBlock.empty() || std::next(srcBlock.begin()) != srcBlock.end())
     return false;
 
   auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
@@ -1173,6 +1172,32 @@ static LogicalResult verify(spirv::LoopOp loopOp) {
   }
 
   return success();
+}
+
+Block *spirv::LoopOp::getHeaderBlock() {
+  // The second block is the loop header block.
+  return &*std::next(body().begin());
+}
+
+Block *spirv::LoopOp::getContinueBlock() {
+  // The second to last block is the loop continue block.
+  return &*std::prev(body().end(), 2);
+}
+
+Block *spirv::LoopOp::getMergeBlock() {
+  // The last block is the loop merge block.
+  return &body().back();
+}
+
+void spirv::LoopOp::addEntryAndMergeBlock() {
+  assert(body().empty() && "entry and merge block already exist");
+  body().push_back(new Block());
+  auto *mergeBlock = new Block();
+  body().push_back(mergeBlock);
+  OpBuilder builder(mergeBlock);
+
+  // Add a spv._merge op into the merge block.
+  builder.create<spirv::MergeOp>(builder.getUnknownLoc());
 }
 
 //===----------------------------------------------------------------------===//
