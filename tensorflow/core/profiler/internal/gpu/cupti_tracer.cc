@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -851,7 +850,7 @@ class CudaEventRecorder {
     CuptiTracerEvent event;
     event.type = CuptiTracerEventType::Kernel;
     event.source = CuptiTracerEventSource::Activity;  // on gpu device.
-    event.name = port::MaybeAbiDemangle(record.kernel_name);
+    event.name = record.kernel_name;
     event.start_time_ns = (end_walltime_us_ - start_us) * 1000;
     event.end_time_ns = event.start_time_ns + elapsed_us * 1000;
     event.device_id = ordinal_;

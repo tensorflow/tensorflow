@@ -102,8 +102,12 @@ struct CuptiTracerEvent {
       std::numeric_limits<uint64_t>::max();
   CuptiTracerEventType type;
   CuptiTracerEventSource source;
-  // name and annotation are only guaranteed to be valid in collector->AddEvent.
-  absl::string_view name;
+  // Although CUpti_CallbackData::functionName is persistent, however
+  // CUpti_ActivityKernel4::name is not persistent, therefore we need a copy of
+  // it.
+  std::string name;
+  // This points to strings in AnnotationMap, which should outlive the point
+  // where serialization happens.
   absl::string_view annotation;
   uint64 start_time_ns;
   uint64 end_time_ns;

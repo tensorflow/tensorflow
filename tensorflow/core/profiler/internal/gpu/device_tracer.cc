@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -82,7 +83,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
     }
     per_device_adaptor_[event.device_id].AddEvent(std::move(event));
   }
-  void OnEventsDropped(const string& reason, uint32 num_events) override {}
+  void OnEventsDropped(const std::string& reason, uint32 num_events) override {}
   void Flush() override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
@@ -138,7 +139,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
 
         if (event.source == CuptiTracerEventSource::DriverCallback) {
           DCHECK_EQ(event.name, "cuStreamSynchronize");
-          ns->set_node_name(string(event.name));
+          ns->set_node_name(event.name);
           ns->set_timeline_label(absl::StrCat("ThreadId ", event.thread_id));
           ns->set_thread_id(event.thread_id);
           collector->Save(sync_device, ns);
@@ -153,13 +154,13 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
           }
 
           auto annotation_stack = ParseAnnotationStack(event.annotation);
-          absl::string_view activity_name = !annotation_stack.empty()
-                                                ? annotation_stack.back().name
-                                                : event.name;
-          ns->set_node_name(string(activity_name));
+          std::string activity_name =
+              !annotation_stack.empty()
+                  ? std::string(annotation_stack.back().name)
+                  : port::MaybeAbiDemangle(event.name.c_str());
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
-              const string details = strings::Printf(
+              const std::string details = strings::Printf(
                   "regs:%llu shm:%llu grid:%llu,%llu,%llu block:%llu,%llu,%llu",
                   event.kernel_info.registers_per_thread,
                   event.kernel_info.static_shared_memory_usage,
@@ -177,7 +178,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
             case CuptiTracerEventType::MemcpyD2H:
             case CuptiTracerEventType::MemcpyD2D:
             case CuptiTracerEventType::MemcpyP2P: {
-              string details = absl::StrCat(
+              std::string details = absl::StrCat(
                   activity_name, " bytes:", event.memcpy_info.num_bytes);
               if (event.memcpy_info.async) {
                 absl::StrAppend(&details, " aync");
@@ -196,9 +197,10 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
               break;
             }
             default:
-              ns->set_timeline_label(string(activity_name));
+              ns->set_timeline_label(activity_name);
               collector->Save(stream_device, ns);
           }
+          ns->set_node_name(std::move(activity_name));
         }
       }
     }
