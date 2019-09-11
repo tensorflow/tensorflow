@@ -1417,7 +1417,7 @@ class Model(network.Network):
   def _check_call_args(self, method_name):
     """Check that `call` has only one positional arg."""
     # Always allow first arg, regardless of arg name.
-    fullargspec = tf_inspect.getfullargspec(self.call)
+    fullargspec = self._call_full_argspec
     if fullargspec.defaults:
       positional_args = fullargspec.args[:-len(fullargspec.defaults)]
     else:
@@ -1811,9 +1811,11 @@ class Model(network.Network):
                 x, batch_size))
       return
 
-    layers = super(Model, self).layers  # Avoids the override in Sequential.
-    if layers:
-      first_layer = layers[0]
+    # Avoids the override in Sequential.layers which filters Input layers.
+    # (Which are often the very layers that we're after.)
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    first_layer = next(layers, None)
+    if first_layer:
       # The per-replica static batch size.
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
@@ -2433,14 +2435,17 @@ class Model(network.Network):
     # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if (not self.run_eagerly and is_build_called and is_compile_called and
+      
+    # self.run_eagerly is not free to compute, so we want to reuse the value.
+    run_eagerly = self.run_eagerly
+    if (not run_eagerly and is_build_called and is_compile_called and
         not is_dataset  and any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], None
 
     # What follows is input validation and standardization to list format,
     # in the case where all inputs are value arrays.
 
-    if self.run_eagerly:
+    if run_eagerly:
       # In eager mode, do not do shape validation
       # since the network has no input nodes (placeholders) to be fed.
       feed_input_names = self.input_names
@@ -2526,7 +2531,7 @@ class Model(network.Network):
       # Check that all arrays have the same length.
       if not self._distribution_strategy:
         training_utils.check_array_lengths(x, y, sample_weights)
-        if self._is_graph_network and not self.run_eagerly:
+        if self._is_graph_network and not run_eagerly:
           # Additional checks to avoid users mistakenly using improper loss fns.
           training_utils.check_loss_and_target_compatibility(
               y, self._feed_loss_fns, feed_output_shapes)
@@ -2853,10 +2858,8 @@ class Model(network.Network):
     add_metric metrics.
     """
     metrics = []
-    if getattr(self, '_output_loss_metrics', None) is not None:
-      metrics.extend(self._output_loss_metrics)
-    if hasattr(self, 'metrics'):
-      metrics.extend(self.metrics)
+    metrics.extend(getattr(self, '_output_loss_metrics', None) or [])
+    metrics.extend(getattr(self, 'metrics', None) or [])
     return metrics
 
   def _assert_compile_was_called(self):

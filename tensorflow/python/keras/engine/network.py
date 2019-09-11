@@ -324,6 +324,7 @@ class Network(base_layer.Layer):
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+      layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
     self._track_layers(layers)
 
@@ -385,6 +386,7 @@ class Network(base_layer.Layer):
     self.built = False
 
   @property
+  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
     if self._is_graph_network:
       return any(layer.dynamic for layer in self.layers)
@@ -441,9 +443,9 @@ class Network(base_layer.Layer):
       self._metrics.append(value)
 
   @property
+  @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
-    return any((hasattr(layer, 'stateful') and layer.stateful)
-               for layer in self.layers)
+    return any(getattr(layer, 'stateful', False) for layer in self.layers)
 
   def reset_states(self):
     for layer in self.layers:
@@ -504,8 +506,8 @@ class Network(base_layer.Layer):
 
   @property
   def layers(self):
-    return trackable_layer_utils.filter_empty_layer_containers(
-        self._layers)
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(self._layers))
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
@@ -646,7 +648,7 @@ class Network(base_layer.Layer):
           x = base_layer_utils.generate_placeholders_from_shape(input_shape)
 
         kwargs = {}
-        call_signature = tf_inspect.getfullargspec(self.call)
+        call_signature = self._call_full_argspec
         call_args = call_signature.args
         # Exclude `self`, `inputs`, and any argument with a default value.
         if len(call_args) > 2:
@@ -1487,6 +1489,10 @@ class Network(base_layer.Layer):
       if layer not in layer_set:
         self._layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
+        # This allows the added layer to broadcast mutations to the current
+        # layer, which is necessary to ensure cache correctness.
+        layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
 
   def _assert_weights_created(self):

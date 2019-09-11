@@ -218,7 +218,8 @@ def _list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
     return obj.layers
   else:
-    return trackable_layer_utils.filter_empty_layer_containers(obj._layers)  # pylint: disable=protected-access
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
 
 
 def _replace_child_layer_functions(layer, serialization_cache):

@@ -378,10 +378,12 @@ class DistributedDelegate(DistributedValues):
 
   def __getattr__(self, name):
     # The '_use_resource_variables' and the attrs starts with '_self' are used
-    # for restoring the saved_model proto. At the point these attrs are queried,
-    # the variable has not been initialized. Thus it should not query those of
-    # the underlying components.
-    if name.startswith("_self_") or name == "_use_resource_variables":
+    # for restoring the saved_model proto, and '_attribute_sentinel' is used for
+    # Layer tracking. At the point these attrs are queried, the variable has not
+    # been initialized. Thus it should not query those of the underlying
+    # components.
+    if name.startswith("_self_") or name in (
+        "_use_resource_variables", "_attribute_sentinel"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
