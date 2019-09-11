@@ -89,6 +89,17 @@ StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
   }
 #undef DENSE_ELEMENT_ATTR_BUILDER
 }
+
+// Returns whether the instruction is a default dot operation.
+bool DotIsDefault(const HloInstruction* instruction) {
+  auto dot_dimensions = instruction->dot_dimension_numbers();
+  DotDimensionNumbers default_dimension_numbers;
+  default_dimension_numbers.add_lhs_contracting_dimensions(
+      instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
+  default_dimension_numbers.add_rhs_contracting_dimensions(0);
+  return xla::protobuf_util::ProtobufEquals(dot_dimensions,
+                                            default_dimension_numbers);
+}
 }  // namespace
 
 StatusOr<mlir::FuncOp> HloFunctionImporter::ImportFunction(
@@ -230,13 +241,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       MakeAndReturn(BroadcastInDimOp);
     }
     case HloOpcode::kDot: {
-      // TODO(b/129153247) Add support for batch and contracting dimensions.
-      TF_RETURN_IF_ERROR(ValidateDotDimensions(instruction));
-
       // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
       // case and the parser sticks it in. Maybe we should too.
       attributes.push_back(ConvertPrecisionConfig(instruction));
-      MakeAndReturn(DotOp);
+
+      // Consider consolidating DotOps together.
+      if (DotIsDefault(instruction)) {
+        MakeAndReturn(DotOp);
+      }
+
+      attributes.push_back(builder_->getNamedAttr(
+          "dot_dimension_numbers", ConvertDotDimensionNumbers(instruction)));
+      MakeAndReturn(DotGeneralOp);
     }
     case HloOpcode::kCall: {
       TF_ASSIGN_OR_RETURN(FuncOp function,
@@ -556,18 +572,31 @@ mlir::ElementsAttr HloFunctionImporter::Convert(
       op_dimensions);
 }
 
-Status HloFunctionImporter::ValidateDotDimensions(HloInstruction* instruction) {
-  DotDimensionNumbers expected_dimension_numbers;
-  expected_dimension_numbers.add_lhs_contracting_dimensions(
-      instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
-  expected_dimension_numbers.add_rhs_contracting_dimensions(0);
-  if (!xla::protobuf_util::ProtobufEquals(instruction->dot_dimension_numbers(),
-                                          expected_dimension_numbers)) {
-    return tensorflow::errors::Internal(
-        absl::StrCat("Dot operation has unsupported dimension numbers: ",
-                     instruction->dot_dimension_numbers().DebugString()));
-  }
-  return Status::OK();
+mlir::xla_hlo::DotDimensionNumbers
+HloFunctionImporter::ConvertDotDimensionNumbers(HloInstruction* instruction) {
+  auto dot_dimensions = instruction->dot_dimension_numbers();
+  std::vector<int64_t> rhs_contracting_dimensions(
+      dot_dimensions.rhs_contracting_dimensions().begin(),
+      dot_dimensions.rhs_contracting_dimensions().end());
+  std::vector<int64_t> lhs_contracting_dimensions(
+      dot_dimensions.lhs_contracting_dimensions().begin(),
+      dot_dimensions.lhs_contracting_dimensions().end());
+  std::vector<int64_t> rhs_batch_dimensions(
+      dot_dimensions.rhs_batch_dimensions().begin(),
+      dot_dimensions.rhs_batch_dimensions().end());
+  std::vector<int64_t> lhs_batch_dimensions(
+      dot_dimensions.lhs_batch_dimensions().begin(),
+      dot_dimensions.lhs_batch_dimensions().end());
+
+  // Push the attributes into our new DictionaryAttr.
+  auto lhs_batch_dims_attr = Convert(lhs_batch_dimensions);
+  auto rhs_batch_dims_attr = Convert(rhs_batch_dimensions);
+  auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions);
+  auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions);
+
+  return mlir::xla_hlo::DotDimensionNumbers::get(
+      lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
+      rhs_contracting_dims_attr, context_);
 }
 
 }  // namespace xla

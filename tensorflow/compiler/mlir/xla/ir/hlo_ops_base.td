@@ -461,6 +461,17 @@ class BASE_HLO_DotOp {
   }];
 }
 
+class BASE_HLO_DotGeneralOp {
+  string summary = "General Dot operator";
+  string description = [{
+    Performs general dot products between vectors, vector/matrix and
+    matrix/matrix multiplication.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dotgeneral.
+  }];
+}
+
+
 class BASE_HLO_GatherOp{
   string summary = "Gather operator";
 

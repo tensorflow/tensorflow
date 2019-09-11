@@ -99,6 +99,45 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   return precision_config;
 }
 
+static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
+    mlir::xla_hlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+  xla::DotDimensionNumbers dot_dimension_numbers;
+
+  auto rhs_contracting_dimensions =
+      dot_dimension_numbers_attr.rhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_contracting_dimensions =
+      dot_dimension_numbers_attr.lhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto rhs_batch_dimensions =
+      dot_dimension_numbers_attr.rhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_batch_dimensions =
+      dot_dimension_numbers_attr.lhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+
+  for (auto val : rhs_contracting_dimensions) {
+    dot_dimension_numbers.add_rhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+  for (auto val : lhs_contracting_dimensions) {
+    dot_dimension_numbers.add_lhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : rhs_batch_dimensions) {
+    dot_dimension_numbers.add_rhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : lhs_batch_dimensions) {
+    dot_dimension_numbers.add_lhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  return dot_dimension_numbers;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.

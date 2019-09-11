@@ -34,6 +34,8 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/hlo_ops.h.inc"),
         ("-gen-op-defs", "ir/hlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/hlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/hlo_structs.cc.inc"),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",

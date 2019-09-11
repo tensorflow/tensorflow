@@ -44,6 +44,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
+namespace mlir {
+#include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
+}  // namespace mlir
+
 using namespace mlir;
 using namespace mlir::xla_hlo;
 
