@@ -15,20 +15,13 @@
 # ==============================================================================
 
 set -e
-ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
-  awk -F'.' '{print $1}')
 
 # Get the latest version of pip so it recognize manylinux2010
-# easy_install is not available on ubuntu 18.04
-if [[ "$ubuntu_version" == "18" ]]; then
-  wget https://bootstrap.pypa.io/get-pip.py
-  python3 get-pip.py
-  python get-pip.py
-  rm -f get-pip.py
-else
-  easy_install3 -U pip
-  easy_install -U pip
-fi
+wget https://bootstrap.pypa.io/get-pip.py
+python3 get-pip.py
+python get-pip.py
+rm -f get-pip.py
+
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
