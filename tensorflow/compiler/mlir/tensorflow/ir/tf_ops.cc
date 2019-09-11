@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -94,6 +95,23 @@ static bool AreCastCompatible(Type a, Type b) {
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
+}
+
+// Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
+// `incompatible_shape_error` is true, reports error if `x` and `y` has
+// incompatible shapes. Otherwise, returns a tensor type with unknown rank.
+static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
+                                 Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type =
+      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+  if (!result_type) {
+    if (incompatible_shape_error.getValue()) {
+      mlir::emitError(loc, "non-broadcastable operands");
+    } else {
+      result_type = builder->getTensorType(builder->getI1Type());
+    }
+  }
+  return result_type;
 }
 
 namespace {
@@ -256,6 +274,26 @@ static LogicalResult Verify(EmptyTensorListOp op) {
     return op.emitOpError("requires max_num_elements operand to be 0D tensor");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EqualOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(EqualOp op) {
+  // If we allow inputs to have incompatible type, then nothing to do.
+  if (!op.incompatible_shape_error()) return success();
+
+  // Otherwise, check inputs are broadcastable.
+  return mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+      op.getOperation());
+}
+
+void EqualOp::build(Builder *builder, OperationState *result, Value *x,
+                    Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+                                          incompatible_shape_error);
+  return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
 //===----------------------------------------------------------------------===//
@@ -495,6 +533,26 @@ void LogicalNotOp::getCanonicalizationPatterns(
 void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<NegNested>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// NotEqualOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(NotEqualOp op) {
+  // If we allow inputs to have incompatible type, then nothing to do.
+  if (!op.incompatible_shape_error()) return success();
+
+  // Otherwise, check inputs are broadcastable.
+  return mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+      op.getOperation());
+}
+
+void NotEqualOp::build(Builder *builder, OperationState *result, Value *x,
+                       Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+                                          incompatible_shape_error);
+  return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
 //===----------------------------------------------------------------------===//

@@ -934,8 +934,7 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_EqualOp : TF_Op<"Equal", [Broadcastable, Commutative, NoSideEffect]>,
-                 WithBroadcastableCmpOpBuilder {
+def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of (x == y) element-wise.";
 
   let description = [{
@@ -955,7 +954,9 @@ tf.math.equal(x, y) ==> array([True,  True])
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
 
   let results = (outs
@@ -963,6 +964,15 @@ tf.math.equal(x, y) ==> array([True,  True])
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState* result, Value* x, "
+              "Value* y, BoolAttr incompatible_shape_error">
+  ];
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2326,8 +2336,7 @@ larger than 0.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]>,
-                    WithBroadcastableCmpOpBuilder {
+def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of (x != y) element-wise.";
 
   let description = [{
@@ -2337,7 +2346,9 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
 
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
 
   let results = (outs
@@ -2345,6 +2356,15 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState* result, Value* x, "
+              "Value* y, BoolAttr incompatible_shape_error">
+  ];
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
