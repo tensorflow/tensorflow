@@ -440,21 +440,23 @@ gives module error.
 For example,
 
 Example 1:
-```python
+
 >>> a = [1., 2., 3.]
->>> equality_bitcast = tf.bitcast(a,tf.complex128)
-tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast from float to complex128: shape [3] [Op:Bitcast]
->>> equality_cast = tf.cast(a,tf.complex128)
+>>> equality_bitcast = tf.bitcast(a, tf.complex128)
+Traceback (most recent call last):
+...
+InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
+>>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
-```
+
 Example 2:
-```python
+
 >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
 <tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
-```
+
 Example 3:
-```python
+
 >>> x = [1., 2., 3.]
 >>> y = [0., 2., 3.]
 >>> equality= tf.equal(x,y)
@@ -466,10 +468,9 @@ tf.Tensor([False True True], shape=(3,), dtype=bool)
 tf.Tensor([0. 1. 1.], shape=(3,), dtype=float32)
 >>> print(equality_bitcast)
 tf.Tensor(
-[[ 0 0 0 0]
- [ 0 0 128 63]
- [ 0 0 128 63]], shape=(3, 4), dtype=uint8)
-```
+    [[  0   0   0   0]
+     [  0   0 128  63]
+     [  0   0 128  63]], shape=(3, 4), dtype=uint8)
 
 *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results.
@@ -501,14 +502,13 @@ and works its way forward.
 
 For example,
 
-```python
 >>> x = tf.constant([1, 2, 3])
 >>> y = tf.broadcast_to(x, [3, 3])
->>> sess.run(y)
-array([[1, 2, 3],
-       [1, 2, 3],
-       [1, 2, 3]], dtype=int32)
-```
+>>> print(y)
+tf.Tensor(
+    [[1 2 3]
+     [1 2 3]
+     [1 2 3]], shape=(3, 3), dtype=int32)
 
 In the above example, the input Tensor with the shape of `[1, 3]`
 is broadcasted to output Tensor with shape of `[3, 3]`.
@@ -2726,7 +2726,8 @@ The above round function rounds the value based on the given round_mode.
     DefaultValuedAttr<I64Attr, "8">:$num_bits,
     DefaultValuedAttr<BoolAttr, "false">:$range_given,
     DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "HALF_TO_EVEN">:$round_mode,
-    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
   );
 
   let results = (outs
@@ -2752,7 +2753,8 @@ tensor, so its value can change during training.
 
     DefaultValuedAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedAttr<BoolAttr, "true">:$range_given,
-    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
   );
 
   let results = (outs
