@@ -1968,8 +1968,8 @@ def _convert_gather(pfor_input):
       axis = axis_value
   if indices_stacked and not param_stacked:
     if indices is pfor_input.pfor.all_indices and axis == 0:
-      param_shape0 = param.shape.dims[0].value
-      indices_shape0 = indices.shape.dims[0].value
+      param_shape0 = tensor_shape.dimension_value(param.shape[0])
+      indices_shape0 = tensor_shape.dimension_value(indices.shape[0])
       if param_shape0 is not None and indices_shape0 == param_shape0:
         # Note that with loops and conditionals, indices may not be contiguous.
         # However they will be sorted and unique. So if the shape matches, then
