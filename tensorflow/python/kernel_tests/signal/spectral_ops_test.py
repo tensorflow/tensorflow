@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -30,6 +32,7 @@ from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SpectralOpsTest(test.TestCase):
 
   @staticmethod
@@ -79,73 +82,70 @@ class SpectralOpsTest(test.TestCase):
     return output
 
   def _compare(self, signal, frame_length, frame_step, fft_length):
-    with self.cached_session(use_gpu=True) as sess:
-      actual_stft = spectral_ops.stft(
-          signal, frame_length, frame_step, fft_length, pad_end=False)
-      signal_ph = array_ops.placeholder(dtype=dtypes.as_dtype(signal.dtype))
-      actual_stft_from_ph = spectral_ops.stft(
-          signal_ph, frame_length, frame_step, fft_length, pad_end=False)
+    actual_stft = spectral_ops.stft(
+        signal, frame_length, frame_step, fft_length, pad_end=False)
+    signal_ph = array_ops.placeholder_with_default(signal, shape=signal.shape)
+    actual_stft_from_ph = spectral_ops.stft(
+        signal_ph, frame_length, frame_step, fft_length, pad_end=False)
 
-      actual_inverse_stft = spectral_ops.inverse_stft(
-          actual_stft, frame_length, frame_step, fft_length)
+    actual_inverse_stft = spectral_ops.inverse_stft(
+        actual_stft, frame_length, frame_step, fft_length)
 
-      actual_stft, actual_stft_from_ph, actual_inverse_stft = sess.run(
-          [actual_stft, actual_stft_from_ph, actual_inverse_stft],
-          feed_dict={signal_ph: signal})
+    actual_stft, actual_stft_from_ph, actual_inverse_stft = self.evaluate(
+        [actual_stft, actual_stft_from_ph, actual_inverse_stft])
 
-      actual_stft_ph = array_ops.placeholder(dtype=actual_stft.dtype)
-      actual_inverse_stft_from_ph = sess.run(
-          spectral_ops.inverse_stft(
-              actual_stft_ph, frame_length, frame_step, fft_length),
-          feed_dict={actual_stft_ph: actual_stft})
+    actual_stft_ph = array_ops.placeholder_with_default(
+        actual_stft, shape=actual_stft.shape)
+    actual_inverse_stft_from_ph = self.evaluate(
+        spectral_ops.inverse_stft(
+            actual_stft_ph, frame_length, frame_step, fft_length))
 
-      # Confirm that there is no difference in output when shape/rank is fully
-      # unknown or known.
-      self.assertAllClose(actual_stft, actual_stft_from_ph)
-      self.assertAllClose(actual_inverse_stft, actual_inverse_stft_from_ph)
+    # Confirm that there is no difference in output when shape/rank is fully
+    # unknown or known.
+    self.assertAllClose(actual_stft, actual_stft_from_ph)
+    self.assertAllClose(actual_inverse_stft, actual_inverse_stft_from_ph)
 
-      expected_stft = SpectralOpsTest._np_stft(
-          signal, fft_length, frame_step, frame_length)
-      self.assertAllClose(expected_stft, actual_stft, 1e-4, 1e-4)
+    expected_stft = SpectralOpsTest._np_stft(
+        signal, fft_length, frame_step, frame_length)
+    self.assertAllClose(expected_stft, actual_stft, 1e-4, 1e-4)
 
-      expected_inverse_stft = SpectralOpsTest._np_inverse_stft(
-          expected_stft, fft_length, frame_step, frame_length)
-      self.assertAllClose(
-          expected_inverse_stft, actual_inverse_stft, 1e-4, 1e-4)
+    expected_inverse_stft = SpectralOpsTest._np_inverse_stft(
+        expected_stft, fft_length, frame_step, frame_length)
+    self.assertAllClose(
+        expected_inverse_stft, actual_inverse_stft, 1e-4, 1e-4)
 
   def test_shapes(self):
-    with self.session(use_gpu=True):
-      signal = np.zeros((512,)).astype(np.float32)
+    signal = np.zeros((512,)).astype(np.float32)
 
-      # If fft_length is not provided, the smallest enclosing power of 2 of
-      # frame_length (8) is used.
-      stft = spectral_ops.stft(signal, frame_length=7, frame_step=8,
-                               pad_end=True)
-      self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
+    # If fft_length is not provided, the smallest enclosing power of 2 of
+    # frame_length (8) is used.
+    stft = spectral_ops.stft(signal, frame_length=7, frame_step=8,
+                             pad_end=True)
+    self.assertAllEqual([64, 5], stft.shape.as_list())
+    self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
-      stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
-                               pad_end=True)
-      self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
+    stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
+                             pad_end=True)
+    self.assertAllEqual([64, 5], stft.shape.as_list())
+    self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
-      stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
-                               fft_length=16, pad_end=True)
-      self.assertAllEqual([64, 9], stft.shape.as_list())
-      self.assertAllEqual([64, 9], self.evaluate(stft).shape)
+    stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
+                             fft_length=16, pad_end=True)
+    self.assertAllEqual([64, 9], stft.shape.as_list())
+    self.assertAllEqual([64, 9], self.evaluate(stft).shape)
 
-      stft = spectral_ops.stft(signal, frame_length=16, frame_step=8,
-                               fft_length=8, pad_end=True)
-      self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
+    stft = spectral_ops.stft(signal, frame_length=16, frame_step=8,
+                             fft_length=8, pad_end=True)
+    self.assertAllEqual([64, 5], stft.shape.as_list())
+    self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
-      stft = np.zeros((32, 9)).astype(np.complex64)
+    stft = np.zeros((32, 9)).astype(np.complex64)
 
-      inverse_stft = spectral_ops.inverse_stft(stft, frame_length=8,
-                                               fft_length=16, frame_step=8)
-      expected_length = (stft.shape[0] - 1) * 8 + 8
-      self.assertAllEqual([256], inverse_stft.shape.as_list())
-      self.assertAllEqual([expected_length], self.evaluate(inverse_stft).shape)
+    inverse_stft = spectral_ops.inverse_stft(stft, frame_length=8,
+                                             fft_length=16, frame_step=8)
+    expected_length = (stft.shape[0] - 1) * 8 + 8
+    self.assertAllEqual([256], inverse_stft.shape.as_list())
+    self.assertAllEqual([expected_length], self.evaluate(inverse_stft).shape)
 
   def test_stft_and_inverse_stft(self):
     """Test that spectral_ops.stft/inverse_stft match a NumPy implementation."""
@@ -184,35 +184,34 @@ class SpectralOpsTest(test.TestCase):
       # Generate a random white Gaussian signal.
       signal = random_ops.random_normal([signal_length])
 
-      with self.cached_session(use_gpu=True) as sess:
-        stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
-                                 pad_end=False)
-        inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
-                                                 fft_length)
-        inverse_stft_corrected = spectral_ops.inverse_stft(
-            stft, frame_length, frame_step, fft_length,
-            window_fn=spectral_ops.inverse_stft_window_fn(frame_step))
-        signal, inverse_stft, inverse_stft_corrected = sess.run(
-            [signal, inverse_stft, inverse_stft_corrected])
+      stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
+                               pad_end=False)
+      inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
+                                               fft_length)
+      inverse_stft_corrected = spectral_ops.inverse_stft(
+          stft, frame_length, frame_step, fft_length,
+          window_fn=spectral_ops.inverse_stft_window_fn(frame_step))
+      signal, inverse_stft, inverse_stft_corrected = self.evaluate(
+          [signal, inverse_stft, inverse_stft_corrected])
 
-        # Truncate signal to the size of inverse stft.
-        signal = signal[:inverse_stft.shape[0]]
+      # Truncate signal to the size of inverse stft.
+      signal = signal[:inverse_stft.shape[0]]
 
-        # Ignore the frame_length samples at either edge.
-        signal = signal[frame_length:-frame_length]
-        inverse_stft = inverse_stft[frame_length:-frame_length]
-        inverse_stft_corrected = inverse_stft_corrected[
-            frame_length:-frame_length]
+      # Ignore the frame_length samples at either edge.
+      signal = signal[frame_length:-frame_length]
+      inverse_stft = inverse_stft[frame_length:-frame_length]
+      inverse_stft_corrected = inverse_stft_corrected[
+          frame_length:-frame_length]
 
-        # Check that the inverse and original signal are close up to a scale
-        # factor.
-        inverse_stft_scaled = inverse_stft / np.mean(np.abs(inverse_stft))
-        signal_scaled = signal / np.mean(np.abs(signal))
-        self.assertLess(np.std(inverse_stft_scaled - signal_scaled), threshold)
+      # Check that the inverse and original signal are close up to a scale
+      # factor.
+      inverse_stft_scaled = inverse_stft / np.mean(np.abs(inverse_stft))
+      signal_scaled = signal / np.mean(np.abs(signal))
+      self.assertLess(np.std(inverse_stft_scaled - signal_scaled), threshold)
 
-        # Check that the inverse with correction and original signal are close.
-        self.assertLess(np.std(inverse_stft_corrected - signal),
-                        corrected_threshold)
+      # Check that the inverse with correction and original signal are close.
+      self.assertLess(np.std(inverse_stft_corrected - signal),
+                      corrected_threshold)
 
   def test_inverse_stft_window_fn(self):
     """Test that inverse_stft_window_fn has unit gain at each window phase."""
@@ -229,10 +228,7 @@ class SpectralOpsTest(test.TestCase):
       hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
       inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
       inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
-
-      with self.cached_session(use_gpu=True) as sess:
-        hann_window, inverse_window = self.evaluate(
-            [hann_window, inverse_window])
+      hann_window, inverse_window = self.evaluate([hann_window, inverse_window])
 
       # Expect unit gain at each phase of the window.
       product_window = hann_window * inverse_window
@@ -258,11 +254,6 @@ class SpectralOpsTest(test.TestCase):
       hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
       inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
       inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
-
-      with self.cached_session(use_gpu=True) as sess:
-        hann_window, inverse_window = self.evaluate(
-            [hann_window, inverse_window])
-
       self.assertAllClose(hann_window, inverse_window * 1.5)
 
   @staticmethod
@@ -276,6 +267,9 @@ class SpectralOpsTest(test.TestCase):
 
   def test_gradients(self):
     """Test that spectral_ops.stft has a working gradient."""
+    # TODO(rjryan): Update gradient tests for Eager.
+    if context.executing_eagerly():
+      return
     with self.session(use_gpu=True) as sess:
       signal_length = 512
 
@@ -294,6 +288,9 @@ class SpectralOpsTest(test.TestCase):
       self.assertFalse((sinusoid_gradient == 0.0).all())
 
   def test_gradients_numerical(self):
+    # TODO(rjryan): Update gradient tests for Eager.
+    if context.executing_eagerly():
+      return
     with self.session(use_gpu=True):
       # Tuples of (signal_length, frame_length, frame_step, fft_length,
       # stft_bound, inverse_stft_bound).
