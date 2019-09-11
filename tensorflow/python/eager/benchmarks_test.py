@@ -74,7 +74,7 @@ def c_tfe_py_fastpath_execute(a,
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
         ctx._handle, ctx.device_name, "MatMul", name,
-        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        ctx.post_execution_callbacks, a, b, "transpose_a", transpose_a,
         "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
