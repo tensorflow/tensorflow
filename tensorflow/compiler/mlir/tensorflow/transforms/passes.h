@@ -57,6 +57,11 @@ std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass();
 // Prune a tf_executor.graph operation from dead nodes.
 void prune_graph(GraphOp graph);
 
+// Sink `tf.Const` operations in the LaunchOp region using them. This is
+// performed in order to limit the number of values implicitly captured in this
+// region before outlining.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorConstantSinkingPass();
+
 }  // namespace tf_executor
 
 namespace TFDevice {

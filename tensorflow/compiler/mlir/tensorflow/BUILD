@@ -176,6 +176,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/control_to_executor_dialect.cc",

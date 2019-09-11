@@ -27,6 +27,7 @@ void createTPUBridge(PassManager &bridge) {
   bridge.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   bridge.addPass(createCanonicalizerPass());
   bridge.addPass(CreateTPUClusterFormationPass());
+  bridge.addPass(tf_executor::CreateTFExecutorConstantSinkingPass());
   bridge.addPass(TFDevice::CreateClusterOutliningPass());
   bridge.addPass(CreateTPURewritePass());
 }
