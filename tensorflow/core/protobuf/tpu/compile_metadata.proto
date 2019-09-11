@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
-
 package tensorflow.tpu;
 
 import "tensorflow/compiler/xla/xla.proto";
@@ -9,6 +7,8 @@ import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/tpu/dynamic_padding.proto";
+
+option cc_enable_arenas = true;
 
 // This is an experimental proto used in the TF/XLA bridge to store metadata to
 // a compile op (e.g. _TPUCompileMlir).
@@ -35,9 +35,15 @@ message TPUCompileMetadataProto {
     // Whether this argument will receive the same data across all replicas.
     bool is_same_data_across_replicas = 5;
 
+    enum EnableXlaSharding {
+      DISALLOWED = 0;
+      // Sharding is allowed if host training loop exists.
+      TENTATIVE = 1;
+      ALLOWED = 2;
+    }
     // Whether to allow XLA to produce separate programs to shard/unshard this
     // argument. Requires this arg to be an on-device variable.
-    bool enable_xla_sharding = 6;
+    EnableXlaSharding enable_xla_sharding = 6;
   }
   repeated Arg args = 1;
 
