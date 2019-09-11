@@ -159,9 +159,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     if ops.executing_eagerly_outside_functions():
       try:
         context.context().configure_collective_ops(
-            scoped_allocator_enabled_ops=("CollectiveReduce",),
-            use_nccl_communication=(self._communication == cross_device_ops_lib
-                                    .CollectiveCommunication.NCCL))
+            scoped_allocator_enabled_ops=("CollectiveReduce",))
       except RuntimeError:
         logging.warning("Collective ops is not configured at program startup. "
                         "Some performance features may not be enabled.")
@@ -189,7 +187,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
-        collective_keys=self._collective_keys)
+        collective_keys=self._collective_keys,
+        communication=self._communication)
     super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
 
     self._cluster_spec = None
@@ -240,8 +239,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           collective_leader=multi_worker_util.collective_leader(
               cluster_spec, task_type, task_id),
           scoped_allocator_enabled_ops=("CollectiveReduce",),
-          use_nccl_communication=(self._communication == cross_device_ops_lib
-                                  .CollectiveCommunication.NCCL),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
 
@@ -288,7 +285,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
-        collective_keys=self._collective_keys)
+        collective_keys=self._collective_keys,
+        communication=self._communication)
     super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, [(self._worker_device, self.worker_devices)])
@@ -444,7 +442,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
-    if self._communication == cross_device_ops_lib.CollectiveCommunication.NCCL:
+    if (not ops.executing_eagerly_outside_functions() and
+        self._communication ==
+        cross_device_ops_lib.CollectiveCommunication.NCCL):
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:

@@ -47,10 +47,10 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 #if defined(__ANDROID__)
     const bool allow_precision_loss =
         params.Get<bool>("gpu_precision_loss_allowed");
-    const string precision_tag = allow_precision_loss ? "fp16" : "fp32";
+    const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
 
     const int32_t gl_obj_type = params.Get<int32_t>("gpu_gl_object_type");
-    string gl_type;
+    std::string gl_type;
     switch (gl_obj_type) {
       case TFLITE_GL_OBJECT_TYPE_FASTEST:
         gl_type = "fastest";
