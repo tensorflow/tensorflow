@@ -705,6 +705,7 @@ tf_cc_test(
     deps = [
         ":cudnn_conv_rewriter",
         ":ir_emission_utils",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo",
@@ -712,7 +713,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-	"//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
     ],
 )
@@ -1010,9 +1010,9 @@ cc_library(
     deps = [
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_pad_for_convolutions",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
+        ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
         ":gpu_copy_insertion",
