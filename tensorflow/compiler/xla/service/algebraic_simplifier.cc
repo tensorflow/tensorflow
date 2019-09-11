@@ -2168,13 +2168,34 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
     return Status::OK();
   }
 
-  // ln(pow(A,B)) => B*ln(A)
+  // ln(pow(A,B)) => B*ln(abs(A))
+  // or B*ln(A) if A is complex.
   if (Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
+    auto abs_a = ShapeUtil::ElementIsComplex(a->shape())
+                     ? a
+                     : computation_->AddInstruction(HloInstruction::CreateUnary(
+                           log->shape(), HloOpcode::kAbs, a));
+    auto new_log = computation_->AddInstruction(
+        HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, abs_a));
+    return ReplaceWithNewInstruction(
+        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
+                                          new_log, b));
+  }
+
+  if (Match(log, m::Log(m::Sqrt(m::Op(&a))))) {
     auto new_log = computation_->AddInstruction(
         HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, a));
     return ReplaceWithNewInstruction(
         log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
-                                          new_log, b));
+                                          new_log, MakeScalarLike(log, 0.5)));
+  }
+
+  if (Match(log, m::Log(m::Rsqrt(m::Op(&a))))) {
+    auto new_log = computation_->AddInstruction(
+        HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, a));
+    return ReplaceWithNewInstruction(
+        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
+                                          new_log, MakeScalarLike(log, -0.5)));
   }
 
   return Status::OK();
@@ -2577,6 +2598,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
         power, HloInstruction::CreateUnary(power->shape(), HloOpcode::kExp,
                                            a_times_b));
   }
+
   VLOG(10) << "trying transform [pow(A, 2) => A*A]: " << power->ToString();
   if (IsAll(rhs, 2)) {
     return ReplaceWithNewInstruction(
