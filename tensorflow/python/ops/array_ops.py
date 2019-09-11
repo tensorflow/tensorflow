@@ -469,8 +469,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
       if not context.executing_eagerly():
-        input_tensor = ops.convert_to_tensor(input)
-        input_shape = input_tensor.get_shape()
+        input = ops.convert_to_tensor(input)
+        input_shape = input.get_shape()
         if optimize and input_shape.is_fully_defined():
           return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
@@ -562,8 +562,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.prod(
           gen_math_ops.cast(input.dense_shape, out_type), 0, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize:
         if input_shape.is_fully_defined():
           return constant(input_shape.num_elements(), out_type, name=name)
@@ -623,8 +623,8 @@ def rank_internal(input, name=None, optimize=True):
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.dense_shape, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize and input_shape.ndims is not None:
         return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
