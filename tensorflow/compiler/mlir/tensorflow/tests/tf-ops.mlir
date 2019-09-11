@@ -1008,3 +1008,38 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1xi32>) -> tensor<?xf32
   return %0 : tensor<?xf32>
 }
 
+// -----
+
+func @testAll(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+  // CHECK-LABEL: testAll
+  // CHECK: %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+}
+
+// -----
+
+func @testAll64(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+  // CHECK-LABEL: testAll64
+  // CHECK: %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
+}
+
+// -----
+
+func @testAllFloat(%arg0: tensor<2x2xi1>, %arg1: tensor<f32>) -> tensor<i1> {
+  // expected-error @+1 {{'tf.All' op operand #1 must be tensor of 32/64-bit integer values}}
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// -----
+
+func @testAllI32(%arg0: tensor<2x2xi32>, %arg1: tensor<f32>) -> tensor<i32> {
+  // expected-error @+1 {{'tf.All' op operand #0 must be tensor of 1-bit integer values}}
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi32>, tensor<f32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
