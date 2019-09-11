@@ -40,13 +40,13 @@ TEST(XlaConfigProxyTest, RegistrationsAndQueries) {
 
   // Register callbacks.
   XlaConfigProxy::ConfigSetterRegistration<ConfigA>
-  contrig_setter_registration_a([](ConfigA& config_a) -> bool {
+  config_setter_registration_a([](ConfigA& config_a) -> bool {
     config_a = A_OFF;
     return true;
   });
 
   XlaConfigProxy::ConfigSetterRegistration<ConfigB>
-  contrig_setter_registration_b([](ConfigB& config_b) -> bool {
+  config_setter_registration_b([](ConfigB& config_b) -> bool {
     config_b = B_OFF;
     return true;
   });
