@@ -132,7 +132,7 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
-class TFL_OperandIsUnranked<int n> :
+class TFL_OperandIsUnrankedPred<int n> :
   CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
 
 // TODO: Some of these could be generalized and/or moved to more general
@@ -140,18 +140,24 @@ class TFL_OperandIsUnranked<int n> :
 // Returns true if the n-th operand has unknown rank or has rank m.
 class TFL_OperandHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
-    Or<[CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">,
+    Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
+// CPred version of TFL_OperandHasRank.
+class TFL_OperandHasRankPred<int n, int m> :
+  Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ")->getType().cast<ShapedType>().getRank() == " # m>]>;
+
 // True if operand n is ranked and has a rank > dim.
-class TFL_OperandIsRankedAndHasDim<int n, int dim> : And<[
+class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
   # dim>]>;
 
 class TFL_OperandDimEquals<int n, int dim, int size> : And<[
-  TFL_OperandIsRankedAndHasDim<n, dim>,
+  TFL_OperandIsRankedAndHasDimPred<n, dim>,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
 
@@ -170,28 +176,28 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       ")->getType().cast<ShapedType>().getShape()[0]">>;
 
 // True if x_shape[dim] == y_shape[dim].
-class TFL_DimOfOperandEqualsDimOfOperand<int x, int y, int dim> : And<[
-  TFL_OperandIsRankedAndHasDim<x, dim>,
-  TFL_OperandIsRankedAndHasDim<y, dim>,
+class TFL_DimOfOperandEqualsDimOfOperandPred<int x, int y, int dim> : And<[
+  TFL_OperandIsRankedAndHasDimPred<x, dim>,
+  TFL_OperandIsRankedAndHasDimPred<y, dim>,
   CPred<"$_op.getOperand(" # x #
     ")->getType().cast<ShapedType>().getShape()[" # dim # "] == "
     "$_op.getOperand(" # y #
     ")->getType().cast<ShapedType>().getShape()[" # dim # "]">]>;
 
 // Select operands must satisfy one of the following constraints:
-// All inputs are unranked
+// All inputs are unranked/scalars
 // OR
 // All inputs are ranked AND have equal dim[0] AND X & Y have same rank.
 def SelectShapeConstraints :
   PredOpTrait<"Select operands meet shape criteria",
     Or<[
       And<[
-        TFL_OperandIsUnranked<0>,
-        TFL_OperandIsUnranked<1>,
-        TFL_OperandIsUnranked<2>]>,
+        TFL_OperandHasRankPred<0, 0>,
+        TFL_OperandHasRankPred<1, 0>,
+        TFL_OperandHasRankPred<2, 0>]>,
       And<[
-        TFL_DimOfOperandEqualsDimOfOperand<0, 1, 0>,
-        TFL_DimOfOperandEqualsDimOfOperand<0, 2, 0>,
+        TFL_DimOfOperandEqualsDimOfOperandPred<0, 1, 0>,
+        TFL_DimOfOperandEqualsDimOfOperandPred<0, 2, 0>,
         CPred<"$_op.getOperand(1)->getType().cast<ShapedType>().getRank() == "
         "$_op.getOperand(2)->getType().cast<ShapedType>().getRank()">]>]>>;
 
