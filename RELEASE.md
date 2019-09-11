@@ -57,7 +57,7 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * Removed `tf.string_split` from v2 API.
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
 * Add `UnifiedGRU` as the new GRU implementation for tf2.0. Change the default recurrent activation function for GRU from `hard_sigmoid` to `sigmoid`, and `reset_after` to True in 2.0. Historically recurrent activation is `hard_sigmoid` since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default GRU will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with GRU(recurrent_activation='hard_sigmoid', reset_after=False) to fallback to 1.x behavior.
-* CUDNN_INSTALL_PATH, TENSORRT_INSTALL_PATH, NCCL_INSTALL_PATH, NCCL_HDR_PATH are deprecated. Use TF_CUDA_PATHS instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
+* `CUDNN_INSTALL_PATH`, `TENSORRT_INSTALL_PATH`, `NCCL_INSTALL_PATH`, `NCCL_HDR_PATH` are deprecated. Use `TF_CUDA_PATHS` instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
 
 Refer to our [public project status tracker](https://github.com/orgs/tensorflow/projects/4) and [issues tagged with `2.0`](https://github.com/tensorflow/tensorflow/issues?q=is%3Aopen+is%3Aissue+label%3A2.0) on GitHub for insight into recent issues and development progress.
 
@@ -91,7 +91,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * Enable `tf.distribute.experimental.MultiWorkerMirroredStrategy` working in eager mode.
   * Callbacks are supported in `MultiWorkerMirroredStrategy`.
   * Disable `run_eagerly` and distribution strategy if there are symbolic tensors added to the model using `add_metric` or `add_loss`.
-  * Bug fix: loss and gradients should now more reliably be correctly scaled w.r.t. the global batch size when using a `tf.distribute.Strategy`.
+  * Loss and gradients should now more reliably be correctly scaled w.r.t. the global batch size when using a `tf.distribute.Strategy`.
   * Set default loss reduction as `AUTO` for improving reliability of loss scaling with distribution strategy and custom training loops. `AUTO` indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When used in distribution strategy scope, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be 'None' or 'SUM'. Using other values will raise an error.
   * Support for multi-host `ncclAllReduce` in Distribution Strategy.
 
@@ -114,12 +114,15 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * Switched Keras `fit/evaluate/predict` execution to use only a single unified path by default unless eager execution has been explicitly disabled, regardless of input type. This unified path places an eager-friendly training step inside of a `tf.function`. With this 
    1.  All input types are converted to `Dataset`.
    2. The path assumes there is always a distribution strategy. when distribution strategy is not specified the path uses a no-op distribution strategy. 
-   3. The training step is wrapped in tf.function unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following: 
+   3. The training step is wrapped in `tf.function` unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following: 
      1. `sample_weight_mode` in compile 
      2. `weighted_metrics` in compile 
      3. v1 optimizer 
      4. target tensors in compile
-If you are experiencing any issues because of this change, please inform us (file an issue) about your use case and you can unblock yourself by setting `experimental_run_tf_function=False` in compile meanwhile. We have seen couple of use cases where the model usage pattern is not as expected and would not work with this change. 1. output tensors of one layer is used in the constructor of another. 2. symbolic tensors outside the scope of the model are used in custom loss functions. The flag can be disabled for these cases and ideally the usage pattern will need to be fixed.
+If you are experiencing any issues because of this change, please inform us (file an issue) about your use case and you can unblock yourself by setting `experimental_run_tf_function=False` in compile meanwhile. We have seen couple of use cases where the model usage pattern is not as expected and would not work with this change.
+   1. output tensors of one layer is used in the constructor of another.
+   2. symbolic tensors outside the scope of the model are used in custom loss functions.
+   The flag can be disabled for these cases and ideally the usage pattern will need to be fixed.
   * Mark Keras `set_session` as `compat.v1` only.
   * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint format`, which allows the saved checkpoints to be compatible with `model.load_weights`.
   * `keras.backend.resize_images` (and consequently, `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing implementation was fixed.
