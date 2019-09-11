@@ -13,22 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass prepares for legalization to the TFLite dialect by
-// converting operations in TensorFlow dialect into operations that can be
-// legalized to TensorFlow Lite dialect with simple replacements.  The newly
-// created operations are in the TensorFlow dialect if the operation can be
-// represented using a TensorFlow op.  Otherwise, TensorFlow Lite dialect op is
-// used.  For example, Conv2D in TFLite which uses OHWI data format for filters
-// is not supported in TensorFlow because TensorFlow requires filters in the
-// HWIO data format.
-//
-// Motivation to prepare for the TFLite legalization before the actual
-// legalization is to exploit constant folding opportunities in any newly
-// created ops by leveraging constant folding support for the TensorFlow ops.
-// This way TFLite can be used as a serialization format only and does not
-// require access to the TFLite runtime for optimizations as required by the
-// TFLite team.
-
 #include "tensorflow/compiler/mlir/lite/transforms/unroll_batch_matmul.h"
 
 #include <climits>
