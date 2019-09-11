@@ -124,6 +124,28 @@ TEST(EigenSupport, NumThreadsChanged) {
   ASSERT_NE(thread_pool_device, nullptr);
   EXPECT_EQ(thread_pool_device->numThreads(), 4);
 
+  context.recommended_num_threads = 0;
+  ASSERT_NE(context.external_context, nullptr);
+  context.external_context->Refresh(&context);
+  thread_pool_device = GetThreadPoolDevice(&context);
+  ASSERT_NE(thread_pool_device, nullptr);
+  EXPECT_EQ(thread_pool_device->numThreads(), 0);
+
+  context.recommended_num_threads = 3;
+  ASSERT_NE(context.external_context, nullptr);
+  context.external_context->Refresh(&context);
+  thread_pool_device = GetThreadPoolDevice(&context);
+  ASSERT_NE(thread_pool_device, nullptr);
+  EXPECT_EQ(thread_pool_device->numThreads(), 3);
+
+  // Reset to default
+  context.recommended_num_threads = -5;
+  ASSERT_NE(context.external_context, nullptr);
+  context.external_context->Refresh(&context);
+  thread_pool_device = GetThreadPoolDevice(&context);
+  ASSERT_NE(thread_pool_device, nullptr);
+  EXPECT_EQ(thread_pool_device->numThreads(), 4);
+
   DecrementUsageCounter(&context);
 }
 

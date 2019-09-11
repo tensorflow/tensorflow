@@ -28,6 +28,8 @@ namespace {
 // explicitly specified by the context.
 const int kDefaultNumThreadpoolThreads = 4;
 
+bool IsValidNumThreads(int num_threads) { return num_threads > -1; }
+
 #ifndef EIGEN_DONT_ALIGN
 // Eigen may require buffers to be aligned to 16, 32 or 64 bytes depending on
 // hardware architecture and build configurations.
@@ -130,7 +132,7 @@ RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
 }
 
 TfLiteStatus Refresh(TfLiteContext* context) {
-  if (context->recommended_num_threads > -1) {
+  if (IsValidNumThreads(context->recommended_num_threads)) {
     SetEigenNbThreads(context->recommended_num_threads);
   }
 
@@ -147,7 +149,7 @@ TfLiteStatus Refresh(TfLiteContext* context) {
 void IncrementUsageCounter(TfLiteContext* context) {
   auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
-    if (context->recommended_num_threads > -1) {
+    if (IsValidNumThreads(context->recommended_num_threads)) {
       SetEigenNbThreads(context->recommended_num_threads);
     }
     ptr = new RefCountedEigenContext;

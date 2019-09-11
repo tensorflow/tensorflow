@@ -19,9 +19,14 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
-namespace tflite {
-
+namespace {
 const int kDefaultNumThreadpoolThreads = 1;
+
+bool IsValidNumThreads(int num_threads) { return num_threads > -1; }
+
+}  // namespace
+
+namespace tflite {
 
 CpuBackendContext* CpuBackendContext::GetFromContext(TfLiteContext* context) {
   auto* external_context = static_cast<ExternalCpuBackendContext*>(
@@ -39,7 +44,7 @@ CpuBackendContext* CpuBackendContext::GetFromContext(TfLiteContext* context) {
     // We do the lazy initialization here for the TfLiteInternalBackendContext
     // that's wrapped inside ExternalCpuBackendContext.
     cpu_backend_context = new CpuBackendContext();
-    if (context->recommended_num_threads > -1) {
+    if (IsValidNumThreads(context->recommended_num_threads)) {
       cpu_backend_context->SetMaxNumThreads(context->recommended_num_threads);
     }
     external_context->set_internal_backend_context(
