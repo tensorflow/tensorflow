@@ -456,6 +456,7 @@ tf_cc_test(
 cc_library(
     name = "gpu_executable",
     srcs = [
+        "cholesky_thunk.cc",
         "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
@@ -476,10 +477,9 @@ cc_library(
         "triangular_solve_thunk.cc",
         "tuple_thunk.cc",
         "while_thunk.cc",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.cc",
-    ]),
+    ],
     hdrs = [
+        "cholesky_thunk.h",
         "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
@@ -500,12 +500,11 @@ cc_library(
         "triangular_solve_thunk.h",
         "tuple_thunk.h",
         "while_thunk.h",
-    ] + if_cuda_is_configured([
-        "cholesky_thunk.h",
-    ]),
+    ],
     deps = [
         ":backend_configs",
         ":buffer_allocations",
+        ":cusolver_context",
         ":cudnn_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_types",
@@ -559,7 +558,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ] + if_cuda_is_configured([
-        ":cusolver_context",
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
@@ -731,21 +729,22 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-    srcs = ["cusolver_context.cc"],
+    srcs = if_cuda_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
         # LINT.IfChange
         "@local_config_cuda//cuda:cublas_headers",
         # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
-    ],
+    ]),
 )
 
 cc_library(
@@ -1053,7 +1052,6 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":fusion_merger",
