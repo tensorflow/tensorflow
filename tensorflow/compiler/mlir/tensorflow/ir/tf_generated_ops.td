@@ -88,13 +88,13 @@ Inputs must be of same size and shape.
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Variant]>>:$inputs,
+    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs,
 
     Confined<I64Attr, [IntMinValue<1>]>:$N
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Variant]>:$sum
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$sum
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -110,12 +110,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -195,7 +195,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$dimension
   );
 
@@ -228,7 +228,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$dimension
   );
 
@@ -405,14 +405,14 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$value,
-    TF_NumberTensor:$bias,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$value,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$bias,
 
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -900,12 +900,12 @@ def TF_DivOp : TF_Op<"Div", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -953,8 +953,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -1267,12 +1267,12 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1965,14 +1965,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1986,7 +1986,7 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint8]>:$input,
 
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
@@ -1995,7 +1995,7 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2035,14 +2035,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2177,12 +2177,12 @@ def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2345,8 +2345,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -2461,7 +2461,7 @@ output =
   }];
 
   let arguments = (ins
-    TensorOf<[I32, I64, I8]>:$indices,
+    TensorOf<[I32, I64, TF_Uint8]>:$indices,
     I32Tensor:$depth,
     TF_Tensor:$on_value,
     TF_Tensor:$off_value,
@@ -2643,14 +2643,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2892,12 +2892,12 @@ If `x` and `y` are reals, this will return the floating-point division.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2932,11 +2932,11 @@ def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType]> {
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$features
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$features
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$activations
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$activations
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3051,7 +3051,7 @@ Input images can be of different types but output images are always float.
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$images,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -3074,7 +3074,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$images,
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -3082,7 +3082,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$resized_images
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3217,12 +3217,12 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$tensor,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str, TF_Uint16, TF_Uint8]>:$tensor,
     TF_I32OrI64Tensor:$axis
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$output
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str, TF_Uint16, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3989,12 +3989,12 @@ def TF_SubOp : TF_Op<"Sub", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4013,14 +4013,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4300,12 +4300,12 @@ Python Semantics.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4447,7 +4447,7 @@ where(input) ==> [[0, 0, 0],
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$input
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input
   );
 
   let results = (outs

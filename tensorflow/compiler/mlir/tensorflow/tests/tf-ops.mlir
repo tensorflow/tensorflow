@@ -83,6 +83,15 @@ func @testBitcast(%arg0: tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16> {
 
 // -----
 
+// CHECK-LABEL: func @testReverseV2
+func @testReverseV2(%arg0: tensor<2x4x3x!tf.uint8>, %arg1: tensor<1xi32>) -> tensor<2x4x3x!tf.uint8> {
+  // CHECK: tf.ReverseV2
+  %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3x!tf.uint8>, tensor<1xi32>) -> tensor<2x4x3x!tf.uint8>
+  return %0 :  tensor<2x4x3x!tf.uint8>
+}
+
+// -----
+
 func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
   // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
   %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
