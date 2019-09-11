@@ -57,7 +57,6 @@ tf_instantiate_platform_libraries(names = [
     "cuda_libdevice_path",
     "dynamic_annotations",
     "env_time",
-    "fingerprint",
     "human_readable_json",
     "mutex",
     "notification",
@@ -195,17 +194,6 @@ cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [":types"],
-)
-
-cc_library(
-    name = "fingerprint",
-    hdrs = ["fingerprint.h"],
-    deps = [
-        ":fingerprint_impl",
-        ":platform",
-        ":stringpiece",
-        ":types",
-    ],
 )
 
 cc_library(
