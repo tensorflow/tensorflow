@@ -83,213 +83,75 @@ void Check(int axis, const std::initializer_list<int>& input_shape,
   EXPECT_THAT(m.GetOutputDatas(), ElementsAreArray(exp_output_data));
 }
 
-// float32 tests.
-TEST(UnpackOpTest, FloatThreeOutputs) {
-  Check<float>(/*axis=*/0, /*input_shape=*/{3, 2},
-               /*input_data=*/{1, 2, 3, 4, 5, 6},
-               /*exp_output_shape=*/{{2}, {2}, {2}},
-               /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}});
+template <typename InputType>
+struct UnpackOpTest : public ::testing::Test {
+  using TypeToTest = InputType;
+  TensorType TENSOR_TYPE =
+      std::is_same<InputType, int16_t>::value
+          ? TensorType_INT16
+          : std::is_same<InputType, uint8_t>::value
+                ? TensorType_UINT8
+                : std::is_same<InputType, int8_t>::value
+                      ? TensorType_INT8
+                      : std::is_same<InputType, int32_t>::value
+                            ? TensorType_INT32
+                            : TensorType_FLOAT32;
+};
+
+using TestTypes = testing::Types<float, int32_t, int8_t, uint8_t, int16_t>;
+TYPED_TEST_CASE(UnpackOpTest, TestTypes);
+
+TYPED_TEST(UnpackOpTest, ThreeOutputs) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/0, /*input_shape=*/{3, 2},
+      /*input_data=*/{1, 2, 3, 4, 5, 6},
+      /*exp_output_shape=*/{{2}, {2}, {2}},
+      /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}}, TestFixture::TENSOR_TYPE);
 }
 
-TEST(UnpackOpTest, FloatThreeOutputsAxisOne) {
-  Check<float>(/*axis=*/1, /*input_shape=*/{3, 2},
-               /*input_data=*/{1, 2, 3, 4, 5, 6},
-               /*exp_output_shape=*/{{3}, {3}},
-               /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}});
+TYPED_TEST(UnpackOpTest, ThreeOutputsAxisOne) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/1, /*input_shape=*/{3, 2},
+      /*input_data=*/{1, 2, 3, 4, 5, 6},
+      /*exp_output_shape=*/{{3}, {3}},
+      /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}}, TestFixture::TENSOR_TYPE);
 }
 
-TEST(UnpackOpTest, FloatThreeOutputsNegativeAxisOne) {
-  Check<float>(/*axis=*/-1, /*input_shape=*/{3, 2},
-               /*input_data=*/{1, 2, 3, 4, 5, 6},
-               /*exp_output_shape=*/{{3}, {3}},
-               /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}});
+TYPED_TEST(UnpackOpTest, ThreeOutputsNegativeAxisOne) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/-1, /*input_shape=*/{3, 2},
+      /*input_data=*/{1, 2, 3, 4, 5, 6},
+      /*exp_output_shape=*/{{3}, {3}},
+      /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}}, TestFixture::TENSOR_TYPE);
 }
 
-TEST(UnpackOpTest, FloatThreeOutputsNegativeAxisTwo) {
-  Check<float>(/*axis=*/-2, /*input_shape=*/{3, 2},
-               /*input_data=*/{1, 2, 3, 4, 5, 6},
-               /*exp_output_shape=*/{{2}, {2}, {2}},
-               /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}});
+TYPED_TEST(UnpackOpTest, OneOutput) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/0, /*input_shape=*/{1, 6},
+      /*input_data=*/{1, 2, 3, 4, 5, 6},
+      /*exp_output_shape=*/{{6}},
+      /*exp_output_data=*/{{1, 2, 3, 4, 5, 6}}, TestFixture::TENSOR_TYPE);
 }
 
-TEST(UnpackOpTest, FloatOneOutput) {
-  Check<float>(/*axis=*/0, /*input_shape=*/{1, 6},
-               /*input_data=*/{1, 2, 3, 4, 5, 6},
-               /*exp_output_shape=*/{{6}},
-               /*exp_output_data=*/{{1, 2, 3, 4, 5, 6}});
+TYPED_TEST(UnpackOpTest, ThreeDimensionsOutputs) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
+      /*exp_output_shape=*/{{2, 2}, {2, 2}},
+      /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
+      TestFixture::TENSOR_TYPE);
 }
 
-TEST(UnpackOpTest, FloatThreeDimensionsOutputs) {
-  Check<float>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
-               /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
-               /*exp_output_shape=*/{{2, 2}, {2, 2}},
-               /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}});
-}
-
-TEST(UnpackOpTest, FloatVectorToScalar) {
-  Check<float>(/*axis=*/0, /*input_shape=*/{5},
-               /*input_data=*/{1, 2, 3, 4, 5},
-               /*exp_output_shape=*/{{}, {}, {}, {}, {}},
-               /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}});
-}
-
-// int32 tests.
-TEST(UnpackOpTest, IntThreeOutputs) {
-  Check<int32_t>(/*axis=*/0, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{2}, {2}, {2}},
-                 /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
-                 /*type=*/TensorType_INT32);
-}
-
-TEST(UnpackOpTest, IntThreeOutputsAxisOne) {
-  Check<int32_t>(/*axis=*/1, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{3}, {3}},
-                 /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}},
-                 /*type=*/TensorType_INT32);
-}
-
-TEST(UnpackOpTest, IntOneOutput) {
-  Check<int32_t>(/*axis=*/0, /*input_shape=*/{1, 6},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{6}},
-                 /*exp_output_data=*/{{1, 2, 3, 4, 5, 6}},
-                 /*type=*/TensorType_INT32);
-}
-
-TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
-  Check<int32_t>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
-                 /*exp_output_shape=*/{{2, 2}, {2, 2}},
-                 /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
-                 /*type=*/TensorType_INT32);
-}
-
-TEST(UnpackOpTest, IntVectorToScalar) {
-  Check<int32_t>(/*axis=*/0, /*input_shape=*/{5},
-                 /*input_data=*/{1, 2, 3, 4, 5},
-                 /*exp_output_shape=*/{{}, {}, {}, {}, {}},
-                 /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
-                 /*type=*/TensorType_INT32);
-}
-
-// uint8 tests.
-TEST(UnpackOpTest, Uint8ThreeOutputs) {
-  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{2}, {2}, {2}},
-                 /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8ThreeOutputsAxisOne) {
-  Check<uint8_t>(/*axis=*/1, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{3}, {3}},
-                 /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8ThreeOutputsNegativeAxisOne) {
-  Check<uint8_t>(/*axis=*/-1, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{3}, {3}},
-                 /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8ThreeOutputsNegativeAxisTwo) {
-  Check<uint8_t>(/*axis=*/-2, /*input_shape=*/{3, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{2}, {2}, {2}},
-                 /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8OneOutput) {
-  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{1, 6},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6},
-                 /*exp_output_shape=*/{{6}},
-                 /*exp_output_data=*/{{1, 2, 3, 4, 5, 6}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8ThreeDimensionsOutputs) {
-  Check<uint8_t>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
-                 /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
-                 /*exp_output_shape=*/{{2, 2}, {2, 2}},
-                 /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
-                 /*type=*/TensorType_UINT8);
-}
-
-TEST(UnpackOpTest, Uint8VectorToScalar) {
-  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{5},
-                 /*input_data=*/{1, 2, 3, 4, 5},
-                 /*exp_output_shape=*/{{}, {}, {}, {}, {}},
-                 /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
-                 /*type=*/TensorType_UINT8);
-}
-
-// int8 tests.
-TEST(UnpackOpTest, Int8ThreeOutputs) {
-  Check<int8_t>(/*axis=*/0, /*input_shape=*/{3, 2},
-                /*input_data=*/{1, 2, 3, 4, 5, 6},
-                /*exp_output_shape=*/{{2}, {2}, {2}},
-                /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8ThreeOutputsAxisOne) {
-  Check<int8_t>(/*axis=*/1, /*input_shape=*/{3, 2},
-                /*input_data=*/{1, 2, 3, 4, 5, 6},
-                /*exp_output_shape=*/{{3}, {3}},
-                /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8ThreeOutputsNegativeAxisOne) {
-  Check<int8_t>(/*axis=*/-1, /*input_shape=*/{3, 2},
-                /*input_data=*/{1, 2, 3, 4, 5, 6},
-                /*exp_output_shape=*/{{3}, {3}},
-                /*exp_output_data=*/{{1, 3, 5}, {2, 4, 6}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8ThreeOutputsNegativeAxisTwo) {
-  Check<int8_t>(/*axis=*/-2, /*input_shape=*/{3, 2},
-                /*input_data=*/{1, 2, 3, 4, 5, 6},
-                /*exp_output_shape=*/{{2}, {2}, {2}},
-                /*exp_output_data=*/{{1, 2}, {3, 4}, {5, 6}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8OneOutput) {
-  Check<int8_t>(/*axis=*/0, /*input_shape=*/{1, 6},
-                /*input_data=*/{1, 2, 3, 4, 5, 6},
-                /*exp_output_shape=*/{{6}},
-                /*exp_output_data=*/{{1, 2, 3, 4, 5, 6}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8ThreeDimensionsOutputs) {
-  Check<int8_t>(/*axis=*/2, /*input_shape=*/{2, 2, 2},
-                /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
-                /*exp_output_shape=*/{{2, 2}, {2, 2}},
-                /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
-                /*type=*/TensorType_INT8);
-}
-
-TEST(UnpackOpTest, Int8VectorToScalar) {
-  Check<int8_t>(/*axis=*/0, /*input_shape=*/{5},
-                /*input_data=*/{1, 2, 3, 4, 5},
-                /*exp_output_shape=*/{{}, {}, {}, {}, {}},
-                /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
-                /*type=*/TensorType_INT8);
+TYPED_TEST(UnpackOpTest, VectorToScalar) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/0, /*input_shape=*/{5},
+      /*input_data=*/{1, 2, 3, 4, 5},
+      /*exp_output_shape=*/{{}, {}, {}, {}, {}},
+      /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}}, TestFixture::TENSOR_TYPE);
 }
 
 // bool tests.
-TEST(UnpackOpTest, BoolThreeOutputs) {
+TEST(UnpackOpTestBool, BoolThreeOutputs) {
   Check<bool>(
       /*axis=*/0, /*input_shape=*/{3, 2},
       /*input_data=*/{true, false, true, false, true, false},
@@ -298,7 +160,7 @@ TEST(UnpackOpTest, BoolThreeOutputs) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolThreeOutputsAxisOne) {
+TEST(UnpackOpTestBool, BoolThreeOutputsAxisOne) {
   Check<bool>(
       /*axis=*/1, /*input_shape=*/{3, 2},
       /*input_data=*/{true, false, true, false, true, false},
@@ -307,7 +169,7 @@ TEST(UnpackOpTest, BoolThreeOutputsAxisOne) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolThreeOutputsNegativeAxisOne) {
+TEST(UnpackOpTestBool, BoolThreeOutputsNegativeAxisOne) {
   Check<bool>(
       /*axis=*/-1, /*input_shape=*/{3, 2},
       /*input_data=*/{true, false, true, false, true, false},
@@ -316,7 +178,7 @@ TEST(UnpackOpTest, BoolThreeOutputsNegativeAxisOne) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolThreeOutputsNegativeAxisTwo) {
+TEST(UnpackOpTestBool, BoolThreeOutputsNegativeAxisTwo) {
   Check<bool>(
       /*axis=*/-2, /*input_shape=*/{3, 2},
       /*input_data=*/{true, false, true, false, true, false},
@@ -325,7 +187,7 @@ TEST(UnpackOpTest, BoolThreeOutputsNegativeAxisTwo) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolOneOutput) {
+TEST(UnpackOpTestBool, BoolOneOutput) {
   Check<bool>(
       /*axis=*/0, /*input_shape=*/{1, 6},
       /*input_data=*/{true, false, true, false, true, false},
@@ -334,7 +196,7 @@ TEST(UnpackOpTest, BoolOneOutput) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolThreeDimensionsOutputs) {
+TEST(UnpackOpTestBool, BoolThreeDimensionsOutputs) {
   Check<bool>(
       /*axis=*/2, /*input_shape=*/{2, 2, 2},
       /*input_data=*/{true, false, true, false, true, false, true, false},
@@ -344,7 +206,7 @@ TEST(UnpackOpTest, BoolThreeDimensionsOutputs) {
       /*type=*/TensorType_BOOL);
 }
 
-TEST(UnpackOpTest, BoolVectorToScalar) {
+TEST(UnpackOpTestBool, BoolVectorToScalar) {
   Check<bool>(/*axis=*/0, /*input_shape=*/{5},
               /*input_data=*/{true, false, true, false, true},
               /*exp_output_shape=*/{{}, {}, {}, {}, {}},
