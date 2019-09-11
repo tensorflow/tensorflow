@@ -40,6 +40,8 @@ class LinearMemoryPlanner : public MemoryPlanner {
   int buffer_offsets_[kMaxBufferCount];
   int current_buffer_count_;
   int next_free_offset_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 }  // namespace tflite

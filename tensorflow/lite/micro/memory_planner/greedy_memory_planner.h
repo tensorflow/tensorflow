@@ -125,6 +125,8 @@ class GreedyMemoryPlanner : public MemoryPlanner {
 
   // Whether buffers have been added since the last plan was calculated.
   bool need_to_calculate_offsets_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
 };
 
 }  // namespace tflite
