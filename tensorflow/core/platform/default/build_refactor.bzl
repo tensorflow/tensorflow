@@ -134,6 +134,22 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "rocm_rocdl_path": {
+        "name": "rocm_rocdl_path_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:rocm_rocdl_path.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/rocm_rocdl_path.cc",
+        ],
+        "deps": [
+            "@local_config_rocm//rocm:rocm_headers",
+            "//tensorflow/core/lib/io:path",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "strong_hash": {
         "name": "strong_hash_impl",
         "textual_hdrs": [

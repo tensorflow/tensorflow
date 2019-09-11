@@ -34,6 +34,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     default_visibility = [
@@ -58,6 +62,7 @@ tf_instantiate_platform_libraries(names = [
     "mutex",
     "notification",
     "platform_port",
+    "rocm_rocdl_path",
     "strong_hash",
 ])
 
@@ -278,16 +283,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_rocdl_path",
-    srcs = ["rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
-    hdrs = ["rocm_rocdl_path.h"],
-    deps = [
-        ":types",
-        "//tensorflow/core:lib",
-    ] + tf_additional_rocdl_deps(),
-)
-
-cc_library(
     name = "platform",
     hdrs = ["platform.h"],
 )
@@ -357,6 +352,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
+)
+
+cc_library(
+    name = "rocm_rocdl_path",
+    textual_hdrs = ["rocm_rocdl_path.h"],
+    deps = [
+        ":rocm_rocdl_path_impl",
+    ],
+)
+
+cc_library(
+    name = "rocm",
+    hdrs = if_rocm_is_configured(["rocm.h"]),
+    deps = if_rocm_is_configured([
+        ":platform",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+    ]),
 )
 
 cc_library(
